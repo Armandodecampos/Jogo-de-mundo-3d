@@ -1,0 +1,3190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Small World</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Incluir Font Awesome para o ícone de engrenagem e mão (machado e martelo serão imagens) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        body { /* Remove default body margins and set font */
+            margin: 0;
+            overflow: hidden;
+            font-family: "Inter", sans-serif;
+             -webkit-user-select: none; /* Safari */
+    -moz-user-select: none; /* Firefox */
+    -ms-user-select: none; /* Internet Explorer/Edge */
+    user-select: none; /* Padrão */
+        }
+        canvas { /* Ensure canvas takes full available space and is a block element */
+            display: block;
+            cursor: none; /* Oculta o cursor apenas no canvas do jogo por padrão */
+        }
+        /* #messageBox foi removido */
+        #crosshair { /* Style for the crosshair in the center of the screen */
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px; /* Crosshair width */
+            height: 20px; /* Crosshair height */
+            transform: translate(-50%, -50%); /* Perfectly center the crosshair */
+            pointer-events: none; /* Allow clicks to pass through the crosshair */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 999; /* Ensure it's above the canvas, but below the messageBox */
+        }
+        #crosshair::before, #crosshair::after { /* Create crosshair lines */
+            content: '';
+            position: absolute;
+            background-color: var(--crosshair-color, white); /* Default crosshair color, uses CSS variable */
+            transition: background-color 0.1s ease-in-out; /* Smooth color transition */
+        }
+        #crosshair::before { /* Horizontal line */
+            width: 100%;
+            height: 2px;
+        }
+        #crosshair::after { /* Vertical line */
+            width: 2px;
+            height: 100%;
+        }
+
+        /* Start Screen Styles */
+        #startScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1001;
+            color: white;
+            text-align: center;
+        }
+        #startScreen h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            /* Prevent text selection for the title */
+            -webkit-touch-callout: none; /* iOS Safari */
+            -webkit-user-select: none;   /* Safari */
+            -khtml-user-select: none;    /* Konqueror HTML */
+            -moz-user-select: none;      /* Old versions of Firefox */
+            -ms-user-select: none;       /* Internet Explorer/Edge */
+            user-select: none;           /* Non-prefixed version, currently supported by Chrome, Edge, Opera and Firefox */
+        }
+        #startButton {
+            background-color: #4CAF50;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.5em;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        #startButton:hover {
+            background-color: #45a049;
+        }
+
+        /* Options Screen Styles */
+        #optionsScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9); /* Darker overlay */
+            display: flex; /* Mantém flex para centralização, mas controla visibilidade com classe */
+            visibility: hidden; /* Hidden by default */
+            opacity: 0; /* Also hidden by default for smooth transition */
+            transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out; /* Smooth fade in/out */
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1002; /* Above start screen */
+            color: white;
+            text-align: center;
+        }
+        #optionsScreen.active { /* Class to activate the menu */
+            visibility: visible;
+            opacity: 1;
+        }
+        #optionsScreen h2 {
+            font-size: 2.5em;
+            margin-bottom: 30px;
+        }
+        #optionsScreen button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.2em;
+            cursor: pointer;
+            margin: 10px;
+            transition: background-color 0.3s ease;
+        }
+        #optionsScreen button:hover {
+            background-color: #45a049;
+        }
+        #exitGameButton { /* Specific style for exit button */
+            background-color: #dc3545; /* Red for exit */
+        }
+        #exitGameButton:hover {
+            background-color: #c82333;
+        }
+
+        /* Inventory Belt Styles */
+        #inventoryBelt {
+            position: absolute;
+            left: 50%; /* Centraliza horizontalmente */
+            bottom: 20px; /* Distância da parte inferior */
+            transform: translateX(-50%); /* Ajusta para centralizar com base na própria largura */
+            display: flex;
+            flex-direction: row; /* Alinha os itens horizontalmente */
+            align-items: center; /* Centraliza itens verticalmente dentro da linha */
+            gap: 8px; /* Espaço entre slots e botão */
+            background-color: rgba(0, 0, 0, 0.9); /* Fundo semi-transparente */
+            padding: 10px;
+            border-radius: 10px;
+            z-index: 998;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+        }
+        .slot {
+            width: 100px;
+            height: 100px;
+            border: 2px solid #555;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column; /* Para empilhar ícone e quantidade */
+            justify-content: center;
+            align-items: center;
+            color: #bbb;
+            font-size: 0.9em;
+            transition: border-color 0.1s ease-in-out, background-color 0.1s ease-in-out;
+            position: relative; /* Para posicionar a quantidade */
+            cursor: grab; /* Cursor para indicar que é arrastável */
+        }
+        .slot.selected { /* Estilo para o slot selecionado */
+            border-color: #4CAF50; /* Borda verde */
+            box-shadow: 0 0 0 3px #4CAF50; /* Sombra verde */
+        }
+
+        .slot-quantity {
+            position: absolute;
+            bottom: 2px;
+            right: 4px;
+            font-size: 0.7em;
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+        }
+        .slot-icon {
+            width: 100%;
+            height: 100%;
+            object-fit: contain; /* Garante que a imagem se ajuste ao slot */
+            padding: 5px; /* Adiciona um pequeno preenchimento */
+            border-radius: 50%;
+        }
+        .slot-key-bind { /* Estilo para as letras de atalho (Q, E) */
+            position: absolute;
+            top: 2px;
+            left: 4px;
+            font-size: 0.7em;
+            color: white;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+            font-weight: bold;
+        }
+
+        /* Backpack Button */
+        #backpackButton {
+            background-color: #8B4513; /* Brown color */
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.2em;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        #backpackButton:hover {
+            background-color: #6B350F;
+        }
+
+        /* Backpack Modal */
+        #backpackModal {
+            position: absolute;
+            top: 50%; /* Center vertically */
+            left: 50%;
+            transform: translate(-50%, -50%); /* Center horizontally and vertically */
+            background-color: rgba(50, 50, 50, 0.9);
+            border: 2px solid #777;
+            border-radius: 10px;
+            padding: 20px;
+            z-index: 1000;
+            display: none; /* Hidden by default */
+            flex-direction: column;
+            align-items: center;
+            width: 80%; /* Adjust as needed */
+            max-width: 600px; /* Max width for larger screens */
+            max-height: 60%; /* Max height for larger screens */
+            overflow-y: auto; /* Enable scrolling if content overflows */
+        }
+        #backpackModal.active {
+            display: flex;
+        }
+        #backpackModal h2 {
+            color: white;
+            font-size: 2em;
+            margin-bottom: 20px;
+        }
+        #backpackSlotsContainer {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); /* Responsive grid */
+            gap: 8px;
+            width: 100%;
+            max-width: 500px; /* Max width for the grid itself */
+            margin-bottom: 20px;
+        }
+        #backpackModal .slot {
+            width: 60px;
+            height: 60px;
+            border: 2px solid #555;
+            border-radius: 50%;
+            background-color: rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: #bbb;
+            font-size: 0.9em;
+            position: relative;
+            cursor: grab;
+        }
+        #backpackModal .slot.drag-over {
+            border-color: #4CAF50; /* Green border when dragging over */
+        }
+
+        #backpackModal .close-button {
+            background-color: #dc3545;
+            color: white;
+            padding: 8px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            align-self: flex-end; /* Align to the right */
+            margin-top: -10px; /* Pull it up slightly */
+        }
+        #backpackModal .close-button:hover {
+            background-color: #c82333;
+        }
+
+        /* Dragging ghost element style */
+        .dragging-ghost {
+            position: absolute;
+            pointer-events: none; /* Crucial to allow events to pass through to elements below */
+            z-index: 10000; /* Ensure it's on top of everything */
+            opacity: 0.7;
+            width: 60px; /* Same size as a slot */
+            height: 60px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(255, 255, 255, 0.2);
+            border: 2px dashed #FFF;
+            border-radius: 50%;
+        }
+
+        #progressContainer {
+            position: absolute;
+            top: 10%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200px;
+            height: 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border: 2px solid white;
+            border-radius: 10px;
+            overflow: hidden;
+            z-index: 1000;
+            display: none; /* Inicia oculto */
+        }
+        #progressBar {
+            width: 0%;
+            height: 100%;
+            background-color: #4CAF50;
+            transition: width 0.1s linear;
+        }
+    </style>
+</head>
+<body>
+    <div id="startScreen">
+        <h1>Small World</h1>
+        <button id="startButton">Jogar</button>
+    </div>
+
+    <!-- Novo botão de menu no canto superior esquerdo -->
+    <button id="menuIconButton" class="absolute top-4 left-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg flex items-center space-x-2 z-1000 hidden">
+        <i class="fas fa-cog"></i> <!-- Ícone de engrenagem -->
+        <span>Esc</span>
+    </button>
+
+    <div id="optionsScreen">
+        <h2>Opções do Jogo</h2>
+        <button id="resumeButton">Voltar ao Jogo</button>
+        <button id="exitGameButton">Sair do Jogo</button>
+    </div>
+    
+    <div id="progressContainer">
+        <div id="progressBar"></div>
+    </div>
+
+    <div id="crosshair"></div>
+
+    <!-- #messageBox foi removido -->
+
+    <!-- Inventory Belt HTML Structure -->
+    <div id="inventoryBelt">
+        <!-- Slots e botão da mochila serão preenchidos dinamicamente pelo JavaScript -->
+    </div>
+
+    <!-- Backpack Modal -->
+    <div id="backpackModal">
+        <button class="close-button" id="closeBackpackButton">X</button>
+        <h2>Mochila</h2>
+        <div id="backpackSlotsContainer">
+            <!-- Backpack slots will be dynamically filled by JavaScript -->
+        </div>
+    </div>
+
+    <script type="module">
+        // Importa as bibliotecas Three.js e Cannon-es de CDNs
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
+        import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js';
+
+        // Variáveis globais para cena, câmera, renderizador e mundo da física
+        let scene, camera, renderer, world;
+        // Variáveis para corpos e malhas de jogador, terreno (rua), estrada e cubo
+        let playerBody;
+        let streetBody; // Corpo de física para o terreno (agora verde)
+        let streetMeshes = []; // Array para armazenar múltiplas malhas visuais do terreno
+
+        let roadBody; // Corpo de física para o estrada (agora cinza)
+        let roadMeshes = []; // Array para armazenar múltiplas malhas visuais da estrada
+
+        // Corpos de física para os cubos (instância única para cada)
+        let cubeBody, cubeBody2, cubeBody3;
+        // Arrays para armazenar múltiplas malhas visuais para cada cubo
+        let cubeMeshes = [];
+        let cubeMeshes2 = [];
+        let cubeMeshes3 = [];
+
+        // Variáveis para blocos de construção colocáveis pelo jogador (tijolos e pisos)
+        let placedConstructionBodies = []; // Corpos de blocos colocados pelo jogador
+        let placedConstructionMeshesArrays = []; // Malhas de blocos colocados pelo jogador
+
+        // Objeto para rastrear as teclas pressionadas
+        let keysPressed = {};
+        // Variáveis para controle do mouse (rotação da câmera)
+        let isDragging = false;
+
+        // Variáveis para funcionalidade de seleção e movimentação de objetos
+        let raycaster;
+        let pickedObjectBody = null;
+        let pickedObjectMesh = null; // Referência à malha visual específica que está sendo selecionada
+        let grabberBody = null;
+        let grabberConstraint = null;
+        let distanceToPickedObject = 5; // Declarada globalmente para resolver o ReferenceError
+        const pickUpDistance = 3.0; // Distância máxima para pegar um objeto
+        const destroyDistance = 5.0; // Distância máxima para destruir um objeto
+        
+        // NOVO: Variáveis para o sistema de destruição progressiva
+        let isDestroying = false;
+        let destroyProgress = 0;
+        let targetDestroyTime = 0; // Tempo necessário para destruir o objeto (em segundos)
+        let destroyTargetBody = null; // Corpo que está sendo destruído
+        let destroyTargetMesh = null; // Malha visual do corpo
+
+        // Altura da câmera em relação ao centro do corpo do jogador (nível dos olhos)
+        let cameraEyeLevelOffset; // Alterado para 'let' pois será modificado
+        let originalCameraEyeLevelOffset; // Para armazenar o valor inicial
+
+        // Variável para controlar se o personagem pode pular
+        let canJump = true;
+
+        // Variáveis globais para dimensões do jogador e vetor de direção horizontal
+        // A altura do personagem será o diâmetro da esfera
+        const playerBodyHeight = 1.74;
+        const playerRadius = playerBodyHeight / 2; // Raio da esfera (metade da altura)
+
+        // Novo: Define as dimensões de agachamento
+        const crouchHeightReduction = 0.8; // O quanto a câmera e o corpo abaixam ao agachar
+        const crouchBodyHeight = playerBodyHeight - crouchHeightReduction; // Calcula a nova altura
+        const crouchRadius = crouchBodyHeight / 2;   // Raio da esfera agachada
+
+        let originalPlayerShape; // Para armazenar a forma inicial
+        let crouchPlayerShape;   // Para armazenar a forma agachada
+
+        // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
+        const worldSize = 100; // Dobrado de 50 para 100
+        // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
+        const cobSize = 0.4;
+        const streetHeight = cobSize; 
+        const roadWidth = 10; // Largura da estrada
+        const roadHeight = 0.2; // Espessura da estrada
+        const numTiles = 3; // Para uma grade 3x3 de tiles visíveis (e cubos)
+
+        // Velocidades de movimento
+        const walkSpeed = 5; // Velocidade base de caminhada
+        const runSpeedMultiplier = 2; // Multiplicador para velocidade de corrida
+
+        // Variáveis de agachamento
+        let isCrouching = false;
+        const crouchSpeedMultiplier = 0.5; // Multiplicador para velocidade ao agachar
+
+        // Variável global para luz direcional
+        let directionalLight;
+
+        // Referência ao elemento da mira
+        let crosshairElement;
+
+        // Referências aos elementos da barra de progresso
+        let progressContainer;
+        let progressBar;
+
+        // Variáveis de estado do jogo
+        let gamePaused = false; // Novo: Flag para pausar/retomar a lógica do jogo
+        let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
+
+        // Instância do carregador de textura
+        const textureLoader = new THREE.TextureLoader();
+
+        // Referência ao botão de ícone do menu
+        let menuIconButton;
+
+        // Variáveis para o cinto de inventário
+        let inventoryBeltElement;
+        let slots = []; // Array para armazenar os elementos dos slots
+        const numBeltSlots = 2; // Número total de slots do cinto (apenas 2 agora)
+        let selectedSlotIndex = 0; // NOVO: Índice do slot selecionado (0 para esquerdo, 1 para direito)
+
+        // Variáveis para o sistema de mochila
+        let backpackModal;
+        let backpackSlotsContainer;
+        const numBackpackSlots = 50;
+
+        // Inventário (agora separado para cinto e mochila)
+        let beltItems = new Array(numBeltSlots).fill(null);
+        let backpackItems = new Array(numBackpackSlots).fill(null);
+
+        // Drag and drop variables
+        let isDraggingItem = false;
+        let draggedItem = null; // { item: { name, quantity }, sourceLocation: 'belt' | 'backpack', sourceIndex: number }
+        let draggingGhostElement = null;
+
+        // NOVO: Variáveis para o sistema de agarrar objetos (Mão)
+        const handItemName = 'mao'; // Nome do item de mão no inventário
+
+        // NOVO: Variáveis para o sistema de destruição de blocos (Machado e Martelo)
+        const axeItemName = 'machado'; // Nome do item de machado no inventário
+        const hammerItemName = 'martelo'; // Nome do item de martelo no inventário
+        const stoneItemName = 'pedra'; // NOVO: Nome do item de pedra no inventário
+        const textureApplicatorItemName = 'pincel'; // FERRAMENTA RENOMEADA
+        
+        // NOVO: Variáveis para o sistema de colocação de blocos (Cob, Piso, Muda de Árvore, Tronco de Árvore, Tábuas)
+        const cobItemName = 'cob'; // Nome do item de cob no inventário
+        const floorItemName = 'piso'; // Nome do item de piso no inventário
+        const treeSaplingItemName = 'muda_arvore'; // Nome do item de muda de árvore no inventário
+        const treeTrunkItemName = 'tronco_arvore'; // NOVO: Nome do item de tronco de árvore
+        const woodenPlankItemName = 'tábuas'; // NOVO: Nome do item de tábuas de madeira
+
+        let ghostBlockMesh; // Malha transparente para pré-visualizar a colocação
+        let currentBlockType = 'cob'; // 'cob' ou 'piso'
+        let ghostBlockRotationY = 0; // Novo: Armazena a rotação horizontal manual do bloco fantasma
+        let ghostBlockRotationX = 0; // Novo: Armazena a rotação vertical manual do bloco fantasma
+
+        // Dimensões do cob
+        const cobWidth = cobSize;
+        const cobHeight = cobSize;
+        const cobDepth = cobSize;
+        const initialCobMass = 50; // Massa para os cobs
+        const cobDurability = 0.75; // Durabilidade do cob em segundos
+
+        // Dimensões do piso
+        const floorWidth = cobWidth; // Largura do piso (now equal to cob)
+        const floorHeight = 0.1; // Altura reduzida do piso
+        const floorDepth = cobSize; // Profundidade do piso (now equal to cob)
+        const initialFloorMass = 100; // Massa para os pisos
+        const floorDurability = 1.0; // Durabilidade do piso em segundos
+        
+        // Dimensões da tábua de madeira
+        const woodenPlankWidth = cobWidth;
+        const woodenPlankHeight = 0.1;
+        const woodenPlankDepth = cobSize;
+        const initialWoodenPlankMass = 50;
+        const woodenPlankDurability = 0.5; // Durabilidade da tábua em segundos
+        
+        // Dimensões da muda de árvore
+        const initialTreeSaplingMass = 10; // Massa para as mudas de árvore (leve)
+        const treeSaplingDurability = 1.5; // Durabilidade da muda em segundos
+
+        // NOVO: Dimensões do tronco de árvore
+        const trunkRadius = cobWidth / 2;
+        const trunkHeight = 1.0;
+        const trunkSegments = 8; // Número de segmentos para a geometria do cilindro
+        const initialTrunkMass = 200; // Massa para os troncos de árvore
+        const treeTrunkDurability = 2.5; // Durabilidade do tronco em segundos
+
+        // Novo: Limiar para o efeito de "imã" (snapping)
+        const snappingThreshold = 0.7; // Distância máxima para o bloco fantasma "grudar"
+        // NOVO: Distância mínima para colocar árvores (para evitar sobreposição)
+        const minTreePlacementDistance = 6.0; // Aumentado para 6.0 para maior espaçamento
+
+        // URLs das texturas
+        const cubeTextureURL = 'https://dl.dropbox.com/scl/fi/gj6zul0y5tl74dbyysnz8/caixote.jpg?rlkey=4v81yak0nb08mllkfh1eceijw&st=lqj60d8g&dl=0';
+        const cobTextureURL = 'https://dl.dropbox.com/scl/fi/cp3ueclujrd32o6hv8d73/Cob-2.png?rlkey=5x29w33xvgol1aoxqk3p9jdkm&st=1kahc5pq&dl=0';
+        const floorTextureURL = 'https://dl.dropbox.com/scl/fi/cp3ueclujrd32o6hv8d73/Cob-2.png?rlkey=5x29w33xvgol1aoxqk3p9jdkm&st=1kahc5pq&dl=0'; // Nova textura para pisos (exemplo)
+        const treeSaplingTextureURL = 'https://dl.dropbox.com/scl/fi/pjdpuxo189igkd5wyvp0z/icone-de-muda-de-arvore.png?rlkey=9bvfgukhymi4qo02965pt3zl4&st=xs4n6qwo&dl=0'; // Dark green placeholder for tree icon
+        const axeImageURL = 'https://dl.dropbox.com/scl/fi/6td6rpc8n54j6sz62w383/icone-de-machado.png?rlkey=zepycmnfyohef27tp7f5urnx0&st=7kbd3no2&dl=0'; // Placeholder for axe image
+        const hammerImageURL = 'https://dl.dropbox.com/scl/fi/vadd8ztbnmzfqi18ml1cl/icone-de-martelo.png?rlkey=45l4k78t728fh4w4fkd4tvlef&st=cbi6paz9&dl=0'; // Placeholder for hammer image
+        const stoneImageURL = 'https://placehold.co/100x100/964B00/FFFFFF?text=Pedra'; // NOVO: Imagem para a pedra
+        const treeBarkTextureURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // Corrected URL
+        const treeLeavesTextureURL = 'https://dl.dropbox.com/s/scl/fi/gdz8f8qzmrdza0t0nntzs/textura-folhas-arvore.jpg?rlkey=efabv8qthg0fpxg1ugf7fpd3k&dl=0'; // Corrected URL
+        const handImageURL = 'https://dl.dropbox.com/scl/fi/adirqfks81emnagkoljcw/m-o-direita.png?rlkey=pj17lswbeg8lene1n5ypdbmob&st=i2qtxssr&dl=0';
+        const treeTrunkImageURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // NOVO: Ícone para o tronco de árvore (placeholder)
+        const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
+        const textureApplicatorImageURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Ícone para o pincel
+        const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Textura de pedra para aplicar
+        
+        // Global variables for materials
+        let cobMaterialMesh;
+        let floorMaterialMesh;
+        let treeSaplingMaterialMesh; // New material for tree saplings icon
+        let treeTrunkMaterialMesh; // Material for tree trunks (3D model)
+        let treeLeavesMaterialMesh; // Material for tree leaves (3D model)
+        let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
+        let stoneMaterial; // NOVO: Material para chão com a nova textura
+
+        const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
+
+        // Declare physics materials globally
+        let playerMaterial;
+        let streetMaterial;
+        let cubeMaterial;
+        let constructionMaterial;
+
+        // Define tree stages with base physics bounding box and visual geometry properties
+        // These are base values that will be randomized for each tree instance
+        const treeStages = {
+            'muda': {
+                physics: {
+                    trunk: { width: cobWidth / 2, height: 0.5, depth: cobWidth / 2, yOffset: -0.2 },
+                    leaves: { width: cobWidth, height: cobWidth, depth: cobWidth, yOffset: 0.25 }
+                },
+                visual: {
+                    trunk: { radius: cobWidth / 4, height: 0.5, yOffsetInGroup: (0.5 / 2) - (0.9 / 2) },
+                    leaves: { radius: cobWidth / 2, yOffsetInGroup: (0.5 + 0.2) - (0.9 / 2) }
+                },
+                overallPhysicsHeight: 0.9,
+                growthTime: 10 // Time in seconds to grow to next stage
+            },
+            'media': {
+                physics: {
+                    trunk: { width: cobWidth, height: 2.0, depth: cobWidth, yOffset: -0.8 },
+                    leaves: { width: cobWidth * 2, height: cobWidth * 2, depth: cobWidth * 2, yOffset: 0.8 }
+                },
+                visual: {
+                    trunk: { radius: cobWidth / 2, height: 2.0, yOffsetInGroup: (2.0 / 2) - (3.6 / 2) },
+                    leaves: { radius: cobWidth, yOffsetInGroup: (2.0 + 0.8) - (3.6 / 2) }
+                },
+                overallPhysicsHeight: 3.6,
+                growthTime: 10
+            },
+            'arvore_adulta': {
+                physics: {
+                    trunk: { width: cobWidth * 1.5, height: 5.0, depth: cobWidth * 1.5, yOffset: -2.0 },
+                    leaves: { width: cobWidth * 4, height: cobWidth * 4, depth: cobWidth * 4, yOffset: 2.0 }
+                },
+                visual: {
+                    trunk: { radius: cobWidth * 0.75, height: 5.0, yOffsetInGroup: (5.0 / 2) - (9.0 / 2) },
+                    leaves: { radius: cobWidth * 2, yOffsetInGroup: (5.0 + 2.0) - (9.0 / 2) }
+                },
+                overallPhysicsHeight: 9.0,
+                growthTime: Infinity // Fully grown
+            }
+        };
+
+        // Function to randomize tree dimensions based on a base stage data
+        function randomizeTreeDimensions(baseStageData) {
+            const randomFactor = (min, max) => min + (Math.random() * (max - min));
+
+            // Apply random factors (e.g., +/- 20% variation)
+            const trunkHeightFactor = randomFactor(0.8, 1.2);
+            const trunkRadiusFactor = randomFactor(0.8, 1.2);
+            const leavesRadiusFactor = randomFactor(0.8, 1.2);
+
+            const randomized = JSON.parse(JSON.stringify(baseStageData)); // Deep copy
+
+            // Randomize trunk dimensions
+            randomized.physics.trunk.height *= trunkHeightFactor;
+            randomized.physics.trunk.width *= trunkRadiusFactor;
+            randomized.physics.trunk.depth *= trunkRadiusFactor;
+            randomized.visual.trunk.height *= trunkHeightFactor;
+            randomized.visual.trunk.radius *= trunkRadiusFactor;
+
+            // Randomize leaves dimensions
+            randomized.physics.leaves.width *= leavesRadiusFactor;
+            randomized.physics.leaves.height *= leavesRadiusFactor;
+            randomized.physics.leaves.depth *= leavesRadiusFactor;
+            randomized.visual.leaves.radius *= leavesRadiusFactor;
+
+            // Recalculate yOffsets and overallPhysicsHeight based on randomized dimensions
+            // Assuming trunk base is at y = -trunk.height/2 relative to group center
+            // And leaves center is above trunk top
+            const trunkTopVisual = randomized.visual.trunk.height / 2;
+            const leavesBottomVisual = trunkTopVisual; // Leaves start where trunk ends visually
+            const groupHeightVisual = randomized.visual.trunk.height + (randomized.visual.leaves.radius * 2); // Trunk height + leaves diameter
+
+            randomized.visual.trunk.yOffsetInGroup = (randomized.visual.trunk.height / 2) - (groupHeightVisual / 2);
+            randomized.visual.leaves.yOffsetInGroup = (leavesBottomVisual + randomized.visual.leaves.radius) - (groupHeightVisual / 2);
+
+            // For physics, approximate the overall height for positioning
+            const trunkTopPhysics = randomized.physics.trunk.height / 2;
+            const leavesBottomPhysics = trunkTopPhysics;
+            randomized.overallPhysicsHeight = randomized.physics.trunk.height + (randomized.physics.leaves.height); // Sum of trunk and leaves physics height
+
+            // Adjust physics yOffsets to be relative to the new overallPhysicsHeight center
+            randomized.physics.trunk.yOffset = (randomized.physics.trunk.height / 2) - (randomized.overallPhysicsHeight / 2);
+            randomized.physics.leaves.yOffset = (leavesBottomPhysics + randomized.physics.leaves.height / 2) - (randomized.overallPhysicsHeight / 2);
+
+            return randomized;
+        }
+
+        // Global array to hold active smoke particles
+        let smokeParticles = [];
+
+        // Função para mostrar a tela de opções e pausar o jogo
+        function showOptionsScreen() {
+            gamePaused = true;
+            document.getElementById('optionsScreen').classList.add('active'); // Adiciona a classe 'active'
+            document.getElementById('crosshair').style.display = 'none'; // Oculta a mira
+            document.body.style.cursor = 'default'; // Mostra o cursor do corpo
+            if (renderer && renderer.domElement) {
+                renderer.domElement.style.cursor = 'default'; // Mostra o cursor do canvas
+            }
+            if (menuIconButton) {
+                menuIconButton.style.display = 'none'; // Oculta o botão do menu quando o menu de opções está aberto
+            }
+            if (inventoryBeltElement) {
+                inventoryBeltElement.style.visibility = 'hidden'; // Oculta o cinto de inventário
+                inventoryBeltElement.style.opacity = '0';
+            }
+            // Garante que o ghost block esteja oculto ao abrir o menu
+            if (ghostBlockMesh) {
+                ghostBlockMesh.visible = false;
+            }
+            document.exitPointerLock(); // Libera o bloqueio do ponteiro
+        }
+
+        // Função para ocultar a tela de opções e retomar o jogo
+        function hideOptionsScreen() {
+            document.getElementById('optionsScreen').classList.remove('active'); // Remove a classe 'active'
+            document.getElementById('crosshair').style.display = 'flex'; // Mostra a mira
+            document.body.style.cursor = 'none'; // Esconde o cursor do corpo
+            if (renderer && renderer.domElement) {
+                renderer.domElement.style.cursor = 'none'; // Esconde o cursor do canvas
+            }
+            if (menuIconButton) {
+                menuIconButton.style.display = 'flex'; // Mostra o botão do menu quando o menu de opções está fechado
+            }
+            if (inventoryBeltElement) {
+                inventoryBeltElement.style.visibility = 'visible'; // Mostra o cinto de inventário
+                inventoryBeltElement.style.opacity = '1';
+            }
+            // Remove a solicitação de bloqueio do ponteiro aqui. O usuário precisará clicar no canvas para reativar.
+            gamePaused = false;
+        }
+
+        // Função para abrir a mochila
+        function openBackpack() {
+            gamePaused = true;
+            backpackModal.classList.add('active');
+            document.getElementById('crosshair').style.display = 'none';
+            document.body.style.cursor = 'default';
+            if (renderer && renderer.domElement) {
+                renderer.domElement.style.cursor = 'default';
+            }
+            if (menuIconButton) {
+                menuIconButton.style.display = 'none';
+            }
+            // O cinto de inventário permanece visível ao abrir a mochila
+            if (inventoryBeltElement) {
+                inventoryBeltElement.style.visibility = 'visible';
+                inventoryBeltElement.style.opacity = '1';
+            }
+            if (ghostBlockMesh) {
+                ghostBlockMesh.visible = false;
+            }
+            pointerLockExitForBackpack = true; // Define a flag antes de sair do pointer lock
+            document.exitPointerLock();
+            updateBackpackDisplay(); // Atualiza a exibição da mochila
+        }
+
+        // Função para fechar a mochila
+        function closeBackpack() {
+            backpackModal.classList.remove('active');
+            gamePaused = false; // Permite que o jogo continue se o ponteiro já estiver bloqueado
+            pointerLockExitForBackpack = false; // Reseta a flag ao fechar a mochila
+
+            // Tenta reativar o pointer lock para retomar o jogo
+            if (renderer && renderer.domElement) {
+                renderer.domElement.requestPointerLock().catch(error => {
+                    if (error.name === 'SecurityError' && error.message.includes('exited the lock')) {
+                        console.warn('Solicitação de bloqueio do ponteiro falhou porque o utilizador saiu do bloqueio prematuramente.');
+                    } else {
+                        console.error('Erro ao solicitar bloqueio do ponteiro:', error);
+                    }
+                });
+            }
+        }
+
+        // Função para renderizar um slot de inventário (cinto ou mochila)
+        function renderSlot(item, index, containerType) {
+            const slotDiv = document.createElement('div');
+            slotDiv.classList.add('slot');
+            slotDiv.id = `${containerType}-slot-${index}`;
+            slotDiv.dataset.slotIndex = index;
+            slotDiv.dataset.containerType = containerType;
+
+            // Adiciona a classe 'selected' se este for o slot atualmente selecionado
+            if (containerType === 'belt' && index === selectedSlotIndex) {
+                slotDiv.classList.add('selected');
+            }
+
+            // Adiciona a letra de atalho para os slots do cinto (SEMPRE para slots do cinto)
+            if (containerType === 'belt') {
+                const keyBindSpan = document.createElement('span');
+                keyBindSpan.classList.add('slot-key-bind');
+                keyBindSpan.textContent = (index === 0) ? 'Q' : 'E';
+                slotDiv.appendChild(keyBindSpan);
+            }
+
+            if (item) {
+                const img = document.createElement('img');
+                const quantitySpan = document.createElement('span');
+
+                // Define o ícone com base no nome do item
+                if (item.name === axeItemName) {
+                    img.src = axeImageURL;
+                } else if (item.name === hammerItemName) {
+                    img.src = hammerImageURL;
+                } else if (item.name === stoneItemName) { // NOVO
+                    img.src = stoneImageURL;
+                } else if (item.name === textureApplicatorItemName) {
+                    img.src = textureApplicatorImageURL;
+                } else if (item.name === cobItemName) {
+                    img.src = cobTextureURL;
+                } else if (item.name === floorItemName) {
+                    img.src = floorTextureURL;
+                } else if (item.name === treeSaplingItemName) {
+                    img.src = treeSaplingTextureURL;
+                } else if (item.name === treeTrunkItemName) { // Ícone para tronco de árvore
+                    img.src = treeTrunkImageURL;
+                } else if (item.name === woodenPlankItemName) { // Ícone para tábuas de madeira
+                    img.src = woodenPlankTextureURL;
+                }
+                img.classList.add('slot-icon');
+                slotDiv.appendChild(img);
+
+                if (item.quantity > 1) { // Só mostra a quantidade se for maior que 1
+                    quantitySpan.classList.add('slot-quantity');
+                    quantitySpan.textContent = item.quantity;
+                    slotDiv.appendChild(quantitySpan);
+                }
+            } else if (containerType === 'belt') {
+                const img = document.createElement('img');
+                img.src = handImageURL;
+                img.classList.add('slot-icon');
+                // Inverte a imagem horizontalmente se estiver no slot esquerdo (índice 0)
+                if (index === 0) {
+                    img.style.transform = 'scaleX(-1)';
+                }
+                slotDiv.appendChild(img);
+            }
+
+            // Adiciona listeners para drag and drop APENAS se o slot não for a "mão" (ou seja, se tiver um item)
+            // ou se for um slot da mochila (que pode ser vazio, mas não representa a "mão")
+            if (!(containerType === 'belt' && item === null)) {
+                slotDiv.addEventListener('mousedown', (e) => startDrag(e, item, index, containerType));
+                slotDiv.addEventListener('mouseenter', (e) => {
+                    if (isDraggingItem) {
+                        e.currentTarget.classList.add('drag-over');
+                    }
+                });
+                slotDiv.addEventListener('mouseleave', (e) => {
+                    e.currentTarget.classList.remove('drag-over');
+                });
+            }
+
+            return slotDiv;
+        }
+
+        // Helper function to add item to inventory (belt or backpack)
+        function addItemToInventory(inventoryArray, itemToAdd) {
+            // Try to stack first
+            for (let i = 0; i < inventoryArray.length; i++) {
+                // Skip the hand slot (beltItems[0]) when trying to stack or find empty slot
+                if (inventoryArray === beltItems && i === 0) continue;
+
+                if (inventoryArray[i] && inventoryArray[i].name === itemToAdd.name) {
+                    inventoryArray[i].quantity += itemToAdd.quantity;
+                    return; // Item stacked
+                }
+            }
+            // If not stacked, find an empty slot
+            for (let i = 0; i < inventoryArray.length; i++) {
+                // Skip the hand slot (beltItems[0]) when trying to stack or find empty slot
+                if (inventoryArray === beltItems && i === 0) continue;
+
+                if (inventoryArray[i] === null) {
+                    inventoryArray[i] = { ...itemToAdd }; // Add new item
+                    return;
+                }
+            }
+            console.warn("Inventory is full, could not add item:", itemToAdd.name);
+        }
+
+        // Função para atualizar a exibição do cinto de inventário
+        function updateBeltDisplay() {
+            inventoryBeltElement.innerHTML = ''; // Limpa os slots existentes
+
+            // Slot esquerdo (índice 0)
+            const leftSlotDiv = renderSlot(beltItems[0], 0, 'belt');
+            inventoryBeltElement.appendChild(leftSlotDiv);
+
+            // Botão da mochila
+            const backpackButton = document.createElement('button');
+            backpackButton.id = 'backpackButton';
+            const backpackIcon = document.createElement('i');
+            backpackIcon.classList.add('fas', 'fa-shopping-bag');
+            backpackButton.appendChild(backpackIcon);
+            backpackButton.addEventListener('click', openBackpack);
+            inventoryBeltElement.appendChild(backpackButton);
+
+            // Slot direito (índice 1)
+            const rightSlotDiv = renderSlot(beltItems[1], 1, 'belt');
+            inventoryBeltElement.appendChild(rightSlotDiv);
+
+            // Atualiza a referência aos elementos dos slots para drag and drop
+            slots = Array.from(inventoryBeltElement.querySelectorAll('.slot'));
+        }
+
+        // Função para atualizar a exibição da mochila
+        function updateBackpackDisplay() {
+            backpackSlotsContainer.innerHTML = ''; // Limpa os slots existentes
+            for (let i = 0; i < numBackpackSlots; i++) {
+                const item = backpackItems[i];
+                const slotDiv = renderSlot(item, i, 'backpack');
+                backpackSlotsContainer.appendChild(slotDiv);
+            }
+        }
+
+        // Funções de drag and drop
+        function startDrag(e, item, index, containerType) {
+            // Se for um slot do cinto e estiver vazio (representando a mão), impede o arrasto.
+            if (containerType === 'belt' && item === null) {
+                return;
+            }
+            // Se não houver item para arrastar, impede o arrasto.
+            if (e.button !== 0 || !item) return;
+
+            isDraggingItem = true;
+            draggedItem = { item: { ...item }, sourceLocation: containerType, sourceIndex: index };
+
+            // Remove o item da origem para feedback visual.
+            if (containerType === 'belt') {
+                beltItems[index] = null;
+            } else {
+                backpackItems[index] = null;
+            }
+            // Atualiza a exibição para refletir a remoção do item da origem.
+            updateBeltDisplay();
+            updateBackpackDisplay();
+
+            // Cria o elemento fantasma
+            draggingGhostElement = document.createElement('div');
+            draggingGhostElement.classList.add('dragging-ghost');
+            // Renderiza o item no fantasma
+            const ghostItemContent = renderSlot(item, -1, 'ghost'); // Use -1 for index and 'ghost' type
+            ghostItemContent.classList.remove('slot'); // Remove slot class from ghost content
+            ghostItemContent.style.cursor = 'grabbing'; // Change cursor for ghost
+            draggingGhostElement.appendChild(ghostItemContent);
+            document.body.appendChild(draggingGhostElement);
+
+            // Posiciona o fantasma
+            draggingGhostElement.style.left = `${e.clientX - draggingGhostElement.offsetWidth / 2}px`;
+            draggingGhostElement.style.top = `${e.clientY - draggingGhostElement.offsetHeight / 2}px`;
+
+            document.addEventListener('mousemove', onDragging);
+            document.addEventListener('mouseup', onDragEnd);
+        }
+
+        function onDragging(e) {
+            if (draggingGhostElement) {
+                draggingGhostElement.style.left = `${e.clientX - draggingGhostElement.offsetWidth / 2}px`;
+                draggingGhostElement.style.top = `${e.clientY - draggingGhostElement.offsetHeight / 2}px`;
+            }
+        }
+
+        function onDragEnd(e) {
+            document.removeEventListener('mousemove', onDragging);
+            document.removeEventListener('mouseup', onDragEnd);
+
+            if (!isDraggingItem) return;
+
+            isDraggingItem = false;
+            if (draggingGhostElement) {
+                draggingGhostElement.remove();
+                draggingGhostElement = null;
+            }
+
+            const targetElement = e.target.closest('.slot'); // Encontra o slot mais próximo
+
+            const sourceItem = draggedItem.item;
+            const sourceIndex = draggedItem.sourceIndex;
+            const sourceLocation = draggedItem.sourceLocation;
+
+            // NOVO: Adiciona um caso especial para soltar o item de volta no mesmo slot
+            if (targetElement && sourceLocation === targetElement.dataset.containerType && sourceIndex == targetElement.dataset.slotIndex) {
+                if (sourceLocation === 'belt') {
+                    beltItems[sourceIndex] = sourceItem;
+                } else {
+                    backpackItems[sourceIndex] = sourceItem;
+                }
+            } else if (targetElement) { // Se o item foi solto em um slot válido (mas não o original)
+                let targetIndex = parseInt(targetElement.dataset.slotIndex);
+                let targetLocation = targetElement.dataset.containerType;
+                let tempTargetInventory = targetLocation === 'belt' ? beltItems : backpackItems;
+                let targetItem = tempTargetInventory[targetIndex];
+
+                if (targetItem && targetItem.name === sourceItem.name) {
+                    // Mescla pilhas se for o mesmo item
+                    targetItem.quantity += sourceItem.quantity;
+                } else {
+                    // Troca ou move
+                    let sourceInventory = sourceLocation === 'belt' ? beltItems : backpackItems;
+                    let targetInventory = targetLocation === 'belt' ? beltItems : backpackItems;
+                    
+                    // Coloca o item de origem no destino
+                    targetInventory[targetIndex] = sourceItem; 
+                    
+                    // Coloca o item de destino de volta na origem (pode ser nulo)
+                    if (sourceLocation === 'belt' && sourceIndex === 0) {
+                        // Trata o caso especial onde a mão esquerda (slot 0) recebe o item da mochila
+                        // e o item que estava na mão esquerda (se houver) vai para a mochila.
+                        sourceInventory[sourceIndex] = null;
+                        if (targetItem) {
+                            addItemToInventory(backpackItems, targetItem);
+                        }
+                    } else {
+                        sourceInventory[sourceIndex] = targetItem;
+                    }
+                }
+            } else { // Solto fora de qualquer slot válido, retorna o item para o slot original
+                if (sourceLocation === 'belt') {
+                    beltItems[sourceIndex] = sourceItem;
+                } else {
+                    backpackItems[sourceIndex] = sourceItem;
+                }
+            }
+
+            // Remove a classe drag-over de todos os slots
+            document.querySelectorAll('.slot.drag-over').forEach(slot => {
+                slot.classList.remove('drag-over');
+            });
+
+            draggedItem = null;
+            updateBeltDisplay();
+            updateBackpackDisplay();
+        }
+
+
+        // Função para criar um novo bloco físico e visual (cob ou piso)
+        function createPlaceableBlock(position, quaternion, type) {
+            let blockShape, initialMass;
+            let width, height, depth;
+            let mesh; // This will hold either a THREE.Mesh or a THREE.Group
+            let randomizedTreeDimensions = null; // To store randomized dimensions for trees
+            let durability = 0;
+
+            const blockBody = new CANNON.Body({
+                mass: 0, // Blocos colocados são estáticos (massa 0)
+                type: CANNON.Body.STATIC, // Blocos colocados são estáticos
+                material: constructionMaterial, // Usar o novo material de construção
+                linearDamping: 0.99,
+                angularDamping: 0.99,
+                allowSleep: true,
+                sleepSpeedLimit: 0.01,
+                sleepTimeLimit: 1.0
+            });
+            blockBody.position.copy(position);
+            if (quaternion) {
+                blockBody.quaternion.copy(quaternion);
+            }
+
+            if (type === 'cob') {
+                width = cobWidth;
+                height = cobHeight;
+                depth = cobDepth;
+                blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+                blockBody.addShape(blockShape); // Add the single shape
+                mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), cobMaterialMesh);
+                initialMass = initialCobMass;
+                durability = cobDurability;
+            } else if (type === 'piso') {
+                width = floorWidth;
+                height = floorHeight;
+                depth = floorDepth;
+                blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+                blockBody.addShape(blockShape); // Add the single shape
+                mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), floorMaterialMesh);
+                initialMass = initialFloorMass;
+                durability = floorDurability;
+            } else if (type === 'muda_arvore') {
+                randomizedTreeDimensions = randomizeTreeDimensions(treeStages['muda']);
+                const stageData = randomizedTreeDimensions; // Use randomized data
+
+                initialMass = initialTreeSaplingMass;
+                durability = treeSaplingDurability;
+
+                // Add trunk physics shape
+                const trunkPhysics = stageData.physics.trunk;
+                const trunkShape = new CANNON.Box(new CANNON.Vec3(trunkPhysics.width / 2, trunkPhysics.height / 2, trunkPhysics.depth / 2));
+                blockBody.addShape(trunkShape, new CANNON.Vec3(0, trunkPhysics.yOffset, 0));
+
+                // Add leaves physics shape
+                const leavesPhysics = stageData.physics.leaves;
+                const leavesShape = new CANNON.Box(new CANNON.Vec3(leavesPhysics.width / 2, leavesPhysics.height / 2, leavesPhysics.depth / 2));
+                blockBody.addShape(leavesShape, new CANNON.Vec3(0, leavesPhysics.yOffset, 0));
+
+                // Create a THREE.Group for the tree visual
+                const treeGroup = new THREE.Group();
+
+                // Trunk visual
+                const trunkGeometry = new THREE.CylinderGeometry(stageData.visual.trunk.radius, stageData.visual.trunk.radius, stageData.visual.trunk.height, 8);
+                const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
+                trunkMesh.position.y = stageData.visual.trunk.yOffsetInGroup;
+                trunkMesh.castShadow = true;
+                trunkMesh.receiveShadow = true;
+                treeGroup.add(trunkMesh);
+
+                // Leaves visual
+                const leavesGeometry = new THREE.SphereGeometry(stageData.visual.leaves.radius, 16, 16);
+                const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
+                leavesMesh.position.y = stageData.visual.leaves.yOffsetInGroup;
+                leavesMesh.castShadow = true;
+                leavesMesh.receiveShadow = true;
+                treeGroup.add(leavesMesh);
+
+                mesh = treeGroup; // The mesh is now the group
+                width = stageData.overallPhysicsHeight; // Use overall height for ghost block dimensions
+                height = stageData.overallPhysicsHeight;
+                depth = stageData.overallPhysicsHeight;
+            } else if (type === 'tronco_arvore') { // NOVO: Bloco de tronco de árvore
+                width = trunkRadius * 2; // Diâmetro para largura
+                height = trunkHeight;
+                depth = trunkRadius * 2; // Diâmetro para profundidade
+                blockShape = new CANNON.Cylinder(trunkRadius, trunkRadius, trunkHeight, trunkSegments);
+                blockBody.addShape(blockShape);
+                mesh = new THREE.Mesh(new THREE.CylinderGeometry(trunkRadius, trunkRadius, trunkHeight, trunkSegments), treeTrunkMaterialMesh);
+                initialMass = initialTrunkMass;
+                durability = treeTrunkDurability;
+            } else if (type === 'tábuas') { // NOVO: Bloco de tábuas de madeira
+                width = woodenPlankWidth;
+                height = woodenPlankHeight;
+                depth = woodenPlankDepth;
+                blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+                blockBody.addShape(blockShape);
+                mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), woodenPlankMaterialMesh);
+                initialMass = initialWoodenPlankMass;
+                durability = woodenPlankDurability;
+            }
+            else {
+                console.error('Tipo de bloco desconhecido:', type);
+                return;
+            }
+
+            world.addBody(blockBody);
+            blockBody.userData = {
+                isDestructible: true,
+                durability: durability,
+                originalMass: initialMass, // Mantém a massa original para referência, mas o corpo é estático
+                initialPosition: new CANNON.Vec3().copy(blockBody.position),
+                type: type, // Armazena o tipo de bloco
+                dimensions: { width, height, depth }, // Armazena as dimensões para referência (overall for trees)
+                initialDimensions: { width, height, depth }, // Store initial dimensions for growth
+                growthStage: (type === 'muda_arvore') ? 'muda' : null, // Initial growth stage for trees
+                growthStartTime: (type === 'muda_arvore') ? world.time : null, // Time when placed for trees
+                randomizedDimensions: randomizedTreeDimensions // Store randomized dimensions for trees
+            };
+            placedConstructionBodies.push(blockBody);
+            console.log("Bloco colocado. Corpos de construção colocados:", placedConstructionBodies); // Log para depuração
+
+            mesh.userData.physicsBody = blockBody; // Vincula a malha visual ao corpo de física
+            scene.add(mesh);
+            placedConstructionMeshesArrays.push([{ mesh: mesh, offsetX: 0, offsetZ: 0 }]); // Simplified for single mesh/group per body
+        }
+
+        // Function to create a smoke effect at a given position
+        function createSmokeEffect(position) {
+            const smokeCount = 10; // Number of smoke particles
+            const smokeGeometry = new THREE.SphereGeometry(0.05, 8, 8); // Small spheres
+            const smokeMaterial = new THREE.MeshBasicMaterial({
+                color: 0x888888, // Grey color
+                transparent: true,
+                opacity: 0.5,
+                depthWrite: false // Important for transparent objects
+            });
+
+            for (let i = 0; i < smokeCount; i++) {
+                const particle = new THREE.Mesh(smokeGeometry, smokeMaterial.clone()); // Clone material for individual opacity
+                particle.position.copy(position);
+                // Give particles a slight random initial velocity
+                particle.userData.velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.5, // X velocity
+                    Math.random() * 0.5 + 0.1,   // Y velocity (mostly upwards)
+                    (Math.random() - 0.5) * 0.5  // Z velocity
+                );
+                particle.userData.lifetime = 1.0; // Lifetime in seconds
+                scene.add(particle);
+                smokeParticles.push(particle);
+            }
+        }
+
+
+        // Função de inicialização para cena, câmera, renderizador e mundo da física
+        function init() {
+            // Define o offset inicial do nível dos olhos da câmera como o raio da esfera
+            cameraEyeLevelOffset = playerRadius;
+            originalCameraEyeLevelOffset = cameraEyeLevelOffset; // Para armazenar o valor inicial
+
+            // Configuração da Cena Three.js
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB); // Cor de fundo: azul claro (céu)
+
+            // Configuração da Câmera Three.js
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.rotation.order = 'YXZ'; // Define a ordem de rotação para guinada (Y), inclinação (X), rolagem (Z)
+
+            // Configuração do Renderizador Three.js
+            renderer = new THREE.WebGLRenderer({ antialiased: true }); // Habilita antialiasing para gráficos mais suaves
+            renderer.setSize(window.innerWidth, window.innerHeight); // Define o tamanho do renderizador para o tamanho da janela
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement); // Adiciona o canvas ao corpo do documento
+
+            // Configuração do Mundo Cannon-es (física)
+            world = new CANNON.World();
+            world.gravity.set(0, -30, 0); // Define a gravidade (para baixo), aumentada para -30
+            world.solver.iterations = 40; // Aumenta as iterações do solver para melhor estabilidade (de 20 para 40)
+
+            // Inicializa os materiais de física
+            playerMaterial = new CANNON.Material('playerMaterial');
+            streetMaterial = new CANNON.Material('streetMaterial'); // Material para terreno e estrada
+            cubeMaterial = new CANNON.Material('cubeMaterial');
+            constructionMaterial = new CANNON.Material('constructionMaterial'); // Novo material para cobs e pisos
+
+            // Define material de contato entre jogador e terreno/estrada
+            const playerGroundContactMaterial = new CANNON.ContactMaterial(
+                playerMaterial,
+                streetMaterial,
+                {
+                    friction: 0, // Attrition set to 0
+                    restitution: 0,
+                    contactEquationStiffness: 1e9, // Increased for higher rigidity
+                    contactEquationRelaxation: 3
+                }
+            );
+            world.addContactMaterial(playerGroundContactMaterial);
+
+            // Material de contato entre jogador e blocos de construção (cobs/pisos)
+            const playerConstructionContactMaterial = new CANNON.ContactMaterial(
+                playerMaterial,
+                constructionMaterial,
+                {
+                    friction: 0, // CRUCIAL: Atrito zero para evitar que o jogador "cole"
+                    restitution: 0,
+                    contactEquationStiffness: 1e9, // Alta rigidez
+                    contactEquationRelaxation: 3
+                }
+            );
+            world.addContactMaterial(playerConstructionContactMaterial);
+
+            // Material de contato entre cubo e terreno/estrada
+            const cubeGroundContactMaterial = new CANNON.ContactMaterial(
+                cubeMaterial,
+                streetMaterial,
+                {
+                    friction: 0.7,
+                    restitution: 0
+                }
+            );
+            world.addContactMaterial(cubeGroundContactMaterial);
+
+            // Material de contato entre cubo e jogador
+            const cubePlayerContactMaterial = new CANNON.ContactMaterial(
+                cubeMaterial,
+                playerMaterial,
+                {
+                    friction: 0, // Attrition set to 0
+                    restitution: 0,
+                    contactEquationStiffness: 1e9, // Increased for higher rigidity
+                    contactEquationRelaxation: 20
+                }
+            );
+            world.addContactMaterial(cubePlayerContactMaterial);
+
+            // Material de contato entre cubo e cubo
+            const cubeCubeContactMaterial = new CANNON.ContactMaterial(
+                cubeMaterial,
+                cubeMaterial,
+                {
+                    friction: 0,
+                    restitution: 0,
+                    contactEquationStiffness: 1e8,
+                    contactEquationRelaxation: 3
+                }
+            );
+            world.addContactMaterial(cubeCubeContactMaterial);
+
+            // Material de contato entre blocos de construção e terreno/estrada (podem ter atrito)
+            const constructionGroundContactMaterial = new CANNON.ContactMaterial(
+                constructionMaterial,
+                streetMaterial,
+                {
+                    friction: 0.7, // Blocos podem ter atrito com o chão
+                    restitution: 0
+                }
+            );
+            world.addContactMaterial(constructionGroundContactMaterial);
+
+            // Material de contato entre blocos de construção e cubos (podem ter atrito)
+            const constructionCubeContactMaterial = new CANNON.ContactMaterial(
+                constructionMaterial,
+                cubeMaterial,
+                {
+                    friction: 0.7, // Blocos podem ter atrito com cubos
+                    restitution: 0
+                }
+            );
+            world.addContactMaterial(constructionCubeContactMaterial);
+
+            // Material de contato entre blocos de construção (cob com cob, piso com piso, etc.)
+            const constructionConstructionContactMaterial = new CANNON.ContactMaterial(
+                constructionMaterial,
+                constructionMaterial,
+                {
+                    friction: 0.7, // Attrito entre blocos de construção
+                    restitution: 0
+                }
+            );
+            world.addContactMaterial(constructionConstructionContactMaterial);
+
+
+            // Configuração das Luzes
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); // Luz ambiente suave
+            scene.add(ambientLight);
+
+            directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); // Luz direcional (simula o sol)
+            directionalLight.position.set(10, 15, 10); // Posição inicial
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.camera.near = 0.5;
+            directionalLight.shadow.camera.far = 50;
+            directionalLight.shadow.camera.left = -20;
+            directionalLight.shadow.camera.right = 20;
+            directionalLight.shadow.camera.top = 20;
+            directionalLight.shadow.camera.bottom = -20;
+            scene.add(directionalLight);
+            scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
+
+            // Cria o Terreno (agora composto de blocos de cob)
+            const streetShape = new CANNON.Box(new CANNON.Vec3(worldSize / 2, streetHeight / 2, worldSize / 2));
+            streetBody = new CANNON.Body({ mass: 0, shape: streetShape, material: streetMaterial });
+            streetBody.position.set(0, streetHeight / 2, 0); // Posição na metade de sua altura para ter o topo em y=0
+            world.addBody(streetBody);
+
+            const streetGeometry = new THREE.BoxGeometry(worldSize, streetHeight, worldSize);
+            // Carrega a textura de terra para o terreno
+            const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
+                // Configura a repetição da textura
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                // Ajusta a repetição da textura.
+                texture.repeat.set(worldSize / cobWidth, worldSize / cobDepth);
+            });
+            const streetMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const mesh = new THREE.Mesh(streetGeometry, streetMeshMaterial);
+                    mesh.receiveShadow = true;
+                    mesh.userData.physicsBody = streetBody; // ASSOCIA O CORPO DE FÍSICA À MALHA VISUAL
+                    scene.add(mesh);
+                    // Armazena a malha e seu offset ideal da origem (0,0,0)
+                    streetMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
+
+            // A rua foi removida, então o código relacionado a ela foi excluído.
+
+            // Cria o Corpo de Física do Jogador (esfera)
+            originalPlayerShape = new CANNON.Sphere(playerRadius); // Esfera com raio baseado na altura
+            crouchPlayerShape = new CANNON.Sphere(crouchRadius);   // Esfera agachada
+
+            playerBody = new CANNON.Body({
+                mass: 80,
+                shape: originalPlayerShape, // Começa com a forma original
+                material: playerMaterial,
+                linearDamping: 0.9, // Reverted to a higher damping for better stop-on-a-dime feel
+                angularDamping: 0.9,
+                fixedRotation: true, // Mantém rotação fixa para a câmera
+                allowSleep: true, // Permite que o jogador entre em modo de "sono"
+                sleepSpeedLimit: 0.01, // Velocidade linear mínima para "acordar"
+                sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer"
+            });
+            // Posição inicial: centro da esfera em playerRadius + streetHeight
+            playerBody.position.set(0, playerRadius + streetHeight, 0); // Posição inicial ajustada do jogador
+            world.addBody(playerBody);
+
+            // Reintroduz o listener de colisão para canJump, mas com uma verificação adicional
+            playerBody.addEventListener('collide', (event) => {
+                // canJump é verdadeiro APENAS se o corpo colidido NÃO for o objeto que está sendo segurado
+                // A lista de corpos "chão" agora inclui apenas superfícies que podem ser pisadas
+                const allGroundBodies = [streetBody, cubeBody, cubeBody2, cubeBody3, ...placedConstructionBodies];
+                if (event.body !== pickedObjectBody && allGroundBodies.includes(event.body)) {
+                    canJump = true;
+                }
+            });
+
+            // --- Configuração dos Cubos Interativos ---
+            const cubeSize = 1;
+            const cubeShape = new CANNON.Box(new CANNON.Vec3(cubeSize / 2, cubeSize / 2, cubeSize / 2));
+            const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+            const initialCubeMass = 200; // Massa inicial para os cubos
+
+            // Carrega a textura para os cubos
+            const cubeTexture = textureLoader.load(cubeTextureURL, (texture) => {
+                // Configura a repetição da textura para os cubos
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1); // Repete uma vez em cada face do cubo
+            });
+
+            // Cubo 1
+            cubeBody = new CANNON.Body({
+                mass: initialCubeMass,
+                shape: cubeShape,
+                material: cubeMaterial,
+                linearDamping: 0.99, // Aumentado para 0.99 para mais estabilidade
+                angularDamping: 0.99, // Aumentado para 0.99 para mais estabilidade
+                allowSleep: true, // Permite que o cubo entre em modo de "sono"
+                sleepSpeedLimit: 0.01, // Velocidade linear mínima para "acordar"
+                sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer" (0.5 segundos)
+            });
+            cubeBody.position.set(0, cubeSize / 2 + streetHeight, -10);
+            world.addBody(cubeBody);
+            cubeBody.userData = { // Adiciona userData para rastrear o estado do cubo
+                originalMass: initialCubeMass,
+                initialPosition: new CANNON.Vec3().copy(cubeBody.position) // Armazena a posição inicial
+            };
+            const cubeMaterialMesh1 = new THREE.MeshStandardMaterial({ map: cubeTexture });
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh1);
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    mesh.userData.physicsBody = cubeBody; // Vincula a malha visual ao corpo de física
+                    scene.add(mesh);
+                    cubeMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
+
+            // Cubo 2
+            cubeBody2 = new CANNON.Body({
+                mass: initialCubeMass,
+                shape: cubeShape,
+                material: cubeMaterial,
+                linearDamping: 0.99, // Aumentado para 0.99 para mais estabilidade
+                angularDamping: 0.99, // Aumentado para 0.99 para mais estabilidade
+                allowSleep: true, // Permite que o cubo entre em modo de "sono"
+                sleepSpeedLimit: 0.01, // Velocidade linear mínima para "acordar"
+                sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer" (0.5 segundos)
+            });
+            cubeBody2.position.set(5, cubeSize / 2 + streetHeight, -10);
+            world.addBody(cubeBody2);
+            cubeBody2.userData = { // Adiciona userData para rastrear o estado do cubo
+                originalMass: initialCubeMass,
+                initialPosition: new CANNON.Vec3().copy(cubeBody2.position) // Armazena a posição inicial
+            };
+            const cubeMaterialMesh2 = new THREE.MeshStandardMaterial({ map: cubeTexture });
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh2);
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    mesh.userData.physicsBody = cubeBody2; // Vincula a malha visual ao corpo de física
+                    scene.add(mesh);
+                    cubeMeshes2.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
+
+            // Cubo 3
+            cubeBody3 = new CANNON.Body({
+                mass: initialCubeMass,
+                shape: cubeShape,
+                material: cubeMaterial,
+                linearDamping: 0.99, // Aumentado para 0.99 para mais estabilidade
+                angularDamping: 0.99, // Aumentado para 0.99 para mais estabilidade
+                allowSleep: true, // Permite que o cubo entre em modo de "sono"
+                sleepSpeedLimit: 0.01, // Velocidade linear mínima para "acordar"
+                sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer" (0.5 segundos)
+            });
+            cubeBody3.position.set(-5, cubeSize / 2 + streetHeight, -10);
+            world.addBody(cubeBody3);
+            cubeBody3.userData = { // Adiciona userData para rastrear o estado do cubo
+                originalMass: initialCubeMass,
+                initialPosition: new CANNON.Vec3().copy(cubeBody3.position) // Armazena a posição inicial
+            };
+            const cubeMaterialMesh3 = new THREE.MeshStandardMaterial({ map: cubeTexture });
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh3);
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    mesh.userData.physicsBody = cubeBody3; // Vincula a malha visual ao corpo de física
+                    scene.add(mesh);
+                    cubeMeshes3.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
+
+            // Cria o ghost block (transparente)
+            const ghostBlockMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00ff00, // Verde para indicar que pode ser colocado
+                transparent: true,
+                opacity: 0.5,
+                depthWrite: false // Importante para renderizar corretamente sobre outros objetos
+            });
+            // Inicializa com a geometria do cob, será atualizada em updateSelectedSlot
+            ghostBlockMesh = new THREE.Mesh(new THREE.BoxGeometry(cobWidth, cobHeight, cobDepth), ghostBlockMaterial);
+            ghostBlockMesh.visible = false; // Inicialmente invisível
+            scene.add(ghostBlockMesh);
+
+            // NOVO: Carrega a textura de pedra para a ferramenta aplicadora
+            textureLoader.load(stoneTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1); // A textura cobre um patch
+                stoneMaterial = new THREE.MeshStandardMaterial({ map: texture, receiveShadow: true });
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura de pedra:', error);
+                stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, receiveShadow: true }); // Fallback cinza
+            });
+
+            // Load the cob texture and create the material once
+            textureLoader.load(cobTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                cobMaterialMesh = new THREE.MeshStandardMaterial({ map: texture }); // Create the material here
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura do cob:', error);
+                // Fallback to a plain color if texture fails to load
+                cobMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Brown color
+            });
+
+            // Load the floor texture and create the material once
+            textureLoader.load(floorTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                floorMaterialMesh = new THREE.MeshStandardMaterial({ map: texture }); // Create the material here
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura do piso:', error);
+                // Fallback to a plain color if texture fails to load
+                floorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xAAAAAA }); // Grey color for floor
+            });
+            
+            // Load the wooden plank texture and create the material once
+            textureLoader.load(woodenPlankTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura da tábua de madeira:', error);
+                woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xdeb887 }); // Fallback brown
+            });
+
+            // Load the tree sapling texture (for icon) and create the material once
+            textureLoader.load(treeSaplingTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                treeSaplingMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura da muda de árvore:', error);
+                treeSaplingMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 }); // Dark green color
+            });
+
+            // Load tree bark texture and create material
+            textureLoader.load(treeBarkTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1); // Adjust as needed for bark
+                treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura do tronco da árvore:', error);
+                treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Fallback brown
+            });
+
+            // Load tree leaves texture and create material
+            textureLoader.load(treeLeavesTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1); // Adjust as needed for leaves
+                treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ map: texture, transparent: true, alphaTest: 0.5 }); // alphaTest for transparency
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura das folhas da árvore:', error);
+                treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 }); // Fallback dark green
+            });
+
+            // Cria um corpo "grabber" invisível para segurar objetos
+            grabberBody = new CANNON.Body({ mass: 0, type: CANNON.Body.KINEMATIC });
+            world.addBody(grabberBody);
+
+            // Inicializa o Raycaster
+            raycaster = new THREE.Raycaster();
+
+            // Pega o elemento da mira
+            crosshairElement = document.getElementById('crosshair');
+
+            // Pega elementos da barra de progresso
+            progressContainer = document.getElementById('progressContainer');
+            progressBar = document.getElementById('progressBar');
+
+            // Pega o elemento do botão de ícone do menu
+            menuIconButton = document.getElementById('menuIconButton');
+
+            // Pega elementos da mochila
+            backpackModal = document.getElementById('backpackModal');
+            backpackSlotsContainer = document.getElementById('backpackSlotsContainer');
+
+            // Inicializa o inventário
+            beltItems = new Array(numBeltSlots).fill(null); // Garante que esteja vazio primeiro
+            backpackItems = new Array(numBackpackSlots).fill(null);
+
+            // Itens padrão para os dois slots do cinto
+            // beltItems[0] agora começa como null para representar a mão quando vazio
+            beltItems[1] = { name: axeItemName, quantity: 1 }; // Machado no slot direito (secundário)
+
+            // Adiciona outros itens diretamente na mochila
+            addItemToInventory(backpackItems, { name: hammerItemName, quantity: 1 });
+            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 }); // NOVO
+            addItemToInventory(backpackItems, { name: textureApplicatorItemName, quantity: 1 });
+            addItemToInventory(backpackItems, { name: cobItemName, quantity: 100 });
+            addItemToInventory(backpackItems, { name: floorItemName, quantity: 50 });
+            addItemToInventory(backpackItems, { name: treeSaplingItemName, quantity: 10 });
+            addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 20 }); // NOVO: Adiciona troncos de árvore à mochila
+            addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 10 }); // NOVO: Adiciona tábuas de madeira à mochila
+
+            // Pega o elemento do cinto de inventário e seus slots
+            inventoryBeltElement = document.getElementById('inventoryBelt');
+            updateBeltDisplay(); // Preenche os slots inicialmente
+
+            // Configura os Listeners de Eventos para teclado e mouse
+            window.addEventListener('keydown', (event) => {
+                // Verifica se a tecla 'Escape' foi pressionada
+                if (event.key === 'Escape') {
+                    event.preventDefault(); // IMPEDE O COMPORTAMENTO PADRÃO DO NAVEGADOR (sair do pointer lock)
+
+                    if (gamePaused) {
+                        hideOptionsScreen(); // Se o menu estiver aberto, fecha-o
+                    } else if (document.pointerLockElement === renderer.domElement) {
+                        // Se o jogo estiver a correr e o ponteiro estiver bloqueado,
+                        // libertamos o bloqueio do ponteiro. O evento 'pointerlockchange'
+                        // irá então tratar de mostrar o menu.
+                        document.exitPointerLock();
+                    } else {
+                        // Se o jogo não estiver pausado e o ponteiro não estiver bloqueado
+                        // (ex: logo após iniciar o jogo e não clicou no canvas),
+                        // podemos mostrar o menu diretamente.
+                        showOptionsScreen();
+                    }
+                }
+
+                // Toggle backpack with 'B' key
+                if (event.key.toLowerCase() === 'b') {
+                    if (backpackModal.classList.contains('active')) {
+                        closeBackpack();
+                    } else {
+                        openBackpack();
+                    }
+                }
+
+                // NOVO: Seleção de slots com Q e E
+                if (!gamePaused && !backpackModal.classList.contains('active')) {
+                    if (event.key.toLowerCase() === 'q') {
+                        selectedSlotIndex = 0;
+                        updateBeltDisplay();
+                    } else if (event.key.toLowerCase() === 'e') {
+                        selectedSlotIndex = 1;
+                        updateBeltDisplay();
+                    }
+
+                    keysPressed[event.key.toLowerCase()] = true;
+                    if (event.key.toLowerCase() === ' ' && canJump) { // Permite pular apenas se canJump for verdadeiro
+                        playerBody.applyImpulse(new CANNON.Vec3(0, 400 * 3, 0), playerBody.position); // Triplicado o impulso de salto
+                        canJump = false; // Impede pulos múltiplos no ar
+                    }
+                }
+            });
+            window.addEventListener('keyup', (event) => {
+                // Sempre permite que os eventos de soltar tecla desregistrem as teclas, mesmo se pausado
+                keysPressed[event.key.toLowerCase()] = false;
+            });
+
+            // Adiciona um listener para bloquear o ponteiro do mouse no clique do canvas
+            renderer.domElement.addEventListener('click', () => {
+                // Solicita o bloqueio do ponteiro apenas se o jogo não estiver pausado e a mochila não estiver aberta
+                if (!gamePaused && !backpackModal.classList.contains('active') && document.pointerLockElement !== renderer.domElement) { // Verifica se o ponteiro já está bloqueado
+                    if (renderer && renderer.domElement) { // Adicionado verificação para renderer.domElement
+                        renderer.domElement.requestPointerLock().catch(error => { // Adicionado .catch()
+                            if (error.name === 'SecurityError' && error.message.includes('exited the lock')) {
+                                console.warn('Solicitação de bloqueio do ponteiro falhou porque o utilizador saiu do bloqueio prematuramente.');
+                            } else {
+                                console.error('Erro ao solicitar bloqueio do ponteiro:', error);
+                            }
+                        });
+                    }
+                }
+            });
+
+            document.addEventListener('pointerlockchange', () => {
+                if (document.pointerLockElement === renderer.domElement) {
+                    // Ponteiro bloqueado (jogo a correr)
+                    isDragging = true;
+                    document.body.style.cursor = 'none'; // Esconde o cursor
+                    if (renderer && renderer.domElement) {
+                        renderer.domElement.style.cursor = 'none'; // Garante que o cursor do canvas também esteja oculto
+                    }
+                    // Garante que o menu esteja escondido e o jogo não esteja pausado
+                    document.getElementById('optionsScreen').classList.remove('active');
+                    document.getElementById('crosshair').style.display = 'flex'; // Mostra a mira
+                    if (menuIconButton) {
+                        menuIconButton.style.display = 'flex'; // Mostra o botão do menu
+                    }
+                    if (inventoryBeltElement) {
+                        inventoryBeltElement.style.visibility = 'visible'; // Mostra o cinto de inventário
+                        inventoryBeltElement.style.opacity = '1';
+                    }
+                    backpackModal.classList.remove('active'); // Garante que a mochila esteja fechada
+                    gamePaused = false;
+                } else {
+                    // Ponteiro desbloqueado (saiu do bloqueio)
+                    isDragging = false;
+                    // Lida com a libertação de objetos, se houver
+                    if (pickedObjectBody) {
+                        if (grabberConstraint) {
+                            world.removeConstraint(grabberConstraint);
+                            grabberConstraint = null; // Limpa a referência da restrição
+                        }
+                        // O objeto já é dinâmico, então não precisamos restaurar massa/tipo
+                        pickedObjectBody.wakeUp();
+                        pickedObjectBody.allowSleep = true;
+
+                        pickedObjectBody = null;
+                        pickedObjectMesh = null;
+
+                        // Ao soltar o objeto, zera a velocidade do jogador para evitar arrasto residual
+                        playerBody.velocity.set(0,0,0);
+                        playerBody.angularVelocity.set(0,0,0);
+                        playerBody.allowSleep = true; // Permite que o jogador volte a dormir se estiver parado
+                        return; // Sai da função para evitar pegar outro objeto imediatamente
+                    }
+
+                    // Reinicia a destruição se o pointer lock for perdido
+                    isDestroying = false;
+                    destroyProgress = 0;
+                    progressContainer.style.display = 'none';
+
+                    document.body.style.cursor = 'default'; // Mostra o cursor
+                    if (renderer && renderer.domElement) {
+                        renderer.domElement.style.cursor = 'default'; // Mostra o cursor do canvas
+                    }
+                    crosshairElement.style.setProperty('--crosshair-color', 'white');
+                    if (ghostBlockMesh) {
+                        ghostBlockMesh.visible = false; // Oculta o ghost block
+                    }
+
+                    // Se o bloqueio do ponteiro foi perdido e NÃO foi por causa da mochila
+                    if (!pointerLockExitForBackpack) {
+                        showOptionsScreen(); // Isso irá definir gamePaused como true e mostrar o menu
+                    }
+                    // O cinto de inventário deve ser escondido APENAS se não for por causa da mochila
+                    if (inventoryBeltElement && !pointerLockExitForBackpack) {
+                        inventoryBeltElement.style.visibility = 'hidden';
+                        inventoryBeltElement.style.opacity = '0';
+                    }
+
+                    // Lida com o estado de agachamento se o bloqueio do ponteiro for perdido
+                    if (isCrouching) {
+                        isCrouching = false;
+                        playerBody.removeShape(originalPlayerShape);
+                        playerBody.addShape(crouchPlayerShape);
+                        playerBody.position.y += (originalPlayerShape.radius - crouchPlayerShape.radius);
+                        cameraEyeLevelOffset = originalPlayerShape.radius;
+                        playerBody.velocity.y = 0;
+                        playerBody.wakeUp();
+                    }
+                }
+                // Sempre reseta a flag após o processamento do pointerlockchange
+                pointerLockExitForBackpack = false;
+            });
+            
+            // Lógica para clique esquerdo (inicia o processo de destruição ou agarra)
+            renderer.domElement.addEventListener('mousedown', (event) => {
+                if (event.button === 0 && document.pointerLockElement === renderer.domElement && !gamePaused) {
+                    let itemToUsePrimary = beltItems[selectedSlotIndex];
+                    // NOVO: Verifica se a ferramenta primária é uma ferramenta de destruição
+                    const isDestructionTool = itemToUsePrimary && (itemToUsePrimary.name === axeItemName || itemToUsePrimary.name === hammerItemName || itemToUsePrimary.name === stoneItemName);
+
+                    if (isDestructionTool) {
+                        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                        const intersects = raycaster.intersectObjects(scene.children, true);
+                        
+                        let target = null;
+                        for (let i = 0; i < intersects.length; i++) {
+                            if (intersects[i].distance > destroyDistance) continue;
+
+                            let intersectedObject = intersects[i].object;
+                            
+                            // Handle patches (no physics body)
+                            if (intersectedObject.userData && intersectedObject.userData.isDestructible && intersectedObject.userData.type === 'patch') {
+                                target = { body: null, mesh: intersectedObject };
+                                break;
+                            }
+
+                            // Handle objects with physics bodies
+                            let mainObject = null;
+                            let intersectedBody = null;
+                            let currentObject = intersectedObject;
+                            while (currentObject) {
+                                if (currentObject.userData && currentObject.userData.physicsBody) {
+                                    mainObject = currentObject;
+                                    intersectedBody = currentObject.userData.physicsBody;
+                                    break;
+                                }
+                                currentObject = currentObject.parent;
+                            }
+                            
+                            if (mainObject && intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible) {
+                                target = { body: intersectedBody, mesh: mainObject };
+                                break;
+                            }
+                        }
+                        
+                        if (target) {
+                            isDestroying = true;
+                            destroyProgress = 0;
+                            destroyTargetBody = target.body;
+                            destroyTargetMesh = target.mesh;
+                            
+                            const targetUserData = target.body ? target.body.userData : target.mesh.userData;
+                            targetDestroyTime = targetUserData.durability || 1.0; // Fallback to 1 second
+
+                            progressContainer.style.display = 'block';
+                        }
+                    }
+                }
+            });
+            
+            // Lógica para soltar o botão esquerdo (interrompe destruição ou solta o objeto)
+            renderer.domElement.addEventListener('mouseup', (event) => {
+                if (event.button === 0 && document.pointerLockElement === renderer.domElement && !gamePaused) {
+                    isDestroying = false;
+                    destroyProgress = 0;
+                    progressContainer.style.display = 'none';
+                    destroyTargetBody = null;
+                    destroyTargetMesh = null;
+                }
+            });
+
+
+            // Eventos do mouse para pegar e soltar objetos, e para colocar/destruir blocos
+            document.addEventListener('mousedown', (event) => {
+                // Apenas se o ponteiro estiver bloqueado e o jogo não estiver pausado
+                if (document.pointerLockElement === renderer.domElement && !gamePaused) {
+                    let itemToUsePrimary = beltItems[selectedSlotIndex]; // Item do slot selecionado (para clique esquerdo)
+                    let itemToUseSecondary = beltItems[1]; // Item do slot direito (para clique direito)
+
+                    let actionTypePrimary = null; // 'place', 'destroy', 'grab' para clique esquerdo
+                    let actionTypeSecondary = null; // 'place', 'destroy' para clique direito
+
+                    // Determina o tipo de ação para o clique esquerdo
+                    if (itemToUsePrimary === null) {
+                        actionTypePrimary = 'grab';
+                    } else if (itemToUsePrimary.name === axeItemName || itemToUsePrimary.name === hammerItemName || itemToUsePrimary.name === stoneItemName) {
+                        actionTypePrimary = 'destroy';
+                    } else if (itemToUsePrimary.name === textureApplicatorItemName) {
+                        actionTypePrimary = 'apply_texture';
+                    } else if (itemToUsePrimary.name === cobItemName || itemToUsePrimary.name === floorItemName || itemToUsePrimary.name === treeSaplingItemName || itemToUsePrimary.name === woodenPlankItemName || itemToUsePrimary.name === treeTrunkItemName) {
+                        actionTypePrimary = 'place';
+                    }
+
+                    // Determina o tipo de ação para o clique direito
+                    if (itemToUseSecondary) {
+                        if (itemToUseSecondary.name === axeItemName || itemToUseSecondary.name === hammerItemName || itemToUseSecondary.name === stoneItemName) {
+                            actionTypeSecondary = 'destroy';
+                        } else if (itemToUseSecondary.name === cobItemName || itemToUseSecondary.name === floorItemName || itemToUseSecondary.name === treeSaplingItemName || itemToUseSecondary.name === woodenPlankItemName || itemToUseSecondary.name === treeTrunkItemName) {
+                            actionTypeSecondary = 'place';
+                        }
+                    }
+
+                    // Lógica para clique esquerdo (usa o slot selecionado)
+                    if (event.button === 0) {
+                        // Lógica para APLICAR TEXTURA (com clique esquerdo)
+                        if (actionTypePrimary === 'apply_texture' && itemToUsePrimary && itemToUsePrimary.name === textureApplicatorItemName) {
+                            if (!stoneMaterial) return; // Garante que o material esteja carregado
+                            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                            const groundMeshes = streetMeshes.map(item => item.mesh);
+                            const intersects = raycaster.intersectObjects(groundMeshes);
+                            if (intersects.length > 0) {
+                                // Pega o primeiro ponto de interseção, já que estamos apenas interessados no chão
+                                const intersect = intersects[0];
+                                const hitPoint = intersect.point;
+                                const patchSize = cobSize;
+                                const snappedX = Math.floor(hitPoint.x / patchSize) * patchSize + patchSize / 2;
+                                const snappedZ = Math.floor(hitPoint.z / patchSize) * patchSize + patchSize / 2;
+                                const patchGeometry = new THREE.BoxGeometry(patchSize, 0.01, patchSize);
+                                const patchMesh = new THREE.Mesh(patchGeometry, stoneMaterial);
+                                patchMesh.position.set(snappedX, streetHeight + 0.005, snappedZ); // Ligeiramente acima do chão
+                                patchMesh.receiveShadow = true;
+                                const patchDurability = 0.5;
+                                patchMesh.userData = { isDestructible: true, durability: patchDurability, type: 'patch' };
+                                scene.add(patchMesh);
+                                texturePatches.push(patchMesh);
+                            }
+                            return;
+                        }
+
+                        // Lógica para COLOCAR blocos (com clique esquerdo)
+                        if (actionTypePrimary === 'place') {
+                            currentBlockType = itemToUsePrimary.name;
+                            if (ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
+                                if (itemToUsePrimary.quantity > 0) {
+                                    let materialLoaded = false;
+                                    if (currentBlockType === 'cob' && cobMaterialMesh) {
+                                        materialLoaded = true;
+                                    } else if (currentBlockType === 'piso' && floorMaterialMesh) {
+                                        materialLoaded = true;
+                                    } else if (currentBlockType === 'tábuas' && woodenPlankMaterialMesh) {
+                                        materialLoaded = true;
+                                    } else if (currentBlockType === 'muda_arvore' && treeTrunkMaterialMesh && treeLeavesMaterialMesh) {
+                                        materialLoaded = true;
+                                    } else if (currentBlockType === 'tronco_arvore' && treeTrunkMaterialMesh) {
+                                        materialLoaded = true;
+                                    }
+                                    if (materialLoaded) {
+                                        createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, currentBlockType);
+                                        itemToUsePrimary.quantity--;
+                                        if (itemToUsePrimary.quantity <= 0) {
+                                            beltItems[selectedSlotIndex] = null;
+                                        }
+                                        updateBeltDisplay();
+                                    }
+                                }
+                            }
+                            return;
+                        }
+                    
+                        // Lógica para PEGAR/SOLTAR objetos (com clique esquerdo)
+                        if (actionTypePrimary === 'grab') {
+                            // Se já estiver segurando um objeto, solta-o
+                            if (pickedObjectBody) {
+                                if (grabberConstraint) {
+                                    world.removeConstraint(grabberConstraint);
+                                    grabberConstraint = null; // Limpa a referência da restrição
+                                }
+                                pickedObjectBody.wakeUp();
+                                pickedObjectBody.allowSleep = true;
+
+                                pickedObjectBody = null;
+                                pickedObjectMesh = null;
+
+                                // Ao soltar o objeto, zera a velocidade do jogador para evitar arrasto residual
+                                playerBody.velocity.set(0,0,0);
+                                playerBody.angularVelocity.set(0,0,0);
+                                playerBody.allowSleep = true; // Permite que o jogador volte a dormir se estiver parado
+                                return; // Sai da função para evitar pegar outro objeto imediatamente
+                            }
+
+                            // Configura o raycaster para o centro da tela
+                            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+
+                            // Encontra objetos que intersectam o raio
+                            const intersects = raycaster.intersectObjects(scene.children);
+
+                            // Lista de corpos de objetos que podem ser pegos (apenas cubos agora)
+                            const allPickableBodies = [cubeBody, cubeBody2, cubeBody3];
+
+                            // Verifica se um objeto clicado é pegável e está dentro da distância de seleção
+                            for (let i = 0; i < intersects.length; i++) {
+                                if (intersects[i].object.userData.physicsBody &&
+                                    allPickableBodies.includes(intersects[i].object.userData.physicsBody)) {
+
+                                    if (intersects[i].distance <= pickUpDistance) {
+                                        pickedObjectBody = intersects[i].object.userData.physicsBody;
+                                        pickedObjectMesh = intersects[i].object;
+                                        distanceToPickedObject = intersects[i].distance;
+
+                                        pickedObjectBody.collisionResponse = true;
+                                        pickedObjectBody.velocity.set(0, 0, 0); // Para qualquer velocidade existente
+                                        pickedObjectBody.angularVelocity.set(0, 0, 0); // Para qualquer velocidade angular existente
+                                        pickedObjectBody.allowSleep = false; // Mantém-no ativo para verificações de colisão
+
+                                        // Ao pegar o objeto, zera a velocidade do jogador para evitar arrasto residual
+                                        playerBody.velocity.set(0, 0, 0);
+                                        playerBody.angularVelocity.set(0, 0, 0);
+                                        playerBody.allowSleep = false; // Mantém o jogador ativo enquanto segura o objeto
+
+
+                                        // Posiciona o grabberBody na frente da câmera
+                                        const targetPosition = new THREE.Vector3();
+                                        camera.getWorldDirection(targetPosition);
+                                        targetPosition.multiplyScalar(distanceToPickedObject);
+                                        targetPosition.add(camera.position); // Adiciona a posição da CÂMERA
+
+                                        grabberBody.position.copy(targetPosition);
+
+                                        // Cria a restrição entre o objeto e o grabberBody
+                                        grabberConstraint = new CANNON.PointToPointConstraint(
+                                            pickedObjectBody,
+                                            new CANNON.Vec3(0, 0, 0), // Pivô no centro do objeto
+                                            grabberBody,
+                                            new CANNON.Vec3(0, 0, 0)  // Pivô no centro do grabber (mão)
+                                        );
+                                        world.addConstraint(grabberConstraint);
+                                        pickedObjectBody.wakeUp(); // Garante que esteja ativo
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    } else if (event.button === 2) { // Lógica para clique direito (usa o slot 1)
+                        // Lógica para COLOCAR blocos (com clique direito)
+                        if (actionTypeSecondary === 'place') {
+                            currentBlockType = itemToUseSecondary.name;
+                            if (ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
+                                if (itemToUseSecondary.quantity > 0) {
+                                    let materialLoaded = false;
+                                    if (currentBlockType === 'cob' && cobMaterialMesh) {
+                                        materialLoaded = true;
+                                    } else if (currentBlockType === 'piso' && floorMaterialMesh) {
+                                        materialLoaded = true;
+                                    } else if (currentBlockType === 'tábuas' && woodenPlankMaterialMesh) {
+                                        materialLoaded = true;
+                                    } else if (currentBlockType === 'muda_arvore' && treeTrunkMaterialMesh && treeLeavesMaterialMesh) {
+                                        materialLoaded = true;
+                                    } else if (currentBlockType === 'tronco_arvore' && treeTrunkMaterialMesh) {
+                                        materialLoaded = true;
+                                    }
+
+                                    if (materialLoaded) {
+                                        createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, currentBlockType);
+                                        itemToUseSecondary.quantity--;
+                                        if (itemToUseSecondary.quantity <= 0) {
+                                            beltItems[1] = null;
+                                        }
+                                        updateBeltDisplay();
+                                    }
+                                }
+                            }
+                            return;
+                        }
+                    }
+                }
+            });
+            
+            // Lógica para soltar o botão direito
+            document.addEventListener('mouseup', (event) => {
+                if (event.button === 2 && document.pointerLockElement === renderer.domElement && !gamePaused) {
+                    // Não há ação padrão para o botão direito. A destruição agora é apenas com o esquerdo.
+                    isDestroying = false;
+                    destroyProgress = 0;
+                    progressContainer.style.display = 'none';
+                    destroyTargetBody = null;
+                    destroyTargetMesh = null;
+                }
+            });
+
+            // Evento mousemove para rotação da câmera e rotação de objetos
+            document.addEventListener('mousemove', (event) => {
+                // Determine the primary tool for visual feedback
+                const primaryToolForVisuals = beltItems[selectedSlotIndex]; // Usa o slot selecionado
+                const isPrimaryToolPlacing = primaryToolForVisuals && (primaryToolForVisuals.name === cobItemName || primaryToolForVisuals.name === floorItemName || primaryToolForVisuals.name === treeSaplingItemName || primaryToolForVisuals.name === woodenPlankItemName || primaryToolForVisuals.name === treeTrunkItemName); // NOVO: Adiciona tronco de árvore
+                const isPrimaryToolGrabbing = primaryToolForVisuals === null; // Hand is active if slot 0 is null
+
+
+                if (isDragging && !gamePaused) { // Processa o movimento do mouse apenas se o jogo não estiver pausado
+                    const deltaX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
+                    const deltaY = event.movementY || event.mozMovementY || event.webkitMovementY || 0;
+
+                    // Verifica se o botão direito do mouse está pressionado (botão 2)
+                    const isRightButtonPressed = (event.buttons & 2);
+
+                    // Lógica de rotação do ghost block
+                    if (isPrimaryToolPlacing && isRightButtonPressed) {
+                        // Aumenta o multiplicador para tornar a rotação mais responsiva
+                        ghostBlockRotationY += deltaX * 0.15; // Rotação horizontal
+                        ghostBlockRotationX += deltaY * 0.15; // Rotação vertical
+
+                        // Define o ângulo de snap (45 graus)
+                        const snapAngle = Math.PI / 4; // 45 graus
+
+                        // Arredonda ghostBlockRotationY para o múltiplo mais próximo de snapAngle
+                        ghostBlockRotationY = Math.round(ghostBlockRotationY / snapAngle) * snapAngle;
+
+                        // Arredonda ghostBlockRotationX para o múltiplo mais próximo de snapAngle
+                        // Garante que permaneça dentro do intervalo de -PI/2 a PI/2 para rotação vertical
+                        ghostBlockRotationX = Math.round(ghostBlockRotationX / snapAngle) * snapAngle;
+                        ghostBlockRotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, ghostBlockRotationX));
+
+                    }
+                    // Lógica de rotação do objeto segurado
+                    else if (pickedObjectBody && isRightButtonPressed && isPrimaryToolGrabbing) {
+                        const rotationSpeed = 0.01; // Ajuste este valor para rotação mais rápida/lenta
+
+                        // Obtém o quaternion atual do objeto selecionado
+                        let currentQuaternion = new THREE.Quaternion().copy(pickedObjectBody.quaternion);
+
+                        // Guinada (movimento horizontal) em torno do eixo Y local do objeto
+                        const yawDeltaQuaternion = new THREE.Quaternion().setFromAxisAngle(
+                            new THREE.Vector3(0, 1, 0), // Eixo Y local
+                            -deltaX * rotationSpeed // Sinal invertido para rotação horizontal
+                        );
+                        currentQuaternion.multiply(yawDeltaQuaternion); // Pós-multiplica para rotação local
+
+                        // Inclinação (movimento vertical) em torno do eixo X local do objeto
+                        const pitchDeltaQuaternion = new THREE.Quaternion().setFromAxisAngle(
+                            new THREE.Vector3(1, 0, 0), // Eixo X local
+                            -deltaY * rotationSpeed // Sinal invertido para rotação vertical
+                        );
+                        currentQuaternion.multiply(pitchDeltaQuaternion); // Pós-multiplica para rotação local
+
+                        // Aplica a nova rotação combinada ao corpo de física do objeto selecionado
+                        pickedObjectBody.quaternion.copy(currentQuaternion);
+                    }
+                    // Lógica de rotação da câmera
+                    else if (!isRightButtonPressed) { // Apenas gira a câmera se o botão direito NÃO estiver pressionado
+                        camera.rotation.y -= deltaX * 0.005;
+                        camera.rotation.x -= deltaY * 0.005;
+                        camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+
+                        // Se o botão direito não estiver pressionado, reseta as rotações do ghost block
+                        if (isPrimaryToolPlacing) {
+                            ghostBlockRotationY = 0;
+                            ghostBlockRotationX = 0;
+                        }
+                    }
+                }
+            });
+
+            // Listener de evento para redimensionamento da janela
+            window.addEventListener('resize', onWindowResize);
+
+            // Listeners de eventos para os novos botões do menu
+            document.getElementById('resumeButton').addEventListener('click', hideOptionsScreen);
+            document.getElementById('exitGameButton').addEventListener('click', () => {
+                location.reload(); // Recarrega a página para sair do jogo
+            });
+
+            // Adiciona o listener para o novo botão de ícone do menu
+            if (menuIconButton) {
+                menuIconButton.addEventListener('click', showOptionsScreen);
+            }
+
+            // Listeners para o botão da mochila
+            document.getElementById('backpackButton').addEventListener('click', openBackpack);
+            document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
+        }
+
+        // Função para lidar com o redimensionamento da janela
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Função para aplicar o efeito de envolvimento a um corpo de física (não retorna delta)
+        function wrapObject(body, size) {
+            if (body.position.x > size / 2) {
+                body.position.x -= size;
+            } else if (body.position.x < -size / 2) {
+                body.position.x += size;
+            }
+
+            if (body.position.z > size / 2) {
+                body.position.z -= size;
+            } else if (body.position.z < -size / 2) {
+                body.position.z += size;
+            }
+        }
+
+        // Função para atualizar as posições de todas as malhas visuais para um dado corpo de cubo/bloco
+        function updateObjectVisuals(body, meshesArray, visualOffsetX, visualOffsetZ) {
+            meshesArray.forEach(item => { // item is now { mesh: THREE.Mesh | THREE.Group, offsetX, offsetZ }
+                const visualObject = item.mesh; // This is the THREE.Group or a single Mesh
+                visualObject.position.x = body.position.x + item.offsetX - visualOffsetX;
+                visualObject.position.y = body.position.y;
+                visualObject.position.z = body.position.z + item.offsetZ - visualOffsetZ;
+                visualObject.quaternion.copy(body.quaternion); // Apply the body's rotation to the group/mesh
+            });
+        }
+
+        // Loop principal de animação do jogo
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (gamePaused) {
+                // Se o jogo estiver pausado, apenas renderiza a cena, não atualiza a física ou o movimento do jogador
+                renderer.render(scene, camera);
+                return;
+            }
+
+            // Lógica de destruição progressiva
+            if (isDestroying && destroyTargetMesh) { // Check destroyTargetMesh instead of Body
+                // --- NOVO: Verificação se a mira ainda está no objeto ---
+                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                const intersects = raycaster.intersectObjects(scene.children, true);
+                
+                let currentTargetMesh = null;
+                if (intersects.length > 0 && intersects[0].distance <= destroyDistance) {
+                    currentTargetMesh = intersects[0].object;
+                     // Traverse up if it's part of a group that is the target
+                    let parent = currentTargetMesh.parent;
+                    while(parent && parent !== scene) {
+                        if (parent === destroyTargetMesh) {
+                            currentTargetMesh = parent;
+                            break;
+                        }
+                        parent = parent.parent;
+                    }
+                }
+
+                // Se o objeto na mira não for mais o objeto que está sendo destruído, reseta.
+                if (currentTargetMesh !== destroyTargetMesh) {
+                    isDestroying = false;
+                    destroyProgress = 0;
+                    progressContainer.style.display = 'none';
+                    destroyTargetBody = null;
+                    destroyTargetMesh = null;
+                } else {
+                // Se a mira ainda estiver no objeto, continua o progresso
+                destroyProgress += 1 / 60; // Aumenta o progresso a cada frame (assumindo 60 FPS)
+                if (destroyProgress >= targetDestroyTime) {
+                    // Objeto destruído!
+                    const position = destroyTargetMesh.position.clone();
+                    
+                    // Handle patch destruction
+                    if (destroyTargetMesh.userData.type === 'patch') {
+                       const patchIndex = texturePatches.indexOf(destroyTargetMesh);
+                       if (patchIndex > -1) {
+                           texturePatches.splice(patchIndex, 1);
+                       }
+                       scene.remove(destroyTargetMesh);
+                       if (destroyTargetMesh.geometry) destroyTargetMesh.geometry.dispose();
+                       // Give back a stone item
+                       addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
+                       updateBackpackDisplay();
+                    } 
+                    // Handle regular block destruction
+                    else if (destroyTargetBody) {
+                       const bodyIndex = placedConstructionBodies.indexOf(destroyTargetBody);
+                       if (bodyIndex !== -1) {
+                           // Adiciona a lógica de recompensa de troncos com base no estágio da árvore
+                           if (destroyTargetBody.userData.growthStage === 'media') {
+                               addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 1 });
+                           } else if (destroyTargetBody.userData.growthStage === 'arvore_adulta') {
+                               addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 3 });
+                           }
+                           // Adiciona tábuas de madeira ao inventário se o objeto destruído for um tronco ou tábua
+                           else if (destroyTargetBody.userData.type === 'tronco_arvore' || destroyTargetBody.userData.type === 'tábuas') {
+                               addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 2 });
+                           }
+                           // Adiciona o item original ao inventário ao destruir
+                           if (destroyTargetBody.userData.type === 'cob' || destroyTargetBody.userData.type === 'piso') {
+                               addItemToInventory(backpackItems, { name: destroyTargetBody.userData.type, quantity: 1 });
+                           }
+                           updateBackpackDisplay();
+                           
+                           world.removeBody(destroyTargetBody);
+                           placedConstructionBodies.splice(bodyIndex, 1);
+                           scene.remove(destroyTargetMesh);
+                           if (destroyTargetMesh.isGroup) {
+                               destroyTargetMesh.children.forEach(child => {
+                                   if (child.geometry) child.geometry.dispose();
+                               });
+                           } else if (destroyTargetMesh.geometry) {
+                               destroyTargetMesh.geometry.dispose();
+                           }
+                           placedConstructionMeshesArrays.splice(bodyIndex, 1);
+                       }
+                    }
+                    createSmokeEffect(position);
+                    
+                    isDestroying = false;
+                    destroyProgress = 0;
+                    progressContainer.style.display = 'none';
+                    destroyTargetBody = null;
+                    destroyTargetMesh = null;
+
+                } else {
+                    // Atualiza a barra de progresso
+                    progressBar.style.width = `${(destroyProgress / targetDestroyTime) * 100}%`;
+                }
+                }
+            } else {
+                 // Reseta a barra de progresso se o usuário parar de destruir
+                if (progressBar.style.width !== '0%') {
+                    progressBar.style.width = '0%';
+                }
+            }
+
+
+            // Define currentPlayerRadius no início da função animate
+            const currentPlayerRadius = isCrouching ? crouchRadius : playerRadius;
+
+            // Atualiza o mundo da física
+            world.step(1 / 60);
+
+            // Lógica para os cubos e blocos: sempre dinâmicos e com massa original, a menos que sejam segurados
+            // Apenas os cubos são pickable agora
+            const allPickableBodies = [cubeBody, cubeBody2, cubeBody3];
+            const allStaticBodies = [...placedConstructionBodies]; // Apenas blocos colocados são estáticos
+
+            allPickableBodies.forEach(body => {
+                // Ignora o objeto que está sendo segurado
+                if (body === pickedObjectBody) {
+                    return;
+                }
+                // Cubos devem ser dinâmicos quando não estão sendo pegos
+                body.mass = body.userData.originalMass;
+                body.type = CANNON.Body.DYNAMIC;
+                body.allowSleep = true; // Permite que cubos "durmam" para otimização
+                body.wakeUp(); // Garante que esteja ativo se houver movimento
+                body.collisionResponse = true; // Garante que a resposta de colisão esteja sempre ativada
+            });
+
+            allStaticBodies.forEach(body => {
+                // Blocos (apenas os colocados) devem ser estáticos
+                body.mass = 0;
+                body.type = CANNON.Body.STATIC;
+                body.allowSleep = false; // Mantém ativo para colisão, mas não se move por física
+                body.collisionResponse = true; // Garante que a resposta de colisão esteja sempre ativada
+            });
+
+
+            // Aplica o envolvimento ao corpo de física do jogador
+            wrapObject(playerBody, worldSize);
+
+            // Aplica o envolvimento aos corpos de física dos cubos e blocos
+            [...allPickableBodies, ...allStaticBodies].forEach(body => {
+                if (body !== pickedObjectBody) { // Apenas se não estiver sendo segurado
+                    wrapObject(body, worldSize);
+                }
+            });
+
+            // Calcula o offset da "origem visual" para toda a grade de tiles
+            // Isso garante que o jogador esteja sempre visualmente centralizado dentro do tile "principal".
+            const playerX = playerBody.position.x; // Esta é a posição do jogador potencialmente envolvida
+            const playerZ = playerBody.position.z;
+            const visualOffsetX = Math.round(playerX / worldSize) * worldSize;
+            const visualOffsetZ = Math.round(playerZ / worldSize) * worldSize;
+
+            // Atualiza as posições das malhas do terreno com base na posição envolvida do jogador
+            streetMeshes.forEach(tile => {
+                tile.mesh.position.x = tile.offsetX - visualOffsetX;
+                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
+                tile.mesh.position.y = streetHeight / 2;
+                tile.mesh.quaternion.copy(streetBody.quaternion);
+            });
+            // A rua foi removida, então não há necessidade de atualizar roadMeshes.
+
+            // Atualiza as posições de todas as malhas visuais dos cubos
+            updateObjectVisuals(cubeBody, cubeMeshes, visualOffsetX, visualOffsetZ);
+            updateObjectVisuals(cubeBody2, cubeMeshes2, visualOffsetX, visualOffsetZ);
+            updateObjectVisuals(cubeBody3, cubeMeshes3, visualOffsetX, visualOffsetZ);
+
+            // Atualiza as posições de todas as malhas visuais dos blocos colocados
+            placedConstructionBodies.forEach((body, index) => {
+                // Cada corpo de bloco colocado agora tem apenas uma malha visual.
+                // Acessamos diretamente a malha no primeiro (e único) elemento do array de malhas para aquele corpo.
+                const meshToUpdate = placedConstructionMeshesArrays[index][0].mesh;
+                meshToUpdate.position.x = body.position.x + placedConstructionMeshesArrays[index][0].offsetX - visualOffsetX;
+                meshToUpdate.position.y = body.position.y;
+                meshToUpdate.position.z = body.position.z + placedConstructionMeshesArrays[index][0].offsetZ - visualOffsetZ;
+                meshToUpdate.quaternion.copy(body.quaternion); // Mantém a rotação
+            });
+
+
+            // Se um objeto estiver sendo segurado, atualiza a posição do grabberBody
+            if (pickedObjectBody && grabberConstraint) {
+                // Ensure pickedObjectBody is a valid CANNON.Body and has at least one shape
+                if (!pickedObjectBody.shapes || pickedObjectBody.shapes.length === 0) {
+                    console.error("Erro: Objeto agarrado inválido. A reiniciar o objeto agarrado.", pickedObjectBody);
+                    // Clean up and return to prevent further errors
+                    if (grabberConstraint) {
+                        world.removeConstraint(grabberConstraint);
+                        grabberConstraint = null;
+                    }
+                    // Restore the body to its original state (static/dynamic, mass)
+                    if (pickedObjectBody) { // Only try to restore if pickedObjectBody is not null/undefined
+                        pickedObjectBody.collisionResponse = true;
+                        pickedObjectBody.wakeUp();
+                        pickedObjectBody.allowSleep = true;
+                    }
+
+                    pickedObjectBody = null;
+                    pickedObjectMesh = null;
+                    return; // Exit early from animate for this frame
+                }
+
+                // For objects with multiple shapes, we need to find the overall bounding box or a representative dimension.
+                // For simplicity, for now, we'll assume a representative dimension or use the first shape's extents.
+                // A more robust solution would involve calculating the AABB of all shapes.
+                let pickedObjectHalfExtents;
+                if (pickedObjectBody.shapes[0] instanceof CANNON.Box) {
+                    pickedObjectHalfExtents = pickedObjectBody.shapes[0].halfExtents;
+                } else if (pickedObjectBody.shapes[0] instanceof CANNON.Sphere) {
+                    pickedObjectHalfExtents = new CANNON.Vec3(pickedObjectBody.shapes[0].radius, pickedObjectBody.shapes[0].radius, pickedObjectBody.shapes[0].radius);
+                } else if (pickedObjectBody.shapes[0] instanceof CANNON.Cylinder) { // NOVO: Lidar com cilindro
+                    const cylinderShape = pickedObjectBody.shapes[0];
+                    pickedObjectHalfExtents = new CANNON.Vec3(cylinderShape.radiusTop, cylinderShape.height / 2, cylinderShape.radiusTop);
+                }
+                else {
+                    // Fallback for other shapes, or calculate a more accurate bounding box
+                    pickedObjectHalfExtents = new CANNON.Vec3(0.5, 0.5, 0.5); // Default to a small box
+                }
+
+                const objectMaxHalfDimension = Math.max(
+                    pickedObjectHalfExtents.x,
+                    pickedObjectHalfExtents.y,
+                    pickedObjectHalfExtents.z
+                );
+
+                const heldObjectDistance = 2.5; // Distância da câmera ao objeto segurado
+                const epsilon = 0.001; // Pequeno buffer para evitar problemas de ponto flutuante
+
+                // Posição alvo desejada para o grabber (onde o objeto *quer* ir)
+                const desiredGrabberTarget = new THREE.Vector3();
+                camera.getWorldDirection(desiredGrabberTarget);
+                desiredGrabberTarget.multiplyScalar(heldObjectDistance);
+                desiredGrabberTarget.add(camera.position); // Adiciona a posição da CÂMERA
+
+                // Converte para CANNON.Vec3 para cálculos de física
+                const desiredGrabberTargetCannon = new CANNON.Vec3(desiredGrabberTarget.x, desiredGrabberTarget.y, desiredGrabberTarget.z);
+
+                // Calcula o vetor de movimento da posição atual do objeto agarrado para o alvo desejado
+                const movementVector = new CANNON.Vec3();
+                desiredGrabberTargetCannon.vsub(pickedObjectBody.position, movementVector);
+
+                const movementLength = movementVector.length();
+
+                if (movementLength > epsilon) { // Realiza o raycast apenas se houver movimento significativo
+                    const rayDirection = movementVector.unit(); // Direção normalizada
+                    const rayOrigin = new CANNON.Vec3().copy(pickedObjectBody.position);
+
+                    // O raio precisa ser longo o suficiente para cobrir o movimento mais o "raio" do objeto
+                    const rayLength = movementLength + objectMaxHalfDimension + epsilon;
+
+                    const rayTarget = new CANNON.Vec3();
+                    rayOrigin.vadd(rayDirection.scale(rayLength), rayTarget);
+
+                    const rayResult = new CANNON.RaycastResult();
+                    const rayOptions = {
+                        skipBackfaces: true,
+                        // Exclui o próprio objeto agarrado e o corpo do grabber do raycast
+                        callback: (hitResult) => {
+                            return hitResult.body !== pickedObjectBody && hitResult.body !== grabberBody;
+                        }
+                    };
+
+                    world.raycastClosest(rayOrigin, rayTarget, rayOptions, rayResult);
+
+                    if (rayResult.hasHit) {
+                        const hitPoint = rayResult.hitPointWorld;
+                        const hitNormal = rayResult.hitNormalWorld; // A normal aponta para fora do objeto atingido
+
+                        // Transforma a normal do mundo para o espaço local do objeto agarrado
+                        const localNormal = new CANNON.Vec3();
+                        pickedObjectBody.quaternion.conjugate().vmult(hitNormal, localNormal);
+
+                        // Calcula a extensão do objeto agarrado do seu centro até a sua face ao longo desta normal local
+                        // Isso dá a distância do centro do objeto agarrado até a sua face que estaria alinhada
+                        // com a superfície atingida.
+                        const extentAlongNormal =
+                            Math.abs(localNormal.x * pickedObjectHalfExtents.x) +
+                            Math.abs(localNormal.y * pickedObjectHalfExtents.y) +
+                            Math.abs(localNormal.z * pickedObjectHalfExtents.z);
+
+                        // Calcula a posição desejada para o centro do objeto agarrado
+                        // Deve estar no hitPoint, mais a extensão ao longo da normal,
+                        // movido ao longo da normal do mundo.
+                        const desiredPickedObjectCenter = new CANNON.Vec3();
+                        hitNormal.scale(extentAlongNormal + epsilon, desiredPickedObjectCenter); // Escala a normal pela extensão + epsilon
+                        desiredPickedObjectCenter.vadd(hitPoint, desiredPickedObjectCenter); // Adiciona ao hitPoint
+
+                        // Atualiza a posição alvo do grabber para esta posição ajustada
+                        desiredGrabberTargetCannon.copy(desiredPickedObjectCenter);
+                    }
+                }
+
+                // Garante que o objeto segurado não vá abaixo do nível do chão global
+                let currentGroundHeight = streetHeight; // Apenas o terreno de cob agora
+
+                // Calcula o ponto mais baixo atual do objeto em relação ao seu centro, considerando a rotação
+                const localDown = new CANNON.Vec3(0, -1, 0); // Direção local para baixo
+                const worldDown = new CANNON.Vec3();
+                pickedObjectBody.quaternion.vmult(localDown, worldDown);
+
+                // Projeta as semi-extensões na direção "para baixo" do mundo
+                const lowestPointOffset =
+                    Math.abs(worldDown.x * pickedObjectHalfExtents.x) +
+                    Math.abs(worldDown.y * pickedObjectHalfExtents.y) + // Use pickedObjectHalfExtents
+                    Math.abs(worldDown.z * pickedObjectHalfExtents.z);
+
+                const minObjectYFromGround = currentGroundHeight + lowestPointOffset + epsilon; // Adiciona epsilon para contato com o chão
+
+                desiredGrabberTargetCannon.y = Math.max(desiredGrabberTargetCannon.y, minObjectYFromGround);
+
+                // Impede que o objeto segurado entre no jogador (horizontalmente e para cima)
+                const minGrabDistance = currentPlayerRadius + objectMaxHalfDimension + epsilon; // Usa a dimensão máxima para colisão com o jogador
+
+                const playerToTarget = new CANNON.Vec3();
+                desiredGrabberTargetCannon.vsub(playerBody.position, playerToTarget);
+
+                const horizontalDistanceSq = playerToTarget.x * playerToTarget.x + playerToTarget.z * playerToTarget.z;
+                if (horizontalDistanceSq < minGrabDistance * minGrabDistance) {
+                    const horizontalDistance = Math.sqrt(horizontalDistanceSq);
+                    if (horizontalDistance > 0) {
+                        const angle = Math.atan2(playerToTarget.z, playerToTarget.x);
+                        const newX = playerBody.position.x + minGrabDistance * Math.cos(angle);
+                        const newZ = playerBody.position.z + minGrabDistance * Math.sin(angle);
+                        desiredGrabberTargetCannon.x = newX;
+                        desiredGrabberTargetCannon.z = newZ;
+                    }
+                }
+                // Também impede que ele vá abaixo da altura do jogador, se o jogador for mais baixo que o chão.
+                desiredGrabberTargetCannon.y = Math.max(desiredGrabberTargetCannon.y, playerBody.position.y - currentPlayerRadius + lowestPointOffset + epsilon);
+
+
+                grabberBody.position.copy(desiredGrabberTargetCannon);
+                // A restrição agora puxa o pickedObjectBody para o grabberBody, permitindo colisões.
+            }
+
+            // Determine the primary tool for visual feedback and ghost block logic
+            const primaryTool = beltItems[selectedSlotIndex]; // Usa o slot selecionado
+            // Declaração única das variáveis
+            let isPrimaryToolPlacing = false;
+            let isPrimaryToolDestroying = false;
+            let isPrimaryToolGrabbing = false;
+
+            if (primaryTool === null) { // Se o slot selecionado estiver vazio, a "mão" está ativa
+                isPrimaryToolGrabbing = true;
+            } else if (primaryTool.name === axeItemName || primaryTool.name === hammerItemName || primaryTool.name === stoneItemName) {
+                isPrimaryToolDestroying = true;
+            } else if (primaryTool.name === cobItemName || primaryTool.name === floorItemName || primaryTool.name === treeSaplingItemName || primaryTool.name === woodenPlankItemName || primaryTool.name === treeTrunkItemName) { // NOVO: Adiciona tronco de árvore
+                isPrimaryToolPlacing = true;
+                currentBlockType = primaryTool.name; // Define o tipo de bloco para o ghost mesh
+            }
+
+
+            // Lógica do ghost block para colocação e snapping
+            if (ghostBlockMesh) {
+                if (isPrimaryToolPlacing && !gamePaused) {
+                    ghostBlockMesh.visible = true; // Garante que o ghost block esteja visível
+
+                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                    const intersects = raycaster.intersectObjects(scene.children);
+
+                    let canPlace = false; // Declarar canPlace aqui
+                    let placementPosition = new THREE.Vector3();
+                    let tempPlacementQuaternion = new THREE.Quaternion(); // Usar um quaternion temporário
+
+                    // Declara manualRotationQuaternion aqui para que seja acessível
+                    const manualRotationQuaternion = new THREE.Quaternion().setFromEuler(
+                        new THREE.Euler(ghostBlockRotationX, ghostBlockRotationY, 0, 'YXZ') // Ordem YXZ para rotação
+                    );
+
+                    // Define as dimensões do bloco atual para o ghost mesh
+                    let currentGhostWidth, currentGhostHeight, currentGhostDepth;
+                    if (currentBlockType === 'cob') {
+                        currentGhostWidth = cobWidth;
+                        currentGhostHeight = cobHeight;
+                        currentGhostDepth = cobDepth;
+                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
+                    } else if (currentBlockType === 'piso') {
+                        currentGhostWidth = floorWidth;
+                        currentGhostHeight = floorHeight;
+                        currentGhostDepth = floorDepth;
+                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
+                    } else if (currentBlockType === 'tábuas') {
+                        currentGhostWidth = woodenPlankWidth;
+                        currentGhostHeight = woodenPlankHeight;
+                        currentGhostDepth = woodenPlankDepth;
+                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
+                    } else if (currentBlockType === 'muda_arvore') {
+                        // For ghost block, use the base dimensions of the sapling stage
+                        const saplingBaseData = treeStages['muda'];
+                        currentGhostWidth = Math.max(saplingBaseData.physics.trunk.width, saplingBaseData.physics.leaves.width);
+                        currentGhostDepth = Math.max(saplingBaseData.physics.trunk.depth, saplingBaseData.physics.leaves.depth);
+                        currentGhostHeight = saplingBaseData.overallPhysicsHeight;
+                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth); // Usar BoxGeometry para o ghost de árvore
+                    } else if (currentBlockType === 'tronco_arvore') { // NOVO: Geometria do ghost para tronco
+                        currentGhostWidth = trunkRadius * 2;
+                        currentGhostHeight = trunkHeight;
+                        currentGhostDepth = trunkRadius * 2;
+                        ghostBlockMesh.geometry = new THREE.CylinderGeometry(trunkRadius, trunkRadius, trunkHeight, trunkSegments);
+                    }
+                    // Update ghost block geometry
+                    // ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth); // Removido para lidar individualmente
+
+
+                    // Lista de todos os corpos que podem ser base para colocação
+                    const allPlaceableSurfaces = [streetBody, ...placedConstructionBodies];
+
+                    for (let i = 0; i < intersects.length; i++) {
+                        const intersectedObject = intersects[i].object;
+                        const intersectedBody = intersectedObject.userData.physicsBody;
+
+                        if (intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) {
+                            // Verifica a distância máxima para colocação
+                            if (intersects[i].distance <= pickUpDistance + 1) { // Um pouco mais longe que pegar
+                                // Ponto de interseção
+                                const hitPoint = intersects[i].point;
+                                // Normal da superfície atingida
+                                const hitNormal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
+
+                                // Calcula a posição do centro do bloco acima da superfície
+                                placementPosition.copy(hitPoint);
+                                placementPosition.add(hitNormal.multiplyScalar(currentGhostHeight / 2));
+
+                                // Alinha a rotação do bloco com a normal da superfície
+                                const surfaceAlignmentQuaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), hitNormal);
+
+                                // Combina as rotações: primeiro o alinhamento da superfície, depois a rotação manual
+                                tempPlacementQuaternion.copy(surfaceAlignmentQuaternion).multiply(manualRotationQuaternion);
+
+                                // Verifica se a posição do ghost block não colide com o jogador
+                                const playerPos = new THREE.Vector3().copy(playerBody.position);
+                                playerPos.y += currentPlayerRadius; // Centro da esfera do jogador
+
+                                const distanceToPlayer = placementPosition.distanceTo(playerPos);
+                                const minPlayerDistance = currentPlayerRadius + (currentGhostHeight / 2) + 0.1; // Raio do jogador + metade da altura do bloco + buffer
+
+                                if (distanceToPlayer > minPlayerDistance) {
+                                    canPlace = true;
+                                    // Se for uma muda de árvore, verifica a distância das outras árvores
+                                    if (currentBlockType === 'muda_arvore') {
+                                        for (const existingBody of placedConstructionBodies) {
+                                            // Verifica se o corpo existente é uma árvore em qualquer estágio de crescimento
+                                            // (muda, media ou arvore_adulta)
+                                            if (existingBody.userData.type === 'muda_arvore' || existingBody.userData.growthStage) {
+                                                const existingTreePos = new THREE.Vector3().copy(existingBody.position);
+                                                const distanceToExistingTree = placementPosition.distanceTo(existingTreePos);
+                                                // AQUI: A regra para não colocar mudas perto de árvores grandes
+                                                if (distanceToExistingTree < minTreePlacementDistance) {
+                                                    canPlace = false;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (canPlace) {
+                                        break; // Encontrou uma posição válida, sai do loop
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let snapped = false;
+                    let closestSnapPosition = new THREE.Vector3();
+                    let closestSnapQuaternion = new THREE.Quaternion(); // Initialize a quaternion for snapping
+                    let minSnapDistance = Infinity;
+
+                    // Tenta fazer o snapping com blocos existentes (cobs e pisos)
+                    const allExistingBlocks = [...placedConstructionBodies];
+                    for (const existingBlockBody of allExistingBlocks) {
+                        const existingBlockPos = existingBlockBody.position;
+                        const existingBlockQuat = existingBlockBody.quaternion; // Rotação do bloco existente
+                        const existingBlockDimensions = existingBlockBody.userData.dimensions;
+
+                        // Converte CANNON.Vec3 para THREE.Vector3 para cálculos de distância
+                        const existingBlockPosThree = new THREE.Vector3(existingBlockPos.x, existingBlockPos.y, existingBlockPos.z);
+
+                        // Verifica cada face do bloco existente para um possível snap
+                        const localAxes = [
+                            new CANNON.Vec3(1, 0, 0), // X
+                            new CANNON.Vec3(-1, 0, 0), // -X
+                            new CANNON.Vec3(0, 1, 0), // Y (topo/fundo)
+                            new CANNON.Vec3(0, -1, 0), // -Y
+                            new CANNON.Vec3(0, 0, 1), // Z
+                            new CANNON.Vec3(0, 0, -1)  // -Z
+                        ];
+
+                        const existingHalfExtents = new CANNON.Vec3(
+                            existingBlockDimensions.width / 2,
+                            existingBlockDimensions.height / 2,
+                            existingBlockDimensions.depth / 2
+                        );
+                        const currentGhostHalfExtents = new CANNON.Vec3(
+                            currentGhostWidth / 2,
+                            currentGhostHeight / 2,
+                            currentGhostDepth / 2
+                        );
+
+                        for (let i = 0; i < localAxes.length; i++) {
+                            const localAxis = localAxes[i];
+                            const worldAxis = new CANNON.Vec3();
+                            existingBlockQuat.vmult(localAxis, worldAxis);
+
+                            let snapPointCannon = new CANNON.Vec3();
+                            let tempOffsetDistance;
+
+                            // Calculate the primary offset along the worldAxis
+                            if (Math.abs(localAxis.x) > 0.5) tempOffsetDistance = existingHalfExtents.x + currentGhostHalfExtents.x;
+                            else if (Math.abs(localAxis.y) > 0.5) tempOffsetDistance = existingHalfExtents.y + currentGhostHalfExtents.y;
+                            else tempOffsetDistance = existingHalfExtents.z + currentGhostHalfExtents.z;
+
+                            existingBlockPos.vadd(worldAxis.scale(tempOffsetDistance), snapPointCannon);
+
+                            // Special handling for snapping to the side of a block (X or Z axis of localAxis)
+                            // This means the worldAxis will have a very small Y component
+                            if (Math.abs(localAxis.y) < 0.1) { // If snapping to a horizontal face (side, not top/bottom)
+                                // Align the bottom of the ghost block with the bottom of the existing block
+                                snapPointCannon.y = existingBlockPos.y - existingHalfExtents.y + currentGhostHalfExtents.y;
+                            }
+
+                            const snapPointThree = new THREE.Vector3(snapPointCannon.x, snapPointCannon.y, snapPointCannon.z);
+                            const currentDistance = placementPosition.distanceTo(snapPointThree);
+
+                            if (currentDistance < snappingThreshold && currentDistance < minSnapDistance) {
+                                minSnapDistance = currentDistance;
+                                closestSnapPosition.copy(snapPointThree);
+                                closestSnapQuaternion.copy(existingBlockQuat); // Capture the existing block's quaternion
+                                snapped = true;
+                            }
+                        }
+                    }
+
+                    if (canPlace) { // Se a posição base é válida
+                        if (snapped) {
+                            ghostBlockMesh.position.copy(closestSnapPosition); // Aplica a posição de snap
+                            // Aplica a rotação manual em cima da rotação do bloco encaixado
+                            const snappedBaseQuaternion = new THREE.Quaternion().copy(closestSnapQuaternion);
+                            ghostBlockMesh.quaternion.copy(snappedBaseQuaternion.multiply(manualRotationQuaternion));
+                            ghostBlockMesh.material.color.setHex(0x00ff00); // Verde para indicar que pode ser colocado
+                        } else {
+                            ghostBlockMesh.position.copy(placementPosition); // Caso contrário, usa a posição normal
+                            ghostBlockMesh.quaternion.copy(tempPlacementQuaternion); // Aplica a rotação combinada de superfície e manual
+                            ghostBlockMesh.material.color.setHex(0x00ff00); // Verde para indicar que pode ser colocado
+                        }
+                    } else {
+                        ghostBlockMesh.visible = true; // Mantém visível para mostrar a cor vermelha
+                        ghostBlockMesh.material.color.setHex(0xff0000); // Vermelho para inválido
+                        ghostBlockMesh.position.copy(placementPosition); // Mantém a posição para que o usuário saiba onde está tentando colocar
+                        ghostBlockMesh.quaternion.copy(tempPlacementQuaternion); // Mantém a rotação
+                    }
+                } else {
+                    ghostBlockMesh.visible = false; // Garante que o ghost block esteja oculto se não estiver no modo de colocação
+                }
+            }
+
+
+            // Lógica de agachamento
+            if (keysPressed['c'] && !isCrouching) {
+                isCrouching = true;
+                // Remove a forma original, adiciona a forma de agachamento
+                playerBody.removeShape(originalPlayerShape);
+                playerBody.addShape(crouchPlayerShape);
+
+                // Ajusta a posição do corpo do jogador para manter a base no mesmo nível
+                // Ajuste baseado na diferença de raio das esferas
+                playerBody.position.y -= (originalPlayerShape.radius - crouchPlayerShape.radius);
+
+                cameraEyeLevelOffset = crouchPlayerShape.radius; // Câmera no centro da esfera agachada
+                playerBody.velocity.y = 0; // Para qualquer movimento vertical imediatamente ao agachar
+                playerBody.wakeUp(); // Garante que o corpo esteja ativo após a mudança de forma
+            } else if (!keysPressed['c'] && isCrouching) {
+                // Levanta-se diretamente quando 'C' é solto e o personagem está agachado
+                isCrouching = false;
+                // Remove a forma de agachamento, adiciona a forma original
+                playerBody.removeShape(crouchPlayerShape);
+                playerBody.addShape(originalPlayerShape);
+
+                // Ajusta a posição do corpo do jogador para manter a base no mesmo nível
+                // Ajuste baseado na diferença de raio das esferas
+                playerBody.position.y += (originalPlayerShape.radius - crouchPlayerShape.radius);
+
+                cameraEyeLevelOffset = originalPlayerShape.radius; // Câmera no centro da esfera original
+                playerBody.velocity.y = 0; // Para qualquer movimento vertical imediatamente ao levantar
+                playerBody.wakeUp(); // Garante que o corpo esteja ativo após a mudança de forma
+            }
+
+            // Atualiza a posição da câmera para a posição do corpo de física do jogador
+            camera.position.copy(playerBody.position);
+            camera.position.y += cameraEyeLevelOffset;
+
+            // Atualiza a posição e o alvo da luz direcional para seguir a câmera/jogador
+            directionalLight.position.copy(camera.position);
+            directionalLight.position.x += 10; // Offset da câmera para a fonte de luz
+            directionalLight.position.y += 15;
+            directionalLight.position.z += 10;
+            directionalLight.target.position.copy(camera.position); // Faz com que o alvo da luz seja a posição da câmera
+            directionalLight.target.updateMatrixWorld(); // Atualiza a matriz do alvo
+
+            // Sincroniza a rotação horizontal do corpo do jogador com a rotação da câmera
+            // Para uma esfera, a rotação fixa é menos crítica, mas mantida para consistência com a câmera
+            playerBody.quaternion.setFromEuler(0, camera.rotation.y, 0);
+
+            // Lógica de movimento do jogador com base nas teclas pressionadas
+            let currentMoveSpeed = walkSpeed; // Começa com a velocidade de caminhada
+            if (keysPressed['shift']) { // Verifica se Shift está pressionado
+                currentMoveSpeed *= runSpeedMultiplier; // Aplica o multiplicador de corrida
+            }
+            if (isCrouching) { // Aplica a redução de velocidade ao agachar
+                currentMoveSpeed *= crouchSpeedMultiplier;
+            }
+
+            const forward = new THREE.Vector3();
+            const right = new THREE.Vector3();
+            const movementVector = new THREE.Vector3(0, 0, 0);
+
+            camera.getWorldDirection(forward);
+            forward.y = 0;
+            forward.normalize();
+            right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+            if (keysPressed['w']) {
+                movementVector.add(forward);
+            }
+            if (keysPressed['s']) {
+                movementVector.sub(forward);
+            }
+            if (keysPressed['a']) {
+                movementVector.sub(right);
+            }
+            if (keysPressed['d']) {
+                movementVector.add(right);
+            }
+
+            if (movementVector.lengthSq() > 0) {
+                const normalizedMovementVector = movementVector.clone().normalize();
+
+                // Calculate desired velocity
+                const desiredVelocity = new CANNON.Vec3(
+                    normalizedMovementVector.x * currentMoveSpeed,
+                    playerBody.velocity.y, // Maintain current vertical velocity
+                    normalizedMovementVector.z * currentMoveSpeed
+                );
+
+                // Calculate velocity difference
+                const velocityDifference = new CANNON.Vec3();
+                desiredVelocity.vsub(playerBody.velocity, velocityDifference);
+
+                // Apply impulse to reach desired velocity
+                // Impulse = mass * velocity_difference
+                const impulse = new CANNON.Vec3(
+                    playerBody.mass * velocityDifference.x,
+                    playerBody.mass * velocityDifference.y,
+                    playerBody.mass * velocityDifference.z
+                );
+                playerBody.applyImpulse(impulse, playerBody.position);
+
+                playerBody.allowSleep = false; // Player is moving, keep active
+            } else {
+                // If no movement keys are pressed, apply a small damping to stop horizontal movement
+                playerBody.velocity.x *= 0.9;
+                playerBody.velocity.z *= 0.9;
+                // Allow the player to "sleep" (physics optimization) if stopped and not holding an object
+                if (pickedObjectBody === null && Math.abs(playerBody.velocity.y) < 0.1) {
+                    playerBody.allowSleep = true;
+                } else {
+                    playerBody.allowSleep = false; // Keep active if holding object or falling/jumping
+                }
+            }
+
+
+            // Lógica de subida de degraus (mantida, mas pode precisar de ajustes finos com o novo movimento)
+            const stepClimbHeight = 0.3;
+            const rayLength = currentPlayerRadius + 0.1;
+
+            const playerHorizontalForwardCannon = new CANNON.Vec3(playerBody.velocity.x, 0, playerBody.velocity.z);
+            if (playerHorizontalForwardCannon.length() > 0) {
+                playerHorizontalForwardCannon.normalize();
+            }
+
+            const rayOriginLow = new CANNON.Vec3(
+                playerBody.position.x + playerHorizontalForwardCannon.x * rayLength,
+                playerBody.position.y - currentPlayerRadius + 0.05, // Ajusta para a base da esfera
+                playerBody.position.z + playerHorizontalForwardCannon.z * rayLength
+            );
+            const rayTargetLow = new CANNON.Vec3(
+                rayOriginLow.x,
+                rayOriginLow.y - 0.1,
+                rayOriginLow.z
+            );
+
+            let hitLow = false;
+            const rayResultStep = new CANNON.RaycastResult(); // Usar uma nova variável para evitar conflito
+            // Verifica colisão com terreno (rua), estrada, cubos e blocos
+            world.raycastAny(rayOriginLow, rayTargetLow, {}, rayResultStep);
+            // A lista de corpos "chão" para subida de degraus
+            const stepClimbGroundBodies = [streetBody, cubeBody, cubeBody2, cubeBody3, ...placedConstructionBodies];
+            if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
+                hitLow = true;
+            }
+
+            const rayOriginHigh = new CANNON.Vec3(
+                playerBody.position.x + playerHorizontalForwardCannon.x * rayLength,
+                playerBody.position.y - currentPlayerRadius + stepClimbHeight + 0.05, // Ajusta para a base da esfera
+                rayOriginLow.z + playerHorizontalForwardCannon.z * rayLength
+            );
+            const rayTargetHigh = new CANNON.Vec3(
+                rayOriginHigh.x,
+                rayOriginHigh.y - 0.1,
+                rayOriginHigh.z
+            );
+
+            let hitHigh = false;
+            rayResultStep.reset(); // Resetar para o próximo raycast
+            world.raycastAny(rayOriginHigh, rayTargetHigh, {}, rayResultStep);
+            if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
+                hitHigh = true;
+            }
+
+            if (hitLow && !hitHigh && Math.abs(playerBody.velocity.y) < 0.1) {
+                const obstacleHeight = rayOriginLow.y - rayResultStep.hitPointWorld.y;
+                if (obstacleHeight > 0.01 && obstacleHeight <= stepClimbHeight) {
+                    playerBody.velocity.y = 2;
+                }
+            }
+
+            // Lógica de crescimento da muda de árvore
+            for (let i = placedConstructionBodies.length - 1; i >= 0; i--) {
+                const blockBody = placedConstructionBodies[i];
+                const blockMeshArray = placedConstructionMeshesArrays[i];
+                const treeGroup = blockMeshArray[0].mesh; // This is the THREE.Group
+
+                if (blockBody.userData.type === 'muda_arvore' && !blockBody.userData.isFullyGrown) {
+                    const currentGrowthStageName = blockBody.userData.growthStage;
+                    const currentBaseStageData = treeStages[currentGrowthStageName];
+                    const currentRandomizedData = blockBody.userData.randomizedDimensions;
+
+                    let nextGrowthStageName = null;
+                    if (currentGrowthStageName === 'muda' && world.time - blockBody.userData.growthStartTime >= currentBaseStageData.growthTime) {
+                        nextGrowthStageName = 'media';
+                    } else if (currentGrowthStageName === 'media' && world.time - blockBody.userData.growthStartTime >= currentBaseStageData.growthTime) {
+                        nextGrowthStageName = 'arvore_adulta';
+                    }
+
+                    if (nextGrowthStageName) {
+                        console.log(`Árvore crescendo de ${currentGrowthStageName} para ${nextGrowthStageName} no tempo do mundo: ${world.time.toFixed(2)}`); // Log para depuração
+                        const nextBaseStageData = treeStages[nextGrowthStageName];
+                        const nextRandomizedData = randomizeTreeDimensions(nextBaseStageData); // Randomize for the next stage
+
+                        // Get current overall physics height from user data
+                        const oldOverallPhysicsHeight = currentRandomizedData.overallPhysicsHeight;
+
+                        // Clear existing shapes from the body
+                        while (blockBody.shapes.length > 0) {
+                            blockBody.removeShape(blockBody.shapes[0]);
+                        }
+
+                        // Add new trunk physics shape
+                        const trunkPhysics = nextRandomizedData.physics.trunk;
+                        const trunkShape = new CANNON.Box(new CANNON.Vec3(trunkPhysics.width / 2, trunkPhysics.height / 2, trunkPhysics.depth / 2));
+                        blockBody.addShape(trunkShape, new CANNON.Vec3(0, trunkPhysics.yOffset, 0));
+
+                        // Add new leaves physics shape
+                        const leavesPhysics = nextRandomizedData.physics.leaves;
+                        const leavesShape = new CANNON.Box(new CANNON.Vec3(leavesPhysics.width / 2, leavesPhysics.height / 2, leavesPhysics.depth / 2));
+                        blockBody.addShape(leavesShape, new CANNON.Vec3(0, leavesPhysics.yOffset, 0));
+
+                        // Adjust position to keep the bottom of the block on the ground
+                        const newOverallPhysicsHeight = nextRandomizedData.overallPhysicsHeight;
+                        blockBody.position.y += (newOverallPhysicsHeight - oldOverallPhysicsHeight) / 2;
+
+                        // Update Three.js mesh (the group)
+                        treeGroup.children.forEach(child => child.geometry.dispose()); // Dispose old geometries
+                        treeGroup.remove(...treeGroup.children); // Remove all children
+
+                        // Create new trunk and leaves for the next stage
+                        const trunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
+                        const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
+                        trunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
+                        trunkMesh.castShadow = true;
+                        trunkMesh.receiveShadow = true;
+                        treeGroup.add(trunkMesh);
+
+                        const leavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
+                        const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
+                        leavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
+                        leavesMesh.castShadow = true;
+                        leavesMesh.receiveShadow = true;
+                        treeGroup.add(leavesMesh);
+
+                        // Update userData
+                        blockBody.userData.dimensions = {
+                            width: nextRandomizedData.physics.trunk.width, // Store trunk width as a representative
+                            height: newOverallPhysicsHeight, // Store the new overall height
+                            depth: nextRandomizedData.physics.trunk.depth // Store trunk depth as a representative
+                        };
+                        blockBody.userData.growthStage = nextGrowthStageName;
+                        blockBody.userData.growthStartTime = world.time;
+                        blockBody.userData.randomizedDimensions = nextRandomizedData; // Update randomized dimensions
+
+                        if (nextGrowthStageName === 'arvore_adulta') {
+                            blockBody.userData.isFullyGrown = true;
+                            console.log('Árvore totalmente crescida!');
+                        }
+                        blockBody.wakeUp(); // Ensure the body is active after shape changes
+                    }
+                }
+            }
+
+
+            // --- Lógica de mudança de cor da mira ---
+            let crosshairColor = 'white'; // Cor padrão
+
+            // Determine the active tool based on the left slot (primary action)
+            const primaryToolForCrosshair = beltItems[selectedSlotIndex]; // Usa o slot selecionado
+            // Declaração única das variáveis
+            isPrimaryToolPlacing = false;
+            let isPrimaryToolApplyingTexture = false;
+            isPrimaryToolDestroying = false;
+            isPrimaryToolGrabbing = false;
+
+            if (primaryToolForCrosshair === null) { // Se o slot selecionado estiver vazio, a "mão" está ativa
+                isPrimaryToolGrabbing = true;
+            } else if (primaryToolForCrosshair.name === textureApplicatorItemName) {
+                isPrimaryToolApplyingTexture = true;
+            } else if (primaryToolForCrosshair.name === axeItemName || primaryToolForCrosshair.name === hammerItemName || primaryToolForCrosshair.name === stoneItemName) {
+                isPrimaryToolDestroying = true;
+            } else if (primaryToolForCrosshair.name === cobItemName || primaryToolForCrosshair.name === floorItemName || primaryToolForCrosshair.name === treeSaplingItemName || primaryToolForCrosshair.name === woodenPlankItemName || primaryToolForCrosshair.name === treeTrunkItemName) { // NOVO: Adiciona tronco de árvore
+                isPrimaryToolPlacing = true;
+                currentBlockType = primaryToolForCrosshair.name; // Define o tipo de bloco para o ghost mesh
+            }
+
+            // Adjust crosshair color based on validity for placing/destroying/grabbing
+            if (document.pointerLockElement === renderer.domElement && !pickedObjectBody && !gamePaused) {
+                if (isPrimaryToolPlacing) {
+                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                    const intersects = raycaster.intersectObjects(scene.children);
+                    let canPlace = false; // Declarar canPlace aqui
+                    let placementPosition = new THREE.Vector3();
+                    let tempPlacementQuaternion = new THREE.Quaternion(); // Usar um quaternion temporário
+                    let currentGhostHeight, currentGhostWidth, currentGhostDepth;
+
+                    if (currentBlockType === 'cob') {
+                        currentGhostWidth = cobWidth;
+                        currentGhostHeight = cobHeight;
+                        currentGhostDepth = cobDepth;
+                    } else if (currentBlockType === 'piso') {
+                        currentGhostWidth = floorWidth;
+                        currentGhostHeight = floorHeight;
+                        currentGhostDepth = floorDepth;
+                    } else if (currentBlockType === 'tábuas') {
+                        currentGhostWidth = woodenPlankWidth;
+                        currentGhostHeight = woodenPlankHeight;
+                        currentGhostDepth = woodenPlankDepth;
+                    } else if (currentBlockType === 'muda_arvore') {
+                        const saplingBaseData = treeStages['muda'];
+                        currentGhostWidth = Math.max(saplingBaseData.physics.trunk.width, saplingBaseData.physics.leaves.width);
+                        currentGhostDepth = Math.max(saplingBaseData.physics.trunk.depth, saplingBaseData.physics.leaves.depth);
+                        currentGhostHeight = saplingBaseData.overallPhysicsHeight;
+                    } else if (currentBlockType === 'tronco_arvore') { // NOVO: Altura do ghost para tronco
+                        currentGhostWidth = trunkRadius * 2;
+                        currentGhostHeight = trunkHeight;
+                        currentGhostDepth = trunkRadius * 2;
+                    }
+
+                    for (let i = 0; i < intersects.length; i++) {
+                        const intersectedObject = intersects[i].object;
+                        const intersectedBody = intersectedObject.userData.physicsBody;
+                        const allPlaceableSurfaces = [streetBody, ...placedConstructionBodies];
+
+                        if (intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) {
+                            if (intersects[i].distance <= pickUpDistance + 1) {
+                                const hitPoint = intersects[i].point;
+                                const hitNormal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
+                                placementPosition.copy(hitPoint);
+                                placementPosition.add(hitNormal.multiplyScalar(currentGhostHeight / 2));
+
+                                const playerPos = new THREE.Vector3().copy(playerBody.position);
+                                playerPos.y += currentPlayerRadius;
+
+                                const distanceToPlayer = placementPosition.distanceTo(playerPos);
+                                const minPlayerDistance = currentPlayerRadius + (currentGhostHeight / 2) + 0.1;
+
+                                if (distanceToPlayer > minPlayerDistance) {
+                                    canPlace = true;
+                                    // Se for uma muda de árvore, verifica a distância das outras árvores (incluindo as adultas)
+                                    if (currentBlockType === 'muda_arvore') {
+                                        for (const existingBody of placedConstructionBodies) {
+                                            // Verifica se o corpo existente é uma árvore em qualquer estágio de crescimento
+                                            // (muda, media ou arvore_adulta)
+                                            if (existingBody.userData.type === 'muda_arvore' || existingBody.userData.growthStage) {
+                                                const existingTreePos = new THREE.Vector3().copy(existingBody.position);
+                                                const distanceToExistingTree = placementPosition.distanceTo(existingTreePos);
+                                                // AQUI: A regra para não colocar mudas perto de árvores grandes
+                                                if (distanceToExistingTree < minTreePlacementDistance) {
+                                                    canPlace = false;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (canPlace) break;
+                                }
+                            }
+                        }
+                    }
+                    crosshairColor = canPlace ? 'lime' : 'red';
+                } else if (isPrimaryToolApplyingTexture) {
+                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                    const groundMeshes = streetMeshes.map(item => item.mesh);
+                    const intersects = raycaster.intersectObjects(groundMeshes, false);
+                    let canApply = false;
+                    if (intersects.length > 0) {
+                        // Se houver qualquer interseção com o chão, podemos aplicar.
+                        canApply = true;
+                    }
+                    crosshairColor = canApply ? 'lime' : 'white';
+                } else if (isPrimaryToolDestroying) {
+                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                    const intersects = raycaster.intersectObjects(scene.children, true);
+                    let canDestroy = false;
+                    for (let i = 0; i < intersects.length; i++) {
+                        if (intersects[i].distance > destroyDistance) continue;
+                        
+                        let intersectedObject = intersects[i].object;
+
+                        // Check for patches
+                        if (intersectedObject.userData && intersectedObject.userData.isDestructible && intersectedObject.userData.type === 'patch') {
+                            canDestroy = true;
+                            break;
+                        }
+
+                        // Check for blocks with physics bodies
+                        let intersectedBody = null;
+                        let currentObject = intersectedObject;
+                        while (currentObject) {
+                            if (currentObject.userData && currentObject.userData.physicsBody) {
+                                intersectedBody = currentObject.userData.physicsBody;
+                                if (intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible) {
+                                    canDestroy = true;
+                                }
+                                break;
+                            }
+                            currentObject = currentObject.parent;
+                        }
+
+                        if (canDestroy) break;
+                    }
+                    crosshairColor = canDestroy ? 'red' : 'white';
+                } else if (isPrimaryToolGrabbing) {
+                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                    const intersects = raycaster.intersectObjects(scene.children);
+                    let objectInRange = false;
+                    const aimablePickableBodies = [cubeBody, cubeBody2, cubeBody3];
+
+                    for (let i = 0; i < intersects.length; i++) {
+                        if (intersects[i].object.userData.physicsBody &&
+                            aimablePickableBodies.includes(intersects[i].object.userData.physicsBody)) {
+                            if (intersects[i].distance <= pickUpDistance) {
+                                objectInRange = true;
+                                break;
+                            }
+                        }
+                    }
+                    crosshairColor = objectInRange ? 'gold' : 'white';
+                } else {
+                    crosshairColor = 'white';
+                }
+            }
+            crosshairElement.style.setProperty('--crosshair-color', crosshairColor);
+
+            // Update ghostBlockMesh visibility and geometry
+            if (ghostBlockMesh) {
+                if (isPrimaryToolPlacing && !gamePaused) {
+                    ghostBlockMesh.visible = true;
+                    // Set color based on canPlace (which is determined by crosshair logic)
+                    ghostBlockMesh.material.color.setHex(crosshairColor === 'lime' ? 0x00ff00 : 0xff0000);
+                } else {
+                    ghostBlockMesh.visible = false;
+                }
+            }
+
+            // Update smoke particles
+            for (let i = smokeParticles.length - 1; i >= 0; i--) {
+                const particle = smokeParticles[i];
+                particle.userData.lifetime -= 1 / 60; // Assuming 60 FPS
+                if (particle.userData.lifetime <= 0) {
+                    scene.remove(particle);
+                    smokeParticles.splice(i, 1);
+                } else {
+                    particle.position.add(particle.userData.velocity.clone().multiplyScalar(1 / 60));
+                    particle.material.opacity = particle.userData.lifetime; // Fade out
+                    particle.scale.addScalar(0.01); // Grow slightly
+                }
+            }
+
+            // Renderiza a cena
+            renderer.render(scene, camera);
+            // Log para depuração: Mostra os corpos de construção colocados
+            // console.log("Corpos de construção colocados (animate):", placedConstructionBodies.map(b => ({ id: b.id, type: b.userData.type, position: b.position })));
+        }
+
+        // Função para iniciar o jogo
+        function startGame() {
+            document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
+            init(); // Inicializa os componentes do jogo
+            animate(); // Inicia o loop de animação
+            // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
+            if (menuIconButton) {
+                menuIconButton.style.display = 'flex'; // Mostra o botão do menu ao iniciar o jogo
+            }
+            if (inventoryBeltElement) {
+                inventoryBeltElement.style.visibility = 'visible'; // Mostra o cinto de inventário ao iniciar o jogo
+                inventoryBeltElement.style.opacity = '1';
+            }
+        }
+
+        // Listener de evento para o botão "Jogar"
+        document.getElementById('startButton').addEventListener('click', startGame);
+
+        // Não há necessidade de window.onload aqui, pois startGame será chamado pelo clique do botão
+    </script>
+</body>
+</html>
+
