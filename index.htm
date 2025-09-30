@@ -342,7 +342,7 @@
         <button id="resumeButton">Voltar ao Jogo</button>
         <button id="exitGameButton">Sair do Jogo</button>
     </div>
-    
+
     <div id="progressContainer">
         <div id="progressBar"></div>
     </div>
@@ -405,7 +405,7 @@
         let distanceToPickedObject = 5; // Declarada globalmente para resolver o ReferenceError
         const pickUpDistance = 3.0; // Distância máxima para pegar um objeto
         const destroyDistance = 5.0; // Distância máxima para destruir um objeto
-        
+
         // NOVO: Variáveis para o sistema de destruição progressiva
         let isDestroying = false;
         let destroyProgress = 0;
@@ -437,7 +437,7 @@
         const worldSize = 100; // Dobrado de 50 para 100
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
-        const streetHeight = cobSize; 
+        const streetHeight = cobSize;
         const roadWidth = 10; // Largura da estrada
         const roadHeight = 0.2; // Espessura da estrada
         const numTiles = 3; // Para uma grade 3x3 de tiles visíveis (e cubos)
@@ -498,7 +498,7 @@
         const hammerItemName = 'martelo'; // Nome do item de martelo no inventário
         const stoneItemName = 'pedra'; // NOVO: Nome do item de pedra no inventário
         const textureApplicatorItemName = 'pincel'; // FERRAMENTA RENOMEADA
-        
+
         // NOVO: Variáveis para o sistema de colocação de blocos (Cob, Piso, Muda de Árvore, Tronco de Árvore, Tábuas)
         const cobItemName = 'cob'; // Nome do item de cob no inventário
         const floorItemName = 'piso'; // Nome do item de piso no inventário
@@ -524,14 +524,14 @@
         const floorDepth = cobSize; // Profundidade do piso (now equal to cob)
         const initialFloorMass = 100; // Massa para os pisos
         const floorDurability = 1.0; // Durabilidade do piso em segundos
-        
+
         // Dimensões da tábua de madeira
         const woodenPlankWidth = cobWidth;
         const woodenPlankHeight = 0.1;
         const woodenPlankDepth = cobSize;
         const initialWoodenPlankMass = 50;
         const woodenPlankDurability = 0.5; // Durabilidade da tábua em segundos
-        
+
         // Dimensões da muda de árvore
         const initialTreeSaplingMass = 10; // Massa para as mudas de árvore (leve)
         const treeSaplingDurability = 1.5; // Durabilidade da muda em segundos
@@ -563,7 +563,7 @@
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
         const textureApplicatorImageURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Ícone para o pincel
         const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Textura de pedra para aplicar
-        
+
         // Global variables for materials
         let cobMaterialMesh;
         let floorMaterialMesh;
@@ -647,14 +647,22 @@
             randomized.visual.leaves.radius *= leavesRadiusFactor;
 
             // Recalculate yOffsets and overallPhysicsHeight based on randomized dimensions
-            // Assuming trunk base is at y = -trunk.height/2 relative to group center
-            // And leaves center is above trunk top
-            const trunkTopVisual = randomized.visual.trunk.height / 2;
-            const leavesBottomVisual = trunkTopVisual; // Leaves start where trunk ends visually
-            const groupHeightVisual = randomized.visual.trunk.height + (randomized.visual.leaves.radius * 2); // Trunk height + leaves diameter
+            const trunkHeightVisual = randomized.visual.trunk.height;
+            const leavesRadiusVisual = randomized.visual.leaves.radius;
 
-            randomized.visual.trunk.yOffsetInGroup = (randomized.visual.trunk.height / 2) - (groupHeightVisual / 2);
-            randomized.visual.leaves.yOffsetInGroup = (leavesBottomVisual + randomized.visual.leaves.radius) - (groupHeightVisual / 2);
+            // The visual group's total height is the trunk plus the leaves' diameter.
+            const groupHeightVisual = trunkHeightVisual + (leavesRadiusVisual * 2);
+
+            // Position the trunk so its bottom aligns with the group's bottom.
+            // The group is centered, so its bottom is at -groupHeight/2. The trunk's center
+            // is then placed at -groupHeight/2 + trunkHeight/2.
+            randomized.visual.trunk.yOffsetInGroup = (trunkHeightVisual / 2) - (groupHeightVisual / 2);
+
+            // Position the leaves so their center is on top of the trunk's top.
+            // The trunk's top is at trunk.yOffset + trunk.height/2.
+            // The leaves' center should be at that position, plus their radius.
+            const trunkTopY = randomized.visual.trunk.yOffsetInGroup + (trunkHeightVisual / 2);
+            randomized.visual.leaves.yOffsetInGroup = trunkTopY + leavesRadiusVisual;
 
             // For physics, approximate the overall height for positioning
             const trunkTopPhysics = randomized.physics.trunk.height / 2;
@@ -982,10 +990,10 @@
                     // Troca ou move
                     let sourceInventory = sourceLocation === 'belt' ? beltItems : backpackItems;
                     let targetInventory = targetLocation === 'belt' ? beltItems : backpackItems;
-                    
+
                     // Coloca o item de origem no destino
-                    targetInventory[targetIndex] = sourceItem; 
-                    
+                    targetInventory[targetIndex] = sourceItem;
+
                     // Coloca o item de destino de volta na origem (pode ser nulo)
                     if (sourceLocation === 'belt' && sourceIndex === 0) {
                         // Trata o caso especial onde a mão esquerda (slot 0) recebe o item da mochila
@@ -1521,7 +1529,7 @@
                 // Fallback to a plain color if texture fails to load
                 floorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xAAAAAA }); // Grey color for floor
             });
-            
+
             // Load the wooden plank texture and create the material once
             textureLoader.load(woodenPlankTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
@@ -1758,7 +1766,7 @@
                 // Sempre reseta a flag após o processamento do pointerlockchange
                 pointerLockExitForBackpack = false;
             });
-            
+
             // Lógica para clique esquerdo (inicia o processo de destruição ou agarra)
             renderer.domElement.addEventListener('mousedown', (event) => {
                 if (event.button === 0 && document.pointerLockElement === renderer.domElement && !gamePaused) {
@@ -1769,13 +1777,13 @@
                     if (isDestructionTool) {
                         raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                         const intersects = raycaster.intersectObjects(scene.children, true);
-                        
+
                         let target = null;
                         for (let i = 0; i < intersects.length; i++) {
                             if (intersects[i].distance > destroyDistance) continue;
 
                             let intersectedObject = intersects[i].object;
-                            
+
                             // Handle patches (no physics body)
                             if (intersectedObject.userData && intersectedObject.userData.isDestructible && intersectedObject.userData.type === 'patch') {
                                 target = { body: null, mesh: intersectedObject };
@@ -1794,19 +1802,19 @@
                                 }
                                 currentObject = currentObject.parent;
                             }
-                            
+
                             if (mainObject && intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible) {
                                 target = { body: intersectedBody, mesh: mainObject };
                                 break;
                             }
                         }
-                        
+
                         if (target) {
                             isDestroying = true;
                             destroyProgress = 0;
                             destroyTargetBody = target.body;
                             destroyTargetMesh = target.mesh;
-                            
+
                             const targetUserData = target.body ? target.body.userData : target.mesh.userData;
                             targetDestroyTime = targetUserData.durability || 1.0; // Fallback to 1 second
 
@@ -1815,7 +1823,7 @@
                     }
                 }
             });
-            
+
             // Lógica para soltar o botão esquerdo (interrompe destruição ou solta o objeto)
             renderer.domElement.addEventListener('mouseup', (event) => {
                 if (event.button === 0 && document.pointerLockElement === renderer.domElement && !gamePaused) {
@@ -1914,7 +1922,7 @@
                             }
                             return;
                         }
-                    
+
                         // Lógica para PEGAR/SOLTAR objetos (com clique esquerdo)
                         if (actionTypePrimary === 'grab') {
                             // Se já estiver segurando um objeto, solta-o
@@ -2022,7 +2030,7 @@
                     }
                 }
             });
-            
+
             // Lógica para soltar o botão direito
             document.addEventListener('mouseup', (event) => {
                 if (event.button === 2 && document.pointerLockElement === renderer.domElement && !gamePaused) {
@@ -2174,7 +2182,7 @@
                 // --- NOVO: Verificação se a mira ainda está no objeto ---
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
-                
+
                 let currentTargetMesh = null;
                 if (intersects.length > 0 && intersects[0].distance <= destroyDistance) {
                     currentTargetMesh = intersects[0].object;
@@ -2202,7 +2210,7 @@
                 if (destroyProgress >= targetDestroyTime) {
                     // Objeto destruído!
                     const position = destroyTargetMesh.position.clone();
-                    
+
                     // Handle patch destruction
                     if (destroyTargetMesh.userData.type === 'patch') {
                        const patchIndex = texturePatches.indexOf(destroyTargetMesh);
@@ -2214,7 +2222,7 @@
                        // Give back a stone item
                        addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
                        updateBackpackDisplay();
-                    } 
+                    }
                     // Handle regular block destruction
                     else if (destroyTargetBody) {
                        const bodyIndex = placedConstructionBodies.indexOf(destroyTargetBody);
@@ -2234,7 +2242,7 @@
                                addItemToInventory(backpackItems, { name: destroyTargetBody.userData.type, quantity: 1 });
                            }
                            updateBackpackDisplay();
-                           
+
                            world.removeBody(destroyTargetBody);
                            placedConstructionBodies.splice(bodyIndex, 1);
                            scene.remove(destroyTargetMesh);
@@ -2249,7 +2257,7 @@
                        }
                     }
                     createSmokeEffect(position);
-                    
+
                     isDestroying = false;
                     destroyProgress = 0;
                     progressContainer.style.display = 'none';
@@ -3086,7 +3094,7 @@
                     let canDestroy = false;
                     for (let i = 0; i < intersects.length; i++) {
                         if (intersects[i].distance > destroyDistance) continue;
-                        
+
                         let intersectedObject = intersects[i].object;
 
                         // Check for patches
@@ -3187,4 +3195,3 @@
     </script>
 </body>
 </html>
-
