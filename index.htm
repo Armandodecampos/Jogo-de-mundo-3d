@@ -380,12 +380,6 @@
         let roadBody; // Corpo de física para o estrada (agora cinza)
         let roadMeshes = []; // Array para armazenar múltiplas malhas visuais da estrada
 
-        // Corpos de física para os cubos (instância única para cada)
-        let cubeBody, cubeBody2, cubeBody3;
-        // Arrays para armazenar múltiplas malhas visuais para cada cubo
-        let cubeMeshes = [];
-        let cubeMeshes2 = [];
-        let cubeMeshes3 = [];
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
         let collectibleBoxes = [];
 
@@ -1447,10 +1441,6 @@
 
             // --- Configuração dos Cubos Interativos ---
             const cubeSize = 1;
-            const cubeShape = new CANNON.Box(new CANNON.Vec3(cubeSize / 2, cubeSize / 2, cubeSize / 2));
-            const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
-            const initialCubeMass = 200; // Massa inicial para os cubos
-
             // Carrega a textura para os cubos e cria o material global
             const cubeTexture = textureLoader.load(cubeTextureURL);
             cubeTexture.wrapS = THREE.RepeatWrapping;
@@ -1458,99 +1448,10 @@
             cubeTexture.repeat.set(1, 1);
             cubeMaterialMesh = new THREE.MeshStandardMaterial({ map: cubeTexture });
 
-
-            // Cubo 1
-            cubeBody = new CANNON.Body({
-                mass: initialCubeMass,
-                shape: cubeShape,
-                material: cubeMaterial,
-                linearDamping: 0.99, // Aumentado para 0.99 para mais estabilidade
-                angularDamping: 0.99, // Aumentado para 0.99 para mais estabilidade
-                allowSleep: true, // Permite que o cubo entre em modo de "sono"
-                sleepSpeedLimit: 0.01, // Velocidade linear mínima para "acordar"
-                sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer" (0.5 segundos)
-            });
-            cubeBody.position.set(0, cubeSize / 2 + streetHeight, -10);
-            world.addBody(cubeBody);
-            cubeBody.userData = { // Adiciona userData para rastrear o estado do cubo
-                isCollectible: true, // Mark as collectible
-                type: boxItemName,
-                originalMass: initialCubeMass,
-                initialPosition: new CANNON.Vec3().copy(cubeBody.position) // Armazena a posição inicial
-            };
-            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh);
-                    mesh.castShadow = true;
-                    mesh.receiveShadow = true;
-                    mesh.userData.physicsBody = cubeBody; // Vincula a malha visual ao corpo de física
-                    scene.add(mesh);
-                    cubeMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                }
-            }
-            collectibleBoxes.push({ body: cubeBody, meshes: cubeMeshes });
-
-            // Cubo 2
-            cubeBody2 = new CANNON.Body({
-                mass: initialCubeMass,
-                shape: cubeShape,
-                material: cubeMaterial,
-                linearDamping: 0.99, // Aumentado para 0.99 para mais estabilidade
-                angularDamping: 0.99, // Aumentado para 0.99 para mais estabilidade
-                allowSleep: true, // Permite que o cubo entre em modo de "sono"
-                sleepSpeedLimit: 0.01, // Velocidade linear mínima para "acordar"
-                sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer" (0.5 segundos)
-            });
-            cubeBody2.position.set(5, cubeSize / 2 + streetHeight, -10);
-            world.addBody(cubeBody2);
-            cubeBody2.userData = { // Adiciona userData para rastrear o estado do cubo
-                isCollectible: true, // Mark as collectible
-                type: boxItemName,
-                originalMass: initialCubeMass,
-                initialPosition: new CANNON.Vec3().copy(cubeBody2.position) // Armazena a posição inicial
-            };
-            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh);
-                    mesh.castShadow = true;
-                    mesh.receiveShadow = true;
-                    mesh.userData.physicsBody = cubeBody2; // Vincula a malha visual ao corpo de física
-                    scene.add(mesh);
-                    cubeMeshes2.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                }
-            }
-            collectibleBoxes.push({ body: cubeBody2, meshes: cubeMeshes2 });
-
-            // Cubo 3
-            cubeBody3 = new CANNON.Body({
-                mass: initialCubeMass,
-                shape: cubeShape,
-                material: cubeMaterial,
-                linearDamping: 0.99, // Aumentado para 0.99 para mais estabilidade
-                angularDamping: 0.99, // Aumentado para 0.99 para mais estabilidade
-                allowSleep: true, // Permite que o cubo entre em modo de "sono"
-                sleepSpeedLimit: 0.01, // Velocidade linear mínima para "acordar"
-                sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer" (0.5 segundos)
-            });
-            cubeBody3.position.set(-5, cubeSize / 2 + streetHeight, -10);
-            world.addBody(cubeBody3);
-            cubeBody3.userData = { // Adiciona userData para rastrear o estado do cubo
-                isCollectible: true, // Mark as collectible
-                type: boxItemName,
-                originalMass: initialCubeMass,
-                initialPosition: new CANNON.Vec3().copy(cubeBody3.position) // Armazena a posição inicial
-            };
-            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh);
-                    mesh.castShadow = true;
-                    mesh.receiveShadow = true;
-                    mesh.userData.physicsBody = cubeBody3; // Vincula a malha visual ao corpo de física
-                    scene.add(mesh);
-                    cubeMeshes3.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                }
-            }
-            collectibleBoxes.push({ body: cubeBody3, meshes: cubeMeshes3 });
+            // Cria as caixas iniciais usando a função createBox
+            createBox(new THREE.Vector3(0, cubeSize / 2 + streetHeight, -10));
+            createBox(new THREE.Vector3(5, cubeSize / 2 + streetHeight, -10));
+            createBox(new THREE.Vector3(-5, cubeSize / 2 + streetHeight, -10));
 
             // Cria o ghost block (transparente)
             const ghostBlockMaterial = new THREE.MeshBasicMaterial({
@@ -1848,9 +1749,9 @@
                     if (primaryActionType === 'destroy') {
                         startDestruction();
                     } else if (primaryActionType === 'grab') {
-                        // Inicia sempre um temporizador. O mouseup irá decidir o que fazer.
+                        // Inicia o temporizador. Se for mantido, irá AGARRAR o objeto.
                         clickHoldTimer = setTimeout(() => {
-                            if (!pickedObjectBody) { // O clique longo só funciona para INICIAR um agarrar
+                            if (!pickedObjectBody) { // O clique longo só funciona para AGARRAR
                                 grabObject();
                             }
                             clickHoldTimer = null; // O temporizador disparou
@@ -1873,24 +1774,18 @@
                 const secondaryActionType = getActionType(beltItems[1]);
 
                 if (event.button === 0) { // Botão esquerdo do mouse para cima
-                    if (clickHoldTimer) { // Se o temporizador existir, foi um clique curto
+                    if (clickHoldTimer) { // Se o temporizador ainda existir, foi um clique curto
                         clearTimeout(clickHoldTimer);
                         clickHoldTimer = null;
                         if (primaryActionType === 'grab') {
                             if (pickedObjectBody) {
                                 dropObject(); // Clique curto enquanto segura -> largar
                             } else {
-                                // Clique curto enquanto não segura
-                                if (keysPressed['shift']) {
-                                    collectObject(); // com shift -> recolher
-                                } else {
-                                    grabObject(); // sem shift -> agarrar (comportamento original restaurado)
-                                }
+                                collectObject(); // Clique curto enquanto não segura -> recolher
                             }
                         }
                     }
-                    // Se foi um clique longo, o temporizador é nulo.
-                    // A lógica de agarrar já foi chamada pelo temporizador.
+                    // Se foi um clique longo, o temporizador é nulo e a função grabObject() já foi chamada.
 
                     if (primaryActionType === 'place') {
                         placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
@@ -1981,12 +1876,6 @@
 
                         // Remove a caixa da nossa lista de rastreamento
                         collectibleBoxes.splice(boxIndex, 1);
-
-                        // Limpa as referências globais antigas se corresponderem (para consistência)
-                        if (boxToRemove.body === cubeBody) cubeBody = null;
-                        if (boxToRemove.body === cubeBody2) cubeBody2 = null;
-                        if (boxToRemove.body === cubeBody3) cubeBody3 = null;
-
 
                         // Adiciona o item ao inventário
                         addItemToInventory(backpackItems, { name: boxItemName, quantity: 1 });
