@@ -386,6 +386,8 @@
         let cubeMeshes = [];
         let cubeMeshes2 = [];
         let cubeMeshes3 = [];
+        // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
+        let collectibleBoxes = [];
 
         // Variáveis para blocos de construção colocáveis pelo jogador (tijolos e pisos)
         let placedConstructionBodies = []; // Corpos de blocos colocados pelo jogador
@@ -571,6 +573,7 @@
         const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Textura de pedra para aplicar
 
         // Global variables for materials
+        let cubeMaterialMesh; // NOVO: Material da caixa global
         let cobMaterialMesh;
         let floorMaterialMesh;
         let treeSaplingMaterialMesh; // New material for tree saplings icon
@@ -656,17 +659,19 @@
             const trunkHeightVisual = randomized.visual.trunk.height;
             const leavesRadiusVisual = randomized.visual.leaves.radius;
 
-            // The visual group's total height is the trunk height plus the leaves' radius (the part of the sphere above the trunk).
-            const groupHeightVisual = trunkHeightVisual + leavesRadiusVisual;
+            // The visual group's total height is the trunk plus the leaves' diameter.
+            const groupHeightVisual = trunkHeightVisual + (leavesRadiusVisual * 2);
 
             // Position the trunk so its bottom aligns with the group's bottom.
             // The group is centered, so its bottom is at -groupHeight/2. The trunk's center
             // is then placed at -groupHeight/2 + trunkHeight/2.
             randomized.visual.trunk.yOffsetInGroup = (trunkHeightVisual / 2) - (groupHeightVisual / 2);
 
-            // Position the leaves' center at the top of the trunk.
+            // Position the leaves so their center is on top of the trunk's top.
+            // The trunk's top is at trunk.yOffset + trunk.height/2.
+            // The leaves' center should be at that position, plus their radius.
             const trunkTopY = randomized.visual.trunk.yOffsetInGroup + (trunkHeightVisual / 2);
-            randomized.visual.leaves.yOffsetInGroup = trunkTopY;
+            randomized.visual.leaves.yOffsetInGroup = trunkTopY + leavesRadiusVisual;
 
             // For physics, approximate the overall height for positioning
             const trunkTopPhysics = randomized.physics.trunk.height / 2;
@@ -812,6 +817,8 @@
                     img.src = treeTrunkImageURL;
                 } else if (item.name === woodenPlankItemName) { // Ícone para tábuas de madeira
                     img.src = woodenPlankTextureURL;
+                } else if (item.name === boxItemName) {
+                    img.src = cubeTextureURL;
                 }
                 img.classList.add('slot-icon');
                 slotDiv.appendChild(img);
@@ -1029,6 +1036,51 @@
         }
 
 
+        // NOVO: Função para criar uma nova caixa dinâmica
+        function createBox(position, quaternion) {
+            const cubeSize = 1;
+            const initialCubeMass = 200;
+            const cubeShape = new CANNON.Box(new CANNON.Vec3(cubeSize / 2, cubeSize / 2, cubeSize / 2));
+            const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+
+            const boxBody = new CANNON.Body({
+                mass: initialCubeMass,
+                shape: cubeShape,
+                material: cubeMaterial,
+                linearDamping: 0.99,
+                angularDamping: 0.99,
+                allowSleep: true,
+                sleepSpeedLimit: 0.01,
+                sleepTimeLimit: 1.0
+            });
+            boxBody.position.copy(position);
+            if (quaternion) {
+                boxBody.quaternion.copy(quaternion);
+            }
+            world.addBody(boxBody);
+            boxBody.userData = {
+                isCollectible: true,
+                type: boxItemName,
+                originalMass: initialCubeMass,
+                initialPosition: new CANNON.Vec3().copy(boxBody.position)
+            };
+
+            const boxMeshes = [];
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh); // Usa o material global
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    mesh.userData.physicsBody = boxBody;
+                    scene.add(mesh);
+                    boxMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
+
+            // Adiciona a nova caixa à lista de caixas colecionáveis
+            collectibleBoxes.push({ body: boxBody, meshes: boxMeshes });
+        }
+
         // Função para criar um novo bloco físico e visual (cob ou piso)
         function createPlaceableBlock(position, quaternion, type) {
             let blockShape, initialMass;
@@ -1073,6 +1125,13 @@
             } else if (type === 'muda_arvore') {
                 randomizedTreeDimensions = randomizeTreeDimensions(treeStages['muda']);
                 const stageData = randomizedTreeDimensions; // Use randomized data
+
+                // Adjust the body's y-position to align the visual model with the ground, not the physics model.
+                const trunkHeightVisual = stageData.visual.trunk.height;
+                const leavesRadiusVisual = stageData.visual.leaves.radius;
+                const groupHeightVisual = trunkHeightVisual + leavesRadiusVisual;
+                const overallPhysicsHeight = stageData.overallPhysicsHeight;
+                position.y += (groupHeightVisual / 2) - (overallPhysicsHeight / 2);
 
                 initialMass = initialTreeSaplingMass;
                 durability = treeSaplingDurability;
@@ -1380,7 +1439,7 @@
             playerBody.addEventListener('collide', (event) => {
                 // canJump é verdadeiro APENAS se o corpo colidido NÃO for o objeto que está sendo segurado
                 // A lista de corpos "chão" agora inclui apenas superfícies que podem ser pisadas
-                const allGroundBodies = [streetBody, cubeBody, cubeBody2, cubeBody3, ...placedConstructionBodies];
+                const allGroundBodies = [streetBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
                 if (event.body !== pickedObjectBody && allGroundBodies.includes(event.body)) {
                     canJump = true;
                 }
@@ -1392,13 +1451,13 @@
             const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
             const initialCubeMass = 200; // Massa inicial para os cubos
 
-            // Carrega a textura para os cubos
-            const cubeTexture = textureLoader.load(cubeTextureURL, (texture) => {
-                // Configura a repetição da textura para os cubos
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(1, 1); // Repete uma vez em cada face do cubo
-            });
+            // Carrega a textura para os cubos e cria o material global
+            const cubeTexture = textureLoader.load(cubeTextureURL);
+            cubeTexture.wrapS = THREE.RepeatWrapping;
+            cubeTexture.wrapT = THREE.RepeatWrapping;
+            cubeTexture.repeat.set(1, 1);
+            cubeMaterialMesh = new THREE.MeshStandardMaterial({ map: cubeTexture });
+
 
             // Cubo 1
             cubeBody = new CANNON.Body({
@@ -1414,13 +1473,14 @@
             cubeBody.position.set(0, cubeSize / 2 + streetHeight, -10);
             world.addBody(cubeBody);
             cubeBody.userData = { // Adiciona userData para rastrear o estado do cubo
+                isCollectible: true, // Mark as collectible
+                type: boxItemName,
                 originalMass: initialCubeMass,
                 initialPosition: new CANNON.Vec3().copy(cubeBody.position) // Armazena a posição inicial
             };
-            const cubeMaterialMesh1 = new THREE.MeshStandardMaterial({ map: cubeTexture });
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh1);
+                    const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh);
                     mesh.castShadow = true;
                     mesh.receiveShadow = true;
                     mesh.userData.physicsBody = cubeBody; // Vincula a malha visual ao corpo de física
@@ -1428,6 +1488,7 @@
                     cubeMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
             }
+            collectibleBoxes.push({ body: cubeBody, meshes: cubeMeshes });
 
             // Cubo 2
             cubeBody2 = new CANNON.Body({
@@ -1443,13 +1504,14 @@
             cubeBody2.position.set(5, cubeSize / 2 + streetHeight, -10);
             world.addBody(cubeBody2);
             cubeBody2.userData = { // Adiciona userData para rastrear o estado do cubo
+                isCollectible: true, // Mark as collectible
+                type: boxItemName,
                 originalMass: initialCubeMass,
                 initialPosition: new CANNON.Vec3().copy(cubeBody2.position) // Armazena a posição inicial
             };
-            const cubeMaterialMesh2 = new THREE.MeshStandardMaterial({ map: cubeTexture });
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh2);
+                    const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh);
                     mesh.castShadow = true;
                     mesh.receiveShadow = true;
                     mesh.userData.physicsBody = cubeBody2; // Vincula a malha visual ao corpo de física
@@ -1457,6 +1519,7 @@
                     cubeMeshes2.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
             }
+            collectibleBoxes.push({ body: cubeBody2, meshes: cubeMeshes2 });
 
             // Cubo 3
             cubeBody3 = new CANNON.Body({
@@ -1472,13 +1535,14 @@
             cubeBody3.position.set(-5, cubeSize / 2 + streetHeight, -10);
             world.addBody(cubeBody3);
             cubeBody3.userData = { // Adiciona userData para rastrear o estado do cubo
+                isCollectible: true, // Mark as collectible
+                type: boxItemName,
                 originalMass: initialCubeMass,
                 initialPosition: new CANNON.Vec3().copy(cubeBody3.position) // Armazena a posição inicial
             };
-            const cubeMaterialMesh3 = new THREE.MeshStandardMaterial({ map: cubeTexture });
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh3);
+                    const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh);
                     mesh.castShadow = true;
                     mesh.receiveShadow = true;
                     mesh.userData.physicsBody = cubeBody3; // Vincula a malha visual ao corpo de física
@@ -1486,6 +1550,7 @@
                     cubeMeshes3.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
             }
+            collectibleBoxes.push({ body: cubeBody3, meshes: cubeMeshes3 });
 
             // Cria o ghost block (transparente)
             const ghostBlockMaterial = new THREE.MeshBasicMaterial({
@@ -1616,6 +1681,7 @@
             addItemToInventory(backpackItems, { name: treeSaplingItemName, quantity: 10 });
             addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 20 }); // NOVO: Adiciona troncos de árvore à mochila
             addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 10 }); // NOVO: Adiciona tábuas de madeira à mochila
+            addItemToInventory(backpackItems, { name: boxItemName, quantity: 20 }); // Adiciona 20 caixas ao inventário inicial
 
             // Pega o elemento do cinto de inventário e seus slots
             inventoryBeltElement = document.getElementById('inventoryBelt');
@@ -1771,293 +1837,266 @@
                 pointerLockExitForBackpack = false;
             });
 
-            // Lógica para clique esquerdo (inicia o processo de destruição ou agarra)
+            // NOVO: Listener de mousedown consolidado
             renderer.domElement.addEventListener('mousedown', (event) => {
-                if (event.button === 0 && document.pointerLockElement === renderer.domElement && !gamePaused) {
-                    let itemToUsePrimary = beltItems[selectedSlotIndex];
-                    // NOVO: Verifica se a ferramenta primária é uma ferramenta de destruição
-                    const isDestructionTool = itemToUsePrimary && (itemToUsePrimary.name === axeItemName || itemToUsePrimary.name === hammerItemName || itemToUsePrimary.name === stoneItemName);
+                if (document.pointerLockElement !== renderer.domElement || gamePaused) return;
 
-                    if (isDestructionTool) {
-                        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                        const intersects = raycaster.intersectObjects(scene.children, true);
+                mouseDownTime = performance.now();
+                const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
 
-                        let target = null;
-                        for (let i = 0; i < intersects.length; i++) {
-                            if (intersects[i].distance > destroyDistance) continue;
-
-                            let intersectedObject = intersects[i].object;
-
-                            // Handle patches (no physics body)
-                            if (intersectedObject.userData && intersectedObject.userData.isDestructible && intersectedObject.userData.type === 'patch') {
-                                target = { body: null, mesh: intersectedObject };
-                                break;
+                if (event.button === 0) { // Clique esquerdo
+                    if (primaryActionType === 'destroy') {
+                        startDestruction();
+                    } else if (primaryActionType === 'grab') {
+                        // Inicia sempre um temporizador. O mouseup irá decidir o que fazer.
+                        clickHoldTimer = setTimeout(() => {
+                            if (!pickedObjectBody) { // O clique longo só funciona para INICIAR um agarrar
+                                grabObject();
                             }
-
-                            // Handle objects with physics bodies
-                            let mainObject = null;
-                            let intersectedBody = null;
-                            let currentObject = intersectedObject;
-                            while (currentObject) {
-                                if (currentObject.userData && currentObject.userData.physicsBody) {
-                                    mainObject = currentObject;
-                                    intersectedBody = currentObject.userData.physicsBody;
-                                    break;
-                                }
-                                currentObject = currentObject.parent;
-                            }
-
-                            if (mainObject && intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible) {
-                                target = { body: intersectedBody, mesh: mainObject };
-                                break;
-                            }
-                        }
-
-                        if (target) {
-                            isDestroying = true;
-                            destroyProgress = 0;
-                            destroyTargetBody = target.body;
-                            destroyTargetMesh = target.mesh;
-
-                            const targetUserData = target.body ? target.body.userData : target.mesh.userData;
-                            targetDestroyTime = targetUserData.durability || 1.0; // Fallback to 1 second
-
-                            progressContainer.style.display = 'block';
-                        }
+                            clickHoldTimer = null; // O temporizador disparou
+                        }, CLICK_HOLD_DURATION);
+                    }
+                } else if (event.button === 2) { // Clique direito
+                    if (getActionType(beltItems[1]) === 'destroy') {
+                        startDestruction();
                     }
                 }
             });
 
-            // Lógica para soltar o botão esquerdo (interrompe destruição ou solta o objeto)
+            // NOVO: Listener de mouseup consolidado
             renderer.domElement.addEventListener('mouseup', (event) => {
-                if (event.button === 0 && document.pointerLockElement === renderer.domElement && !gamePaused) {
-                    // Limpa o temporizador de segurar para evitar que a ação de agarrar seja acionada
-                    clearTimeout(clickHoldTimer);
+                if (document.pointerLockElement !== renderer.domElement || gamePaused) return;
 
-                    // Verifica se foi um clique rápido (e não um arrastar)
-                    const clickDuration = performance.now() - mouseDownTime;
-                    if (clickDuration < CLICK_HOLD_DURATION) {
-                        // A lógica de recolha será adicionada aqui no próximo passo
-                        // console.log("Quick click action triggered!");
-                    }
+                stopDestruction(); // Para sempre a destruição em qualquer mouseup
 
-                    // Reseta o estado de destruição
-                    isDestroying = false;
-                    destroyProgress = 0;
-                    progressContainer.style.display = 'none';
-                    destroyTargetBody = null;
-                    destroyTargetMesh = null;
-                }
-            });
+                const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
+                const secondaryActionType = getActionType(beltItems[1]);
 
-
-            // Eventos do mouse para pegar e soltar objetos, e para colocar/destruir blocos
-            document.addEventListener('mousedown', (event) => {
-                // Apenas se o ponteiro estiver bloqueado e o jogo não estiver pausado
-                if (document.pointerLockElement === renderer.domElement && !gamePaused) {
-                    let itemToUsePrimary = beltItems[selectedSlotIndex]; // Item do slot selecionado (para clique esquerdo)
-                    let itemToUseSecondary = beltItems[1]; // Item do slot direito (para clique direito)
-
-                    let actionTypePrimary = null; // 'place', 'destroy', 'grab' para clique esquerdo
-                    let actionTypeSecondary = null; // 'place', 'destroy' para clique direito
-
-                    // Determina o tipo de ação para o clique esquerdo
-                    if (itemToUsePrimary === null) {
-                        actionTypePrimary = 'grab';
-                    } else if (itemToUsePrimary.name === axeItemName || itemToUsePrimary.name === hammerItemName || itemToUsePrimary.name === stoneItemName) {
-                        actionTypePrimary = 'destroy';
-                    } else if (itemToUsePrimary.name === textureApplicatorItemName) {
-                        actionTypePrimary = 'apply_texture';
-                    } else if (itemToUsePrimary.name === cobItemName || itemToUsePrimary.name === floorItemName || itemToUsePrimary.name === treeSaplingItemName || itemToUsePrimary.name === woodenPlankItemName || itemToUsePrimary.name === treeTrunkItemName) {
-                        actionTypePrimary = 'place';
-                    }
-
-                    // Determina o tipo de ação para o clique direito
-                    if (itemToUseSecondary) {
-                        if (itemToUseSecondary.name === axeItemName || itemToUseSecondary.name === hammerItemName || itemToUseSecondary.name === stoneItemName) {
-                            actionTypeSecondary = 'destroy';
-                        } else if (itemToUseSecondary.name === cobItemName || itemToUseSecondary.name === floorItemName || itemToUseSecondary.name === treeSaplingItemName || itemToUseSecondary.name === woodenPlankItemName || itemToUseSecondary.name === treeTrunkItemName) {
-                            actionTypeSecondary = 'place';
-                        }
-                    }
-
-                    // Lógica para clique esquerdo (usa o slot selecionado)
-                    if (event.button === 0) {
-                        // Lógica para APLICAR TEXTURA (com clique esquerdo)
-                        if (actionTypePrimary === 'apply_texture' && itemToUsePrimary && itemToUsePrimary.name === textureApplicatorItemName) {
-                            if (!stoneMaterial) return; // Garante que o material esteja carregado
-                            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                            const groundMeshes = streetMeshes.map(item => item.mesh);
-                            const intersects = raycaster.intersectObjects(groundMeshes);
-                            if (intersects.length > 0) {
-                                // Pega o primeiro ponto de interseção, já que estamos apenas interessados no chão
-                                const intersect = intersects[0];
-                                const hitPoint = intersect.point;
-                                const patchSize = cobSize;
-                                const snappedX = Math.floor(hitPoint.x / patchSize) * patchSize + patchSize / 2;
-                                const snappedZ = Math.floor(hitPoint.z / patchSize) * patchSize + patchSize / 2;
-                                const patchGeometry = new THREE.BoxGeometry(patchSize, 0.01, patchSize);
-                                const patchMesh = new THREE.Mesh(patchGeometry, stoneMaterial);
-                                patchMesh.position.set(snappedX, streetHeight + 0.005, snappedZ); // Ligeiramente acima do chão
-                                patchMesh.receiveShadow = true;
-                                const patchDurability = 0.5;
-                                patchMesh.userData = { isDestructible: true, durability: patchDurability, type: 'patch' };
-                                scene.add(patchMesh);
-                                texturePatches.push(patchMesh);
-                            }
-                            return;
-                        }
-
-                        // Lógica para COLOCAR blocos (com clique esquerdo)
-                        if (actionTypePrimary === 'place') {
-                            currentBlockType = itemToUsePrimary.name;
-                            if (ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
-                                if (itemToUsePrimary.quantity > 0) {
-                                    let materialLoaded = false;
-                                    if (currentBlockType === 'cob' && cobMaterialMesh) {
-                                        materialLoaded = true;
-                                    } else if (currentBlockType === 'piso' && floorMaterialMesh) {
-                                        materialLoaded = true;
-                                    } else if (currentBlockType === 'tábuas' && woodenPlankMaterialMesh) {
-                                        materialLoaded = true;
-                                    } else if (currentBlockType === 'muda_arvore' && treeTrunkMaterialMesh && treeLeavesMaterialMesh) {
-                                        materialLoaded = true;
-                                    } else if (currentBlockType === 'tronco_arvore' && treeTrunkMaterialMesh) {
-                                        materialLoaded = true;
-                                    }
-                                    if (materialLoaded) {
-                                        createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, currentBlockType);
-                                        itemToUsePrimary.quantity--;
-                                        if (itemToUsePrimary.quantity <= 0) {
-                                            beltItems[selectedSlotIndex] = null;
-                                        }
-                                        updateBeltDisplay();
-                                    }
-                                }
-                            }
-                            return;
-                        }
-
-                        // Lógica para PEGAR/SOLTAR objetos (com clique esquerdo)
-                        if (actionTypePrimary === 'grab') {
-                            // Se já estiver segurando um objeto, solta-o (isso continua sendo um clique)
+                if (event.button === 0) { // Botão esquerdo do mouse para cima
+                    if (clickHoldTimer) { // Se o temporizador existir, foi um clique curto
+                        clearTimeout(clickHoldTimer);
+                        clickHoldTimer = null;
+                        if (primaryActionType === 'grab') {
                             if (pickedObjectBody) {
-                                if (grabberConstraint) {
-                                    world.removeConstraint(grabberConstraint);
-                                    grabberConstraint = null; // Limpa a referência da restrição
-                                }
-                                pickedObjectBody.wakeUp();
-                                pickedObjectBody.allowSleep = true;
-
-                                pickedObjectBody = null;
-                                pickedObjectMesh = null;
-
-                                // Ao soltar o objeto, zera a velocidade do jogador para evitar arrasto residual
-                                playerBody.velocity.set(0,0,0);
-                                playerBody.angularVelocity.set(0,0,0);
-                                playerBody.allowSleep = true; // Permite que o jogador volte a dormir se estiver parado
-                                return; // Sai da função para evitar pegar outro objeto imediatamente
-                            }
-
-                            // Inicia o temporizador para a ação de segurar (agarrar)
-                            mouseDownTime = performance.now();
-                            clickHoldTimer = setTimeout(() => {
-                                // Lógica de agarrar (executa se o botão for segurado)
-                                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                                const intersects = raycaster.intersectObjects(scene.children);
-                                const allPickableBodies = [cubeBody, cubeBody2, cubeBody3];
-
-                                for (let i = 0; i < intersects.length; i++) {
-                                    if (intersects[i].object.userData.physicsBody &&
-                                        allPickableBodies.includes(intersects[i].object.userData.physicsBody)) {
-
-                                        if (intersects[i].distance <= pickUpDistance) {
-                                            pickedObjectBody = intersects[i].object.userData.physicsBody;
-                                            pickedObjectMesh = intersects[i].object;
-                                            distanceToPickedObject = intersects[i].distance;
-
-                                            pickedObjectBody.collisionResponse = true;
-                                            pickedObjectBody.velocity.set(0, 0, 0);
-                                            pickedObjectBody.angularVelocity.set(0, 0, 0);
-                                            pickedObjectBody.allowSleep = false;
-
-                                            playerBody.velocity.set(0, 0, 0);
-                                            playerBody.angularVelocity.set(0, 0, 0);
-                                            playerBody.allowSleep = false;
-
-                                            const targetPosition = new THREE.Vector3();
-                                            camera.getWorldDirection(targetPosition);
-                                            targetPosition.multiplyScalar(distanceToPickedObject);
-                                            targetPosition.add(camera.position);
-
-                                            grabberBody.position.copy(targetPosition);
-
-                                            grabberConstraint = new CANNON.PointToPointConstraint(
-                                                pickedObjectBody,
-                                                new CANNON.Vec3(0, 0, 0),
-                                                grabberBody,
-                                                new CANNON.Vec3(0, 0, 0)
-                                            );
-                                            world.addConstraint(grabberConstraint);
-                                            pickedObjectBody.wakeUp();
-                                            break;
-                                        }
-                                    }
-                                }
-                            }, CLICK_HOLD_DURATION);
-                        }
-                    } else if (event.button === 2) { // Lógica para clique direito (usa o slot 1)
-                        // Lógica para COLOCAR blocos (com clique direito)
-                        if (actionTypeSecondary === 'place') {
-                            currentBlockType = itemToUseSecondary.name;
-                            if (ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
-                                if (itemToUseSecondary.quantity > 0) {
-                                    let materialLoaded = false;
-                                    if (currentBlockType === 'cob' && cobMaterialMesh) {
-                                        materialLoaded = true;
-                                    } else if (currentBlockType === 'piso' && floorMaterialMesh) {
-                                        materialLoaded = true;
-                                    } else if (currentBlockType === 'tábuas' && woodenPlankMaterialMesh) {
-                                        materialLoaded = true;
-                                    } else if (currentBlockType === 'muda_arvore' && treeTrunkMaterialMesh && treeLeavesMaterialMesh) {
-                                        materialLoaded = true;
-                                    } else if (currentBlockType === 'tronco_arvore' && treeTrunkMaterialMesh) {
-                                        materialLoaded = true;
-                                    }
-
-                                    if (materialLoaded) {
-                                        createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, currentBlockType);
-                                        itemToUseSecondary.quantity--;
-                                        if (itemToUseSecondary.quantity <= 0) {
-                                            beltItems[1] = null;
-                                        }
-                                        updateBeltDisplay();
-                                    }
+                                dropObject(); // Clique curto enquanto segura -> largar
+                            } else {
+                                // Clique curto enquanto não segura
+                                if (keysPressed['shift']) {
+                                    collectObject(); // com shift -> recolher
+                                } else {
+                                    grabObject(); // sem shift -> agarrar (comportamento original restaurado)
                                 }
                             }
-                            return;
                         }
+                    }
+                    // Se foi um clique longo, o temporizador é nulo.
+                    // A lógica de agarrar já foi chamada pelo temporizador.
+
+                    if (primaryActionType === 'place') {
+                        placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
+                    } else if (primaryActionType === 'apply_texture') {
+                        applyTexture();
+                    }
+                } else if (event.button === 2) { // Botão direito do mouse para cima
+                    if (secondaryActionType === 'place') {
+                        placeBlock(beltItems[1], 1);
                     }
                 }
             });
 
-            // Lógica para soltar o botão direito
-            document.addEventListener('mouseup', (event) => {
-                if (event.button === 2 && document.pointerLockElement === renderer.domElement && !gamePaused) {
-                    // Não há ação padrão para o botão direito. A destruição agora é apenas com o esquerdo.
-                    isDestroying = false;
-                    destroyProgress = 0;
-                    progressContainer.style.display = 'none';
-                    destroyTargetBody = null;
-                    destroyTargetMesh = null;
+            // --- Funções Auxiliares para Ações do Jogador ---
+
+            function getActionType(item) {
+                if (item === null) return 'grab';
+                if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName) return 'destroy';
+                if (item.name === textureApplicatorItemName) return 'apply_texture';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
+                return null;
+            }
+
+            function startDestruction() {
+                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                const intersects = raycaster.intersectObjects(scene.children, true);
+                let target = null;
+                for (let i = 0; i < intersects.length; i++) {
+                    if (intersects[i].distance > destroyDistance) continue;
+                    let intersectedObject = intersects[i].object;
+                    if (intersectedObject.userData && intersectedObject.userData.isDestructible && intersectedObject.userData.type === 'patch') {
+                        target = { body: null, mesh: intersectedObject };
+                        break;
+                    }
+                    let mainObject = null, intersectedBody = null;
+                    let currentObject = intersectedObject;
+                    while (currentObject) {
+                        if (currentObject.userData && currentObject.userData.physicsBody) {
+                            mainObject = currentObject;
+                            intersectedBody = currentObject.userData.physicsBody;
+                            break;
+                        }
+                        currentObject = currentObject.parent;
+                    }
+                    if (mainObject && intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible) {
+                        target = { body: intersectedBody, mesh: mainObject };
+                        break;
+                    }
                 }
-            });
+                if (target) {
+                    isDestroying = true;
+                    destroyProgress = 0;
+                    destroyTargetBody = target.body;
+                    destroyTargetMesh = target.mesh;
+                    const targetUserData = target.body ? target.body.userData : target.mesh.userData;
+                    targetDestroyTime = targetUserData.durability || 1.0;
+                    progressContainer.style.display = 'block';
+                }
+            }
+
+            function stopDestruction() {
+                isDestroying = false;
+                destroyProgress = 0;
+                progressContainer.style.display = 'none';
+                destroyTargetBody = null;
+                destroyTargetMesh = null;
+            }
+
+            function collectObject() {
+                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                const intersects = raycaster.intersectObjects(scene.children, true);
+                for (const intersect of intersects) {
+                    if (intersect.distance > pickUpDistance) continue;
+
+                    const clickedBody = intersect.object.userData.physicsBody;
+                    if (!clickedBody || !clickedBody.userData.isCollectible || clickedBody.userData.type !== boxItemName) continue;
+
+                    // Encontra o índice da caixa na nossa lista de rastreamento
+                    const boxIndex = collectibleBoxes.findIndex(box => box.body === clickedBody);
+                    if (boxIndex > -1) {
+                        const boxToRemove = collectibleBoxes[boxIndex];
+
+                        // Remove o corpo do mundo da física
+                        world.removeBody(boxToRemove.body);
+
+                        // Remove todas as malhas visuais da cena
+                        boxToRemove.meshes.forEach(m => scene.remove(m.mesh));
+
+                        // Remove a caixa da nossa lista de rastreamento
+                        collectibleBoxes.splice(boxIndex, 1);
+
+                        // Limpa as referências globais antigas se corresponderem (para consistência)
+                        if (boxToRemove.body === cubeBody) cubeBody = null;
+                        if (boxToRemove.body === cubeBody2) cubeBody2 = null;
+                        if (boxToRemove.body === cubeBody3) cubeBody3 = null;
+
+
+                        // Adiciona o item ao inventário
+                        addItemToInventory(backpackItems, { name: boxItemName, quantity: 1 });
+                        updateBackpackDisplay();
+
+                        break; // Sai do loop, pois já recolhemos um objeto
+                    }
+                }
+            }
+
+            function grabObject() {
+                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                const intersects = raycaster.intersectObjects(scene.children);
+                const allPickableBodies = collectibleBoxes.map(b => b.body);
+                for (let i = 0; i < intersects.length; i++) {
+                    if (intersects[i].object.userData.physicsBody && allPickableBodies.includes(intersects[i].object.userData.physicsBody)) {
+                        if (intersects[i].distance <= pickUpDistance) {
+                            pickedObjectBody = intersects[i].object.userData.physicsBody;
+                            pickedObjectMesh = intersects[i].object;
+                            distanceToPickedObject = intersects[i].distance;
+                            pickedObjectBody.collisionResponse = true;
+                            pickedObjectBody.velocity.set(0, 0, 0);
+                            pickedObjectBody.angularVelocity.set(0, 0, 0);
+                            pickedObjectBody.allowSleep = false;
+                            playerBody.velocity.set(0, 0, 0);
+                            playerBody.angularVelocity.set(0, 0, 0);
+                            playerBody.allowSleep = false;
+                            const targetPosition = new THREE.Vector3();
+                            camera.getWorldDirection(targetPosition);
+                            targetPosition.multiplyScalar(distanceToPickedObject);
+                            targetPosition.add(camera.position);
+                            grabberBody.position.copy(targetPosition);
+                            grabberConstraint = new CANNON.PointToPointConstraint(pickedObjectBody, new CANNON.Vec3(0, 0, 0), grabberBody, new CANNON.Vec3(0, 0, 0));
+                            world.addConstraint(grabberConstraint);
+                            pickedObjectBody.wakeUp();
+                            break;
+                        }
+                    }
+                }
+            }
+
+            function dropObject() {
+                if (grabberConstraint) {
+                    world.removeConstraint(grabberConstraint);
+                    grabberConstraint = null;
+                }
+                pickedObjectBody.wakeUp();
+                pickedObjectBody.allowSleep = true;
+                pickedObjectBody = null;
+                pickedObjectMesh = null;
+                playerBody.velocity.set(0,0,0);
+                playerBody.angularVelocity.set(0,0,0);
+                playerBody.allowSleep = true;
+            }
+
+            function placeBlock(item, slotIndex) {
+                currentBlockType = item.name;
+                if (ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
+                    if (item.quantity > 0) {
+                        let materialLoaded = false;
+                        if (currentBlockType === 'cob' && cobMaterialMesh) materialLoaded = true;
+                        else if (currentBlockType === 'piso' && floorMaterialMesh) materialLoaded = true;
+                        else if (currentBlockType === 'tábuas' && woodenPlankMaterialMesh) materialLoaded = true;
+                        else if (currentBlockType === 'muda_arvore' && treeTrunkMaterialMesh && treeLeavesMaterialMesh) materialLoaded = true;
+                        else if (currentBlockType === 'tronco_arvore' && treeTrunkMaterialMesh) materialLoaded = true;
+                        else if (currentBlockType === boxItemName && cubeMaterialMesh) materialLoaded = true; // NOVO: Verifica o material da caixa
+
+                        if (materialLoaded) {
+                            if (currentBlockType === boxItemName) {
+                                createBox(ghostBlockMesh.position, ghostBlockMesh.quaternion);
+                            } else {
+                                createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, currentBlockType);
+                            }
+                            item.quantity--;
+                            if (item.quantity <= 0) {
+                                if (slotIndex < beltItems.length) beltItems[slotIndex] = null;
+                            }
+                            updateBeltDisplay();
+                            updateBackpackDisplay(); // Atualiza a mochila também, caso o item venha de lá
+                        }
+                    }
+                }
+            }
+
+            function applyTexture() {
+                if (!stoneMaterial) return;
+                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                const groundMeshes = streetMeshes.map(item => item.mesh);
+                const intersects = raycaster.intersectObjects(groundMeshes);
+                if (intersects.length > 0) {
+                    const intersect = intersects[0];
+                    const hitPoint = intersect.point;
+                    const patchSize = cobSize;
+                    const snappedX = Math.floor(hitPoint.x / patchSize) * patchSize + patchSize / 2;
+                    const snappedZ = Math.floor(hitPoint.z / patchSize) * patchSize + patchSize / 2;
+                    const patchGeometry = new THREE.BoxGeometry(patchSize, 0.01, patchSize);
+                    const patchMesh = new THREE.Mesh(patchGeometry, stoneMaterial);
+                    patchMesh.position.set(snappedX, streetHeight + 0.005, snappedZ);
+                    patchMesh.receiveShadow = true;
+                    patchMesh.userData = { isDestructible: true, durability: 0.5, type: 'patch' };
+                    scene.add(patchMesh);
+                    texturePatches.push(patchMesh);
+                }
+            }
 
             // Evento mousemove para rotação da câmera e rotação de objetos
             document.addEventListener('mousemove', (event) => {
                 // Determine the primary tool for visual feedback
                 const primaryToolForVisuals = beltItems[selectedSlotIndex]; // Usa o slot selecionado
-                const isPrimaryToolPlacing = primaryToolForVisuals && (primaryToolForVisuals.name === cobItemName || primaryToolForVisuals.name === floorItemName || primaryToolForVisuals.name === treeSaplingItemName || primaryToolForVisuals.name === woodenPlankItemName || primaryToolForVisuals.name === treeTrunkItemName); // NOVO: Adiciona tronco de árvore
+                const isPrimaryToolPlacing = primaryToolForVisuals && (primaryToolForVisuals.name === cobItemName || primaryToolForVisuals.name === floorItemName || primaryToolForVisuals.name === treeSaplingItemName || primaryToolForVisuals.name === woodenPlankItemName || primaryToolForVisuals.name === treeTrunkItemName || primaryToolForVisuals.name === boxItemName);
                 const isPrimaryToolGrabbing = primaryToolForVisuals === null; // Hand is active if slot 0 is null
 
 
@@ -2295,7 +2334,7 @@
 
             // Lógica para os cubos e blocos: sempre dinâmicos e com massa original, a menos que sejam segurados
             // Apenas os cubos são pickable agora
-            const allPickableBodies = [cubeBody, cubeBody2, cubeBody3];
+            const allPickableBodies = collectibleBoxes.map(b => b.body);
             const allStaticBodies = [...placedConstructionBodies]; // Apenas blocos colocados são estáticos
 
             allPickableBodies.forEach(body => {
@@ -2346,10 +2385,10 @@
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
-            // Atualiza as posições de todas as malhas visuais dos cubos
-            updateObjectVisuals(cubeBody, cubeMeshes, visualOffsetX, visualOffsetZ);
-            updateObjectVisuals(cubeBody2, cubeMeshes2, visualOffsetX, visualOffsetZ);
-            updateObjectVisuals(cubeBody3, cubeMeshes3, visualOffsetX, visualOffsetZ);
+            // Atualiza as posições de todas as malhas visuais dos cubos/caixas
+            collectibleBoxes.forEach(box => {
+                updateObjectVisuals(box.body, box.meshes, visualOffsetX, visualOffsetZ);
+            });
 
             // Atualiza as posições de todas as malhas visuais dos blocos colocados
             placedConstructionBodies.forEach((body, index) => {
@@ -2529,7 +2568,7 @@
                 isPrimaryToolGrabbing = true;
             } else if (primaryTool.name === axeItemName || primaryTool.name === hammerItemName || primaryTool.name === stoneItemName) {
                 isPrimaryToolDestroying = true;
-            } else if (primaryTool.name === cobItemName || primaryTool.name === floorItemName || primaryTool.name === treeSaplingItemName || primaryTool.name === woodenPlankItemName || primaryTool.name === treeTrunkItemName) { // NOVO: Adiciona tronco de árvore
+            } else if (primaryTool.name === cobItemName || primaryTool.name === floorItemName || primaryTool.name === treeSaplingItemName || primaryTool.name === woodenPlankItemName || primaryTool.name === treeTrunkItemName || primaryTool.name === boxItemName) {
                 isPrimaryToolPlacing = true;
                 currentBlockType = primaryTool.name; // Define o tipo de bloco para o ghost mesh
             }
@@ -2581,6 +2620,11 @@
                         currentGhostHeight = trunkHeight;
                         currentGhostDepth = trunkRadius * 2;
                         ghostBlockMesh.geometry = new THREE.CylinderGeometry(trunkRadius, trunkRadius, trunkHeight, trunkSegments);
+                    } else if (currentBlockType === boxItemName) {
+                        currentGhostWidth = 1;
+                        currentGhostHeight = 1;
+                        currentGhostDepth = 1;
+                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
                     }
                     // Update ghost block geometry
                     // ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth); // Removido para lidar individualmente
@@ -2877,7 +2921,7 @@
             // Verifica colisão com terreno (rua), estrada, cubos e blocos
             world.raycastAny(rayOriginLow, rayTargetLow, {}, rayResultStep);
             // A lista de corpos "chão" para subida de degraus
-            const stepClimbGroundBodies = [streetBody, cubeBody, cubeBody2, cubeBody3, ...placedConstructionBodies];
+            const stepClimbGroundBodies = [streetBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
             if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
                 hitLow = true;
             }
@@ -3008,7 +3052,7 @@
                 isPrimaryToolApplyingTexture = true;
             } else if (primaryToolForCrosshair.name === axeItemName || primaryToolForCrosshair.name === hammerItemName || primaryToolForCrosshair.name === stoneItemName) {
                 isPrimaryToolDestroying = true;
-            } else if (primaryToolForCrosshair.name === cobItemName || primaryToolForCrosshair.name === floorItemName || primaryToolForCrosshair.name === treeSaplingItemName || primaryToolForCrosshair.name === woodenPlankItemName || primaryToolForCrosshair.name === treeTrunkItemName) { // NOVO: Adiciona tronco de árvore
+            } else if (primaryToolForCrosshair.name === cobItemName || primaryToolForCrosshair.name === floorItemName || primaryToolForCrosshair.name === treeSaplingItemName || primaryToolForCrosshair.name === woodenPlankItemName || primaryToolForCrosshair.name === treeTrunkItemName || primaryToolForCrosshair.name === boxItemName) {
                 isPrimaryToolPlacing = true;
                 currentBlockType = primaryToolForCrosshair.name; // Define o tipo de bloco para o ghost mesh
             }
@@ -3044,6 +3088,10 @@
                         currentGhostWidth = trunkRadius * 2;
                         currentGhostHeight = trunkHeight;
                         currentGhostDepth = trunkRadius * 2;
+                    } else if (currentBlockType === boxItemName) {
+                        currentGhostWidth = 1;
+                        currentGhostHeight = 1;
+                        currentGhostDepth = 1;
                     }
 
                     for (let i = 0; i < intersects.length; i++) {
@@ -3134,7 +3182,7 @@
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                     const intersects = raycaster.intersectObjects(scene.children);
                     let objectInRange = false;
-                    const aimablePickableBodies = [cubeBody, cubeBody2, cubeBody3];
+                    const aimablePickableBodies = collectibleBoxes.map(b => b.body);
 
                     for (let i = 0; i < intersects.length; i++) {
                         if (intersects[i].object.userData.physicsBody &&
