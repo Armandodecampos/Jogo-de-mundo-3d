@@ -1914,10 +1914,10 @@
                             camera.getWorldDirection(targetPosition);
                             targetPosition.multiplyScalar(distanceToPickedObject);
                             targetPosition.add(camera.position);
-                            grabberBody.position.copy(targetPosition);
-                            grabberConstraint = new CANNON.PointToPointConstraint(pickedObjectBody, new CANNON.Vec3(0, 0, 0), grabberBody, new CANNON.Vec3(0, 0, 0));
-                            world.addConstraint(grabberConstraint);
-                            pickedObjectBody.wakeUp();
+                            // NOVO: Desativa a física regular e a restrição
+                            pickedObjectBody.type = CANNON.Body.KINEMATIC;
+                            pickedObjectBody.collisionResponse = false; // Não colide enquanto cinemático
+                            grabberConstraint = null; // Garante que não haja restrição
                             break;
                         }
                     }
@@ -1925,17 +1925,20 @@
             }
 
             function dropObject() {
-                if (grabberConstraint) {
-                    world.removeConstraint(grabberConstraint);
-                    grabberConstraint = null;
-                }
+                if (!pickedObjectBody) return;
+
+                pickedObjectBody.type = CANNON.Body.DYNAMIC;
+                pickedObjectBody.collisionResponse = true;
+                pickedObjectBody.mass = pickedObjectBody.userData.originalMass;
                 pickedObjectBody.wakeUp();
-                pickedObjectBody.allowSleep = true;
+
+                // Aplica um pequeno impulso para a frente ao soltar
+                const forward = new THREE.Vector3();
+                camera.getWorldDirection(forward);
+                pickedObjectBody.velocity.set(forward.x * 5, forward.y * 5, forward.z * 5);
+
                 pickedObjectBody = null;
                 pickedObjectMesh = null;
-                playerBody.velocity.set(0,0,0);
-                playerBody.angularVelocity.set(0,0,0);
-                playerBody.allowSleep = true;
             }
 
             function placeBlock(item, slotIndex) {
@@ -2350,161 +2353,20 @@
             });
 
 
-            // Se um objeto estiver sendo segurado, atualiza a posição do grabberBody
-            if (pickedObjectBody && grabberConstraint) {
-                // Ensure pickedObjectBody is a valid CANNON.Body and has at least one shape
-                if (!pickedObjectBody.shapes || pickedObjectBody.shapes.length === 0) {
-                    console.error("Erro: Objeto agarrado inválido. A reiniciar o objeto agarrado.", pickedObjectBody);
-                    // Clean up and return to prevent further errors
-                    if (grabberConstraint) {
-                        world.removeConstraint(grabberConstraint);
-                        grabberConstraint = null;
-                    }
-                    // Restore the body to its original state (static/dynamic, mass)
-                    if (pickedObjectBody) { // Only try to restore if pickedObjectBody is not null/undefined
-                        pickedObjectBody.collisionResponse = true;
-                        pickedObjectBody.wakeUp();
-                        pickedObjectBody.allowSleep = true;
-                    }
+            // Se um objeto estiver sendo segurado, atualiza sua posição para ficar na frente da câmera
+            if (pickedObjectBody) {
+                const heldObjectDistance = 2.0; // Distância da câmera
+                const targetPosition = new THREE.Vector3();
+                camera.getWorldDirection(targetPosition);
+                targetPosition.multiplyScalar(heldObjectDistance);
+                targetPosition.add(camera.position);
 
-                    pickedObjectBody = null;
-                    pickedObjectMesh = null;
-                    return; // Exit early from animate for this frame
-                }
+                // Define a posição do corpo cinemático diretamente
+                pickedObjectBody.position.copy(targetPosition);
+                pickedObjectBody.velocity.set(0, 0, 0); // Garante que não haja movimento residual
+                pickedObjectBody.angularVelocity.set(0, 0, 0);
 
-                // For objects with multiple shapes, we need to find the overall bounding box or a representative dimension.
-                // For simplicity, for now, we'll assume a representative dimension or use the first shape's extents.
-                // A more robust solution would involve calculating the AABB of all shapes.
-                let pickedObjectHalfExtents;
-                if (pickedObjectBody.shapes[0] instanceof CANNON.Box) {
-                    pickedObjectHalfExtents = pickedObjectBody.shapes[0].halfExtents;
-                } else if (pickedObjectBody.shapes[0] instanceof CANNON.Sphere) {
-                    pickedObjectHalfExtents = new CANNON.Vec3(pickedObjectBody.shapes[0].radius, pickedObjectBody.shapes[0].radius, pickedObjectBody.shapes[0].radius);
-                } else if (pickedObjectBody.shapes[0] instanceof CANNON.Cylinder) { // NOVO: Lidar com cilindro
-                    const cylinderShape = pickedObjectBody.shapes[0];
-                    pickedObjectHalfExtents = new CANNON.Vec3(cylinderShape.radiusTop, cylinderShape.height / 2, cylinderShape.radiusTop);
-                }
-                else {
-                    // Fallback for other shapes, or calculate a more accurate bounding box
-                    pickedObjectHalfExtents = new CANNON.Vec3(0.5, 0.5, 0.5); // Default to a small box
-                }
-
-                const objectMaxHalfDimension = Math.max(
-                    pickedObjectHalfExtents.x,
-                    pickedObjectHalfExtents.y,
-                    pickedObjectHalfExtents.z
-                );
-
-                const heldObjectDistance = 2.5; // Distância da câmera ao objeto segurado
-                const epsilon = 0.001; // Pequeno buffer para evitar problemas de ponto flutuante
-
-                // Posição alvo desejada para o grabber (onde o objeto *quer* ir)
-                const desiredGrabberTarget = new THREE.Vector3();
-                camera.getWorldDirection(desiredGrabberTarget);
-                desiredGrabberTarget.multiplyScalar(heldObjectDistance);
-                desiredGrabberTarget.add(camera.position); // Adiciona a posição da CÂMERA
-
-                // Converte para CANNON.Vec3 para cálculos de física
-                const desiredGrabberTargetCannon = new CANNON.Vec3(desiredGrabberTarget.x, desiredGrabberTarget.y, desiredGrabberTarget.z);
-
-                // Calcula o vetor de movimento da posição atual do objeto agarrado para o alvo desejado
-                const movementVector = new CANNON.Vec3();
-                desiredGrabberTargetCannon.vsub(pickedObjectBody.position, movementVector);
-
-                const movementLength = movementVector.length();
-
-                if (movementLength > epsilon) { // Realiza o raycast apenas se houver movimento significativo
-                    const rayDirection = movementVector.unit(); // Direção normalizada
-                    const rayOrigin = new CANNON.Vec3().copy(pickedObjectBody.position);
-
-                    // O raio precisa ser longo o suficiente para cobrir o movimento mais o "raio" do objeto
-                    const rayLength = movementLength + objectMaxHalfDimension + epsilon;
-
-                    const rayTarget = new CANNON.Vec3();
-                    rayOrigin.vadd(rayDirection.scale(rayLength), rayTarget);
-
-                    const rayResult = new CANNON.RaycastResult();
-                    const rayOptions = {
-                        skipBackfaces: true,
-                        // Exclui o próprio objeto agarrado e o corpo do grabber do raycast
-                        callback: (hitResult) => {
-                            return hitResult.body !== pickedObjectBody && hitResult.body !== grabberBody;
-                        }
-                    };
-
-                    world.raycastClosest(rayOrigin, rayTarget, rayOptions, rayResult);
-
-                    if (rayResult.hasHit) {
-                        const hitPoint = rayResult.hitPointWorld;
-                        const hitNormal = rayResult.hitNormalWorld; // A normal aponta para fora do objeto atingido
-
-                        // Transforma a normal do mundo para o espaço local do objeto agarrado
-                        const localNormal = new CANNON.Vec3();
-                        pickedObjectBody.quaternion.conjugate().vmult(hitNormal, localNormal);
-
-                        // Calcula a extensão do objeto agarrado do seu centro até a sua face ao longo desta normal local
-                        // Isso dá a distância do centro do objeto agarrado até a sua face que estaria alinhada
-                        // com a superfície atingida.
-                        const extentAlongNormal =
-                            Math.abs(localNormal.x * pickedObjectHalfExtents.x) +
-                            Math.abs(localNormal.y * pickedObjectHalfExtents.y) +
-                            Math.abs(localNormal.z * pickedObjectHalfExtents.z);
-
-                        // Calcula a posição desejada para o centro do objeto agarrado
-                        // Deve estar no hitPoint, mais a extensão ao longo da normal,
-                        // movido ao longo da normal do mundo.
-                        const desiredPickedObjectCenter = new CANNON.Vec3();
-                        hitNormal.scale(extentAlongNormal + epsilon, desiredPickedObjectCenter); // Escala a normal pela extensão + epsilon
-                        desiredPickedObjectCenter.vadd(hitPoint, desiredPickedObjectCenter); // Adiciona ao hitPoint
-
-                        // Atualiza a posição alvo do grabber para esta posição ajustada
-                        desiredGrabberTargetCannon.copy(desiredPickedObjectCenter);
-                    }
-                }
-
-                // Garante que o objeto segurado não vá abaixo do nível do chão global
-                let currentGroundHeight = streetHeight; // Apenas o terreno de cob agora
-
-                // Calcula o ponto mais baixo atual do objeto em relação ao seu centro, considerando a rotação
-                const localDown = new CANNON.Vec3(0, -1, 0); // Direção local para baixo
-                const worldDown = new CANNON.Vec3();
-                pickedObjectBody.quaternion.vmult(localDown, worldDown);
-
-                // Projeta as semi-extensões na direção "para baixo" do mundo
-                const lowestPointOffset =
-                    Math.abs(worldDown.x * pickedObjectHalfExtents.x) +
-                    Math.abs(worldDown.y * pickedObjectHalfExtents.y) + // Use pickedObjectHalfExtents
-                    Math.abs(worldDown.z * pickedObjectHalfExtents.z);
-
-                const minObjectYFromGround = currentGroundHeight + lowestPointOffset + epsilon; // Adiciona epsilon para contato com o chão
-
-                desiredGrabberTargetCannon.y = Math.max(desiredGrabberTargetCannon.y, minObjectYFromGround);
-
-                // Impede que o objeto segurado entre no jogador (horizontalmente e para cima)
-                const minGrabDistance = currentPlayerRadius + objectMaxHalfDimension + epsilon; // Usa a dimensão máxima para colisão com o jogador
-
-                const playerToTarget = new CANNON.Vec3();
-                desiredGrabberTargetCannon.vsub(playerBody.position, playerToTarget);
-
-                const horizontalDistanceSq = playerToTarget.x * playerToTarget.x + playerToTarget.z * playerToTarget.z;
-                if (horizontalDistanceSq < minGrabDistance * minGrabDistance) {
-                    const horizontalDistance = Math.sqrt(horizontalDistanceSq);
-                    if (horizontalDistance > 0) {
-                        const angle = Math.atan2(playerToTarget.z, playerToTarget.x);
-                        const newX = playerBody.position.x + minGrabDistance * Math.cos(angle);
-                        const newZ = playerBody.position.z + minGrabDistance * Math.sin(angle);
-                        desiredGrabberTargetCannon.x = newX;
-                        desiredGrabberTargetCannon.z = newZ;
-                    }
-                }
-                // Também impede que ele vá abaixo da altura do jogador, se o jogador for mais baixo que o chão.
-                desiredGrabberTargetCannon.y = Math.max(desiredGrabberTargetCannon.y, playerBody.position.y - currentPlayerRadius + lowestPointOffset + epsilon);
-
-
-                grabberBody.position.copy(desiredGrabberTargetCannon);
-                // A restrição agora puxa o pickedObjectBody para o grabberBody, permitindo colisões.
-
-                // NOVO: Atualiza as malhas visuais do objeto segurado para que ele não "salte"
+                // Atualiza todas as malhas visuais para corresponder
                 const pickedBox = collectibleBoxes.find(box => box.body === pickedObjectBody);
                 if (pickedBox) {
                     pickedBox.meshes.forEach(item => {
