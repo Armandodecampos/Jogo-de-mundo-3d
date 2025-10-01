@@ -413,6 +413,11 @@
         let destroyTargetBody = null; // Corpo que está sendo destruído
         let destroyTargetMesh = null; // Malha visual do corpo
 
+        // NOVO: Variáveis para a lógica de clique vs. segurar
+        let mouseDownTime = 0;
+        let clickHoldTimer = null;
+        const CLICK_HOLD_DURATION = 250; // ms
+
         // Altura da câmera em relação ao centro do corpo do jogador (nível dos olhos)
         let cameraEyeLevelOffset; // Alterado para 'let' pois será modificado
         let originalCameraEyeLevelOffset; // Para armazenar o valor inicial
@@ -505,6 +510,7 @@
         const treeSaplingItemName = 'muda_arvore'; // Nome do item de muda de árvore no inventário
         const treeTrunkItemName = 'tronco_arvore'; // NOVO: Nome do item de tronco de árvore
         const woodenPlankItemName = 'tábuas'; // NOVO: Nome do item de tábuas de madeira
+        const boxItemName = 'caixote'; // NOVO: Nome do item de caixote
 
         let ghostBlockMesh; // Malha transparente para pré-visualizar a colocação
         let currentBlockType = 'cob'; // 'cob' ou 'piso'
@@ -650,19 +656,17 @@
             const trunkHeightVisual = randomized.visual.trunk.height;
             const leavesRadiusVisual = randomized.visual.leaves.radius;
 
-            // The visual group's total height is the trunk plus the leaves' diameter.
-            const groupHeightVisual = trunkHeightVisual + (leavesRadiusVisual * 2);
+            // The visual group's total height is the trunk height plus the leaves' radius (the part of the sphere above the trunk).
+            const groupHeightVisual = trunkHeightVisual + leavesRadiusVisual;
 
             // Position the trunk so its bottom aligns with the group's bottom.
             // The group is centered, so its bottom is at -groupHeight/2. The trunk's center
             // is then placed at -groupHeight/2 + trunkHeight/2.
             randomized.visual.trunk.yOffsetInGroup = (trunkHeightVisual / 2) - (groupHeightVisual / 2);
 
-            // Position the leaves so their center is on top of the trunk's top.
-            // The trunk's top is at trunk.yOffset + trunk.height/2.
-            // The leaves' center should be at that position, plus their radius.
+            // Position the leaves' center at the top of the trunk.
             const trunkTopY = randomized.visual.trunk.yOffsetInGroup + (trunkHeightVisual / 2);
-            randomized.visual.leaves.yOffsetInGroup = trunkTopY + leavesRadiusVisual;
+            randomized.visual.leaves.yOffsetInGroup = trunkTopY;
 
             // For physics, approximate the overall height for positioning
             const trunkTopPhysics = randomized.physics.trunk.height / 2;
@@ -1827,6 +1831,17 @@
             // Lógica para soltar o botão esquerdo (interrompe destruição ou solta o objeto)
             renderer.domElement.addEventListener('mouseup', (event) => {
                 if (event.button === 0 && document.pointerLockElement === renderer.domElement && !gamePaused) {
+                    // Limpa o temporizador de segurar para evitar que a ação de agarrar seja acionada
+                    clearTimeout(clickHoldTimer);
+
+                    // Verifica se foi um clique rápido (e não um arrastar)
+                    const clickDuration = performance.now() - mouseDownTime;
+                    if (clickDuration < CLICK_HOLD_DURATION) {
+                        // A lógica de recolha será adicionada aqui no próximo passo
+                        // console.log("Quick click action triggered!");
+                    }
+
+                    // Reseta o estado de destruição
                     isDestroying = false;
                     destroyProgress = 0;
                     progressContainer.style.display = 'none';
@@ -1925,7 +1940,7 @@
 
                         // Lógica para PEGAR/SOLTAR objetos (com clique esquerdo)
                         if (actionTypePrimary === 'grab') {
-                            // Se já estiver segurando um objeto, solta-o
+                            // Se já estiver segurando um objeto, solta-o (isso continua sendo um clique)
                             if (pickedObjectBody) {
                                 if (grabberConstraint) {
                                     world.removeConstraint(grabberConstraint);
@@ -1944,57 +1959,52 @@
                                 return; // Sai da função para evitar pegar outro objeto imediatamente
                             }
 
-                            // Configura o raycaster para o centro da tela
-                            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                            // Inicia o temporizador para a ação de segurar (agarrar)
+                            mouseDownTime = performance.now();
+                            clickHoldTimer = setTimeout(() => {
+                                // Lógica de agarrar (executa se o botão for segurado)
+                                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                                const intersects = raycaster.intersectObjects(scene.children);
+                                const allPickableBodies = [cubeBody, cubeBody2, cubeBody3];
 
-                            // Encontra objetos que intersectam o raio
-                            const intersects = raycaster.intersectObjects(scene.children);
+                                for (let i = 0; i < intersects.length; i++) {
+                                    if (intersects[i].object.userData.physicsBody &&
+                                        allPickableBodies.includes(intersects[i].object.userData.physicsBody)) {
 
-                            // Lista de corpos de objetos que podem ser pegos (apenas cubos agora)
-                            const allPickableBodies = [cubeBody, cubeBody2, cubeBody3];
+                                        if (intersects[i].distance <= pickUpDistance) {
+                                            pickedObjectBody = intersects[i].object.userData.physicsBody;
+                                            pickedObjectMesh = intersects[i].object;
+                                            distanceToPickedObject = intersects[i].distance;
 
-                            // Verifica se um objeto clicado é pegável e está dentro da distância de seleção
-                            for (let i = 0; i < intersects.length; i++) {
-                                if (intersects[i].object.userData.physicsBody &&
-                                    allPickableBodies.includes(intersects[i].object.userData.physicsBody)) {
+                                            pickedObjectBody.collisionResponse = true;
+                                            pickedObjectBody.velocity.set(0, 0, 0);
+                                            pickedObjectBody.angularVelocity.set(0, 0, 0);
+                                            pickedObjectBody.allowSleep = false;
 
-                                    if (intersects[i].distance <= pickUpDistance) {
-                                        pickedObjectBody = intersects[i].object.userData.physicsBody;
-                                        pickedObjectMesh = intersects[i].object;
-                                        distanceToPickedObject = intersects[i].distance;
+                                            playerBody.velocity.set(0, 0, 0);
+                                            playerBody.angularVelocity.set(0, 0, 0);
+                                            playerBody.allowSleep = false;
 
-                                        pickedObjectBody.collisionResponse = true;
-                                        pickedObjectBody.velocity.set(0, 0, 0); // Para qualquer velocidade existente
-                                        pickedObjectBody.angularVelocity.set(0, 0, 0); // Para qualquer velocidade angular existente
-                                        pickedObjectBody.allowSleep = false; // Mantém-no ativo para verificações de colisão
+                                            const targetPosition = new THREE.Vector3();
+                                            camera.getWorldDirection(targetPosition);
+                                            targetPosition.multiplyScalar(distanceToPickedObject);
+                                            targetPosition.add(camera.position);
 
-                                        // Ao pegar o objeto, zera a velocidade do jogador para evitar arrasto residual
-                                        playerBody.velocity.set(0, 0, 0);
-                                        playerBody.angularVelocity.set(0, 0, 0);
-                                        playerBody.allowSleep = false; // Mantém o jogador ativo enquanto segura o objeto
+                                            grabberBody.position.copy(targetPosition);
 
-
-                                        // Posiciona o grabberBody na frente da câmera
-                                        const targetPosition = new THREE.Vector3();
-                                        camera.getWorldDirection(targetPosition);
-                                        targetPosition.multiplyScalar(distanceToPickedObject);
-                                        targetPosition.add(camera.position); // Adiciona a posição da CÂMERA
-
-                                        grabberBody.position.copy(targetPosition);
-
-                                        // Cria a restrição entre o objeto e o grabberBody
-                                        grabberConstraint = new CANNON.PointToPointConstraint(
-                                            pickedObjectBody,
-                                            new CANNON.Vec3(0, 0, 0), // Pivô no centro do objeto
-                                            grabberBody,
-                                            new CANNON.Vec3(0, 0, 0)  // Pivô no centro do grabber (mão)
-                                        );
-                                        world.addConstraint(grabberConstraint);
-                                        pickedObjectBody.wakeUp(); // Garante que esteja ativo
-                                        break;
+                                            grabberConstraint = new CANNON.PointToPointConstraint(
+                                                pickedObjectBody,
+                                                new CANNON.Vec3(0, 0, 0),
+                                                grabberBody,
+                                                new CANNON.Vec3(0, 0, 0)
+                                            );
+                                            world.addConstraint(grabberConstraint);
+                                            pickedObjectBody.wakeUp();
+                                            break;
+                                        }
                                     }
                                 }
-                            }
+                            }, CLICK_HOLD_DURATION);
                         }
                     } else if (event.button === 2) { // Lógica para clique direito (usa o slot 1)
                         // Lógica para COLOCAR blocos (com clique direito)
