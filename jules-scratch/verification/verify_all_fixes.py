@@ -1,90 +1,91 @@
-from playwright.sync_api import sync_playwright, expect
-import time
+import asyncio
+from playwright.async_api import async_playwright
 import os
 
-def run_verification(playwright):
-    browser = playwright.chromium.launch(headless=True)
-    context = browser.new_context(viewport={'width': 1280, 'height': 720})
-    page = context.new_page()
+async def main():
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
 
-    try:
-        # Navigate to the game file
-        absolute_path = os.path.abspath("./index.htm")
-        page.goto(f"file://{absolute_path}")
+        file_path = os.path.abspath('index.htm')
+        await page.goto(f'file://{file_path}')
 
-        # Start the game
-        page.locator("#startButton").click()
-        canvas = page.locator("canvas")
-        expect(canvas).to_be_visible()
-        # IMPORTANT: Wait for UI to be ready before interacting with it.
-        page.wait_for_timeout(1000)
+        # 1. Start game and acquire pointer lock
+        await page.click('#startButton')
+        await page.wait_for_timeout(1000)
+        await page.click('canvas')
+        await page.wait_for_timeout(500)
 
-        # --- SETUP INVENTORY (BEFORE POINTER LOCK) ---
+        # 2. Test held object wrapping
+        # Grab the nearest box (long press)
+        await page.mouse.move(640, 360) # Center of screen
+        await page.mouse.down()
+        await page.wait_for_timeout(300) # Hold for 300ms
+        await page.mouse.up()
+        await page.wait_for_timeout(500)
+
+        # Move right to cross the world border
+        for _ in range(20):
+            await page.keyboard.press('d')
+            await page.wait_for_timeout(200)
+        await page.keyboard.up('d')
+        await page.wait_for_timeout(500)
+
+        # Take a screenshot to verify the box is still held correctly
+        await page.screenshot(path="jules-scratch/verification/held_object_test.png")
+
+        # Drop the box (short click)
+        await page.mouse.click(640, 360)
+        await page.wait_for_timeout(500)
+
+        # 3. Test tree growth and stone floor mirroring
         # Open backpack
-        page.keyboard.press('b')
-        page.wait_for_timeout(1000) # Wait for modal animation
+        await page.keyboard.press('b')
+        await page.wait_for_timeout(500)
 
-        # Drag a box from the backpack to the primary hand slot
-        page.locator("#backpack-slot-8").drag_to(page.locator("#belt-slot-0"))
-        page.wait_for_timeout(500)
+        # Drag tree sapling to the belt
+        await page.drag_and_drop('#backpack-slot-5', '#belt-slot-1')
+        await page.wait_for_timeout(500)
 
-        # Close the backpack
-        page.keyboard.press('b')
-        page.wait_for_timeout(500)
+        # Close backpack and re-acquire pointer lock
+        await page.keyboard.press('b')
+        await page.wait_for_timeout(500)
+        await page.click('canvas', force=True)
+        await page.wait_for_timeout(500)
 
-        # Now, lock the pointer and start the in-game tests
-        canvas.click()
-        page.wait_for_timeout(2000)
+        # Select the sapling and place it
+        await page.keyboard.press('e')
+        await page.wait_for_timeout(500)
+        await page.click('canvas', position={'x': 550, 'y': 400}, force=True)
+        await page.wait_for_timeout(500)
 
-        # --- 1. Verify Placing a Box ---
-        # The box is in our hand, so a simple click should place it.
-        page.mouse.click(640, 360)
-        page.wait_for_timeout(1000)
-        page.screenshot(path="jules-scratch/verification/01_box_placed.png")
-        # After placing, the hand slot (0) should be empty.
+        # Open backpack to get texture applicator
+        await page.keyboard.press('b')
+        await page.wait_for_timeout(500)
 
-        # --- 2. Verify Collecting a Box (Shift + Click) ---
-        # With an empty hand, Shift + Click should collect the box we just placed.
-        page.keyboard.down('Shift')
-        page.mouse.click(640, 360)
-        page.keyboard.up('Shift')
-        page.wait_for_timeout(1000)
-        page.screenshot(path="jules-scratch/verification/02_box_collected_with_shift.png")
+        # Drag texture applicator to the belt
+        await page.drag_and_drop('#backpack-slot-2', '#belt-slot-1')
+        await page.wait_for_timeout(500)
 
-        # --- 3. Verify Grabbing a Box (Short Click) ---
-        # We should have an empty hand now after placing and collecting.
-        # Let's move towards the initial set of boxes to grab one of them.
-        page.keyboard.down('w')
-        time.sleep(1.5)
-        page.keyboard.up('w')
-        page.wait_for_timeout(500)
+        # Close backpack and re-acquire pointer lock
+        await page.keyboard.press('b')
+        await page.wait_for_timeout(500)
+        await page.click('canvas', force=True)
+        await page.wait_for_timeout(500)
 
-        # Short click to grab.
-        page.mouse.click(640, 360)
-        page.wait_for_timeout(500)
-        # Move it to prove it's grabbed
-        page.mouse.move(500, 400, steps=10)
-        page.wait_for_timeout(500)
-        page.screenshot(path="jules-scratch/verification/03_box_grabbed_short_click.png")
-        # Drop it
-        page.mouse.click(640, 360) # Short click again to drop
-        page.wait_for_timeout(500)
+        # Select the texture applicator and apply texture
+        await page.keyboard.press('e')
+        await page.wait_for_timeout(500)
+        await page.click('canvas', position={'x': 700, 'y': 450}, force=True)
+        await page.wait_for_timeout(500)
 
-        # --- 4. Verify Grabbing a Box (Long Press) ---
-        # The box should be right in front of us still.
-        # Grab with a long press
-        page.mouse.down()
-        time.sleep(0.3) # Hold for >250ms
-        page.mouse.move(700, 400, steps=10)
-        page.wait_for_timeout(500)
-        page.screenshot(path="jules-scratch/verification/04_box_grabbed_long_press.png")
-        page.mouse.up()
+        # Wait for the tree to grow
+        await page.wait_for_timeout(22000)
 
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        page.screenshot(path="jules-scratch/verification/error.png")
-    finally:
-        browser.close()
+        # Final screenshot
+        await page.screenshot(path="jules-scratch/verification/verification.png")
 
-with sync_playwright() as p:
-    run_verification(p)
+        await browser.close()
+
+if __name__ == '__main__':
+    asyncio.run(main())
