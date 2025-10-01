@@ -1203,9 +1203,16 @@
             placedConstructionBodies.push(blockBody);
             console.log("Bloco colocado. Corpos de construção colocados:", placedConstructionBodies); // Log para depuração
 
-            mesh.userData.physicsBody = blockBody; // Vincula a malha visual ao corpo de física
-            scene.add(mesh);
-            placedConstructionMeshesArrays.push([{ mesh: mesh, offsetX: 0, offsetZ: 0 }]); // Simplified for single mesh/group per body
+            const meshesForBody = [];
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const clonedMesh = mesh.clone(); // Clona a malha/grupo original
+                    clonedMesh.userData.physicsBody = blockBody; // Liga ao mesmo corpo de física
+                    scene.add(clonedMesh);
+                    meshesForBody.push({ mesh: clonedMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
+            placedConstructionMeshesArrays.push(meshesForBody);
         }
 
         // Function to create a smoke effect at a given position
@@ -2281,13 +2288,8 @@
 
             // Atualiza as posições de todas as malhas visuais dos blocos colocados
             placedConstructionBodies.forEach((body, index) => {
-                // Cada corpo de bloco colocado agora tem apenas uma malha visual.
-                // Acessamos diretamente a malha no primeiro (e único) elemento do array de malhas para aquele corpo.
-                const meshToUpdate = placedConstructionMeshesArrays[index][0].mesh;
-                meshToUpdate.position.x = body.position.x + placedConstructionMeshesArrays[index][0].offsetX - visualOffsetX;
-                meshToUpdate.position.y = body.position.y;
-                meshToUpdate.position.z = body.position.z + placedConstructionMeshesArrays[index][0].offsetZ - visualOffsetZ;
-                meshToUpdate.quaternion.copy(body.quaternion); // Mantém a rotação
+                const meshesArray = placedConstructionMeshesArrays[index];
+                updateObjectVisuals(body, meshesArray, visualOffsetX, visualOffsetZ);
             });
 
 
