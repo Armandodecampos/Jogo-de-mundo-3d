@@ -2095,19 +2095,25 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // Função para aplicar o efeito de envolvimento a um corpo de física (não retorna delta)
+        // Função para aplicar o efeito de envolvimento a um corpo de física e retornar a alteração
         function wrapObject(body, size) {
+            const delta = new CANNON.Vec3(0, 0, 0);
             if (body.position.x > size / 2) {
                 body.position.x -= size;
+                delta.x -= size;
             } else if (body.position.x < -size / 2) {
                 body.position.x += size;
+                delta.x += size;
             }
 
             if (body.position.z > size / 2) {
                 body.position.z -= size;
+                delta.z -= size;
             } else if (body.position.z < -size / 2) {
                 body.position.z += size;
+                delta.z += size;
             }
+            return delta;
         }
 
         // Função para atualizar as posições de todas as malhas visuais para um dado corpo de cubo/bloco
@@ -2280,8 +2286,12 @@
             });
 
 
-            // Aplica o envolvimento ao corpo de física do jogador
-            wrapObject(playerBody, worldSize);
+            // Aplica o envolvimento ao corpo de física do jogador e sincroniza o objeto segurado
+            const playerWrapDelta = wrapObject(playerBody, worldSize);
+            if (pickedObjectBody && (playerWrapDelta.x !== 0 || playerWrapDelta.z !== 0)) {
+                pickedObjectBody.position.x += playerWrapDelta.x;
+                pickedObjectBody.position.z += playerWrapDelta.z;
+            }
 
             // Aplica o envolvimento aos corpos de física dos cubos e blocos
             [...allPickableBodies, ...allStaticBodies].forEach(body => {
