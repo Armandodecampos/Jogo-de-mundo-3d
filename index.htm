@@ -2308,7 +2308,9 @@
 
             // Atualiza as posições de todas as malhas visuais dos cubos/caixas
             collectibleBoxes.forEach(box => {
-                updateObjectVisuals(box.body, box.meshes, visualOffsetX, visualOffsetZ);
+                if (box.body !== pickedObjectBody) { // Pula o objeto que está sendo segurado
+                    updateObjectVisuals(box.body, box.meshes, visualOffsetX, visualOffsetZ);
+                }
             });
 
             // Atualiza as posições de todas as malhas visuais dos blocos colocados
@@ -2491,6 +2493,15 @@
 
                 grabberBody.position.copy(desiredGrabberTargetCannon);
                 // A restrição agora puxa o pickedObjectBody para o grabberBody, permitindo colisões.
+
+                // NOVO: Atualiza as malhas visuais do objeto segurado para que ele não "salte"
+                const pickedBox = collectibleBoxes.find(box => box.body === pickedObjectBody);
+                if (pickedBox) {
+                    pickedBox.meshes.forEach(item => {
+                        item.mesh.position.copy(pickedObjectBody.position);
+                        item.mesh.quaternion.copy(pickedObjectBody.quaternion);
+                    });
+                }
             }
 
             // Determine the primary tool for visual feedback and ghost block logic
