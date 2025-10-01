@@ -576,7 +576,7 @@
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
         let stoneMaterial; // NOVO: Material para chão com a nova textura
 
-        const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
+        const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura (agora armazena arrays de malhas)
 
         // Declare physics materials globally
         let playerMaterial;
@@ -1979,12 +1979,21 @@
                     const snappedX = Math.floor(hitPoint.x / patchSize) * patchSize + patchSize / 2;
                     const snappedZ = Math.floor(hitPoint.z / patchSize) * patchSize + patchSize / 2;
                     const patchGeometry = new THREE.BoxGeometry(patchSize, 0.01, patchSize);
-                    const patchMesh = new THREE.Mesh(patchGeometry, stoneMaterial);
-                    patchMesh.position.set(snappedX, streetHeight + 0.005, snappedZ);
-                    patchMesh.receiveShadow = true;
-                    patchMesh.userData = { isDestructible: true, durability: 0.5, type: 'patch' };
-                    scene.add(patchMesh);
-                    texturePatches.push(patchMesh);
+                    const patchMeshes = [];
+                    const patchUserData = { isDestructible: true, durability: 0.5, type: 'patch', originalPosition: new THREE.Vector3(snappedX, streetHeight + 0.005, snappedZ) };
+
+                    for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                        for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                            const mesh = new THREE.Mesh(patchGeometry, stoneMaterial);
+                            // A posição será definida no loop de animação, mas definimos uma inicial aqui
+                            mesh.position.set(snappedX + i * worldSize, streetHeight + 0.005, snappedZ + j * worldSize);
+                            mesh.receiveShadow = true;
+                            mesh.userData = patchUserData; // Todos os clones compartilham os mesmos dados do usuário
+                            scene.add(mesh);
+                            patchMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                        }
+                    }
+                    texturePatches.push(patchMeshes); // Adiciona o array de malhas
                 }
             }
 
@@ -2158,15 +2167,31 @@
 
                     // Handle patch destruction
                     if (destroyTargetMesh.userData.type === 'patch') {
-                       const patchIndex = texturePatches.indexOf(destroyTargetMesh);
-                       if (patchIndex > -1) {
-                           texturePatches.splice(patchIndex, 1);
-                       }
-                       scene.remove(destroyTargetMesh);
-                       if (destroyTargetMesh.geometry) destroyTargetMesh.geometry.dispose();
-                       // Give back a stone item
-                       addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
-                       updateBackpackDisplay();
+                        let patchMeshArray = null;
+                        let patchIndex = -1;
+
+                        // Encontra o array de malhas ao qual este patch pertence
+                        for (let i = 0; i < texturePatches.length; i++) {
+                            if (texturePatches[i].some(item => item.mesh === destroyTargetMesh)) {
+                                patchMeshArray = texturePatches[i];
+                                patchIndex = i;
+                                break;
+                            }
+                        }
+
+                        if (patchMeshArray) {
+                            // Remove todas as malhas do array da cena
+                            patchMeshArray.forEach(item => {
+                                scene.remove(item.mesh);
+                                if (item.mesh.geometry) item.mesh.geometry.dispose();
+                            });
+                            // Remove o array do array principal de texturePatches
+                            texturePatches.splice(patchIndex, 1);
+
+                            // Devolve um item de pedra
+                            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
+                            updateBackpackDisplay();
+                        }
                     }
                     // Handle regular block destruction
                     else if (destroyTargetBody) {
@@ -2290,6 +2315,26 @@
             placedConstructionBodies.forEach((body, index) => {
                 const meshesArray = placedConstructionMeshesArrays[index];
                 updateObjectVisuals(body, meshesArray, visualOffsetX, visualOffsetZ);
+            });
+
+            // NOVO: Atualiza as posições de todas as malhas de patch de textura
+            texturePatches.forEach(patchMeshArray => {
+                // A posição "original" é armazenada no userData da primeira malha.
+                const originalPosition = patchMeshArray[0].mesh.userData.originalPosition;
+                let wrappedX = originalPosition.x;
+                let wrappedZ = originalPosition.z;
+
+                // Aplica o envolvimento à posição original para obter a posição base atual
+                if (wrappedX - playerX > worldSize / 2) wrappedX -= worldSize;
+                else if (wrappedX - playerX < -worldSize / 2) wrappedX += worldSize;
+                if (wrappedZ - playerZ > worldSize / 2) wrappedZ -= worldSize;
+                else if (wrappedZ - playerZ < -worldSize / 2) wrappedZ += worldSize;
+
+                patchMeshArray.forEach(item => {
+                    item.mesh.position.x = wrappedX + item.offsetX - visualOffsetX;
+                    item.mesh.position.y = originalPosition.y;
+                    item.mesh.position.z = wrappedZ + item.offsetZ - visualOffsetZ;
+                });
             });
 
 
@@ -2887,24 +2932,31 @@
                         const newOverallPhysicsHeight = nextRandomizedData.overallPhysicsHeight;
                         blockBody.position.y += (newOverallPhysicsHeight - oldOverallPhysicsHeight) / 2;
 
-                        // Update Three.js mesh (the group)
-                        treeGroup.children.forEach(child => child.geometry.dispose()); // Dispose old geometries
-                        treeGroup.remove(...treeGroup.children); // Remove all children
+                        // Update Three.js mesh for the original and all mirrored instances
+                        blockMeshArray.forEach(meshItem => {
+                            const group = meshItem.mesh;
+                            // Dispose old geometries and remove children
+                            group.children.forEach(child => {
+                                if (child.geometry) child.geometry.dispose();
+                            });
+                            group.remove(...group.children);
 
-                        // Create new trunk and leaves for the next stage
-                        const trunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
-                        const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
-                        trunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
-                        trunkMesh.castShadow = true;
-                        trunkMesh.receiveShadow = true;
-                        treeGroup.add(trunkMesh);
+                            // Create and add new trunk
+                            const trunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
+                            const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
+                            trunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
+                            trunkMesh.castShadow = true;
+                            trunkMesh.receiveShadow = true;
+                            group.add(trunkMesh);
 
-                        const leavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
-                        const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
-                        leavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
-                        leavesMesh.castShadow = true;
-                        leavesMesh.receiveShadow = true;
-                        treeGroup.add(leavesMesh);
+                            // Create and add new leaves
+                            const leavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
+                            const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
+                            leavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
+                            leavesMesh.castShadow = true;
+                            leavesMesh.receiveShadow = true;
+                            group.add(leavesMesh);
+                        });
 
                         // Update userData
                         blockBody.userData.dimensions = {
