@@ -437,8 +437,8 @@
         let crouchPlayerShape;   // Para armazenar a forma agachada
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
-        const islandSize = 300; // O tamanho da ilha de terra
-        const worldSize = 400; // O tamanho total do mundo para o wrapping (ilha + oceano)
+        const islandSize = 80; // O tamanho da ilha de terra
+        const worldSize = 100; // O tamanho total do mundo para o wrapping (ilha + oceano)
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
         const streetHeight = cobSize;
@@ -1410,13 +1410,17 @@
                 texture.repeat.set(islandSize / cobWidth, islandSize / cobDepth);
             });
             const streetMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
-            // NOVO: Cria uma única malha para a ilha, já que não é mais um tile que se repete
-            const singleStreetMesh = new THREE.Mesh(streetGeometry, streetMeshMaterial);
-            singleStreetMesh.position.copy(streetBody.position); // Posição fixa no centro
-            singleStreetMesh.receiveShadow = true;
-            singleStreetMesh.userData.physicsBody = streetBody;
-            scene.add(singleStreetMesh);
-            streetMeshes.push({ mesh: singleStreetMesh, offsetX: 0, offsetZ: 0 }); // Adiciona a malha única ao array para o aplicador de textura
+            // NOVO: Recria a grade de malhas visuais da ilha para o efeito de espelhamento
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const mesh = new THREE.Mesh(streetGeometry, streetMeshMaterial);
+                    mesh.receiveShadow = true;
+                    mesh.userData.physicsBody = streetBody; // Todas as malhas visuais apontam para o único corpo físico central
+                    scene.add(mesh);
+                    // O deslocamento é baseado no tamanho do mundo para posicionar cada ilha no centro de sua respectiva telha
+                    streetMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
 
 
             // NOVO: Cria o Oceano (apenas visual)
@@ -1462,6 +1466,7 @@
             // Posição inicial: centro da esfera em playerRadius + streetHeight
             playerBody.position.set(0, playerRadius + streetHeight, 0); // Posição inicial ajustada do jogador
             world.addBody(playerBody);
+            window.playerBody = playerBody; // NOVO: Expõe o corpo do jogador para verificação
 
             // Reintroduz o listener de colisão para canJump, mas com uma verificação adicional
             playerBody.addEventListener('collide', (event) => {
@@ -2333,9 +2338,9 @@
                 if (body !== pickedObjectBody) {
                     wrapObject(body, worldSize);
 
-                    // NOVO: Lógica para afundar e desaparecer
-                    const isOutsideIsland = Math.abs(body.position.x) > islandSize / 2 || Math.abs(body.position.z) > islandSize / 2;
-                    if (isOutsideIsland && body.position.y < waterLevel) {
+                    // NOVO: Lógica para afundar e desaparecer no mundo em mosaico
+                    const isObjectOnLand = Math.abs(body.position.x) <= islandSize / 2 && Math.abs(body.position.z) <= islandSize / 2;
+                    if (!isObjectOnLand && body.position.y < waterLevel) {
                         bodiesToRemove.push(body);
                         box.meshes.forEach(m => meshesToRemove.push(m.mesh));
                         if (!boxIndicesToRemove.includes(index)) {
@@ -2356,16 +2361,17 @@
                 wrapObject(body, worldSize);
             });
 
-            // NOVO: Lógica de deteção de água e mudança de estado para natação
-            const isPlayerOverWater = Math.abs(playerBody.position.x) > islandSize / 2 || Math.abs(playerBody.position.z) > islandSize / 2;
+            // NOVO: Lógica de deteção de água para um mundo em mosaico
+            // A posição do jogador já está envolvida, então só precisamos verificar se ele está fora da ilha central.
+            const isPlayerOnLand = Math.abs(playerBody.position.x) <= islandSize / 2 && Math.abs(playerBody.position.z) <= islandSize / 2;
 
             // Condição para entrar na água
-            if (isPlayerOverWater && playerBody.position.y < waterLevel && !isSwimming) {
+            if (!isPlayerOnLand && playerBody.position.y < waterLevel && !isSwimming) {
                 isSwimming = true;
-                canJump = false; // Não pode pular enquanto estiver na água
+                canJump = false;
             }
             // Condição para sair da água
-            else if (!isPlayerOverWater && isSwimming) {
+            else if (isPlayerOnLand && isSwimming) {
                 isSwimming = false;
             }
 
@@ -2376,7 +2382,15 @@
             const visualOffsetX = Math.round(playerX / worldSize) * worldSize;
             const visualOffsetZ = Math.round(playerZ / worldSize) * worldSize;
 
-            // A malha da ilha é estática, então não precisa de atualização no loop.
+            // NOVO: Atualiza as posições das malhas do terreno para criar o efeito de espelhamento
+            streetMeshes.forEach(tile => {
+                // A posição da ilha é o seu deslocamento MENOS o deslocamento visual do jogador, mantendo-a no centro de sua respectiva telha
+                tile.mesh.position.x = tile.offsetX - visualOffsetX;
+                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
+                // A posição Y é fixa, baseada na altura do corpo físico
+                tile.mesh.position.y = streetBody.position.y;
+                tile.mesh.quaternion.copy(streetBody.quaternion);
+            });
 
             // NOVO: Atualiza as posições das malhas de água para seguir o jogador
             waterMeshes.forEach(tile => {
@@ -2668,7 +2682,7 @@
 
 
             // Lógica de agachamento
-            if (keysPressed['c'] && !isCrouching) {
+            if (keysPressed['c'] && !isCrouching && !isSwimming) { // NOVO: Impede o agachamento na água
                 isCrouching = true;
                 // Remove a forma original, adiciona a forma de agachamento
                 playerBody.removeShape(originalPlayerShape);
