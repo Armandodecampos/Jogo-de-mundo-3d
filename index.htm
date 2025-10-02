@@ -1257,9 +1257,6 @@
             // Configuração da Cena Three.js
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x87CEEB); // Cor de fundo: azul claro (céu)
-            // NOVO: Configura a névoa para o efeito subaquático
-            scene.fog = new THREE.Fog(0x006994, 0.1, 50.0);
-            scene.fog.visible = false; // Começa desativada
 
             // Configuração da Câmera Three.js
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -2704,13 +2701,6 @@
             camera.position.copy(playerBody.position);
             camera.position.y += cameraEyeLevelOffset;
 
-            // NOVO: Lógica para o efeito de névoa subaquática
-            if (camera.position.y < waterLevel) {
-                scene.fog.visible = true;
-            } else {
-                scene.fog.visible = false;
-            }
-
             // Atualiza a posição e o alvo da luz direcional para seguir a câmera/jogador
             directionalLight.position.copy(camera.position);
             directionalLight.position.x += 10; // Offset da câmera para a fonte de luz
@@ -2724,27 +2714,22 @@
             playerBody.quaternion.setFromEuler(0, camera.rotation.y, 0);
 
             if (isSwimming) {
-                // --- SWIMMING LOGIC ---
+                // --- SURFACE SWIMMING LOGIC ---
                 const swimSpeed = 2.5;
-                const verticalSwimForce = 4000;
-                const buoyancyFactor = 1.05; // A gentle float
 
-                // Apply Buoyancy to counteract gravity
-                const gravityForceMagnitude = world.gravity.length() * playerBody.mass;
-                const buoyancy = gravityForceMagnitude * buoyancyFactor;
-                playerBody.applyForce(new CANNON.Vec3(0, buoyancy, 0), playerBody.position);
+                // 1. Force to counteract gravity, making the player 'weightless' in water
+                const gravityCompensation = new CANNON.Vec3(0, playerBody.mass * world.gravity.length(), 0);
+                playerBody.applyForce(gravityCompensation, playerBody.position);
 
-                // Apply vertical swimming force on key press
-                if (keysPressed[' ']) { // Swim up
-                    playerBody.applyForce(new CANNON.Vec3(0, verticalSwimForce * 0.75, 0), playerBody.position);
-                } else if (keysPressed['c']) { // Swim down
-                    playerBody.applyForce(new CANNON.Vec3(0, -verticalSwimForce, 0), playerBody.position);
-                }
+                // 2. A spring-like force to pull the player to a stable floating position
+                const floatHeight = waterLevel - playerRadius * 0.2; // Target Y for player's center, slightly submerged
+                const displacement = floatHeight - playerBody.position.y;
+                const springForce = displacement * 120; // Spring constant (k)
 
-                // Dampen vertical velocity when no key is pressed to prevent bobbing
-                if (!keysPressed[' '] && !keysPressed['c']) {
-                    playerBody.velocity.y *= 0.5;
-                }
+                // 3. A damping force to prevent bobbing and smooth the movement
+                const dampingForce = -playerBody.velocity.y * 180; // Damping constant
+
+                playerBody.applyForce(new CANNON.Vec3(0, springForce + dampingForce, 0), playerBody.position);
 
                 // Horizontal movement
                 const forward = new THREE.Vector3();
