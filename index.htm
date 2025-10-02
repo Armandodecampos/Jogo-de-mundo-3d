@@ -1394,31 +1394,54 @@
             scene.add(directionalLight);
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
-            // Cria o Terreno (agora composto de blocos de cob)
-            const streetShape = new CANNON.Box(new CANNON.Vec3(islandSize / 2, streetHeight / 2, islandSize / 2));
-            streetBody = new CANNON.Body({ mass: 0, shape: streetShape, material: streetMaterial });
-            streetBody.position.set(0, streetHeight / 2, 0); // Posição na metade de sua altura para ter o topo em y=0
-            world.addBody(streetBody);
+            // Cria o Terreno (agora uma forma irregular)
+            streetBody = new CANNON.Body({ mass: 0, material: streetMaterial });
+            streetBody.position.set(0, streetHeight / 2, 0);
 
-            const streetGeometry = new THREE.BoxGeometry(islandSize, streetHeight, islandSize);
+            // Define as formas que comporão a ilha
+            const islandShapes = [
+                { shape: new CANNON.Box(new CANNON.Vec3(15, streetHeight / 2, 25)), offset: new CANNON.Vec3(0, 0, 0) },
+                { shape: new CANNON.Box(new CANNON.Vec3(25, streetHeight / 2, 15)), offset: new CANNON.Vec3(0, 0, 0) },
+                { shape: new CANNON.Box(new CANNON.Vec3(5, streetHeight / 2, 5)), offset: new CANNON.Vec3(20, 0, 20) },
+                { shape: new CANNON.Box(new CANNON.Vec3(8, streetHeight / 2, 8)), offset: new CANNON.Vec3(-22, 0, -22) },
+                { shape: new CANNON.Box(new CANNON.Vec3(10, streetHeight / 2, 4)), offset: new CANNON.Vec3(-15, 0, 20) },
+                { shape: new CANNON.Box(new CANNON.Vec3(4, streetHeight / 2, 10)), offset: new CANNON.Vec3(20, 0, -15) },
+            ];
+
+            islandShapes.forEach(item => {
+                streetBody.addShape(item.shape, item.offset);
+            });
+
+            world.addBody(streetBody);
+            // Armazena as formas e offsets para uso na detecção de terra
+            streetBody.userData = { islandShapes: islandShapes.map(item => ({ shape: item.shape, offset: item.offset })) };
+
             // Carrega a textura de terra para o terreno
             const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
-                // Configura a repetição da textura
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
-                // Ajusta a repetição da textura.
-                texture.repeat.set(islandSize / cobWidth, islandSize / cobDepth);
+                texture.repeat.set(10, 10); // Repetição padrão
             });
             const streetMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
-            // NOVO: Recria a grade de malhas visuais da ilha para o efeito de espelhamento
+
+            // Cria um grupo para conter todas as partes da ilha
+            const islandGroup = new THREE.Group();
+            streetBody.userData.islandShapes.forEach(item => {
+                const { shape, offset } = item;
+                const geometry = new THREE.BoxGeometry(shape.halfExtents.x * 2, streetHeight, shape.halfExtents.z * 2);
+                const mesh = new THREE.Mesh(geometry, streetMeshMaterial);
+                mesh.position.set(offset.x, 0, offset.z); // A posição Y é relativa ao grupo
+                mesh.receiveShadow = true;
+                islandGroup.add(mesh);
+            });
+
+            // NOVO: Recria a grade de malhas visuais da ilha (usando o grupo) para o efeito de espelhamento
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(streetGeometry, streetMeshMaterial);
-                    mesh.receiveShadow = true;
-                    mesh.userData.physicsBody = streetBody; // Todas as malhas visuais apontam para o único corpo físico central
-                    scene.add(mesh);
-                    // O deslocamento é baseado no tamanho do mundo para posicionar cada ilha no centro de sua respectiva telha
-                    streetMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                    const groupClone = islandGroup.clone();
+                    groupClone.userData.physicsBody = streetBody; // Todas as malhas visuais apontam para o único corpo físico central
+                    scene.add(groupClone);
+                    streetMeshes.push({ mesh: groupClone, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
             }
 
@@ -1668,9 +1691,15 @@
                     }
 
                     keysPressed[event.key.toLowerCase()] = true;
-                    if (event.key.toLowerCase() === ' ' && canJump && !isSwimming) { // Modificado para não pular na água
-                        playerBody.applyImpulse(new CANNON.Vec3(0, 400 * 3, 0), playerBody.position);
-                        canJump = false;
+                    if (event.key.toLowerCase() === ' ') { // Lida com o pulo
+                        if (isSwimming) {
+                            // Aplica um impulso para cima para pular para fora da água.
+                            playerBody.applyImpulse(new CANNON.Vec3(0, 1200, 0), playerBody.position);
+                        } else if (canJump) {
+                            // Pulo normal em terra
+                            playerBody.applyImpulse(new CANNON.Vec3(0, 1200, 0), playerBody.position);
+                            canJump = false;
+                        }
                     }
                 }
             });
@@ -2362,9 +2391,28 @@
             });
 
             // NOVO: Lógica de deteção de água para um mundo em mosaico
-            // A posição do jogador já está envolvida, então só precisamos verificar se ele está fora da ilha central.
-            const isPlayerOnLand = Math.abs(playerBody.position.x) <= islandSize / 2 && Math.abs(playerBody.position.z) <= islandSize / 2;
+            let isPlayerOnLand = false;
+            if (streetBody.userData && streetBody.userData.islandShapes) {
+                const playerX = playerBody.position.x;
+                const playerZ = playerBody.position.z;
 
+                for (const item of streetBody.userData.islandShapes) {
+                    const shape = item.shape;
+                    const offset = item.offset;
+                    const halfExtents = shape.halfExtents;
+
+                    // Calcula os limites da caixa (AABB) no espaço do mundo
+                    const minX = offset.x - halfExtents.x;
+                    const maxX = offset.x + halfExtents.x;
+                    const minZ = offset.z - halfExtents.z;
+                    const maxZ = offset.z + halfExtents.z;
+
+                    if (playerX >= minX && playerX <= maxX && playerZ >= minZ && playerZ <= maxZ) {
+                        isPlayerOnLand = true;
+                        break; // Encontrou terra, não precisa verificar mais
+                    }
+                }
+            }
             // Condição para entrar na água
             if (!isPlayerOnLand && playerBody.position.y < waterLevel && !isSwimming) {
                 isSwimming = true;
