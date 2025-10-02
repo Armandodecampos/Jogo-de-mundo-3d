@@ -376,6 +376,8 @@
         let playerBody;
         let streetBody; // Corpo de física para o terreno (agora verde)
         let streetMeshes = []; // Array para armazenar múltiplas malhas visuais do terreno
+        let waterMeshes = []; // NOVO: Array para as malhas visuais da água
+        let waterLevel; // NOVO: Nível da água
 
         let roadBody; // Corpo de física para o estrada (agora cinza)
         let roadMeshes = []; // Array para armazenar múltiplas malhas visuais da estrada
@@ -435,7 +437,8 @@
         let crouchPlayerShape;   // Para armazenar a forma agachada
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
-        const worldSize = 100; // Dobrado de 50 para 100
+        const islandSize = 300; // O tamanho da ilha de terra
+        const worldSize = 400; // O tamanho total do mundo para o wrapping (ilha + oceano)
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
         const streetHeight = cobSize;
@@ -1389,29 +1392,50 @@
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
             // Cria o Terreno (agora composto de blocos de cob)
-            const streetShape = new CANNON.Box(new CANNON.Vec3(worldSize / 2, streetHeight / 2, worldSize / 2));
+            const streetShape = new CANNON.Box(new CANNON.Vec3(islandSize / 2, streetHeight / 2, islandSize / 2));
             streetBody = new CANNON.Body({ mass: 0, shape: streetShape, material: streetMaterial });
             streetBody.position.set(0, streetHeight / 2, 0); // Posição na metade de sua altura para ter o topo em y=0
             world.addBody(streetBody);
 
-            const streetGeometry = new THREE.BoxGeometry(worldSize, streetHeight, worldSize);
+            const streetGeometry = new THREE.BoxGeometry(islandSize, streetHeight, islandSize);
             // Carrega a textura de terra para o terreno
             const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
                 // Configura a repetição da textura
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 // Ajusta a repetição da textura.
-                texture.repeat.set(worldSize / cobWidth, worldSize / cobDepth);
+                texture.repeat.set(islandSize / cobWidth, islandSize / cobDepth);
             });
             const streetMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
+            // NOVO: Cria uma única malha para a ilha, já que não é mais um tile que se repete
+            const singleStreetMesh = new THREE.Mesh(streetGeometry, streetMeshMaterial);
+            singleStreetMesh.position.copy(streetBody.position); // Posição fixa no centro
+            singleStreetMesh.receiveShadow = true;
+            singleStreetMesh.userData.physicsBody = streetBody;
+            scene.add(singleStreetMesh);
+            streetMeshes.push({ mesh: singleStreetMesh, offsetX: 0, offsetZ: 0 }); // Adiciona a malha única ao array para o aplicador de textura
+
+
+            // NOVO: Cria o Oceano (apenas visual)
+            waterLevel = streetHeight - 0.2; // Nível da água um pouco abaixo do terreno
+
+            const waterGeometry = new THREE.PlaneGeometry(worldSize, worldSize);
+            const waterMaterial = new THREE.MeshStandardMaterial({
+                color: 0x006994, // Cor de água azul
+                transparent: true,
+                opacity: 0.8,
+                metalness: 0.8,
+                roughness: 0.1
+            });
+
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(streetGeometry, streetMeshMaterial);
+                    const mesh = new THREE.Mesh(waterGeometry, waterMaterial);
+                    mesh.rotation.x = -Math.PI / 2; // Rotaciona a malha para ser horizontal
                     mesh.receiveShadow = true;
-                    mesh.userData.physicsBody = streetBody; // ASSOCIA O CORPO DE FÍSICA À MALHA VISUAL
+                    mesh.userData.isWater = true; // Flag para identificar a água
                     scene.add(mesh);
-                    // Armazena a malha e seu offset ideal da origem (0,0,0)
-                    streetMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                    waterMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
             }
 
@@ -2296,12 +2320,45 @@
                 pickedObjectBody.position.z += playerWrapDelta.z;
             }
 
-            // Aplica o envolvimento aos corpos de física dos cubos e blocos
-            [...allPickableBodies, ...allStaticBodies].forEach(body => {
-                if (body !== pickedObjectBody) { // Apenas se não estiver sendo segurado
+            // Aplica o envolvimento e a lógica de afogamento aos corpos de física
+            const bodiesToRemove = [];
+            const meshesToRemove = [];
+            const boxIndicesToRemove = [];
+
+            collectibleBoxes.forEach((box, index) => {
+                const body = box.body;
+                if (body !== pickedObjectBody) {
                     wrapObject(body, worldSize);
+
+                    // NOVO: Lógica para afundar e desaparecer
+                    const isOutsideIsland = Math.abs(body.position.x) > islandSize / 2 || Math.abs(body.position.z) > islandSize / 2;
+                    if (isOutsideIsland && body.position.y < waterLevel) {
+                        bodiesToRemove.push(body);
+                        box.meshes.forEach(m => meshesToRemove.push(m.mesh));
+                        if (!boxIndicesToRemove.includes(index)) {
+                            boxIndicesToRemove.push(index);
+                        }
+                    }
                 }
             });
+
+            // Remove os corpos e malhas marcados
+            bodiesToRemove.forEach(body => world.removeBody(body));
+            meshesToRemove.forEach(mesh => scene.remove(mesh));
+            // Remove os índices em ordem decrescente para não bagunçar o array durante a iteração
+            boxIndicesToRemove.sort((a, b) => b - a).forEach(index => collectibleBoxes.splice(index, 1));
+
+            // Aplica o envolvimento aos corpos estáticos
+            allStaticBodies.forEach(body => {
+                wrapObject(body, worldSize);
+            });
+
+            // NOVO: Verifica se o jogador caiu na água
+            const isPlayerOutsideIsland = Math.abs(playerBody.position.x) > islandSize / 2 || Math.abs(playerBody.position.z) > islandSize / 2;
+            if (isPlayerOutsideIsland && playerBody.position.y < waterLevel) {
+                playerBody.position.set(0, playerRadius + streetHeight, 0); // Reseta para a posição inicial
+                playerBody.velocity.set(0, 0, 0); // Zera a velocidade
+            }
 
             // Calcula o offset da "origem visual" para toda a grade de tiles
             // Isso garante que o jogador esteja sempre visualmente centralizado dentro do tile "principal".
@@ -2310,14 +2367,14 @@
             const visualOffsetX = Math.round(playerX / worldSize) * worldSize;
             const visualOffsetZ = Math.round(playerZ / worldSize) * worldSize;
 
-            // Atualiza as posições das malhas do terreno com base na posição envolvida do jogador
-            streetMeshes.forEach(tile => {
+            // A malha da ilha é estática, então não precisa de atualização no loop.
+
+            // NOVO: Atualiza as posições das malhas de água para seguir o jogador
+            waterMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                tile.mesh.position.y = streetHeight / 2;
-                tile.mesh.quaternion.copy(streetBody.quaternion);
+                tile.mesh.position.y = waterLevel; // Usa a variável global waterLevel
             });
-            // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
             // Atualiza as posições de todas as malhas visuais dos cubos/caixas
             collectibleBoxes.forEach(box => {
