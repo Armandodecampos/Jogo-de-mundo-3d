@@ -454,6 +454,9 @@
         let isCrouching = false;
         const crouchSpeedMultiplier = 0.5; // Multiplicador para velocidade ao agachar
 
+        // NOVO: Variáveis de natação
+        let isSwimming = false;
+
         // Variável global para luz direcional
         let directionalLight;
 
@@ -1254,6 +1257,9 @@
             // Configuração da Cena Three.js
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x87CEEB); // Cor de fundo: azul claro (céu)
+            // NOVO: Configura a névoa para o efeito subaquático
+            scene.fog = new THREE.Fog(0x006994, 0.1, 50.0);
+            scene.fog.visible = false; // Começa desativada
 
             // Configuração da Câmera Three.js
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -1660,9 +1666,9 @@
                     }
 
                     keysPressed[event.key.toLowerCase()] = true;
-                    if (event.key.toLowerCase() === ' ' && canJump) { // Permite pular apenas se canJump for verdadeiro
-                        playerBody.applyImpulse(new CANNON.Vec3(0, 400 * 3, 0), playerBody.position); // Triplicado o impulso de salto
-                        canJump = false; // Impede pulos múltiplos no ar
+                    if (event.key.toLowerCase() === ' ' && canJump && !isSwimming) { // Modificado para não pular na água
+                        playerBody.applyImpulse(new CANNON.Vec3(0, 400 * 3, 0), playerBody.position);
+                        canJump = false;
                     }
                 }
             });
@@ -2353,11 +2359,17 @@
                 wrapObject(body, worldSize);
             });
 
-            // NOVO: Verifica se o jogador caiu na água
-            const isPlayerOutsideIsland = Math.abs(playerBody.position.x) > islandSize / 2 || Math.abs(playerBody.position.z) > islandSize / 2;
-            if (isPlayerOutsideIsland && playerBody.position.y < waterLevel) {
-                playerBody.position.set(0, playerRadius + streetHeight, 0); // Reseta para a posição inicial
-                playerBody.velocity.set(0, 0, 0); // Zera a velocidade
+            // NOVO: Lógica de deteção de água e mudança de estado para natação
+            const isPlayerOverWater = Math.abs(playerBody.position.x) > islandSize / 2 || Math.abs(playerBody.position.z) > islandSize / 2;
+
+            // Condição para entrar na água
+            if (isPlayerOverWater && playerBody.position.y < waterLevel && !isSwimming) {
+                isSwimming = true;
+                canJump = false; // Não pode pular enquanto estiver na água
+            }
+            // Condição para sair da água
+            else if (!isPlayerOverWater && isSwimming) {
+                isSwimming = false;
             }
 
             // Calcula o offset da "origem visual" para toda a grade de tiles
@@ -2692,6 +2704,13 @@
             camera.position.copy(playerBody.position);
             camera.position.y += cameraEyeLevelOffset;
 
+            // NOVO: Lógica para o efeito de névoa subaquática
+            if (camera.position.y < waterLevel) {
+                scene.fog.visible = true;
+            } else {
+                scene.fog.visible = false;
+            }
+
             // Atualiza a posição e o alvo da luz direcional para seguir a câmera/jogador
             directionalLight.position.copy(camera.position);
             directionalLight.position.x += 10; // Offset da câmera para a fonte de luz
@@ -2704,70 +2723,100 @@
             // Para uma esfera, a rotação fixa é menos crítica, mas mantida para consistência com a câmera
             playerBody.quaternion.setFromEuler(0, camera.rotation.y, 0);
 
-            // Lógica de movimento do jogador com base nas teclas pressionadas
-            let currentMoveSpeed = walkSpeed; // Começa com a velocidade de caminhada
-            if (keysPressed['shift']) { // Verifica se Shift está pressionado
-                currentMoveSpeed *= runSpeedMultiplier; // Aplica o multiplicador de corrida
-            }
-            if (isCrouching) { // Aplica a redução de velocidade ao agachar
-                currentMoveSpeed *= crouchSpeedMultiplier;
-            }
+            if (isSwimming) {
+                // --- SWIMMING LOGIC ---
+                const swimSpeed = 2.5;
+                const verticalSwimForce = 4000;
+                const buoyancyFactor = 1.05; // A gentle float
 
-            const forward = new THREE.Vector3();
-            const right = new THREE.Vector3();
-            const movementVector = new THREE.Vector3(0, 0, 0);
+                // Apply Buoyancy to counteract gravity
+                const gravityForceMagnitude = world.gravity.length() * playerBody.mass;
+                const buoyancy = gravityForceMagnitude * buoyancyFactor;
+                playerBody.applyForce(new CANNON.Vec3(0, buoyancy, 0), playerBody.position);
 
-            camera.getWorldDirection(forward);
-            forward.y = 0;
-            forward.normalize();
-            right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+                // Apply vertical swimming force on key press
+                if (keysPressed[' ']) { // Swim up
+                    playerBody.applyForce(new CANNON.Vec3(0, verticalSwimForce * 0.75, 0), playerBody.position);
+                } else if (keysPressed['c']) { // Swim down
+                    playerBody.applyForce(new CANNON.Vec3(0, -verticalSwimForce, 0), playerBody.position);
+                }
 
-            if (keysPressed['w']) {
-                movementVector.add(forward);
-            }
-            if (keysPressed['s']) {
-                movementVector.sub(forward);
-            }
-            if (keysPressed['a']) {
-                movementVector.sub(right);
-            }
-            if (keysPressed['d']) {
-                movementVector.add(right);
-            }
+                // Dampen vertical velocity when no key is pressed to prevent bobbing
+                if (!keysPressed[' '] && !keysPressed['c']) {
+                    playerBody.velocity.y *= 0.5;
+                }
 
-            if (movementVector.lengthSq() > 0) {
-                const normalizedMovementVector = movementVector.clone().normalize();
+                // Horizontal movement
+                const forward = new THREE.Vector3();
+                const right = new THREE.Vector3();
+                const movementVector = new THREE.Vector3(0, 0, 0);
 
-                // Calculate desired velocity
-                const desiredVelocity = new CANNON.Vec3(
-                    normalizedMovementVector.x * currentMoveSpeed,
-                    playerBody.velocity.y, // Maintain current vertical velocity
-                    normalizedMovementVector.z * currentMoveSpeed
-                );
+                camera.getWorldDirection(forward); // Swim direction depends on camera
+                forward.normalize();
+                right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
-                // Calculate velocity difference
-                const velocityDifference = new CANNON.Vec3();
-                desiredVelocity.vsub(playerBody.velocity, velocityDifference);
+                if (keysPressed['w']) movementVector.add(forward);
+                if (keysPressed['s']) movementVector.sub(forward);
+                if (keysPressed['a']) movementVector.sub(right);
+                if (keysPressed['d']) movementVector.add(right);
 
-                // Apply impulse to reach desired velocity
-                // Impulse = mass * velocity_difference
-                const impulse = new CANNON.Vec3(
-                    playerBody.mass * velocityDifference.x,
-                    playerBody.mass * velocityDifference.y,
-                    playerBody.mass * velocityDifference.z
-                );
-                playerBody.applyImpulse(impulse, playerBody.position);
-
-                playerBody.allowSleep = false; // Player is moving, keep active
-            } else {
-                // If no movement keys are pressed, apply a small damping to stop horizontal movement
-                playerBody.velocity.x *= 0.9;
-                playerBody.velocity.z *= 0.9;
-                // Allow the player to "sleep" (physics optimization) if stopped and not holding an object
-                if (pickedObjectBody === null && Math.abs(playerBody.velocity.y) < 0.1) {
-                    playerBody.allowSleep = true;
+                if (movementVector.lengthSq() > 0) {
+                    const normalizedMovementVector = movementVector.normalize();
+                    playerBody.velocity.x = normalizedMovementVector.x * swimSpeed;
+                    playerBody.velocity.z = normalizedMovementVector.z * swimSpeed;
                 } else {
-                    playerBody.allowSleep = false; // Keep active if holding object or falling/jumping
+                    // Stronger damping in water
+                    playerBody.velocity.x *= 0.8;
+                    playerBody.velocity.z *= 0.8;
+                }
+            } else {
+                // --- LÓGICA DE CAMINHADA (EXISTENTE) ---
+                let currentMoveSpeed = walkSpeed; // Começa com a velocidade de caminhada
+                if (keysPressed['shift']) {
+                    currentMoveSpeed *= runSpeedMultiplier;
+                }
+                if (isCrouching) {
+                    currentMoveSpeed *= crouchSpeedMultiplier;
+                }
+
+                const forward = new THREE.Vector3();
+                const right = new THREE.Vector3();
+                const movementVector = new THREE.Vector3(0, 0, 0);
+
+                camera.getWorldDirection(forward);
+                forward.y = 0;
+                forward.normalize();
+                right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+                if (keysPressed['w']) movementVector.add(forward);
+                if (keysPressed['s']) movementVector.sub(forward);
+                if (keysPressed['a']) movementVector.sub(right);
+                if (keysPressed['d']) movementVector.add(right);
+
+                if (movementVector.lengthSq() > 0) {
+                    const normalizedMovementVector = movementVector.clone().normalize();
+                    const desiredVelocity = new CANNON.Vec3(
+                        normalizedMovementVector.x * currentMoveSpeed,
+                        playerBody.velocity.y,
+                        normalizedMovementVector.z * currentMoveSpeed
+                    );
+                    const velocityDifference = new CANNON.Vec3();
+                    desiredVelocity.vsub(playerBody.velocity, velocityDifference);
+                    const impulse = new CANNON.Vec3(
+                        playerBody.mass * velocityDifference.x,
+                        playerBody.mass * velocityDifference.y,
+                        playerBody.mass * velocityDifference.z
+                    );
+                    playerBody.applyImpulse(impulse, playerBody.position);
+                    playerBody.allowSleep = false;
+                } else {
+                    playerBody.velocity.x *= 0.9;
+                    playerBody.velocity.z *= 0.9;
+                    if (pickedObjectBody === null && Math.abs(playerBody.velocity.y) < 0.1) {
+                        playerBody.allowSleep = true;
+                    } else {
+                        playerBody.allowSleep = false;
+                    }
                 }
             }
 
