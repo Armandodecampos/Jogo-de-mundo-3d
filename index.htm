@@ -374,8 +374,8 @@
         let scene, camera, renderer, world;
         // Variáveis para corpos e malhas de jogador, terreno (rua), estrada e cubo
         let playerBody;
-        let streetBody; // Corpo de física para o terreno (agora verde)
-        let streetMeshes = []; // Array para armazenar múltiplas malhas visuais do terreno
+        let islandBody; // NOVO: Corpo de física para a ilha (Heightfield)
+        let islandMeshes = []; // NOVO: Malhas visuais para a ilha
         let waterMeshes = []; // NOVO: Array para as malhas da água
         let waterLevel; // NOVO: Nível da água para a física de natação
 
@@ -1393,62 +1393,105 @@
             scene.add(directionalLight);
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
-            // A criação do terreno plano (streetBody) foi removida para dar lugar à geração procedural.
+            // A geração procedural de blocos foi removida para dar lugar a uma abordagem mais eficiente com Heightfield.
+            placedConstructionBodies = []; // Garante que o array de blocos de construção esteja vazio
+            placedConstructionMeshesArrays = []; // Garante que o array de malhas também esteja vazio
 
-            // --- GERAÇÃO PROCEDURAL DA ILHA E DO LAGO ---
-            const islandRadius = worldSize / 2.5; // Raio da ilha principal
-            const lakeRadius = worldSize / 4; // Raio da depressão do lago
-            const lakeDepth = 2; // Profundidade do lago em relação ao nível do solo
+            // --- NOVA GERAÇÃO DE TERRENO COM HEIGHTFIELD ---
+            const matrixSize = 64; // Resolução do mapa de alturas
+            const islandRadius = worldSize / 2.5;
+            const lakeRadius = worldSize / 4;
+            const lakeDepth = 4; // Profundidade do lago
+            const terrainMaxHeight = streetHeight;
+            const terrainMinHeight = -10; // Fundo do "oceano" fora da ilha
 
-            // Itera sobre uma grade para colocar os blocos de terra
-            for (let i = -Math.floor(worldSize / 2 / cobSize); i <= Math.floor(worldSize / 2 / cobSize); i++) {
-                for (let j = -Math.floor(worldSize / 2 / cobSize); j <= Math.floor(worldSize / 2 / cobSize); j++) {
-                    const x = i * cobSize;
-                    const z = j * cobSize;
+            const matrix = [];
+            for (let i = 0; i < matrixSize; i++) {
+                matrix.push([]);
+                for (let j = 0; j < matrixSize; j++) {
+                    const x = (j / (matrixSize - 1) - 0.5) * worldSize;
+                    const z = (i / (matrixSize - 1) - 0.5) * worldSize;
                     const distFromCenter = Math.sqrt(x * x + z * z);
 
-                    // Só cria blocos dentro do raio da ilha
-                    if (distFromCenter < islandRadius) {
-                        let y = streetHeight; // Altura padrão do solo
+                    let height = terrainMinHeight;
 
-                        // Verifica se o bloco está na área do lago (semicírculo na parte +z)
-                        if (z > 0 && distFromCenter < lakeRadius) {
-                            y -= lakeDepth; // Afunda o bloco para criar o leito do lago
+                    if (distFromCenter < islandRadius) {
+                        height = terrainMaxHeight;
+                        // Transição suave nas bordas da ilha (efeito de praia)
+                        const edgeFactor = (islandRadius - distFromCenter) / (islandRadius * 0.15);
+                        if (edgeFactor < 1) {
+                             height = terrainMinHeight + (terrainMaxHeight - terrainMinHeight) * Math.sin(edgeFactor * Math.PI / 2);
                         }
 
-                        // Cria a posição e o quaternion para o bloco
-                        const position = new CANNON.Vec3(x, y - cobHeight / 2, z);
-                        const quaternion = new CANNON.Quaternion(); // Rotação padrão (nenhuma)
-
-                        // Usa a função existente para criar blocos estáticos de 'cob'
-                        // Isso garante que eles tenham a física e a renderização corretas (incluindo a duplicação 3x3)
-                        createPlaceableBlock(position, quaternion, 'cob');
+                        // Depressão do lago
+                        if (z > 0 && distFromCenter < lakeRadius) {
+                            const lakeFloorHeight = terrainMaxHeight - lakeDepth;
+                            // A profundidade é maior no centro do lago, com bordas suaves
+                             const lakeProfile = lakeFloorHeight + (lakeDepth * Math.sin((distFromCenter / lakeRadius) * Math.PI / 2));
+                            height = Math.min(height, lakeProfile);
+                        }
                     }
+                    matrix[i][j] = height;
+                }
+            }
+
+            // Corpo de física Heightfield
+            const heightfieldShape = new CANNON.Heightfield(matrix, { elementSize: worldSize / (matrixSize - 1) });
+            islandBody = new CANNON.Body({ mass: 0, material: streetMaterial });
+            islandBody.addShape(heightfieldShape);
+            islandBody.position.set(-worldSize / 2, 0, -worldSize / 2);
+            world.addBody(islandBody);
+
+            // Malha visual correspondente
+            const islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, matrixSize - 1, matrixSize - 1);
+            // Rotaciona o plano para ficar na horizontal (XZ) PRIMEIRO
+            islandGeometry.rotateX(-Math.PI / 2);
+
+            // DEPOIS, aplica as alturas aos vértices no eixo Y
+            const positions = islandGeometry.attributes.position;
+            for (let i = 0; i < positions.count; i++) {
+                const zIndex = Math.floor(i / matrixSize);
+                const xIndex = i % matrixSize;
+                positions.setY(i, matrix[zIndex][xIndex]);
+            }
+            islandGeometry.computeVertexNormals(); // Calcula as normais após a modificação dos vértices
+
+            const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(16, 16);
+            });
+            const islandMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
+
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const mesh = new THREE.Mesh(islandGeometry, islandMaterial);
+                    mesh.receiveShadow = true;
+                    mesh.userData.physicsBody = islandBody;
+                    scene.add(mesh);
+                    islandMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
             }
 
             // --- CRIAÇÃO DA ÁGUA DO LAGO ---
-            waterLevel = streetHeight - 0.1; // Um pouco abaixo do nível do solo
-            const lakeRadius = worldSize / 4; // Raio do lago (deve corresponder ao da geração da ilha)
-            const waterGeometry = new THREE.CircleGeometry(lakeRadius, 32, 0, Math.PI); // Semicírculo
+            waterLevel = streetHeight - 0.2; // Nivel da agua um pouco mais baixo
+            const waterLakeRadius = worldSize / 4;
+            const waterGeometry = new THREE.CircleGeometry(waterLakeRadius, 64, 0, Math.PI);
             const waterMaterial = new THREE.MeshStandardMaterial({
-                color: 0x006994, // Azul da água
+                color: 0x006994,
                 transparent: true,
                 opacity: 0.7,
                 roughness: 0.1,
                 metalness: 0.0
             });
-
-            // Gira a geometria para ficar plana no eixo XZ e a posiciona no lado +Z
             waterGeometry.rotateX(-Math.PI / 2);
-            waterGeometry.translate(0, 0, lakeRadius / 2.15); // Ajuste fino para alinhar com a depressão
-
+            waterGeometry.translate(0, 0, waterLakeRadius / 2.15);
 
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                     const waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
                     waterMesh.position.y = waterLevel;
-                    waterMesh.receiveShadow = true; // Permite que a água receba sombras
+                    waterMesh.receiveShadow = true;
                     scene.add(waterMesh);
                     waterMeshes.push({ mesh: waterMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
@@ -1476,8 +1519,8 @@
             // Reintroduz o listener de colisão para canJump, mas com uma verificação adicional
             playerBody.addEventListener('collide', (event) => {
                 // canJump é verdadeiro APENAS se o corpo colidido NÃO for o objeto que está sendo segurado
-                // A lista de corpos "chão" agora inclui apenas superfícies que podem ser pisadas
-                const allGroundBodies = [...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+                // A lista de corpos "chão" agora inclui a ilha e os blocos colocados
+                const allGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
                 if (event.body !== pickedObjectBody && allGroundBodies.includes(event.body)) {
                     canJump = true;
                 }
@@ -2324,10 +2367,10 @@
             const visualOffsetX = Math.round(playerX / worldSize) * worldSize;
             const visualOffsetZ = Math.round(playerZ / worldSize) * worldSize;
 
-            // A atualização das malhas do terreno (streetMeshes) foi removida,
-            // pois o terreno agora é composto de blocos individuais atualizados abaixo.
+            // Atualiza as posições das malhas da ilha com base na posição do jogador
+            updateObjectVisuals(islandBody, islandMeshes, visualOffsetX, visualOffsetZ);
 
-            // NOVO: Atualiza as posições das malhas da água
+            // Atualiza as posições das malhas da água
             waterMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
@@ -2576,7 +2619,7 @@
 
 
                     // Lista de todos os corpos que podem ser base para colocação
-                    const allPlaceableSurfaces = [...placedConstructionBodies];
+                    const allPlaceableSurfaces = [islandBody, ...placedConstructionBodies];
 
                     for (let i = 0; i < intersects.length; i++) {
                         const intersectedObject = intersects[i].object;
@@ -2866,7 +2909,7 @@
             // Verifica colisão com terreno (rua), estrada, cubos e blocos
             world.raycastAny(rayOriginLow, rayTargetLow, {}, rayResultStep);
             // A lista de corpos "chão" para subida de degraus
-            const stepClimbGroundBodies = [...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+            const stepClimbGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
             if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
                 hitLow = true;
             }
