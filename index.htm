@@ -376,8 +376,6 @@
         let playerBody;
         let streetBody; // Corpo de física para o terreno (agora verde)
         let streetMeshes = []; // Array para armazenar múltiplas malhas visuais do terreno
-        let waterMeshes = []; // NOVO: Array para as malhas visuais da água
-        let waterLevel; // NOVO: Nível da água
 
         let roadBody; // Corpo de física para o estrada (agora cinza)
         let roadMeshes = []; // Array para armazenar múltiplas malhas visuais da estrada
@@ -437,8 +435,7 @@
         let crouchPlayerShape;   // Para armazenar a forma agachada
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
-        const islandSize = 80; // O tamanho da ilha de terra
-        const worldSize = 100; // O tamanho total do mundo para o wrapping (ilha + oceano)
+        const worldSize = 100; // Dobrado de 50 para 100
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
         const streetHeight = cobSize;
@@ -453,11 +450,6 @@
         // Variáveis de agachamento
         let isCrouching = false;
         const crouchSpeedMultiplier = 0.5; // Multiplicador para velocidade ao agachar
-
-        // NOVO: Variáveis de natação
-        let isSwimming = false;
-        let canWaterJump = true; // Novo: controla o pulo na água
-        let isWaterJumping = false; // NOVO: para desativar temporariamente as forças de natação após um pulo
 
         // Variável global para luz direcional
         let directionalLight;
@@ -584,7 +576,7 @@
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
         let stoneMaterial; // NOVO: Material para chão com a nova textura
 
-        const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura (agora armazena arrays de malhas)
+        const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
 
         // Declare physics materials globally
         let playerMaterial;
@@ -1211,16 +1203,9 @@
             placedConstructionBodies.push(blockBody);
             console.log("Bloco colocado. Corpos de construção colocados:", placedConstructionBodies); // Log para depuração
 
-            const meshesForBody = [];
-            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const clonedMesh = mesh.clone(); // Clona a malha/grupo original
-                    clonedMesh.userData.physicsBody = blockBody; // Liga ao mesmo corpo de física
-                    scene.add(clonedMesh);
-                    meshesForBody.push({ mesh: clonedMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                }
-            }
-            placedConstructionMeshesArrays.push(meshesForBody);
+            mesh.userData.physicsBody = blockBody; // Vincula a malha visual ao corpo de física
+            scene.add(mesh);
+            placedConstructionMeshesArrays.push([{ mesh: mesh, offsetX: 0, offsetZ: 0 }]); // Simplified for single mesh/group per body
         }
 
         // Function to create a smoke effect at a given position
@@ -1396,72 +1381,30 @@
             scene.add(directionalLight);
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
-            // Cria o Terreno (agora uma forma irregular)
-            streetBody = new CANNON.Body({ mass: 0, material: streetMaterial });
-            streetBody.position.set(0, streetHeight / 2, 0);
-
-            // Define as formas que comporão a ilha (Formato de Cruz)
-            const islandShapes = [
-                // Barra Vertical da Cruz
-                { shape: new CANNON.Box(new CANNON.Vec3(10, streetHeight / 2, 30)), offset: new CANNON.Vec3(0, 0, 0) },
-                // Barra Horizontal da Cruz
-                { shape: new CANNON.Box(new CANNON.Vec3(30, streetHeight / 2, 10)), offset: new CANNON.Vec3(0, 0, 0) }
-            ];
-
-            islandShapes.forEach(item => {
-                streetBody.addShape(item.shape, item.offset);
-            });
-
+            // Cria o Terreno (agora composto de blocos de cob)
+            const streetShape = new CANNON.Box(new CANNON.Vec3(worldSize / 2, streetHeight / 2, worldSize / 2));
+            streetBody = new CANNON.Body({ mass: 0, shape: streetShape, material: streetMaterial });
+            streetBody.position.set(0, streetHeight / 2, 0); // Posição na metade de sua altura para ter o topo em y=0
             world.addBody(streetBody);
-            // Armazena as formas e offsets para uso na detecção de terra
-            streetBody.userData = { islandShapes: islandShapes.map(item => ({ shape: item.shape, offset: item.offset })) };
 
+            const streetGeometry = new THREE.BoxGeometry(worldSize, streetHeight, worldSize);
             // Carrega a textura de terra para o terreno
             const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
+                // Configura a repetição da textura
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(10, 10); // Repetição padrão
+                // Ajusta a repetição da textura.
+                texture.repeat.set(worldSize / cobWidth, worldSize / cobDepth);
             });
             const streetMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
-
-            // Cria um grupo para conter todas as partes da ilha
-            const islandGroup = new THREE.Group();
-            streetBody.userData.islandShapes.forEach(item => {
-                const { shape, offset } = item;
-                const geometry = new THREE.BoxGeometry(shape.halfExtents.x * 2, streetHeight, shape.halfExtents.z * 2);
-                const mesh = new THREE.Mesh(geometry, streetMeshMaterial);
-                mesh.position.set(offset.x, 0, offset.z); // A posição Y é relativa ao grupo
-                mesh.receiveShadow = true;
-                islandGroup.add(mesh);
-            });
-
-            // NOVO: Recria a grade de malhas visuais da ilha (usando o grupo) para o efeito de espelhamento
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const groupClone = islandGroup.clone();
-                    groupClone.userData.physicsBody = streetBody; // Todas as malhas visuais apontam para o único corpo físico central
-                    scene.add(groupClone);
-                    streetMeshes.push({ mesh: groupClone, offsetX: i * worldSize, offsetZ: j * worldSize });
-                }
-            }
-
-
-            // NOVO: Cria o Oceano (apenas visual)
-            waterLevel = streetHeight - 0.2; // Nível da água um pouco abaixo do terreno
-
-            const waterGeometry = new THREE.PlaneGeometry(worldSize, worldSize);
-            const waterMaterial = new THREE.MeshBasicMaterial({
-                color: 0x006994, // Cor de água azul sólida
-            });
-
-            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(waterGeometry, waterMaterial);
-                    mesh.rotation.x = -Math.PI / 2; // Rotaciona a malha para ser horizontal
+                    const mesh = new THREE.Mesh(streetGeometry, streetMeshMaterial);
                     mesh.receiveShadow = true;
-                    mesh.userData.isWater = true; // Flag para identificar a água
+                    mesh.userData.physicsBody = streetBody; // ASSOCIA O CORPO DE FÍSICA À MALHA VISUAL
                     scene.add(mesh);
-                    waterMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                    // Armazena a malha e seu offset ideal da origem (0,0,0)
+                    streetMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
             }
 
@@ -1485,7 +1428,6 @@
             // Posição inicial: centro da esfera em playerRadius + streetHeight
             playerBody.position.set(0, playerRadius + streetHeight, 0); // Posição inicial ajustada do jogador
             world.addBody(playerBody);
-            window.playerBody = playerBody; // NOVO: Expõe o corpo do jogador para verificação
 
             // Reintroduz o listener de colisão para canJump, mas com uma verificação adicional
             playerBody.addEventListener('collide', (event) => {
@@ -1687,17 +1629,9 @@
                     }
 
                     keysPressed[event.key.toLowerCase()] = true;
-                    // Lógica de pulo
-                    if (event.key.toLowerCase() === ' ') {
-                        if (isSwimming && canWaterJump) {
-                            // Aumenta o impulso para garantir que o jogador possa sair da água
-                            playerBody.applyImpulse(new CANNON.Vec3(0, 1500, 0), playerBody.position);
-                            canWaterJump = false; // Impede pulos múltiplos na água
-                            isWaterJumping = true; // Ativa o estado de pulo na água
-                        } else if (!isSwimming && canJump) {
-                            playerBody.applyImpulse(new CANNON.Vec3(0, 1200, 0), playerBody.position);
-                            canJump = false;
-                        }
+                    if (event.key.toLowerCase() === ' ' && canJump) { // Permite pular apenas se canJump for verdadeiro
+                        playerBody.applyImpulse(new CANNON.Vec3(0, 400 * 3, 0), playerBody.position); // Triplicado o impulso de salto
+                        canJump = false; // Impede pulos múltiplos no ar
                     }
                 }
             });
@@ -1973,10 +1907,10 @@
                             camera.getWorldDirection(targetPosition);
                             targetPosition.multiplyScalar(distanceToPickedObject);
                             targetPosition.add(camera.position);
-                            // NOVO: Desativa a física regular e a restrição
-                            pickedObjectBody.type = CANNON.Body.KINEMATIC;
-                            pickedObjectBody.collisionResponse = false; // Não colide enquanto cinemático
-                            grabberConstraint = null; // Garante que não haja restrição
+                            grabberBody.position.copy(targetPosition);
+                            grabberConstraint = new CANNON.PointToPointConstraint(pickedObjectBody, new CANNON.Vec3(0, 0, 0), grabberBody, new CANNON.Vec3(0, 0, 0));
+                            world.addConstraint(grabberConstraint);
+                            pickedObjectBody.wakeUp();
                             break;
                         }
                     }
@@ -1984,20 +1918,17 @@
             }
 
             function dropObject() {
-                if (!pickedObjectBody) return;
-
-                pickedObjectBody.type = CANNON.Body.DYNAMIC;
-                pickedObjectBody.collisionResponse = true;
-                pickedObjectBody.mass = pickedObjectBody.userData.originalMass;
+                if (grabberConstraint) {
+                    world.removeConstraint(grabberConstraint);
+                    grabberConstraint = null;
+                }
                 pickedObjectBody.wakeUp();
-
-                // Aplica um pequeno impulso para a frente ao soltar
-                const forward = new THREE.Vector3();
-                camera.getWorldDirection(forward);
-                pickedObjectBody.velocity.set(forward.x * 5, forward.y * 5, forward.z * 5);
-
+                pickedObjectBody.allowSleep = true;
                 pickedObjectBody = null;
                 pickedObjectMesh = null;
+                playerBody.velocity.set(0,0,0);
+                playerBody.angularVelocity.set(0,0,0);
+                playerBody.allowSleep = true;
             }
 
             function placeBlock(item, slotIndex) {
@@ -2041,21 +1972,12 @@
                     const snappedX = Math.floor(hitPoint.x / patchSize) * patchSize + patchSize / 2;
                     const snappedZ = Math.floor(hitPoint.z / patchSize) * patchSize + patchSize / 2;
                     const patchGeometry = new THREE.BoxGeometry(patchSize, 0.01, patchSize);
-                    const patchMeshes = [];
-                    const patchUserData = { isDestructible: true, durability: 0.5, type: 'patch', originalPosition: new THREE.Vector3(snappedX, streetHeight + 0.005, snappedZ) };
-
-                    for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                        for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                            const mesh = new THREE.Mesh(patchGeometry, stoneMaterial);
-                            // A posição será definida no loop de animação, mas definimos uma inicial aqui
-                            mesh.position.set(snappedX + i * worldSize, streetHeight + 0.005, snappedZ + j * worldSize);
-                            mesh.receiveShadow = true;
-                            mesh.userData = patchUserData; // Todos os clones compartilham os mesmos dados do usuário
-                            scene.add(mesh);
-                            patchMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                        }
-                    }
-                    texturePatches.push(patchMeshes); // Adiciona o array de malhas
+                    const patchMesh = new THREE.Mesh(patchGeometry, stoneMaterial);
+                    patchMesh.position.set(snappedX, streetHeight + 0.005, snappedZ);
+                    patchMesh.receiveShadow = true;
+                    patchMesh.userData = { isDestructible: true, durability: 0.5, type: 'patch' };
+                    scene.add(patchMesh);
+                    texturePatches.push(patchMesh);
                 }
             }
 
@@ -2157,25 +2079,19 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
-        // Função para aplicar o efeito de envolvimento a um corpo de física e retornar a alteração
+        // Função para aplicar o efeito de envolvimento a um corpo de física (não retorna delta)
         function wrapObject(body, size) {
-            const delta = new CANNON.Vec3(0, 0, 0);
             if (body.position.x > size / 2) {
                 body.position.x -= size;
-                delta.x -= size;
             } else if (body.position.x < -size / 2) {
                 body.position.x += size;
-                delta.x += size;
             }
 
             if (body.position.z > size / 2) {
                 body.position.z -= size;
-                delta.z -= size;
             } else if (body.position.z < -size / 2) {
                 body.position.z += size;
-                delta.z += size;
             }
-            return delta;
         }
 
         // Função para atualizar as posições de todas as malhas visuais para um dado corpo de cubo/bloco
@@ -2235,31 +2151,15 @@
 
                     // Handle patch destruction
                     if (destroyTargetMesh.userData.type === 'patch') {
-                        let patchMeshArray = null;
-                        let patchIndex = -1;
-
-                        // Encontra o array de malhas ao qual este patch pertence
-                        for (let i = 0; i < texturePatches.length; i++) {
-                            if (texturePatches[i].some(item => item.mesh === destroyTargetMesh)) {
-                                patchMeshArray = texturePatches[i];
-                                patchIndex = i;
-                                break;
-                            }
-                        }
-
-                        if (patchMeshArray) {
-                            // Remove todas as malhas do array da cena
-                            patchMeshArray.forEach(item => {
-                                scene.remove(item.mesh);
-                                if (item.mesh.geometry) item.mesh.geometry.dispose();
-                            });
-                            // Remove o array do array principal de texturePatches
-                            texturePatches.splice(patchIndex, 1);
-
-                            // Devolve um item de pedra
-                            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
-                            updateBackpackDisplay();
-                        }
+                       const patchIndex = texturePatches.indexOf(destroyTargetMesh);
+                       if (patchIndex > -1) {
+                           texturePatches.splice(patchIndex, 1);
+                       }
+                       scene.remove(destroyTargetMesh);
+                       if (destroyTargetMesh.geometry) destroyTargetMesh.geometry.dispose();
+                       // Give back a stone item
+                       addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
+                       updateBackpackDisplay();
                     }
                     // Handle regular block destruction
                     else if (destroyTargetBody) {
@@ -2348,86 +2248,15 @@
             });
 
 
-            // Aplica o envolvimento ao corpo de física do jogador e sincroniza o objeto segurado
-            const playerWrapDelta = wrapObject(playerBody, worldSize);
-            if (pickedObjectBody && (playerWrapDelta.x !== 0 || playerWrapDelta.z !== 0)) {
-                pickedObjectBody.position.x += playerWrapDelta.x;
-                pickedObjectBody.position.z += playerWrapDelta.z;
-            }
+            // Aplica o envolvimento ao corpo de física do jogador
+            wrapObject(playerBody, worldSize);
 
-            // Aplica o envolvimento e a lógica de afogamento aos corpos de física
-            const bodiesToRemove = [];
-            const meshesToRemove = [];
-            const boxIndicesToRemove = [];
-
-            collectibleBoxes.forEach((box, index) => {
-                const body = box.body;
-                if (body !== pickedObjectBody) {
+            // Aplica o envolvimento aos corpos de física dos cubos e blocos
+            [...allPickableBodies, ...allStaticBodies].forEach(body => {
+                if (body !== pickedObjectBody) { // Apenas se não estiver sendo segurado
                     wrapObject(body, worldSize);
-
-                    // NOVO: Lógica para afundar e desaparecer no mundo em mosaico
-                    const isObjectOnLand = Math.abs(body.position.x) <= islandSize / 2 && Math.abs(body.position.z) <= islandSize / 2;
-                    if (!isObjectOnLand && body.position.y < waterLevel) {
-                        bodiesToRemove.push(body);
-                        box.meshes.forEach(m => meshesToRemove.push(m.mesh));
-                        if (!boxIndicesToRemove.includes(index)) {
-                            boxIndicesToRemove.push(index);
-                        }
-                    }
                 }
             });
-
-            // Remove os corpos e malhas marcados
-            bodiesToRemove.forEach(body => world.removeBody(body));
-            meshesToRemove.forEach(mesh => scene.remove(mesh));
-            // Remove os índices em ordem decrescente para não bagunçar o array durante a iteração
-            boxIndicesToRemove.sort((a, b) => b - a).forEach(index => collectibleBoxes.splice(index, 1));
-
-            // Aplica o envolvimento aos corpos estáticos
-            allStaticBodies.forEach(body => {
-                wrapObject(body, worldSize);
-            });
-
-            // NOVO: Lógica de deteção de água para um mundo em mosaico
-            let isPlayerOnLand = false;
-            if (streetBody.userData && streetBody.userData.islandShapes) {
-                const playerX = playerBody.position.x;
-                const playerZ = playerBody.position.z;
-
-                for (const item of streetBody.userData.islandShapes) {
-                    const shape = item.shape;
-                    const offset = item.offset;
-                    const halfExtents = shape.halfExtents;
-
-                    // Calcula os limites da caixa (AABB) no espaço do mundo
-                    const minX = offset.x - halfExtents.x;
-                    const maxX = offset.x + halfExtents.x;
-                    const minZ = offset.z - halfExtents.z;
-                    const maxZ = offset.z + halfExtents.z;
-
-                    if (playerX >= minX && playerX <= maxX && playerZ >= minZ && playerZ <= maxZ) {
-                        isPlayerOnLand = true;
-                        break; // Encontrou terra, não precisa verificar mais
-                    }
-                }
-            }
-            // Condição para entrar na água
-            if (!isPlayerOnLand && playerBody.position.y < waterLevel && !isSwimming) {
-                isSwimming = true;
-                canJump = false;
-                canWaterJump = true; // Permite um pulo ao entrar na água
-            }
-            // Condição para sair da água
-            else if (isPlayerOnLand && isSwimming) {
-                isSwimming = false;
-                isWaterJumping = false; // NOVO: reseta o pulo ao tocar a terra
-                canWaterJump = false; // Impede o uso do pulo de água em terra
-            }
-
-            // NOVO: Reseta o pulo na água se o jogador começar a cair de volta na água
-            if (isWaterJumping && playerBody.velocity.y < 0) {
-                isWaterJumping = false;
-            }
 
             // Calcula o offset da "origem visual" para toda a grade de tiles
             // Isso garante que o jogador esteja sempre visualmente centralizado dentro do tile "principal".
@@ -2436,78 +2265,185 @@
             const visualOffsetX = Math.round(playerX / worldSize) * worldSize;
             const visualOffsetZ = Math.round(playerZ / worldSize) * worldSize;
 
-            // NOVO: Atualiza as posições das malhas do terreno para criar o efeito de espelhamento
+            // Atualiza as posições das malhas do terreno com base na posição envolvida do jogador
             streetMeshes.forEach(tile => {
-                // A posição da ilha é o seu deslocamento MENOS o deslocamento visual do jogador, mantendo-a no centro de sua respectiva telha
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                // A posição Y é fixa, baseada na altura do corpo físico
-                tile.mesh.position.y = streetBody.position.y;
+                tile.mesh.position.y = streetHeight / 2;
                 tile.mesh.quaternion.copy(streetBody.quaternion);
             });
-
-            // NOVO: Atualiza as posições das malhas de água para seguir o jogador
-            waterMeshes.forEach(tile => {
-                tile.mesh.position.x = tile.offsetX - visualOffsetX;
-                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                tile.mesh.position.y = waterLevel; // Usa a variável global waterLevel
-            });
+            // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
             // Atualiza as posições de todas as malhas visuais dos cubos/caixas
             collectibleBoxes.forEach(box => {
-                if (box.body !== pickedObjectBody) { // Pula o objeto que está sendo segurado
-                    updateObjectVisuals(box.body, box.meshes, visualOffsetX, visualOffsetZ);
-                }
+                updateObjectVisuals(box.body, box.meshes, visualOffsetX, visualOffsetZ);
             });
 
             // Atualiza as posições de todas as malhas visuais dos blocos colocados
             placedConstructionBodies.forEach((body, index) => {
-                const meshesArray = placedConstructionMeshesArrays[index];
-                updateObjectVisuals(body, meshesArray, visualOffsetX, visualOffsetZ);
-            });
-
-            // NOVO: Atualiza as posições de todas as malhas de patch de textura
-            texturePatches.forEach(patchMeshArray => {
-                // A posição "original" é armazenada no userData da primeira malha.
-                const originalPosition = patchMeshArray[0].mesh.userData.originalPosition;
-                let wrappedX = originalPosition.x;
-                let wrappedZ = originalPosition.z;
-
-                // Aplica o envolvimento à posição original para obter a posição base atual
-                if (wrappedX - playerX > worldSize / 2) wrappedX -= worldSize;
-                else if (wrappedX - playerX < -worldSize / 2) wrappedX += worldSize;
-                if (wrappedZ - playerZ > worldSize / 2) wrappedZ -= worldSize;
-                else if (wrappedZ - playerZ < -worldSize / 2) wrappedZ += worldSize;
-
-                patchMeshArray.forEach(item => {
-                    item.mesh.position.x = wrappedX + item.offsetX - visualOffsetX;
-                    item.mesh.position.y = originalPosition.y;
-                    item.mesh.position.z = wrappedZ + item.offsetZ - visualOffsetZ;
-                });
+                // Cada corpo de bloco colocado agora tem apenas uma malha visual.
+                // Acessamos diretamente a malha no primeiro (e único) elemento do array de malhas para aquele corpo.
+                const meshToUpdate = placedConstructionMeshesArrays[index][0].mesh;
+                meshToUpdate.position.x = body.position.x + placedConstructionMeshesArrays[index][0].offsetX - visualOffsetX;
+                meshToUpdate.position.y = body.position.y;
+                meshToUpdate.position.z = body.position.z + placedConstructionMeshesArrays[index][0].offsetZ - visualOffsetZ;
+                meshToUpdate.quaternion.copy(body.quaternion); // Mantém a rotação
             });
 
 
-            // Se um objeto estiver sendo segurado, atualiza sua posição para ficar na frente da câmera
-            if (pickedObjectBody) {
-                const heldObjectDistance = 2.0; // Distância da câmera
-                const targetPosition = new THREE.Vector3();
-                camera.getWorldDirection(targetPosition);
-                targetPosition.multiplyScalar(heldObjectDistance);
-                targetPosition.add(camera.position);
+            // Se um objeto estiver sendo segurado, atualiza a posição do grabberBody
+            if (pickedObjectBody && grabberConstraint) {
+                // Ensure pickedObjectBody is a valid CANNON.Body and has at least one shape
+                if (!pickedObjectBody.shapes || pickedObjectBody.shapes.length === 0) {
+                    console.error("Erro: Objeto agarrado inválido. A reiniciar o objeto agarrado.", pickedObjectBody);
+                    // Clean up and return to prevent further errors
+                    if (grabberConstraint) {
+                        world.removeConstraint(grabberConstraint);
+                        grabberConstraint = null;
+                    }
+                    // Restore the body to its original state (static/dynamic, mass)
+                    if (pickedObjectBody) { // Only try to restore if pickedObjectBody is not null/undefined
+                        pickedObjectBody.collisionResponse = true;
+                        pickedObjectBody.wakeUp();
+                        pickedObjectBody.allowSleep = true;
+                    }
 
-                // Define a posição do corpo cinemático diretamente
-                pickedObjectBody.position.copy(targetPosition);
-                pickedObjectBody.velocity.set(0, 0, 0); // Garante que não haja movimento residual
-                pickedObjectBody.angularVelocity.set(0, 0, 0);
-
-                // Atualiza todas as malhas visuais para corresponder
-                const pickedBox = collectibleBoxes.find(box => box.body === pickedObjectBody);
-                if (pickedBox) {
-                    pickedBox.meshes.forEach(item => {
-                        item.mesh.position.copy(pickedObjectBody.position);
-                        item.mesh.quaternion.copy(pickedObjectBody.quaternion);
-                    });
+                    pickedObjectBody = null;
+                    pickedObjectMesh = null;
+                    return; // Exit early from animate for this frame
                 }
+
+                // For objects with multiple shapes, we need to find the overall bounding box or a representative dimension.
+                // For simplicity, for now, we'll assume a representative dimension or use the first shape's extents.
+                // A more robust solution would involve calculating the AABB of all shapes.
+                let pickedObjectHalfExtents;
+                if (pickedObjectBody.shapes[0] instanceof CANNON.Box) {
+                    pickedObjectHalfExtents = pickedObjectBody.shapes[0].halfExtents;
+                } else if (pickedObjectBody.shapes[0] instanceof CANNON.Sphere) {
+                    pickedObjectHalfExtents = new CANNON.Vec3(pickedObjectBody.shapes[0].radius, pickedObjectBody.shapes[0].radius, pickedObjectBody.shapes[0].radius);
+                } else if (pickedObjectBody.shapes[0] instanceof CANNON.Cylinder) { // NOVO: Lidar com cilindro
+                    const cylinderShape = pickedObjectBody.shapes[0];
+                    pickedObjectHalfExtents = new CANNON.Vec3(cylinderShape.radiusTop, cylinderShape.height / 2, cylinderShape.radiusTop);
+                }
+                else {
+                    // Fallback for other shapes, or calculate a more accurate bounding box
+                    pickedObjectHalfExtents = new CANNON.Vec3(0.5, 0.5, 0.5); // Default to a small box
+                }
+
+                const objectMaxHalfDimension = Math.max(
+                    pickedObjectHalfExtents.x,
+                    pickedObjectHalfExtents.y,
+                    pickedObjectHalfExtents.z
+                );
+
+                const heldObjectDistance = 2.5; // Distância da câmera ao objeto segurado
+                const epsilon = 0.001; // Pequeno buffer para evitar problemas de ponto flutuante
+
+                // Posição alvo desejada para o grabber (onde o objeto *quer* ir)
+                const desiredGrabberTarget = new THREE.Vector3();
+                camera.getWorldDirection(desiredGrabberTarget);
+                desiredGrabberTarget.multiplyScalar(heldObjectDistance);
+                desiredGrabberTarget.add(camera.position); // Adiciona a posição da CÂMERA
+
+                // Converte para CANNON.Vec3 para cálculos de física
+                const desiredGrabberTargetCannon = new CANNON.Vec3(desiredGrabberTarget.x, desiredGrabberTarget.y, desiredGrabberTarget.z);
+
+                // Calcula o vetor de movimento da posição atual do objeto agarrado para o alvo desejado
+                const movementVector = new CANNON.Vec3();
+                desiredGrabberTargetCannon.vsub(pickedObjectBody.position, movementVector);
+
+                const movementLength = movementVector.length();
+
+                if (movementLength > epsilon) { // Realiza o raycast apenas se houver movimento significativo
+                    const rayDirection = movementVector.unit(); // Direção normalizada
+                    const rayOrigin = new CANNON.Vec3().copy(pickedObjectBody.position);
+
+                    // O raio precisa ser longo o suficiente para cobrir o movimento mais o "raio" do objeto
+                    const rayLength = movementLength + objectMaxHalfDimension + epsilon;
+
+                    const rayTarget = new CANNON.Vec3();
+                    rayOrigin.vadd(rayDirection.scale(rayLength), rayTarget);
+
+                    const rayResult = new CANNON.RaycastResult();
+                    const rayOptions = {
+                        skipBackfaces: true,
+                        // Exclui o próprio objeto agarrado e o corpo do grabber do raycast
+                        callback: (hitResult) => {
+                            return hitResult.body !== pickedObjectBody && hitResult.body !== grabberBody;
+                        }
+                    };
+
+                    world.raycastClosest(rayOrigin, rayTarget, rayOptions, rayResult);
+
+                    if (rayResult.hasHit) {
+                        const hitPoint = rayResult.hitPointWorld;
+                        const hitNormal = rayResult.hitNormalWorld; // A normal aponta para fora do objeto atingido
+
+                        // Transforma a normal do mundo para o espaço local do objeto agarrado
+                        const localNormal = new CANNON.Vec3();
+                        pickedObjectBody.quaternion.conjugate().vmult(hitNormal, localNormal);
+
+                        // Calcula a extensão do objeto agarrado do seu centro até a sua face ao longo desta normal local
+                        // Isso dá a distância do centro do objeto agarrado até a sua face que estaria alinhada
+                        // com a superfície atingida.
+                        const extentAlongNormal =
+                            Math.abs(localNormal.x * pickedObjectHalfExtents.x) +
+                            Math.abs(localNormal.y * pickedObjectHalfExtents.y) +
+                            Math.abs(localNormal.z * pickedObjectHalfExtents.z);
+
+                        // Calcula a posição desejada para o centro do objeto agarrado
+                        // Deve estar no hitPoint, mais a extensão ao longo da normal,
+                        // movido ao longo da normal do mundo.
+                        const desiredPickedObjectCenter = new CANNON.Vec3();
+                        hitNormal.scale(extentAlongNormal + epsilon, desiredPickedObjectCenter); // Escala a normal pela extensão + epsilon
+                        desiredPickedObjectCenter.vadd(hitPoint, desiredPickedObjectCenter); // Adiciona ao hitPoint
+
+                        // Atualiza a posição alvo do grabber para esta posição ajustada
+                        desiredGrabberTargetCannon.copy(desiredPickedObjectCenter);
+                    }
+                }
+
+                // Garante que o objeto segurado não vá abaixo do nível do chão global
+                let currentGroundHeight = streetHeight; // Apenas o terreno de cob agora
+
+                // Calcula o ponto mais baixo atual do objeto em relação ao seu centro, considerando a rotação
+                const localDown = new CANNON.Vec3(0, -1, 0); // Direção local para baixo
+                const worldDown = new CANNON.Vec3();
+                pickedObjectBody.quaternion.vmult(localDown, worldDown);
+
+                // Projeta as semi-extensões na direção "para baixo" do mundo
+                const lowestPointOffset =
+                    Math.abs(worldDown.x * pickedObjectHalfExtents.x) +
+                    Math.abs(worldDown.y * pickedObjectHalfExtents.y) + // Use pickedObjectHalfExtents
+                    Math.abs(worldDown.z * pickedObjectHalfExtents.z);
+
+                const minObjectYFromGround = currentGroundHeight + lowestPointOffset + epsilon; // Adiciona epsilon para contato com o chão
+
+                desiredGrabberTargetCannon.y = Math.max(desiredGrabberTargetCannon.y, minObjectYFromGround);
+
+                // Impede que o objeto segurado entre no jogador (horizontalmente e para cima)
+                const minGrabDistance = currentPlayerRadius + objectMaxHalfDimension + epsilon; // Usa a dimensão máxima para colisão com o jogador
+
+                const playerToTarget = new CANNON.Vec3();
+                desiredGrabberTargetCannon.vsub(playerBody.position, playerToTarget);
+
+                const horizontalDistanceSq = playerToTarget.x * playerToTarget.x + playerToTarget.z * playerToTarget.z;
+                if (horizontalDistanceSq < minGrabDistance * minGrabDistance) {
+                    const horizontalDistance = Math.sqrt(horizontalDistanceSq);
+                    if (horizontalDistance > 0) {
+                        const angle = Math.atan2(playerToTarget.z, playerToTarget.x);
+                        const newX = playerBody.position.x + minGrabDistance * Math.cos(angle);
+                        const newZ = playerBody.position.z + minGrabDistance * Math.sin(angle);
+                        desiredGrabberTargetCannon.x = newX;
+                        desiredGrabberTargetCannon.z = newZ;
+                    }
+                }
+                // Também impede que ele vá abaixo da altura do jogador, se o jogador for mais baixo que o chão.
+                desiredGrabberTargetCannon.y = Math.max(desiredGrabberTargetCannon.y, playerBody.position.y - currentPlayerRadius + lowestPointOffset + epsilon);
+
+
+                grabberBody.position.copy(desiredGrabberTargetCannon);
+                // A restrição agora puxa o pickedObjectBody para o grabberBody, permitindo colisões.
             }
 
             // Determine the primary tool for visual feedback and ghost block logic
@@ -2736,7 +2672,7 @@
 
 
             // Lógica de agachamento
-            if (keysPressed['c'] && !isCrouching && !isSwimming) { // NOVO: Impede o agachamento na água
+            if (keysPressed['c'] && !isCrouching) {
                 isCrouching = true;
                 // Remove a forma original, adiciona a forma de agachamento
                 playerBody.removeShape(originalPlayerShape);
@@ -2781,95 +2717,70 @@
             // Para uma esfera, a rotação fixa é menos crítica, mas mantida para consistência com a câmera
             playerBody.quaternion.setFromEuler(0, camera.rotation.y, 0);
 
-            if (isSwimming && !isWaterJumping) {
-                // --- SURFACE SWIMMING LOGIC ---
-                const swimSpeed = 2.5;
+            // Lógica de movimento do jogador com base nas teclas pressionadas
+            let currentMoveSpeed = walkSpeed; // Começa com a velocidade de caminhada
+            if (keysPressed['shift']) { // Verifica se Shift está pressionado
+                currentMoveSpeed *= runSpeedMultiplier; // Aplica o multiplicador de corrida
+            }
+            if (isCrouching) { // Aplica a redução de velocidade ao agachar
+                currentMoveSpeed *= crouchSpeedMultiplier;
+            }
 
-                // 1. Force to counteract gravity, making the player 'weightless' in water
-                const gravityCompensation = new CANNON.Vec3(0, playerBody.mass * world.gravity.length(), 0);
-                playerBody.applyForce(gravityCompensation, playerBody.position);
+            const forward = new THREE.Vector3();
+            const right = new THREE.Vector3();
+            const movementVector = new THREE.Vector3(0, 0, 0);
 
-                // 2. A spring-like force to pull the player to a stable floating position
-                const floatHeight = waterLevel - playerRadius * 0.2; // Target Y for player's center, slightly submerged
-                const displacement = floatHeight - playerBody.position.y;
-                const springForce = displacement * 120; // Spring constant (k)
+            camera.getWorldDirection(forward);
+            forward.y = 0;
+            forward.normalize();
+            right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
-                // 3. A damping force to prevent bobbing and smooth the movement
-                const dampingForce = -playerBody.velocity.y * 180; // Damping constant
+            if (keysPressed['w']) {
+                movementVector.add(forward);
+            }
+            if (keysPressed['s']) {
+                movementVector.sub(forward);
+            }
+            if (keysPressed['a']) {
+                movementVector.sub(right);
+            }
+            if (keysPressed['d']) {
+                movementVector.add(right);
+            }
 
-                playerBody.applyForce(new CANNON.Vec3(0, springForce + dampingForce, 0), playerBody.position);
+            if (movementVector.lengthSq() > 0) {
+                const normalizedMovementVector = movementVector.clone().normalize();
 
-                // Horizontal movement
-                const forward = new THREE.Vector3();
-                const right = new THREE.Vector3();
-                const movementVector = new THREE.Vector3(0, 0, 0);
+                // Calculate desired velocity
+                const desiredVelocity = new CANNON.Vec3(
+                    normalizedMovementVector.x * currentMoveSpeed,
+                    playerBody.velocity.y, // Maintain current vertical velocity
+                    normalizedMovementVector.z * currentMoveSpeed
+                );
 
-                camera.getWorldDirection(forward); // Swim direction depends on camera
-                forward.normalize();
-                right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+                // Calculate velocity difference
+                const velocityDifference = new CANNON.Vec3();
+                desiredVelocity.vsub(playerBody.velocity, velocityDifference);
 
-                if (keysPressed['w']) movementVector.add(forward);
-                if (keysPressed['s']) movementVector.sub(forward);
-                if (keysPressed['a']) movementVector.sub(right);
-                if (keysPressed['d']) movementVector.add(right);
+                // Apply impulse to reach desired velocity
+                // Impulse = mass * velocity_difference
+                const impulse = new CANNON.Vec3(
+                    playerBody.mass * velocityDifference.x,
+                    playerBody.mass * velocityDifference.y,
+                    playerBody.mass * velocityDifference.z
+                );
+                playerBody.applyImpulse(impulse, playerBody.position);
 
-                if (movementVector.lengthSq() > 0) {
-                    const normalizedMovementVector = movementVector.normalize();
-                    playerBody.velocity.x = normalizedMovementVector.x * swimSpeed;
-                    playerBody.velocity.z = normalizedMovementVector.z * swimSpeed;
-                } else {
-                    // Stronger damping in water
-                    playerBody.velocity.x *= 0.8;
-                    playerBody.velocity.z *= 0.8;
-                }
+                playerBody.allowSleep = false; // Player is moving, keep active
             } else {
-                // --- LÓGICA DE CAMINHADA (EXISTENTE) ---
-                let currentMoveSpeed = walkSpeed; // Começa com a velocidade de caminhada
-                if (keysPressed['shift']) {
-                    currentMoveSpeed *= runSpeedMultiplier;
-                }
-                if (isCrouching) {
-                    currentMoveSpeed *= crouchSpeedMultiplier;
-                }
-
-                const forward = new THREE.Vector3();
-                const right = new THREE.Vector3();
-                const movementVector = new THREE.Vector3(0, 0, 0);
-
-                camera.getWorldDirection(forward);
-                forward.y = 0;
-                forward.normalize();
-                right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
-
-                if (keysPressed['w']) movementVector.add(forward);
-                if (keysPressed['s']) movementVector.sub(forward);
-                if (keysPressed['a']) movementVector.sub(right);
-                if (keysPressed['d']) movementVector.add(right);
-
-                if (movementVector.lengthSq() > 0) {
-                    const normalizedMovementVector = movementVector.clone().normalize();
-                    const desiredVelocity = new CANNON.Vec3(
-                        normalizedMovementVector.x * currentMoveSpeed,
-                        playerBody.velocity.y,
-                        normalizedMovementVector.z * currentMoveSpeed
-                    );
-                    const velocityDifference = new CANNON.Vec3();
-                    desiredVelocity.vsub(playerBody.velocity, velocityDifference);
-                    const impulse = new CANNON.Vec3(
-                        playerBody.mass * velocityDifference.x,
-                        playerBody.mass * velocityDifference.y,
-                        playerBody.mass * velocityDifference.z
-                    );
-                    playerBody.applyImpulse(impulse, playerBody.position);
-                    playerBody.allowSleep = false;
+                // If no movement keys are pressed, apply a small damping to stop horizontal movement
+                playerBody.velocity.x *= 0.9;
+                playerBody.velocity.z *= 0.9;
+                // Allow the player to "sleep" (physics optimization) if stopped and not holding an object
+                if (pickedObjectBody === null && Math.abs(playerBody.velocity.y) < 0.1) {
+                    playerBody.allowSleep = true;
                 } else {
-                    playerBody.velocity.x *= 0.9;
-                    playerBody.velocity.z *= 0.9;
-                    if (pickedObjectBody === null && Math.abs(playerBody.velocity.y) < 0.1) {
-                        playerBody.allowSleep = true;
-                    } else {
-                        playerBody.allowSleep = false;
-                    }
+                    playerBody.allowSleep = false; // Keep active if holding object or falling/jumping
                 }
             }
 
@@ -2974,31 +2885,24 @@
                         const newOverallPhysicsHeight = nextRandomizedData.overallPhysicsHeight;
                         blockBody.position.y += (newOverallPhysicsHeight - oldOverallPhysicsHeight) / 2;
 
-                        // Update Three.js mesh for the original and all mirrored instances
-                        blockMeshArray.forEach(meshItem => {
-                            const group = meshItem.mesh;
-                            // Dispose old geometries and remove children
-                            group.children.forEach(child => {
-                                if (child.geometry) child.geometry.dispose();
-                            });
-                            group.remove(...group.children);
+                        // Update Three.js mesh (the group)
+                        treeGroup.children.forEach(child => child.geometry.dispose()); // Dispose old geometries
+                        treeGroup.remove(...treeGroup.children); // Remove all children
 
-                            // Create and add new trunk
-                            const trunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
-                            const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
-                            trunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
-                            trunkMesh.castShadow = true;
-                            trunkMesh.receiveShadow = true;
-                            group.add(trunkMesh);
+                        // Create new trunk and leaves for the next stage
+                        const trunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
+                        const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
+                        trunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
+                        trunkMesh.castShadow = true;
+                        trunkMesh.receiveShadow = true;
+                        treeGroup.add(trunkMesh);
 
-                            // Create and add new leaves
-                            const leavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
-                            const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
-                            leavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
-                            leavesMesh.castShadow = true;
-                            leavesMesh.receiveShadow = true;
-                            group.add(leavesMesh);
-                        });
+                        const leavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
+                        const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
+                        leavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
+                        leavesMesh.castShadow = true;
+                        leavesMesh.receiveShadow = true;
+                        treeGroup.add(leavesMesh);
 
                         // Update userData
                         blockBody.userData.dimensions = {
