@@ -1236,6 +1236,34 @@
 
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
+        function setupPlanetShader(material) {
+            material.onBeforeCompile = shader => {
+                // Adiciona um uniforme para a posição da câmera
+                shader.uniforms.cameraPos = { value: new THREE.Vector3() };
+
+                // Armazena o shader para atualização posterior
+                material.userData.shader = shader;
+
+                // Adiciona o código do shader no início do vertex shader
+                shader.vertexShader = `
+                    uniform vec3 cameraPos;
+                    varying vec3 vWorldPosition;
+                ` + shader.vertexShader;
+
+                // Modifica o final do vertex shader para calcular o deslocamento
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <worldpos_vertex>',
+                    `
+                    #include <worldpos_vertex>
+                    vWorldPosition = worldPosition.xyz;
+                    float dist = length(worldPosition.xz - cameraPos.xz);
+                    worldPosition.y -= dist * dist * 0.00003;
+                    gl_Position = projectionMatrix * modelViewMatrix * vec4(worldPosition, 1.0);
+                    `
+                );
+            };
+        }
+
         function init() {
             // Define o offset inicial do nível dos olhos da câmera como o raio da esfera
             cameraEyeLevelOffset = playerRadius;
@@ -1447,6 +1475,7 @@
             cubeTexture.wrapT = THREE.RepeatWrapping;
             cubeTexture.repeat.set(1, 1);
             cubeMaterialMesh = new THREE.MeshStandardMaterial({ map: cubeTexture });
+            setupPlanetShader(cubeMaterialMesh); // Aplica o efeito de planeta
 
             // Cria as caixas iniciais usando a função createBox
             createBox(new THREE.Vector3(0, cubeSize / 2 + streetHeight, -10));
@@ -3112,6 +3141,11 @@
                     particle.material.opacity = particle.userData.lifetime; // Fade out
                     particle.scale.addScalar(0.01); // Grow slightly
                 }
+            }
+
+            // Atualiza o uniforme da posição da câmera no shader do planeta
+            if (cubeMaterialMesh.userData.shader) {
+                cubeMaterialMesh.userData.shader.uniforms.cameraPos.value.copy(camera.position);
             }
 
             // Renderiza a cena
