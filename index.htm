@@ -1250,15 +1250,17 @@
                     varying vec3 vWorldPosition;
                 ` + shader.vertexShader;
 
-                // Modifica o final do vertex shader para calcular o deslocamento
+                // Injeta o código para modificar a posição do vértice
                 shader.vertexShader = shader.vertexShader.replace(
-                    '#include <worldpos_vertex>',
+                    '#include <project_vertex>',
                     `
-                    #include <worldpos_vertex>
+                    vec4 worldPosition = modelMatrix * vec4( transformed, 1.0 );
+
                     vWorldPosition = worldPosition.xyz;
                     float dist = length(worldPosition.xz - cameraPos.xz);
                     worldPosition.y -= dist * dist * 0.00003;
-                    gl_Position = projectionMatrix * modelViewMatrix * vec4(worldPosition, 1.0);
+
+                    gl_Position = projectionMatrix * viewMatrix * worldPosition;
                     `
                 );
             };
