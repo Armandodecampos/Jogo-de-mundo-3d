@@ -567,6 +567,7 @@
         const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Textura de pedra para aplicar
 
         // Global variables for materials
+        let materialsWithPlanetShader = []; // NOVO: Array para materiais com o shader de planeta
         let cubeMaterialMesh; // NOVO: Material da caixa global
         let cobMaterialMesh;
         let floorMaterialMesh;
@@ -1237,6 +1238,7 @@
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function setupPlanetShader(material) {
+            materialsWithPlanetShader.push(material);
             material.onBeforeCompile = shader => {
                 // Adiciona um uniforme para a posição da câmera
                 shader.uniforms.cameraPos = { value: new THREE.Vector3() };
@@ -1252,15 +1254,15 @@
 
                 // Injeta o código para modificar a posição do vértice
                 shader.vertexShader = shader.vertexShader.replace(
-                    '#include <project_vertex>',
+                    '#include <worldpos_vertex>',
                     `
-                    vec4 worldPosition = modelMatrix * vec4( transformed, 1.0 );
+                    #include <worldpos_vertex>
 
                     vWorldPosition = worldPosition.xyz;
+
+                    // Efeito de planeta pequeno: rebaixa os vértices com base na distância da câmera
                     float dist = length(worldPosition.xz - cameraPos.xz);
                     worldPosition.y -= dist * dist * 0.00003;
-
-                    gl_Position = projectionMatrix * viewMatrix * worldPosition;
                     `
                 );
             };
@@ -1427,6 +1429,7 @@
                 texture.repeat.set(worldSize / cobWidth, worldSize / cobDepth);
             });
             const streetMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
+            setupPlanetShader(streetMeshMaterial); // Aplica o efeito de planeta ao chão
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                     const mesh = new THREE.Mesh(streetGeometry, streetMeshMaterial);
@@ -1502,9 +1505,11 @@
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1); // A textura cobre um patch
                 stoneMaterial = new THREE.MeshStandardMaterial({ map: texture, receiveShadow: true });
+                setupPlanetShader(stoneMaterial);
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura de pedra:', error);
                 stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, receiveShadow: true }); // Fallback cinza
+                setupPlanetShader(stoneMaterial);
             });
 
             // Load the cob texture and create the material once
@@ -1513,10 +1518,12 @@
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
                 cobMaterialMesh = new THREE.MeshStandardMaterial({ map: texture }); // Create the material here
+                setupPlanetShader(cobMaterialMesh);
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura do cob:', error);
                 // Fallback to a plain color if texture fails to load
                 cobMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Brown color
+                setupPlanetShader(cobMaterialMesh);
             });
 
             // Load the floor texture and create the material once
@@ -1525,10 +1532,12 @@
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
                 floorMaterialMesh = new THREE.MeshStandardMaterial({ map: texture }); // Create the material here
+                setupPlanetShader(floorMaterialMesh);
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura do piso:', error);
                 // Fallback to a plain color if texture fails to load
                 floorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xAAAAAA }); // Grey color for floor
+                setupPlanetShader(floorMaterialMesh);
             });
 
             // Load the wooden plank texture and create the material once
@@ -1537,9 +1546,11 @@
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
                 woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
+                setupPlanetShader(woodenPlankMaterialMesh);
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura da tábua de madeira:', error);
                 woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xdeb887 }); // Fallback brown
+                setupPlanetShader(woodenPlankMaterialMesh);
             });
 
             // Load the tree sapling texture (for icon) and create the material once
@@ -1559,9 +1570,11 @@
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1); // Adjust as needed for bark
                 treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
+                setupPlanetShader(treeTrunkMaterialMesh);
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura do tronco da árvore:', error);
                 treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Fallback brown
+                setupPlanetShader(treeTrunkMaterialMesh);
             });
 
             // Load tree leaves texture and create material
@@ -1570,9 +1583,11 @@
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1); // Adjust as needed for leaves
                 treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ map: texture, transparent: true, alphaTest: 0.5 }); // alphaTest for transparency
+                setupPlanetShader(treeLeavesMaterialMesh);
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura das folhas da árvore:', error);
                 treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 }); // Fallback dark green
+                setupPlanetShader(treeLeavesMaterialMesh);
             });
 
             // Cria um corpo "grabber" invisível para segurar objetos
@@ -3145,9 +3160,11 @@
                 }
             }
 
-            // Atualiza o uniforme da posição da câmera no shader do planeta
-            if (cubeMaterialMesh.userData.shader) {
-                cubeMaterialMesh.userData.shader.uniforms.cameraPos.value.copy(camera.position);
+            // Atualiza o uniforme da posição da câmera em todos os shaders de planeta
+            for (const material of materialsWithPlanetShader) {
+                if (material.userData.shader) {
+                    material.userData.shader.uniforms.cameraPos.value.copy(camera.position);
+                }
             }
 
             // Renderiza a cena
