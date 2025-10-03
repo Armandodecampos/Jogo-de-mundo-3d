@@ -374,10 +374,8 @@
         let scene, camera, renderer, world;
         // Variáveis para corpos e malhas de jogador, terreno (rua), estrada e cubo
         let playerBody;
-        let islandBody; // NOVO: Corpo de física para o terreno da ilha (Heightfield)
-        let heightmapData = []; // NOVO: Para armazenar os dados do heightmap globalmente
+        let streetBody; // Corpo de física para o terreno (agora verde)
         let streetMeshes = []; // Array para armazenar múltiplas malhas visuais do terreno
-        let waterMeshes = []; // NOVO: Array para as malhas da água
 
         let roadBody; // Corpo de física para o estrada (agora cinza)
         let roadMeshes = []; // Array para armazenar múltiplas malhas visuais da estrada
@@ -444,14 +442,6 @@
         const roadWidth = 10; // Largura da estrada
         const roadHeight = 0.2; // Espessura da estrada
         const numTiles = 3; // Para uma grade 3x3 de tiles visíveis (e cubos)
-
-        // NEW: Heightmap parameters
-        const terrainWidth = 64;
-        const terrainDepth = 64;
-        const minTerrHeight = 0;
-        const maxTerrHeight = 30;
-        const numMountains = 5;
-        const mountainRadius = 30;
 
         // Velocidades de movimento
         const walkSpeed = 5; // Velocidade base de caminhada
@@ -691,81 +681,6 @@
 
         // Global array to hold active smoke particles
         let smokeParticles = [];
-
-        // Function to generate a heightmap for the terrain
-        function generateHeightmap(width, depth, minHeight, maxHeight, numMountains, mountainRadius) {
-            const data = [];
-            for (let i = 0; i < width; i++) {
-                data.push(new Array(depth).fill(0));
-            }
-
-            // Generate some "mountains"
-            for (let k = 0; k < numMountains; k++) {
-                const peakX = Math.random() * width;
-                const peakZ = Math.random() * depth;
-                const peakHeight = minHeight + Math.random() * (maxHeight - minHeight);
-                const radius = Math.random() * mountainRadius + 10; // Add a base radius
-
-                for (let i = 0; i < width; i++) {
-                    for (let j = 0; j < depth; j++) {
-                        const distance = Math.sqrt(Math.pow(i - peakX, 2) + Math.pow(j - peakZ, 2));
-                        if (distance < radius) {
-                            // Use a cosine falloff for a smoother peak
-                            const height = peakHeight * (Math.cos((distance / radius) * Math.PI) + 1) / 2;
-                            data[i][j] += height;
-                        }
-                    }
-                }
-            }
-
-            // Add some smaller random noise for roughness
-            for (let i = 0; i < width; i++) {
-                for (let j = 0; j < depth; j++) {
-                    data[i][j] += (Math.random() - 0.5) * 2; // Small noise between -1 and 1
-                }
-            }
-
-            return data;
-        }
-
-        function getTerrainHeight(worldX, worldZ) {
-            // Clamp world coordinates to be within the terrain
-            worldX = Math.max(-worldSize / 2, Math.min(worldSize / 2, worldX));
-            worldZ = Math.max(-worldSize / 2, Math.min(worldSize / 2, worldZ));
-
-            // Convert world coordinates to grid indices
-            const gridI = (worldX + worldSize / 2) / worldSize * (terrainWidth - 1);
-            const gridJ = (worldSize / 2 - worldZ) / worldSize * (terrainDepth - 1);
-
-            const i0 = Math.floor(gridI);
-            const j0 = Math.floor(gridJ);
-
-            // Check for out of bounds (should not happen with clamping)
-            if (i0 < 0 || i0 >= terrainWidth - 1 || j0 < 0 || j0 >= terrainDepth - 1 || heightmapData.length === 0) {
-                return 0; // Default height
-            }
-
-            const i1 = Math.min(i0 + 1, terrainWidth - 1);
-            const j1 = Math.min(j0 + 1, terrainDepth - 1);
-
-            // Bilinear interpolation
-            const tx = gridI - i0;
-            const ty = gridJ - j0;
-
-            const h00 = heightmapData[i0][j0];
-            const h10 = heightmapData[i1][j0];
-            const h01 = heightmapData[i0][j1];
-            const h11 = heightmapData[i1][j1];
-
-            if (h00 === undefined || h10 === undefined || h01 === undefined || h11 === undefined) {
-                return 0; // Return default height if any data point is missing
-            }
-
-            const h_top = h00 * (1 - tx) + h10 * tx;
-            const h_bottom = h01 * (1 - tx) + h11 * tx;
-
-            return h_top * (1 - ty) + h_bottom * ty;
-        }
 
         // Função para mostrar a tela de opções e pausar o jogo
         function showOptionsScreen() {
@@ -1466,141 +1381,30 @@
             scene.add(directionalLight);
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
-            // --- NOVO: Shader para Curvatura do Mundo ---
-            const worldCurveShader = {
-                uniforms: {
-                    // Uniform para passar a textura original do material
-                    'tDiffuse': { value: null },
-                    // Uniform para a posição da câmera no mundo
-                    'u_cameraPosition': { value: new THREE.Vector3() },
-                    // Uniform para controlar a intensidade da curvatura
-                    'u_bendAmount': { value: 0.00005 }, // Valor inicial, pode ser ajustado
-                    // Uniform para a cor (usado pela água)
-                    'u_color': { value: new THREE.Color(0x006994) }
-                },
+            // Cria o Terreno (agora composto de blocos de cob)
+            const streetShape = new CANNON.Box(new CANNON.Vec3(worldSize / 2, streetHeight / 2, worldSize / 2));
+            streetBody = new CANNON.Body({ mass: 0, shape: streetShape, material: streetMaterial });
+            streetBody.position.set(0, streetHeight / 2, 0); // Posição na metade de sua altura para ter o topo em y=0
+            world.addBody(streetBody);
 
-                vertexShader: `
-                    uniform vec3 u_cameraPosition;
-                    uniform float u_bendAmount;
-                    varying vec2 vUv;
-
-                    void main() {
-                        vUv = uv;
-                        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-
-                        // Calcula a distância no plano XZ da câmera para o vértice
-                        float dist_x = worldPosition.x - u_cameraPosition.x;
-                        float dist_z = worldPosition.z - u_cameraPosition.z;
-                        float distance_xz = sqrt(dist_x * dist_x + dist_z * dist_z);
-
-                        // Calcula o deslocamento Y baseado na distância ao quadrado
-                        float y_offset = distance_xz * distance_xz * -u_bendAmount;
-
-                        // Aplica o deslocamento à posição do vértice
-                        vec3 new_position = position + vec3(0.0, y_offset, 0.0);
-
-                        gl_Position = projectionMatrix * modelViewMatrix * vec4(new_position, 1.0);
-                    }
-                `,
-
-                fragmentShader: `
-                    uniform sampler2D tDiffuse;
-                    uniform vec3 u_color;
-                    varying vec2 vUv;
-
-                    void main() {
-                        vec4 texColor = texture2D(tDiffuse, vUv);
-                        // Se a textura não for fornecida (tDiffuse é nulo ou a cor alfa é 0), use a cor uniforme.
-                        // Isso permite que o mesmo shader seja usado para o terreno texturizado e a água colorida.
-                        if (texColor.a < 0.1) {
-                            gl_FragColor = vec4(u_color, 1.0);
-                        } else {
-                            gl_FragColor = texColor;
-                        }
-                    }
-                `
-            };
-
-            // NOVO: Cria o terreno da ilha usando o Heightfield
-            heightmapData = generateHeightmap(terrainWidth, terrainDepth, minTerrHeight, maxTerrHeight, numMountains, mountainRadius);
-            const islandShape = new CANNON.Heightfield(heightmapData, {
-                elementSize: worldSize / Math.max(terrainWidth, terrainDepth) // Escala o heightmap para o tamanho do mundo
-            });
-            islandBody = new CANNON.Body({ mass: 0, material: streetMaterial });
-            islandBody.addShape(islandShape);
-            // Rotaciona para ficar plano no plano XZ
-            islandBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-            islandBody.position.set(-worldSize / 2, 0, worldSize / 2); // Posiciona para centralizar
-            world.addBody(islandBody);
-
-            // NOVO: Cria a malha visual para o terreno da ilha
-            const islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, terrainWidth - 1, terrainDepth - 1);
-
-            // Rotaciona a geometria para ficar plana no plano XZ
-            islandGeometry.rotateX(-Math.PI / 2);
-
-            // Deforma os vértices do plano para corresponder ao heightmap
-            const positions = islandGeometry.attributes.position.array;
-            for (let j = 0; j < terrainDepth; j++) {
-                for (let i = 0; i < terrainWidth; i++) {
-                    const vertexIndex = (i + j * terrainWidth) * 3;
-                    // A altura é aplicada na coordenada Y (índice 1) após a rotação
-                    positions[vertexIndex + 1] = heightmapData[i][j];
-                }
-            }
-            islandGeometry.attributes.position.needsUpdate = true; // Informa ao Three.js para atualizar a geometria
-            islandGeometry.computeVertexNormals(); // Recalcula as normais para sombreamento correto após a deformação
-
-            const islandTexture = textureLoader.load(stoneTextureURL, (texture) => {
+            const streetGeometry = new THREE.BoxGeometry(worldSize, streetHeight, worldSize);
+            // Carrega a textura de terra para o terreno
+            const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
+                // Configura a repetição da textura
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(20, 20); // Repete a textura de pedra pela ilha
+                // Ajusta a repetição da textura.
+                texture.repeat.set(worldSize / cobWidth, worldSize / cobDepth);
             });
-
-            // NOVO: Usa o ShaderMaterial para o terreno
-            const islandMaterial = new THREE.ShaderMaterial({
-                uniforms: THREE.UniformsUtils.clone(worldCurveShader.uniforms),
-                vertexShader: worldCurveShader.vertexShader,
-                fragmentShader: worldCurveShader.fragmentShader,
-                side: THREE.DoubleSide
-            });
-            islandMaterial.uniforms.tDiffuse.value = islandTexture;
-
+            const streetMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(islandGeometry, islandMaterial);
+                    const mesh = new THREE.Mesh(streetGeometry, streetMeshMaterial);
                     mesh.receiveShadow = true;
-                    mesh.castShadow = true; // Montanhas devem projetar sombras
-                    mesh.userData.physicsBody = islandBody;
+                    mesh.userData.physicsBody = streetBody; // ASSOCIA O CORPO DE FÍSICA À MALHA VISUAL
                     scene.add(mesh);
+                    // Armazena a malha e seu offset ideal da origem (0,0,0)
                     streetMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                }
-            }
-
-            // NOVO: Cria a malha da água
-            const waterGeometry = new THREE.PlaneGeometry(worldSize * 2, worldSize * 2, 1, 1); // Um plano grande para a água
-            waterGeometry.rotateX(-Math.PI / 2); // Deixa o plano na horizontal
-
-            const waterMaterial = new THREE.ShaderMaterial({
-                uniforms: THREE.UniformsUtils.clone(worldCurveShader.uniforms),
-                vertexShader: worldCurveShader.vertexShader,
-                fragmentShader: worldCurveShader.fragmentShader,
-                transparent: true,
-                side: THREE.DoubleSide
-            });
-            // A cor já está definida no shader, então não precisamos alterá-la aqui.
-
-            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(waterGeometry, waterMaterial);
-                    // A água não projeta nem recebe sombras para economizar desempenho
-                    mesh.receiveShadow = false;
-                    mesh.castShadow = false;
-                    // Define a posição Y da água ligeiramente abaixo do terreno para evitar z-fighting
-                    mesh.position.y = -0.5;
-                    scene.add(mesh);
-                    // A água precisa de um offset maior porque sua geometria é maior
-                    waterMeshes.push({ mesh: mesh, offsetX: i * (worldSize * 2), offsetZ: j * (worldSize * 2) });
                 }
             }
 
@@ -1621,16 +1425,15 @@
                 sleepSpeedLimit: 0.01, // Velocidade linear mínima para "acordar"
                 sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer"
             });
-            // Posição inicial: centro da esfera em playerRadius + altura do terreno
-            const initialPlayerY = getTerrainHeight(0, 0);
-            playerBody.position.set(0, initialPlayerY + playerRadius, 0); // Posição inicial ajustada do jogador
+            // Posição inicial: centro da esfera em playerRadius + streetHeight
+            playerBody.position.set(0, playerRadius + streetHeight, 0); // Posição inicial ajustada do jogador
             world.addBody(playerBody);
 
             // Reintroduz o listener de colisão para canJump, mas com uma verificação adicional
             playerBody.addEventListener('collide', (event) => {
                 // canJump é verdadeiro APENAS se o corpo colidido NÃO for o objeto que está sendo segurado
                 // A lista de corpos "chão" agora inclui apenas superfícies que podem ser pisadas
-                const allGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+                const allGroundBodies = [streetBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
                 if (event.body !== pickedObjectBody && allGroundBodies.includes(event.body)) {
                     canJump = true;
                 }
@@ -1646,16 +1449,9 @@
             cubeMaterialMesh = new THREE.MeshStandardMaterial({ map: cubeTexture });
 
             // Cria as caixas iniciais usando a função createBox
-            const boxPositions = [
-                new THREE.Vector3(0, 0, -10),
-                new THREE.Vector3(5, 0, -10),
-                new THREE.Vector3(-5, 0, -10)
-            ];
-
-            boxPositions.forEach(pos => {
-                pos.y = getTerrainHeight(pos.x, pos.z) + cubeSize / 2;
-                createBox(pos);
-            });
+            createBox(new THREE.Vector3(0, cubeSize / 2 + streetHeight, -10));
+            createBox(new THREE.Vector3(5, cubeSize / 2 + streetHeight, -10));
+            createBox(new THREE.Vector3(-5, cubeSize / 2 + streetHeight, -10));
 
             // Cria o ghost block (transparente)
             const ghostBlockMaterial = new THREE.MeshBasicMaterial({
@@ -2173,12 +1969,11 @@
                     const intersect = intersects[0];
                     const hitPoint = intersect.point;
                     const patchSize = cobSize;
-                    const snappedX = Math.round(hitPoint.x / patchSize) * patchSize;
-                    const snappedZ = Math.round(hitPoint.z / patchSize) * patchSize;
-                    const patchY = getTerrainHeight(snappedX, snappedZ) + 0.01; // Place slightly above terrain
+                    const snappedX = Math.floor(hitPoint.x / patchSize) * patchSize + patchSize / 2;
+                    const snappedZ = Math.floor(hitPoint.z / patchSize) * patchSize + patchSize / 2;
                     const patchGeometry = new THREE.BoxGeometry(patchSize, 0.01, patchSize);
                     const patchMesh = new THREE.Mesh(patchGeometry, stoneMaterial);
-                    patchMesh.position.set(snappedX, patchY, snappedZ);
+                    patchMesh.position.set(snappedX, streetHeight + 0.005, snappedZ);
                     patchMesh.receiveShadow = true;
                     patchMesh.userData = { isDestructible: true, durability: 0.5, type: 'patch' };
                     scene.add(patchMesh);
@@ -2474,15 +2269,8 @@
             streetMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                // A posição Y é controlada pelo shader, então não a definimos aqui.
-                // A rotação também é controlada pelo shader/câmera, então não a definimos aqui.
-            });
-
-            // NOVO: Atualiza as posições das malhas da água
-            waterMeshes.forEach(tile => {
-                tile.mesh.position.x = tile.offsetX - visualOffsetX;
-                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                // A posição Y da água é fixa, mas a curvatura é aplicada pelo shader
+                tile.mesh.position.y = streetHeight / 2;
+                tile.mesh.quaternion.copy(streetBody.quaternion);
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
@@ -2732,7 +2520,7 @@
 
 
                     // Lista de todos os corpos que podem ser base para colocação
-                    const allPlaceableSurfaces = [islandBody, ...placedConstructionBodies];
+                    const allPlaceableSurfaces = [streetBody, ...placedConstructionBodies];
 
                     for (let i = 0; i < intersects.length; i++) {
                         const intersectedObject = intersects[i].object;
@@ -3022,7 +2810,7 @@
             // Verifica colisão com terreno (rua), estrada, cubos e blocos
             world.raycastAny(rayOriginLow, rayTargetLow, {}, rayResultStep);
             // A lista de corpos "chão" para subida de degraus
-            const stepClimbGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+            const stepClimbGroundBodies = [streetBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
             if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
                 hitLow = true;
             }
@@ -3198,7 +2986,7 @@
                     for (let i = 0; i < intersects.length; i++) {
                         const intersectedObject = intersects[i].object;
                         const intersectedBody = intersectedObject.userData.physicsBody;
-                        const allPlaceableSurfaces = [islandBody, ...placedConstructionBodies];
+                        const allPlaceableSurfaces = [streetBody, ...placedConstructionBodies];
 
                         if (intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) {
                             if (intersects[i].distance <= pickUpDistance + 1) {
@@ -3325,22 +3113,6 @@
                     particle.scale.addScalar(0.01); // Grow slightly
                 }
             }
-
-            // NOVO: Atualiza o uniform da posição da câmera no shader para terreno e água
-            const cameraWorldPosition = new THREE.Vector3();
-            camera.getWorldPosition(cameraWorldPosition);
-
-            streetMeshes.forEach(tile => {
-                if (tile.mesh.material.uniforms && tile.mesh.material.uniforms.u_cameraPosition) {
-                    tile.mesh.material.uniforms.u_cameraPosition.value.copy(cameraWorldPosition);
-                }
-            });
-
-            waterMeshes.forEach(tile => {
-                if (tile.mesh.material.uniforms && tile.mesh.material.uniforms.u_cameraPosition) {
-                    tile.mesh.material.uniforms.u_cameraPosition.value.copy(cameraWorldPosition);
-                }
-            });
 
             // Renderiza a cena
             renderer.render(scene, camera);
