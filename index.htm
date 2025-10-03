@@ -377,6 +377,7 @@
         let islandBody; // NOVO: Corpo de física para o terreno da ilha (Heightfield)
         let heightmapData = []; // NOVO: Para armazenar os dados do heightmap globalmente
         let streetMeshes = []; // Array para armazenar múltiplas malhas visuais do terreno
+        let waterMeshes = []; // NOVO: Array para as malhas da água
 
         let roadBody; // Corpo de física para o estrada (agora cinza)
         let roadMeshes = []; // Array para armazenar múltiplas malhas visuais da estrada
@@ -1465,6 +1466,61 @@
             scene.add(directionalLight);
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
+            // --- NOVO: Shader para Curvatura do Mundo ---
+            const worldCurveShader = {
+                uniforms: {
+                    // Uniform para passar a textura original do material
+                    'tDiffuse': { value: null },
+                    // Uniform para a posição da câmera no mundo
+                    'u_cameraPosition': { value: new THREE.Vector3() },
+                    // Uniform para controlar a intensidade da curvatura
+                    'u_bendAmount': { value: 0.00005 }, // Valor inicial, pode ser ajustado
+                    // Uniform para a cor (usado pela água)
+                    'u_color': { value: new THREE.Color(0x006994) }
+                },
+
+                vertexShader: `
+                    uniform vec3 u_cameraPosition;
+                    uniform float u_bendAmount;
+                    varying vec2 vUv;
+
+                    void main() {
+                        vUv = uv;
+                        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
+
+                        // Calcula a distância no plano XZ da câmera para o vértice
+                        float dist_x = worldPosition.x - u_cameraPosition.x;
+                        float dist_z = worldPosition.z - u_cameraPosition.z;
+                        float distance_xz = sqrt(dist_x * dist_x + dist_z * dist_z);
+
+                        // Calcula o deslocamento Y baseado na distância ao quadrado
+                        float y_offset = distance_xz * distance_xz * -u_bendAmount;
+
+                        // Aplica o deslocamento à posição do vértice
+                        vec3 new_position = position + vec3(0.0, y_offset, 0.0);
+
+                        gl_Position = projectionMatrix * modelViewMatrix * vec4(new_position, 1.0);
+                    }
+                `,
+
+                fragmentShader: `
+                    uniform sampler2D tDiffuse;
+                    uniform vec3 u_color;
+                    varying vec2 vUv;
+
+                    void main() {
+                        vec4 texColor = texture2D(tDiffuse, vUv);
+                        // Se a textura não for fornecida (tDiffuse é nulo ou a cor alfa é 0), use a cor uniforme.
+                        // Isso permite que o mesmo shader seja usado para o terreno texturizado e a água colorida.
+                        if (texColor.a < 0.1) {
+                            gl_FragColor = vec4(u_color, 1.0);
+                        } else {
+                            gl_FragColor = texColor;
+                        }
+                    }
+                `
+            };
+
             // NOVO: Cria o terreno da ilha usando o Heightfield
             heightmapData = generateHeightmap(terrainWidth, terrainDepth, minTerrHeight, maxTerrHeight, numMountains, mountainRadius);
             const islandShape = new CANNON.Heightfield(heightmapData, {
@@ -1501,7 +1557,14 @@
                 texture.repeat.set(20, 20); // Repete a textura de pedra pela ilha
             });
 
-            const islandMaterial = new THREE.MeshStandardMaterial({ map: islandTexture, side: THREE.DoubleSide });
+            // NOVO: Usa o ShaderMaterial para o terreno
+            const islandMaterial = new THREE.ShaderMaterial({
+                uniforms: THREE.UniformsUtils.clone(worldCurveShader.uniforms),
+                vertexShader: worldCurveShader.vertexShader,
+                fragmentShader: worldCurveShader.fragmentShader,
+                side: THREE.DoubleSide
+            });
+            islandMaterial.uniforms.tDiffuse.value = islandTexture;
 
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
@@ -1511,6 +1574,33 @@
                     mesh.userData.physicsBody = islandBody;
                     scene.add(mesh);
                     streetMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
+
+            // NOVO: Cria a malha da água
+            const waterGeometry = new THREE.PlaneGeometry(worldSize * 2, worldSize * 2, 1, 1); // Um plano grande para a água
+            waterGeometry.rotateX(-Math.PI / 2); // Deixa o plano na horizontal
+
+            const waterMaterial = new THREE.ShaderMaterial({
+                uniforms: THREE.UniformsUtils.clone(worldCurveShader.uniforms),
+                vertexShader: worldCurveShader.vertexShader,
+                fragmentShader: worldCurveShader.fragmentShader,
+                transparent: true,
+                side: THREE.DoubleSide
+            });
+            // A cor já está definida no shader, então não precisamos alterá-la aqui.
+
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const mesh = new THREE.Mesh(waterGeometry, waterMaterial);
+                    // A água não projeta nem recebe sombras para economizar desempenho
+                    mesh.receiveShadow = false;
+                    mesh.castShadow = false;
+                    // Define a posição Y da água ligeiramente abaixo do terreno para evitar z-fighting
+                    mesh.position.y = -0.5;
+                    scene.add(mesh);
+                    // A água precisa de um offset maior porque sua geometria é maior
+                    waterMeshes.push({ mesh: mesh, offsetX: i * (worldSize * 2), offsetZ: j * (worldSize * 2) });
                 }
             }
 
@@ -2384,8 +2474,15 @@
             streetMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                tile.mesh.position.y = 0; // A altura do terreno agora é controlada pelo heightfield
-                tile.mesh.quaternion.copy(islandBody.quaternion);
+                // A posição Y é controlada pelo shader, então não a definimos aqui.
+                // A rotação também é controlada pelo shader/câmera, então não a definimos aqui.
+            });
+
+            // NOVO: Atualiza as posições das malhas da água
+            waterMeshes.forEach(tile => {
+                tile.mesh.position.x = tile.offsetX - visualOffsetX;
+                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
+                // A posição Y da água é fixa, mas a curvatura é aplicada pelo shader
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
@@ -3228,6 +3325,22 @@
                     particle.scale.addScalar(0.01); // Grow slightly
                 }
             }
+
+            // NOVO: Atualiza o uniform da posição da câmera no shader para terreno e água
+            const cameraWorldPosition = new THREE.Vector3();
+            camera.getWorldPosition(cameraWorldPosition);
+
+            streetMeshes.forEach(tile => {
+                if (tile.mesh.material.uniforms && tile.mesh.material.uniforms.u_cameraPosition) {
+                    tile.mesh.material.uniforms.u_cameraPosition.value.copy(cameraWorldPosition);
+                }
+            });
+
+            waterMeshes.forEach(tile => {
+                if (tile.mesh.material.uniforms && tile.mesh.material.uniforms.u_cameraPosition) {
+                    tile.mesh.material.uniforms.u_cameraPosition.value.copy(cameraWorldPosition);
+                }
+            });
 
             // Renderiza a cena
             renderer.render(scene, camera);
