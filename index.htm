@@ -2487,14 +2487,25 @@
                         if (intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) {
                             // Verifica a distância máxima para colocação
                             if (intersects[i].distance <= pickUpDistance + 1) { // Um pouco mais longe que pegar
-                                // Ponto de interseção
                                 const hitPoint = intersects[i].point;
-                                // Normal da superfície atingida
                                 const hitNormal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
 
                                 // Calcula a posição do centro do bloco acima da superfície
-                                placementPosition.copy(hitPoint);
-                                placementPosition.add(hitNormal.multiplyScalar(currentGhostHeight / 2));
+                                let basePosition = new THREE.Vector3().copy(hitPoint);
+                                basePosition.add(hitNormal.multiplyScalar(currentGhostHeight / 2));
+
+                                // NOVO: Alinhamento da grade
+                                // Calcula a posição "desenrolada" (absoluta)
+                                const unwrappedX = basePosition.x + visualOffsetX;
+                                const unwrappedZ = basePosition.z + visualOffsetZ;
+                                // Alinha na grade
+                                const snappedUnwrappedX = Math.round(unwrappedX / cobSize) * cobSize;
+                                const snappedUnwrappedZ = Math.round(unwrappedZ / cobSize) * cobSize;
+                                // Converte de volta para as coordenadas do mundo visível
+                                placementPosition.x = snappedUnwrappedX - visualOffsetX;
+                                placementPosition.z = snappedUnwrappedZ - visualOffsetZ;
+                                placementPosition.y = basePosition.y; // Mantém a altura calculada
+
 
                                 // Alinha a rotação do bloco com a normal da superfície
                                 const surfaceAlignmentQuaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), hitNormal);
@@ -2535,88 +2546,10 @@
                         }
                     }
 
-                    let snapped = false;
-                    let closestSnapPosition = new THREE.Vector3();
-                    let closestSnapQuaternion = new THREE.Quaternion(); // Initialize a quaternion for snapping
-                    let minSnapDistance = Infinity;
-
-                    // Tenta fazer o snapping com blocos existentes (cobs e pisos)
-                    const allExistingBlocks = [...placedConstructionBodies];
-                    for (const existingBlockBody of allExistingBlocks) {
-                        const existingBlockPos = existingBlockBody.position;
-                        const existingBlockQuat = existingBlockBody.quaternion; // Rotação do bloco existente
-                        const existingBlockDimensions = existingBlockBody.userData.dimensions;
-
-                        // Converte CANNON.Vec3 para THREE.Vector3 para cálculos de distância
-                        const existingBlockPosThree = new THREE.Vector3(existingBlockPos.x, existingBlockPos.y, existingBlockPos.z);
-
-                        // Verifica cada face do bloco existente para um possível snap
-                        const localAxes = [
-                            new CANNON.Vec3(1, 0, 0), // X
-                            new CANNON.Vec3(-1, 0, 0), // -X
-                            new CANNON.Vec3(0, 1, 0), // Y (topo/fundo)
-                            new CANNON.Vec3(0, -1, 0), // -Y
-                            new CANNON.Vec3(0, 0, 1), // Z
-                            new CANNON.Vec3(0, 0, -1)  // -Z
-                        ];
-
-                        const existingHalfExtents = new CANNON.Vec3(
-                            existingBlockDimensions.width / 2,
-                            existingBlockDimensions.height / 2,
-                            existingBlockDimensions.depth / 2
-                        );
-                        const currentGhostHalfExtents = new CANNON.Vec3(
-                            currentGhostWidth / 2,
-                            currentGhostHeight / 2,
-                            currentGhostDepth / 2
-                        );
-
-                        for (let i = 0; i < localAxes.length; i++) {
-                            const localAxis = localAxes[i];
-                            const worldAxis = new CANNON.Vec3();
-                            existingBlockQuat.vmult(localAxis, worldAxis);
-
-                            let snapPointCannon = new CANNON.Vec3();
-                            let tempOffsetDistance;
-
-                            // Calculate the primary offset along the worldAxis
-                            if (Math.abs(localAxis.x) > 0.5) tempOffsetDistance = existingHalfExtents.x + currentGhostHalfExtents.x;
-                            else if (Math.abs(localAxis.y) > 0.5) tempOffsetDistance = existingHalfExtents.y + currentGhostHalfExtents.y;
-                            else tempOffsetDistance = existingHalfExtents.z + currentGhostHalfExtents.z;
-
-                            existingBlockPos.vadd(worldAxis.scale(tempOffsetDistance), snapPointCannon);
-
-                            // Special handling for snapping to the side of a block (X or Z axis of localAxis)
-                            // This means the worldAxis will have a very small Y component
-                            if (Math.abs(localAxis.y) < 0.1) { // If snapping to a horizontal face (side, not top/bottom)
-                                // Align the bottom of the ghost block with the bottom of the existing block
-                                snapPointCannon.y = existingBlockPos.y - existingHalfExtents.y + currentGhostHalfExtents.y;
-                            }
-
-                            const snapPointThree = new THREE.Vector3(snapPointCannon.x, snapPointCannon.y, snapPointCannon.z);
-                            const currentDistance = placementPosition.distanceTo(snapPointThree);
-
-                            if (currentDistance < snappingThreshold && currentDistance < minSnapDistance) {
-                                minSnapDistance = currentDistance;
-                                closestSnapPosition.copy(snapPointThree);
-                                closestSnapQuaternion.copy(existingBlockQuat); // Capture the existing block's quaternion
-                                snapped = true;
-                            }
-                        }
-                    }
-
-                    if (canPlace) { // Se a posição base é válida
-                        if (snapped) {
-                            ghostBlockMesh.position.copy(closestSnapPosition); // Aplica a posição de snap
-                            // Aplica a rotação manual em cima da rotação do bloco encaixado
-                            const snappedBaseQuaternion = new THREE.Quaternion().copy(closestSnapQuaternion);
-                            ghostBlockMesh.quaternion.copy(snappedBaseQuaternion.multiply(manualRotationQuaternion));
-                            ghostBlockMesh.material.color.setHex(0x00ff00); // Verde para indicar que pode ser colocado
-                        } else {
-                            ghostBlockMesh.position.copy(placementPosition); // Caso contrário, usa a posição normal
-                            ghostBlockMesh.quaternion.copy(tempPlacementQuaternion); // Aplica a rotação combinada de superfície e manual
-                            ghostBlockMesh.material.color.setHex(0x00ff00); // Verde para indicar que pode ser colocado
-                        }
+                    if (canPlace) {
+                        ghostBlockMesh.position.copy(placementPosition);
+                        ghostBlockMesh.quaternion.copy(tempPlacementQuaternion);
+                        ghostBlockMesh.material.color.setHex(0x00ff00); // Verde para indicar que pode ser colocado
                     } else {
                         ghostBlockMesh.visible = true; // Mantém visível para mostrar a cor vermelha
                         ghostBlockMesh.material.color.setHex(0xff0000); // Vermelho para inválido
