@@ -1207,9 +1207,17 @@
             placedConstructionBodies.push(blockBody);
             console.log("Bloco colocado. Corpos de construção colocados:", placedConstructionBodies); // Log para depuração
 
-            mesh.userData.physicsBody = blockBody; // Vincula a malha visual ao corpo de física
-            scene.add(mesh);
-            placedConstructionMeshesArrays.push([{ mesh: mesh, offsetX: 0, offsetZ: 0 }]); // Simplified for single mesh/group per body
+            const blockMeshes = [];
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    // We clone the visual object (whether it's a mesh or a group) for each tile.
+                    const visualObject = mesh.clone();
+                    visualObject.userData.physicsBody = blockBody; // Link the clone back to the single physics body
+                    scene.add(visualObject);
+                    blockMeshes.push({ mesh: visualObject, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
+            placedConstructionMeshesArrays.push(blockMeshes);
         }
 
         // Function to create a smoke effect at a given position
@@ -1432,7 +1440,6 @@
             // Posição inicial: centro da esfera em playerRadius + streetHeight
             playerBody.position.set(0, playerRadius + streetHeight, 0); // Posição inicial ajustada do jogador
             world.addBody(playerBody);
-            window.playerBody = playerBody; // Exposto globalmente para o script de verificação
 
             // Reintroduz o listener de colisão para canJump, mas com uma verificação adicional
             playerBody.addEventListener('collide', (event) => {
@@ -1487,10 +1494,12 @@
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
                 cobMaterialMesh = new THREE.MeshStandardMaterial({ map: texture }); // Create the material here
+                window.cobMaterialMesh = cobMaterialMesh; // Expose for verification
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura do cob:', error);
                 // Fallback to a plain color if texture fails to load
                 cobMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Brown color
+                window.cobMaterialMesh = cobMaterialMesh; // Expose for verification even on error
             });
 
             // Load the floor texture and create the material once
@@ -2113,6 +2122,7 @@
             // Listeners para o botão da mochila
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
+
         }
 
         // Função para lidar com o redimensionamento da janela
@@ -2308,6 +2318,12 @@
                 body.collisionResponse = true; // Garante que a resposta de colisão esteja sempre ativada
             });
 
+            // Calcula o offset da "origem visual" para toda a grade de tiles
+            // ANTES de envolver as posições. Isso é crucial para o efeito de mundo contínuo.
+            const playerX = playerBody.position.x;
+            const playerZ = playerBody.position.z;
+            visualOffsetX = Math.round(playerX / worldSize) * worldSize;
+            visualOffsetZ = Math.round(playerZ / worldSize) * worldSize;
 
             // Aplica o envolvimento ao corpo de física do jogador
             wrapObject(playerBody, worldSize);
@@ -2318,13 +2334,6 @@
                     wrapObject(body, worldSize);
                 }
             });
-
-            // Calcula o offset da "origem visual" para toda a grade de tiles
-            // Isso garante que o jogador esteja sempre visualmente centralizado dentro do tile "principal".
-            const playerX = playerBody.position.x; // Esta é a posição do jogador potencialmente envolvida
-            const playerZ = playerBody.position.z;
-            visualOffsetX = Math.round(playerX / worldSize) * worldSize;
-            visualOffsetZ = Math.round(playerZ / worldSize) * worldSize;
 
             // Atualiza as posições das malhas do terreno com base na posição envolvida do jogador
             streetMeshes.forEach(tile => {
@@ -2352,20 +2361,16 @@
 
             // Atualiza as posições de todas as malhas visuais dos blocos colocados
             placedConstructionBodies.forEach((body, index) => {
-                const distance = calculateWrappedDistance(playerBody.position, body.position);
-                const isVisible = distance <= renderDistance;
+                const meshesArray = placedConstructionMeshesArrays[index];
 
-                const meshToUpdate = placedConstructionMeshesArrays[index][0].mesh;
-                meshToUpdate.visible = isVisible;
+                // Primeiro, atualiza as posições de todas as malhas para lidar com o envolvimento do mundo.
+                updateObjectVisuals(body, meshesArray, visualOffsetX, visualOffsetZ);
 
-                if (isVisible) {
-                    // Cada corpo de bloco colocado agora tem apenas uma malha visual.
-                    // Acessamos diretamente a malha no primeiro (e único) elemento do array de malhas para aquele corpo.
-                    meshToUpdate.position.x = body.position.x + placedConstructionMeshesArrays[index][0].offsetX - visualOffsetX;
-                    meshToUpdate.position.y = body.position.y;
-                    meshToUpdate.position.z = body.position.z + placedConstructionMeshesArrays[index][0].offsetZ - visualOffsetZ;
-                    meshToUpdate.quaternion.copy(body.quaternion); // Mantém a rotação
-                }
+                // Em seguida, itera sobre cada malha individual para verificar a distância e definir a visibilidade.
+                meshesArray.forEach(m => {
+                    const distance = camera.position.distanceTo(m.mesh.position);
+                    m.mesh.visible = distance <= renderDistance;
+                });
             });
 
             // NOVO: Atualiza a visibilidade e posição dos patches de textura
