@@ -2337,16 +2337,17 @@
 
             // Atualiza as posições de todas as malhas visuais dos cubos/caixas
             collectibleBoxes.forEach(box => {
-                const distance = calculateWrappedDistance(playerBody.position, box.body.position);
-                const isVisible = distance <= renderDistance;
+                // Primeiro, atualiza as posições de todas as malhas para lidar com o envolvimento do mundo,
+                // garantindo que o efeito de mundo infinito funcione corretamente.
+                updateObjectVisuals(box.body, box.meshes, visualOffsetX, visualOffsetZ);
 
+                // Em seguida, itera sobre cada malha individual para verificar se ela está dentro
+                // da distância de renderização da câmera. Isso corrige o problema de objetos
+                // distantes aparecerem no horizonte.
                 box.meshes.forEach(m => {
-                    m.mesh.visible = isVisible;
+                    const distance = camera.position.distanceTo(m.mesh.position);
+                    m.mesh.visible = distance <= renderDistance;
                 });
-
-                if (isVisible) {
-                    updateObjectVisuals(box.body, box.meshes, visualOffsetX, visualOffsetZ);
-                }
             });
 
             // Atualiza as posições de todas as malhas visuais dos blocos colocados
