@@ -1409,9 +1409,12 @@
                 texture.repeat.set(worldSize / cobWidth, worldSize / cobDepth);
             });
             const streetMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
+            const waterMaterial = new THREE.MeshStandardMaterial({ color: 0x0000FF }); // Solid blue for water
+
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(streetGeometry, streetMeshMaterial);
+                    const isBorder = i !== 0 || j !== 0;
+                    const mesh = new THREE.Mesh(streetGeometry, isBorder ? waterMaterial : streetMeshMaterial);
                     mesh.receiveShadow = true;
                     mesh.userData.physicsBody = streetBody; // ASSOCIA O CORPO DE FÍSICA À MALHA VISUAL
                     scene.add(mesh);
