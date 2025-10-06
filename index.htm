@@ -376,9 +376,8 @@
         let playerBody;
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
-        let seabedMeshes = []; // NOVO: Array para armazenar as malhas do fundo do mar
 
-        let waterMeshes = []; // Array para armazenar múltiplas malhas visuais da água
+        let waterMesh; // Malha visual para a água
 
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
         let collectibleBoxes = [];
@@ -1418,31 +1417,13 @@
                 }
             }
 
-            // NOVO: Cria o Fundo do Mar
-            const seabedGeometry = new THREE.PlaneGeometry(worldSize, worldSize);
-            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(seabedGeometry, islandMeshMaterial); // Reutiliza o material do solo
-                    mesh.rotation.x = -Math.PI / 2; // Roda o plano para ficar horizontal
-                    mesh.position.y = -5; // Posição abaixo da ilha e da água
-                    mesh.receiveShadow = true;
-                    scene.add(mesh);
-                    seabedMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                }
-            }
-
-            // Cria a Água (agora como uma grelha)
+            // Cria a Água
             const waterGeometry = new THREE.BoxGeometry(worldSize, 0.1, worldSize);
-            const waterMaterial = new THREE.MeshBasicMaterial({ color: 0x006994, transparent: true, opacity: 0.8, side: THREE.DoubleSide }); // NOVO: side: THREE.DoubleSide
-            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(waterGeometry, waterMaterial);
-                    mesh.position.y = waterLevel - 0.05; // Posição visual da água
-                    mesh.userData.isWater = true; // Identificador para o raycaster
-                    scene.add(mesh);
-                    waterMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                }
-            }
+            const waterMaterial = new THREE.MeshBasicMaterial({ color: 0x006994, transparent: true, opacity: 0.8 });
+            waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
+            waterMesh.position.y = waterLevel - 0.05; // Posição visual da água
+            waterMesh.userData.isWater = true; // Identificador para o raycaster
+            scene.add(waterMesh);
 
 
             // A rua foi removida, então o código relacionado a ela foi excluído.
@@ -2369,20 +2350,6 @@
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
-            // NOVO: Atualiza as posições das malhas de água para o efeito de envolvimento
-            waterMeshes.forEach(tile => {
-                tile.mesh.position.x = tile.offsetX - visualOffsetX;
-                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                // A posição Y é estática, por isso não precisa de ser atualizada no loop.
-            });
-
-            // NOVO: Atualiza as posições das malhas do fundo do mar para o efeito de envolvimento
-            seabedMeshes.forEach(tile => {
-                tile.mesh.position.x = tile.offsetX - visualOffsetX;
-                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                // A posição Y é estática, por isso não precisa de ser atualizada no loop.
-            });
-
             // Atualiza as posições de todas as malhas visuais dos cubos/caixas
             collectibleBoxes.forEach(box => {
                 // Primeiro, atualiza as posições de todas as malhas para lidar com o envolvimento do mundo,
@@ -2653,13 +2620,6 @@
             camera.position.copy(playerBody.position);
             camera.position.y += cameraEyeLevelOffset;
 
-            // NOVO: Lógica de névoa subaquática
-            if (camera.position.y < waterLevel) {
-                scene.fog = new THREE.Fog(0x006994, 1, 30); // Cor da água, perto, longe
-            } else {
-                scene.fog = null; // Remove a névoa se estiver acima da água
-            }
-
             // Atualiza a posição e o alvo da luz direcional para seguir a câmera/jogador
             directionalLight.position.copy(camera.position);
             directionalLight.position.x += 10; // Offset da câmera para a fonte de luz
@@ -2696,9 +2656,9 @@
             if (playerBottomY < waterLevel) {
                 isInWater = true;
 
-                // --- Nova Lógica de Flutuação Estável (Valores Ajustados) ---
-                const K_SPRING = 150; // Constante da mola (rigidez) - Reduzida para ser menos agressiva
-                const C_DAMPING = 80;  // Constante de amortecimento - Aumentada para suavizar a oscilação
+                // --- Lógica de Flutuação Estável (Mola-Amortecedor) ---
+                const K_SPRING = 150; // Constante da mola (rigidez)
+                const C_DAMPING = 80;  // Constante de amortecimento (suficiente para evitar oscilações)
 
                 // 1. Anular a gravidade
                 const gravityMagnitude = Math.abs(world.gravity.y);
