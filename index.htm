@@ -2655,15 +2655,33 @@
             const playerBottomY = playerBody.position.y - currentPlayerRadius;
             if (playerBottomY < waterLevel) {
                 isInWater = true;
-                // Aplica força de flutuação para mantê-lo na metade
-                const targetY = waterLevel; // O centro do jogador deve estar no nível da água
-                const dy = targetY - playerBody.position.y;
-                const buoyancyForce = new CANNON.Vec3(0, dy * 200, 0); // Força para cima
-                playerBody.applyForce(buoyancyForce, playerBody.position);
 
-                // Aplica arrasto/resistência da água
-                playerBody.velocity.x *= 0.95;
-                playerBody.velocity.z *= 0.95;
+                // --- Nova Lógica de Flutuação Estável ---
+                const K_SPRING = 250; // Constante da mola (rigidez)
+                const C_DAMPING = 35;  // Constante de amortecimento
+
+                // 1. Anular a gravidade
+                const gravityMagnitude = Math.abs(world.gravity.y);
+                const antiGravityForce = playerBody.mass * gravityMagnitude;
+
+                // 2. Força da mola para empurrar para a posição de flutuação
+                // O alvo é o centro do jogador estar no nível da água.
+                const targetY = waterLevel;
+                const displacement = playerBody.position.y - targetY;
+                const springForce = -K_SPRING * displacement;
+
+                // 3. Força de amortecimento para evitar oscilações
+                const verticalVelocity = playerBody.velocity.y;
+                const dampingForce = -C_DAMPING * verticalVelocity;
+
+                // 4. Força total de flutuação
+                const totalBuoyancyForce = antiGravityForce + springForce + dampingForce;
+                playerBody.applyForce(new CANNON.Vec3(0, totalBuoyancyForce, 0), playerBody.position);
+
+
+                // Aplica arrasto/resistência da água (aumentado para uma sensação mais "pesada")
+                playerBody.velocity.x *= 0.90;
+                playerBody.velocity.z *= 0.90;
                 currentMoveSpeed *= 0.5; // Reduz a velocidade de movimento na água
             }
 
