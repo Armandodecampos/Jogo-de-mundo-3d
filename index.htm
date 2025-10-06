@@ -374,11 +374,10 @@
         let scene, camera, renderer, world;
         // Variáveis para corpos e malhas de jogador, terreno (rua), estrada e cubo
         let playerBody;
-        let streetBody; // Corpo de física para o terreno (agora verde)
-        let streetMeshes = []; // Array para armazenar múltiplas malhas visuais do terreno
+        let islandBody; // Corpo de física para o terreno (agora uma ilha)
+        let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
 
-        let roadBody; // Corpo de física para o estrada (agora cinza)
-        let roadMeshes = []; // Array para armazenar múltiplas malhas visuais da estrada
+        let waterMesh; // Malha visual para a água
 
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
         let collectibleBoxes = [];
@@ -439,10 +438,12 @@
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
         const worldSize = 400;
-        const renderDistance = 100; // Distância de renderização para objetos
+        const islandRadius = 100; // NOVO: Raio da ilha
+        const waterLevel = 0.2; // NOVO: Nível da água
+        const renderDistance = 150; // Distância de renderização para objetos
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
-        const streetHeight = cobSize;
+        const islandHeight = cobSize;
         const roadWidth = 10; // Largura da estrada
         const roadHeight = 0.2; // Espessura da estrada
         const numTiles = 3; // Para uma grade 3x3 de tiles visíveis (e cubos)
@@ -584,7 +585,7 @@
 
         // Declare physics materials globally
         let playerMaterial;
-        let streetMaterial;
+        let islandMaterial; // Renomeado de streetMaterial
         let cubeMaterial;
         let constructionMaterial;
 
@@ -1274,14 +1275,14 @@
 
             // Inicializa os materiais de física
             playerMaterial = new CANNON.Material('playerMaterial');
-            streetMaterial = new CANNON.Material('streetMaterial'); // Material para terreno e estrada
+            islandMaterial = new CANNON.Material('islandMaterial'); // Material para terreno e estrada
             cubeMaterial = new CANNON.Material('cubeMaterial');
             constructionMaterial = new CANNON.Material('constructionMaterial'); // Novo material para cobs e pisos
 
             // Define material de contato entre jogador e terreno/estrada
             const playerGroundContactMaterial = new CANNON.ContactMaterial(
                 playerMaterial,
-                streetMaterial,
+                islandMaterial,
                 {
                     friction: 0, // Attrition set to 0
                     restitution: 0,
@@ -1307,7 +1308,7 @@
             // Material de contato entre cubo e terreno/estrada
             const cubeGroundContactMaterial = new CANNON.ContactMaterial(
                 cubeMaterial,
-                streetMaterial,
+                islandMaterial,
                 {
                     friction: 0.7,
                     restitution: 0
@@ -1344,7 +1345,7 @@
             // Material de contato entre blocos de construção e terreno/estrada (podem ter atrito)
             const constructionGroundContactMaterial = new CANNON.ContactMaterial(
                 constructionMaterial,
-                streetMaterial,
+                islandMaterial,
                 {
                     friction: 0.7, // Blocos podem ter atrito com o chão
                     restitution: 0
@@ -1393,35 +1394,37 @@
             scene.add(directionalLight);
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
-            // Cria o Terreno (agora composto de blocos de cob)
-            const streetShape = new CANNON.Box(new CANNON.Vec3(worldSize / 2, streetHeight / 2, worldSize / 2));
-            streetBody = new CANNON.Body({ mass: 0, shape: streetShape, material: streetMaterial });
-            streetBody.position.set(0, streetHeight / 2, 0); // Posição na metade de sua altura para ter o topo em y=0
-            world.addBody(streetBody);
+            // Cria o Terreno (Ilha Redonda)
+            const islandShape = new CANNON.Cylinder(islandRadius, islandRadius, islandHeight, 32);
+            islandBody = new CANNON.Body({ mass: 0, shape: islandShape, material: islandMaterial });
+            islandBody.position.set(0, islandHeight / 2, 0);
+            world.addBody(islandBody);
 
-            const streetGeometry = new THREE.BoxGeometry(worldSize, streetHeight, worldSize);
-            // Carrega a textura de terra para o terreno
+            const islandGeometry = new THREE.CylinderGeometry(islandRadius, islandRadius, islandHeight, 64);
             const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
-                // Configura a repetição da textura
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
-                // Ajusta a repetição da textura.
-                texture.repeat.set(worldSize / cobWidth, worldSize / cobDepth);
+                texture.repeat.set(islandRadius / 4, islandRadius / 4);
             });
-            const streetMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
-            const waterMaterial = new THREE.MeshStandardMaterial({ color: 0x0000FF }); // Solid blue for water
-
+            const islandMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const isWater = Math.abs(i + j) % 2 !== 0;
-                    const mesh = new THREE.Mesh(streetGeometry, isWater ? waterMaterial : streetMeshMaterial);
+                    const mesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
                     mesh.receiveShadow = true;
-                    mesh.userData.physicsBody = streetBody; // ASSOCIA O CORPO DE FÍSICA À MALHA VISUAL
+                    mesh.userData.physicsBody = islandBody;
                     scene.add(mesh);
-                    // Armazena a malha e seu offset ideal da origem (0,0,0)
-                    streetMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                    islandMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
             }
+
+            // Cria a Água
+            const waterGeometry = new THREE.BoxGeometry(worldSize, 0.1, worldSize);
+            const waterMaterial = new THREE.MeshBasicMaterial({ color: 0x006994, transparent: true, opacity: 0.8 });
+            waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
+            waterMesh.position.y = waterLevel - 0.05; // Posição visual da água
+            waterMesh.userData.isWater = true; // Identificador para o raycaster
+            scene.add(waterMesh);
+
 
             // A rua foi removida, então o código relacionado a ela foi excluído.
 
@@ -1440,15 +1443,15 @@
                 sleepSpeedLimit: 0.01, // Velocidade linear mínima para "acordar"
                 sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer"
             });
-            // Posição inicial: centro da esfera em playerRadius + streetHeight
-            playerBody.position.set(0, playerRadius + streetHeight, 0); // Posição inicial ajustada do jogador
+            // Posição inicial: centro da esfera em playerRadius + islandHeight
+            playerBody.position.set(0, playerRadius + islandHeight, 0); // Posição inicial ajustada do jogador
             world.addBody(playerBody);
 
             // Reintroduz o listener de colisão para canJump, mas com uma verificação adicional
             playerBody.addEventListener('collide', (event) => {
                 // canJump é verdadeiro APENAS se o corpo colidido NÃO for o objeto que está sendo segurado
                 // A lista de corpos "chão" agora inclui apenas superfícies que podem ser pisadas
-                const allGroundBodies = [streetBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+                const allGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
                 if (event.body !== pickedObjectBody && allGroundBodies.includes(event.body)) {
                     canJump = true;
                 }
@@ -1464,9 +1467,9 @@
             cubeMaterialMesh = new THREE.MeshStandardMaterial({ map: cubeTexture });
 
             // Cria as caixas iniciais usando a função createBox
-            createBox(new THREE.Vector3(0, cubeSize / 2 + streetHeight, -10));
-            createBox(new THREE.Vector3(5, cubeSize / 2 + streetHeight, -10));
-            createBox(new THREE.Vector3(-5, cubeSize / 2 + streetHeight, -10));
+            createBox(new THREE.Vector3(0, cubeSize / 2 + islandHeight, -10));
+            createBox(new THREE.Vector3(5, cubeSize / 2 + islandHeight, -10));
+            createBox(new THREE.Vector3(-5, cubeSize / 2 + islandHeight, -10));
 
             // Cria o ghost block (transparente)
             const ghostBlockMaterial = new THREE.MeshBasicMaterial({
@@ -2001,7 +2004,7 @@
             function applyTexture() {
                 if (!stoneMaterial) return;
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                const groundMeshes = streetMeshes.map(item => item.mesh);
+                const groundMeshes = islandMeshes.map(item => item.mesh);
                 const intersects = raycaster.intersectObjects(groundMeshes);
                 if (intersects.length > 0) {
                     const intersect = intersects[0];
@@ -2017,7 +2020,7 @@
                     const patchGeometry = new THREE.BoxGeometry(patchSize, 0.01, patchSize);
                     const patchMeshes = [];
                     const patchObject = {
-                        position: new CANNON.Vec3(unwrappedSnappedX, streetHeight + 0.005, unwrappedSnappedZ),
+                        position: new CANNON.Vec3(unwrappedSnappedX, islandHeight + 0.005, unwrappedSnappedZ),
                         meshes: patchMeshes,
                         userData: { isDestructible: true, durability: 0.5, type: 'patch' }
                     };
@@ -2339,11 +2342,11 @@
             });
 
             // Atualiza as posições das malhas do terreno com base na posição envolvida do jogador
-            streetMeshes.forEach(tile => {
+            islandMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                tile.mesh.position.y = streetHeight / 2;
-                tile.mesh.quaternion.copy(streetBody.quaternion);
+                tile.mesh.position.y = islandHeight / 2;
+                tile.mesh.quaternion.copy(islandBody.quaternion);
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
@@ -2361,6 +2364,20 @@
                     m.mesh.visible = distance <= renderDistance;
                 });
             });
+
+            // NOVO: Remove objetos que caem na água
+            for (let i = collectibleBoxes.length - 1; i >= 0; i--) {
+                const box = collectibleBoxes[i];
+                if (box.body.position.y < waterLevel - 1) { // Se o objeto afundar
+                    // Remove o corpo do mundo da física
+                    world.removeBody(box.body);
+                    // Remove todas as malhas visuais da cena
+                    box.meshes.forEach(m => scene.remove(m.mesh));
+                    // Remove a caixa da nossa lista de rastreamento
+                    collectibleBoxes.splice(i, 1);
+                }
+            }
+
 
             // Atualiza as posições de todas as malhas visuais dos blocos colocados
             placedConstructionBodies.forEach((body, index) => {
@@ -2481,11 +2498,15 @@
 
 
                     // Lista de todos os corpos que podem ser base para colocação
-                    const allPlaceableSurfaces = [streetBody, ...placedConstructionBodies];
+                    const allPlaceableSurfaces = [islandBody, ...placedConstructionBodies];
 
                     for (let i = 0; i < intersects.length; i++) {
                         const intersectedObject = intersects[i].object;
                         const intersectedBody = intersectedObject.userData.physicsBody;
+
+                        if (intersectedObject.userData.isWater) {
+                            continue; // Pula a água, não pode construir nela
+                        }
 
                         if (intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) {
                             // Verifica a distância máxima para colocação
@@ -2629,6 +2650,24 @@
             forward.normalize();
             right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
+            // NOVO: Lógica de física da água para o jogador
+            let isInWater = false;
+            const playerBottomY = playerBody.position.y - currentPlayerRadius;
+            if (playerBottomY < waterLevel) {
+                isInWater = true;
+                // Aplica força de flutuação para mantê-lo na metade
+                const targetY = waterLevel; // O centro do jogador deve estar no nível da água
+                const dy = targetY - playerBody.position.y;
+                const buoyancyForce = new CANNON.Vec3(0, dy * 200, 0); // Força para cima
+                playerBody.applyForce(buoyancyForce, playerBody.position);
+
+                // Aplica arrasto/resistência da água
+                playerBody.velocity.x *= 0.95;
+                playerBody.velocity.z *= 0.95;
+                currentMoveSpeed *= 0.5; // Reduz a velocidade de movimento na água
+            }
+
+
             if (keysPressed['w']) {
                 movementVector.add(forward);
             }
@@ -2704,7 +2743,7 @@
             // Verifica colisão com terreno (rua), estrada, cubos e blocos
             world.raycastAny(rayOriginLow, rayTargetLow, {}, rayResultStep);
             // A lista de corpos "chão" para subida de degraus
-            const stepClimbGroundBodies = [streetBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+            const stepClimbGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
             if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
                 hitLow = true;
             }
@@ -2879,8 +2918,10 @@
 
                     for (let i = 0; i < intersects.length; i++) {
                         const intersectedObject = intersects[i].object;
+                        if (intersectedObject.userData.isWater) continue; // Ignora a água
+
                         const intersectedBody = intersectedObject.userData.physicsBody;
-                        const allPlaceableSurfaces = [streetBody, ...placedConstructionBodies];
+                        const allPlaceableSurfaces = [islandBody, ...placedConstructionBodies];
 
                         if (intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) {
                             if (intersects[i].distance <= pickUpDistance + 1) {
@@ -2921,7 +2962,7 @@
                     crosshairColor = canPlace ? 'lime' : 'red';
                 } else if (isPrimaryToolApplyingTexture) {
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                    const groundMeshes = streetMeshes.map(item => item.mesh);
+                    const groundMeshes = islandMeshes.map(item => item.mesh);
                     const intersects = raycaster.intersectObjects(groundMeshes, false);
                     let canApply = false;
                     if (intersects.length > 0) {
@@ -3036,3 +3077,4 @@
     </script>
 </body>
 </html>
+
