@@ -438,7 +438,7 @@
         let crouchPlayerShape;   // Para armazenar a forma agachada
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
-        const worldSize = 400;
+        const worldSize = 1200;
         const islandRadius = 100; // NOVO: Raio da ilha
         const waterLevel = 0.2; // NOVO: Nível da água
         const seabedLevel = -20; // NOVO: Nível do fundo do mar
@@ -1405,6 +1405,7 @@
             world.addBody(islandBody);
 
             const islandGeometry = new THREE.CylinderGeometry(islandRadius, islandRadius, islandHeight, 64);
+            islandGeometry.translate(0, islandHeight / 2, 0); // Move a geometria para que a sua base fique na origem (0,0,0)
             const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
@@ -2369,7 +2370,7 @@
             islandMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                tile.mesh.position.y = islandBody.position.y;
+                tile.mesh.position.y = seabedLevel; // Posiciona a base do cilindro no fundo do mar
                 tile.mesh.quaternion.copy(islandBody.quaternion);
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
