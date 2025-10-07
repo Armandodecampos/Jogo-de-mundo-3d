@@ -1585,9 +1585,12 @@
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1); // Adjust as needed for leaves
                 treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ map: texture, transparent: true, alphaTest: 0.5 }); // alphaTest for transparency
+                // This is the last texture to load, so we can consider the game ready
+                window.gameIsReady = true;
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura das folhas da árvore:', error);
                 treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 }); // Fallback dark green
+                window.gameIsReady = true; // Also set to true on error to not block the test
             });
 
             // Cria um corpo "grabber" invisível para segurar objetos
@@ -2084,18 +2087,12 @@
                     if (isPrimaryToolPlacing && isRightButtonPressed) {
                         // Aumenta o multiplicador para tornar a rotação mais responsiva
                         ghostBlockRotationY += deltaX * 0.15; // Rotação horizontal
-                        ghostBlockRotationX += deltaY * 0.15; // Rotação vertical
 
                         // Define o ângulo de snap (45 graus)
                         const snapAngle = Math.PI / 4; // 45 graus
 
                         // Arredonda ghostBlockRotationY para o múltiplo mais próximo de snapAngle
                         ghostBlockRotationY = Math.round(ghostBlockRotationY / snapAngle) * snapAngle;
-
-                        // Arredonda ghostBlockRotationX para o múltiplo mais próximo de snapAngle
-                        // Garante que permaneça dentro do intervalo de -PI/2 a PI/2 para rotação vertical
-                        ghostBlockRotationX = Math.round(ghostBlockRotationX / snapAngle) * snapAngle;
-                        ghostBlockRotationX = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, ghostBlockRotationX));
 
                     }
                     // Lógica de rotação do objeto segurado
@@ -2155,6 +2152,18 @@
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
 
+            // Expor variáveis para fins de teste
+            window.THREE = THREE;
+            window.CANNON = CANNON;
+            window.camera = camera;
+            window.playerBody = playerBody;
+            window.createPlaceableBlock = createPlaceableBlock;
+            window.islandSurfaceHeight = islandSurfaceHeight;
+            window.cobHeight = cobHeight;
+            window.cobItemName = cobItemName;
+            window.beltItems = beltItems;
+            window.selectedSlotIndex = selectedSlotIndex;
+            window.updateBeltDisplay = updateBeltDisplay;
         }
 
         // Função para lidar com o redimensionamento da janela
@@ -2493,9 +2502,9 @@
                     let placementPosition = new THREE.Vector3();
                     let tempPlacementQuaternion = new THREE.Quaternion(); // Usar um quaternion temporário
 
-                    // Declara manualRotationQuaternion aqui para que seja acessível
+                    // A rotação manual agora é apenas em torno do eixo Y
                     const manualRotationQuaternion = new THREE.Quaternion().setFromEuler(
-                        new THREE.Euler(ghostBlockRotationX, ghostBlockRotationY, 0, 'YXZ') // Ordem YXZ para rotação
+                        new THREE.Euler(0, ghostBlockRotationY, 0, 'YXZ')
                     );
 
                     // Define as dimensões do bloco atual para o ghost mesh
@@ -2571,11 +2580,8 @@
                                 placementPosition.y = basePosition.y; // Mantém a altura calculada
 
 
-                                // Alinha a rotação do bloco com a normal da superfície
-                                const surfaceAlignmentQuaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), hitNormal);
-
-                                // Combina as rotações: primeiro o alinhamento da superfície, depois a rotação manual
-                                tempPlacementQuaternion.copy(surfaceAlignmentQuaternion).multiply(manualRotationQuaternion);
+                                // A rotação agora é apenas a rotação manual, garantindo que o bloco fique sempre na vertical
+                                tempPlacementQuaternion.copy(manualRotationQuaternion);
 
                                 // Verifica se a posição do ghost block não colide com o jogador
                                 const playerPos = new THREE.Vector3().copy(playerBody.position);
