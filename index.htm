@@ -1406,7 +1406,6 @@
             world.addBody(islandBody);
 
             const islandGeometry = new THREE.CylinderGeometry(islandRadius, islandRadius, islandHeight, 64);
-            islandGeometry.translate(0, islandHeight / 2, 0); // Move a geometria para que a sua base fique na origem (0,0,0)
             const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
@@ -1585,12 +1584,9 @@
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1); // Adjust as needed for leaves
                 treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ map: texture, transparent: true, alphaTest: 0.5 }); // alphaTest for transparency
-                // This is the last texture to load, so we can consider the game ready
-                window.gameIsReady = true;
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura das folhas da árvore:', error);
                 treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 }); // Fallback dark green
-                window.gameIsReady = true; // Also set to true on error to not block the test
             });
 
             // Cria um corpo "grabber" invisível para segurar objetos
@@ -2152,18 +2148,6 @@
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
 
-            // Expor variáveis para fins de teste
-            window.THREE = THREE;
-            window.CANNON = CANNON;
-            window.camera = camera;
-            window.playerBody = playerBody;
-            window.createPlaceableBlock = createPlaceableBlock;
-            window.islandSurfaceHeight = islandSurfaceHeight;
-            window.cobHeight = cobHeight;
-            window.cobItemName = cobItemName;
-            window.beltItems = beltItems;
-            window.selectedSlotIndex = selectedSlotIndex;
-            window.updateBeltDisplay = updateBeltDisplay;
         }
 
         // Função para lidar com o redimensionamento da janela
@@ -2380,7 +2364,7 @@
             islandMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                tile.mesh.position.y = seabedLevel; // Posiciona a base do cilindro no fundo do mar
+                tile.mesh.position.y = islandBody.position.y; // Alinha o centro da malha visual com o centro do corpo de física
                 tile.mesh.quaternion.copy(islandBody.quaternion);
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
@@ -2577,7 +2561,11 @@
                                 // Converte de volta para as coordenadas do mundo visível
                                 placementPosition.x = snappedUnwrappedX - visualOffsetX;
                                 placementPosition.z = snappedUnwrappedZ - visualOffsetZ;
-                                placementPosition.y = basePosition.y; // Mantém a altura calculada
+
+                                // NOVO: Alinha a posição Y na grade, considerando a altura da superfície da ilha como a base.
+                                // Isso garante que os blocos se encaixem verticalmente.
+                                const n_y = Math.round((basePosition.y - islandSurfaceHeight) / currentGhostHeight - 0.5);
+                                placementPosition.y = islandSurfaceHeight + (n_y + 0.5) * currentGhostHeight;
 
 
                                 // A rotação agora é apenas a rotação manual, garantindo que o bloco fique sempre na vertical
