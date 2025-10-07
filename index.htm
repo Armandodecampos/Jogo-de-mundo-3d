@@ -378,6 +378,7 @@
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
+        let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
 
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
         let collectibleBoxes = [];
@@ -440,10 +441,12 @@
         const worldSize = 400;
         const islandRadius = 100; // NOVO: Raio da ilha
         const waterLevel = 0.2; // NOVO: Nível da água
+        const seabedLevel = -20; // NOVO: Nível do fundo do mar
         const renderDistance = 150; // Distância de renderização para objetos
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
-        const islandHeight = cobSize;
+        const islandSurfaceHeight = cobSize; // A altura da superfície visível da ilha
+        const islandHeight = islandSurfaceHeight - seabedLevel; // Altura total do cilindro da ilha
         const roadWidth = 10; // Largura da estrada
         const roadHeight = 0.2; // Espessura da estrada
         const numTiles = 3; // Para uma grade 3x3 de tiles visíveis (e cubos)
@@ -1397,7 +1400,8 @@
             // Cria o Terreno (Ilha Redonda)
             const islandShape = new CANNON.Cylinder(islandRadius, islandRadius, islandHeight, 32);
             islandBody = new CANNON.Body({ mass: 0, shape: islandShape, material: islandMaterial });
-            islandBody.position.set(0, islandHeight / 2, 0);
+            // Posiciona o cilindro para que o topo fique em islandSurfaceHeight e a base em seabedLevel
+            islandBody.position.set(0, (islandSurfaceHeight + seabedLevel) / 2, 0);
             world.addBody(islandBody);
 
             const islandGeometry = new THREE.CylinderGeometry(islandRadius, islandRadius, islandHeight, 64);
@@ -1419,7 +1423,7 @@
 
             // Cria a Água (agora como uma grelha)
             const waterGeometry = new THREE.BoxGeometry(worldSize, 0.1, worldSize);
-            const waterMaterial = new THREE.MeshBasicMaterial({ color: 0x006994, transparent: true, opacity: 0.8 });
+            const waterMaterial = new THREE.MeshBasicMaterial({ color: 0x006994, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                     const mesh = new THREE.Mesh(waterGeometry, waterMaterial);
@@ -1427,6 +1431,21 @@
                     mesh.userData.isWater = true; // Identificador para o raycaster
                     scene.add(mesh);
                     waterMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
+
+            // NOVO: Cria o Fundo do Mar
+            const seabedGeometry = new THREE.PlaneGeometry(worldSize, worldSize);
+            // Reutiliza o material da ilha para o fundo do mar para consistência
+            const seabedMaterial = islandMeshMaterial;
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const mesh = new THREE.Mesh(seabedGeometry, seabedMaterial);
+                    mesh.rotation.x = -Math.PI / 2; // Gira o plano para ficar deitado
+                    mesh.position.y = seabedLevel; // Posição no fundo do mar
+                    mesh.receiveShadow = true; // O fundo do mar pode receber sombras
+                    scene.add(mesh);
+                    seabedMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
             }
 
@@ -2357,6 +2376,13 @@
 
             // NOVO: Atualiza as posições das malhas de água para o efeito de envolvimento
             waterMeshes.forEach(tile => {
+                tile.mesh.position.x = tile.offsetX - visualOffsetX;
+                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
+                // A posição Y é estática, por isso não precisa de ser atualizada no loop.
+            });
+
+            // NOVO: Atualiza as posições das malhas do fundo do mar para o efeito de envolvimento
+            seabedMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
                 // A posição Y é estática, por isso não precisa de ser atualizada no loop.
