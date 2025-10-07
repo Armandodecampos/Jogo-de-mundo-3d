@@ -1467,8 +1467,8 @@
                 sleepSpeedLimit: 0.01, // Velocidade linear mínima para "acordar"
                 sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer"
             });
-            // Posição inicial: centro da esfera em playerRadius + islandHeight
-            playerBody.position.set(0, playerRadius + islandHeight, 0); // Posição inicial ajustada do jogador
+            // Posição inicial: centro da esfera em playerRadius + islandSurfaceHeight
+            playerBody.position.set(0, playerRadius + islandSurfaceHeight, 0); // Posição inicial ajustada do jogador
             world.addBody(playerBody);
 
             // Reintroduz o listener de colisão para canJump, mas com uma verificação adicional
@@ -1491,9 +1491,9 @@
             cubeMaterialMesh = new THREE.MeshStandardMaterial({ map: cubeTexture });
 
             // Cria as caixas iniciais usando a função createBox
-            createBox(new THREE.Vector3(0, cubeSize / 2 + islandHeight, -10));
-            createBox(new THREE.Vector3(5, cubeSize / 2 + islandHeight, -10));
-            createBox(new THREE.Vector3(-5, cubeSize / 2 + islandHeight, -10));
+            createBox(new THREE.Vector3(0, cubeSize / 2 + islandSurfaceHeight, -10));
+            createBox(new THREE.Vector3(5, cubeSize / 2 + islandSurfaceHeight, -10));
+            createBox(new THREE.Vector3(-5, cubeSize / 2 + islandSurfaceHeight, -10));
 
             // Cria o ghost block (transparente)
             const ghostBlockMaterial = new THREE.MeshBasicMaterial({
@@ -2044,7 +2044,7 @@
                     const patchGeometry = new THREE.BoxGeometry(patchSize, 0.01, patchSize);
                     const patchMeshes = [];
                     const patchObject = {
-                        position: new CANNON.Vec3(unwrappedSnappedX, islandHeight + 0.005, unwrappedSnappedZ),
+                        position: new CANNON.Vec3(unwrappedSnappedX, islandSurfaceHeight + 0.005, unwrappedSnappedZ),
                         meshes: patchMeshes,
                         userData: { isDestructible: true, durability: 0.5, type: 'patch' }
                     };
@@ -2369,7 +2369,7 @@
             islandMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                tile.mesh.position.y = islandHeight / 2;
+                tile.mesh.position.y = islandBody.position.y;
                 tile.mesh.quaternion.copy(islandBody.quaternion);
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
