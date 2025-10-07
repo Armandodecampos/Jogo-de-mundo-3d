@@ -377,7 +377,7 @@
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
 
-        let waterMesh; // Malha visual para a água
+        let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
 
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
         let collectibleBoxes = [];
@@ -1417,13 +1417,18 @@
                 }
             }
 
-            // Cria a Água
+            // Cria a Água (agora como uma grelha)
             const waterGeometry = new THREE.BoxGeometry(worldSize, 0.1, worldSize);
             const waterMaterial = new THREE.MeshBasicMaterial({ color: 0x006994, transparent: true, opacity: 0.8 });
-            waterMesh = new THREE.Mesh(waterGeometry, waterMaterial);
-            waterMesh.position.y = waterLevel - 0.05; // Posição visual da água
-            waterMesh.userData.isWater = true; // Identificador para o raycaster
-            scene.add(waterMesh);
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const mesh = new THREE.Mesh(waterGeometry, waterMaterial);
+                    mesh.position.y = waterLevel - 0.05; // Posição visual da água
+                    mesh.userData.isWater = true; // Identificador para o raycaster
+                    scene.add(mesh);
+                    waterMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
 
 
             // A rua foi removida, então o código relacionado a ela foi excluído.
@@ -2350,6 +2355,13 @@
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
+            // NOVO: Atualiza as posições das malhas de água para o efeito de envolvimento
+            waterMeshes.forEach(tile => {
+                tile.mesh.position.x = tile.offsetX - visualOffsetX;
+                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
+                // A posição Y é estática, por isso não precisa de ser atualizada no loop.
+            });
+
             // Atualiza as posições de todas as malhas visuais dos cubos/caixas
             collectibleBoxes.forEach(box => {
                 // Primeiro, atualiza as posições de todas as malhas para lidar com o envolvimento do mundo,
@@ -2656,9 +2668,9 @@
             if (playerBottomY < waterLevel) {
                 isInWater = true;
 
-                // --- Lógica de Flutuação Estável (Mola-Amortecedor) ---
-                const K_SPRING = 150; // Constante da mola (rigidez)
-                const C_DAMPING = 80;  // Constante de amortecimento (suficiente para evitar oscilações)
+                // --- Nova Lógica de Flutuação Estável ---
+                const K_SPRING = 250; // Constante da mola (rigidez)
+                const C_DAMPING = 35;  // Constante de amortecimento
 
                 // 1. Anular a gravidade
                 const gravityMagnitude = Math.abs(world.gravity.y);
@@ -3095,4 +3107,3 @@
     </script>
 </body>
 </html>
-
