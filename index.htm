@@ -1462,11 +1462,11 @@
                 }
             }
 
-            // NOVO: Cria o corpo de física para o fundo do mar
-            const seabedShape = new CANNON.Plane();
+            // NOVO: Cria o corpo de física para o fundo do mar (agora uma caixa para evitar tunelamento)
+            const seabedShape = new CANNON.Box(new CANNON.Vec3(worldSize / 2, 0.5, worldSize / 2)); // Caixa grossa
             seabedBody = new CANNON.Body({ mass: 0, shape: seabedShape, material: islandMaterial });
-            seabedBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2); // Rotaciona o plano para ficar horizontal
-            seabedBody.position.y = seabedLevel; // Define a altura do fundo do mar
+            // Posiciona a caixa para que seu topo esteja em seabedLevel
+            seabedBody.position.y = seabedLevel - 0.5;
             world.addBody(seabedBody);
 
 
