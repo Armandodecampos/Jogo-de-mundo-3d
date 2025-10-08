@@ -439,7 +439,8 @@
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
         const worldSize = 1200;
-        const islandRadius = 300; // NOVO: Raio da ilha
+        const islandRadiusTop = 150; // NOVO: Raio do topo da ilha
+        const islandRadiusBottom = 450; // NOVO: Raio da base da ilha
         const waterLevel = 0.2; // NOVO: Nível da água
         const seabedLevel = -20; // NOVO: Nível do fundo do mar
         const renderDistance = 200; // Distância de renderização para objetos
@@ -1399,17 +1400,17 @@
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
             // Cria o Terreno (Ilha Redonda)
-            const islandShape = new CANNON.Cylinder(islandRadius, islandRadius, islandHeight, 32);
+            const islandShape = new CANNON.Cylinder(islandRadiusTop, islandRadiusBottom, islandHeight, 32);
             islandBody = new CANNON.Body({ mass: 0, shape: islandShape, material: islandMaterial });
             // Posiciona o cilindro para que o topo fique em islandSurfaceHeight e a base em seabedLevel
             islandBody.position.set(0, (islandSurfaceHeight + seabedLevel) / 2, 0);
             world.addBody(islandBody);
 
-            const islandGeometry = new THREE.CylinderGeometry(islandRadius, islandRadius, islandHeight, 64);
+            const islandGeometry = new THREE.CylinderGeometry(islandRadiusTop, islandRadiusBottom, islandHeight, 64);
             const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(islandRadius / 4, islandRadius / 4);
+                texture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
             });
             const islandMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
