@@ -372,6 +372,8 @@
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
+        let skyFog, underwaterFog; // NOVO: Para o efeito subaquático
+        let skyColor, underwaterColor; // NOVO: Para as cores do ambiente
         // Variáveis para corpos e malhas de jogador, terreno (rua), estrada e cubo
         let playerBody;
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
@@ -423,6 +425,7 @@
 
         // Variável para controlar se o personagem pode pular
         let canJump = true;
+        let isWaterJumping = false; // NOVO: Para controlar o salto a partir da água
 
         // Variáveis globais para dimensões do jogador e vetor de direção horizontal
         // A altura do personagem será o diâmetro da esfera
@@ -1050,8 +1053,8 @@
                 mass: initialCubeMass,
                 shape: cubeShape,
                 material: cubeMaterial,
-                linearDamping: 0.99,
-                angularDamping: 0.99,
+                linearDamping: 0.3,
+                angularDamping: 0.3,
                 allowSleep: true,
                 sleepSpeedLimit: 0.01,
                 sleepTimeLimit: 1.0
@@ -1260,8 +1263,15 @@
 
             // Configuração da Cena Three.js
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x87CEEB); // Cor de fundo: azul claro (céu)
-            scene.fog = new THREE.Fog(0x87CEEB, 100, 200); // Adiciona nevoeiro que começa a 100m e é total a 200m
+            skyColor = new THREE.Color(0x87CEEB);
+            underwaterColor = new THREE.Color(0x001e3d);
+            scene.background = skyColor; // Começa com a cor do céu
+
+            // Inicializa ambos os nevoeiros
+            skyFog = new THREE.Fog(skyColor, 100, 200);
+            underwaterFog = new THREE.Fog(underwaterColor, 1, 30); // Nevoeiro denso para debaixo d'água
+
+            scene.fog = skyFog; // Começa com o nevoeiro do céu
 
             // Configuração da Câmera Three.js
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
@@ -1675,9 +1685,20 @@
                     }
 
                     keysPressed[event.key.toLowerCase()] = true;
-                    if (event.key.toLowerCase() === ' ' && canJump) { // Permite pular apenas se canJump for verdadeiro
-                        playerBody.applyImpulse(new CANNON.Vec3(0, 400 * 3, 0), playerBody.position); // Triplicado o impulso de salto
-                        canJump = false; // Impede pulos múltiplos no ar
+                    if (event.key.toLowerCase() === ' ') { // Pular
+                        const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
+                        const isInWater = playerBottomY < waterLevel;
+                        if (canJump || isInWater) {
+                            // Impulso de salto mais forte necessário para sair da água
+                            const jumpImpulse = isInWater ? 600 * 3 : 400 * 3;
+                            playerBody.applyImpulse(new CANNON.Vec3(0, jumpImpulse, 0), playerBody.position);
+                            canJump = false; // Impede pulos múltiplos
+                            if (isInWater) {
+                                isWaterJumping = true;
+                                // Desativa temporariamente as forças de flutuação para permitir que o salto tenha efeito
+                                setTimeout(() => { isWaterJumping = false; }, 500); // Reativa após meio segundo
+                            }
+                        }
                     }
                 }
             });
@@ -2399,18 +2420,6 @@
                 });
             });
 
-            // NOVO: Remove objetos que caem na água
-            for (let i = collectibleBoxes.length - 1; i >= 0; i--) {
-                const box = collectibleBoxes[i];
-                if (box.body.position.y < waterLevel - 1) { // Se o objeto afundar
-                    // Remove o corpo do mundo da física
-                    world.removeBody(box.body);
-                    // Remove todas as malhas visuais da cena
-                    box.meshes.forEach(m => scene.remove(m.mesh));
-                    // Remove a caixa da nossa lista de rastreamento
-                    collectibleBoxes.splice(i, 1);
-                }
-            }
 
 
             // Atualiza as posições de todas as malhas visuais dos blocos colocados
@@ -2621,20 +2630,22 @@
             }
 
 
-            // NOVO: Calcula se o jogador está na água no início do loop de animação
             const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
             const isInWater = playerBottomY < waterLevel;
 
-            // Lógica de agachamento (agora verifica `isInWater` corretamente)
-            if (keysPressed['c'] && !isCrouching && !isInWater) {
-                isCrouching = true;
-                playerBody.removeShape(originalPlayerShape);
-                playerBody.addShape(crouchPlayerShape);
-                playerBody.position.y -= (playerRadius - crouchRadius);
-                cameraEyeLevelOffset = crouchRadius;
-                playerBody.velocity.y = 0;
-                playerBody.wakeUp();
-            } else if (!keysPressed['c'] && isCrouching) {
+            // Lógica de agachamento e mergulho
+            if (keysPressed['c']) {
+                if (!isCrouching && !isInWater) { // Agachar em terra
+                    isCrouching = true;
+                    playerBody.removeShape(originalPlayerShape);
+                    playerBody.addShape(crouchPlayerShape);
+                    playerBody.position.y -= (playerRadius - crouchRadius);
+                    cameraEyeLevelOffset = crouchRadius;
+                    playerBody.velocity.y = 0;
+                    playerBody.wakeUp();
+                }
+                // A lógica de mergulho (aplicar velocidade para baixo) é tratada na seção de física da água
+            } else if (isCrouching) { // Levantar em terra
                 isCrouching = false;
                 playerBody.removeShape(crouchPlayerShape);
                 playerBody.addShape(originalPlayerShape);
@@ -2687,12 +2698,12 @@
             right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
             // Lógica de física da água e mergulho
-            if (isInWater) {
+            if (isInWater && !isWaterJumping) {
                 // Lógica de Mergulho: Se 'c' for pressionado, define uma velocidade para baixo
                 if (keysPressed['c']) {
                     playerBody.velocity.y = -walkSpeed; // Mergulha com a velocidade de caminhada
                 } else {
-                    // --- Lógica de Flutuação Estável (quando não está a mergulhar) ---
+                    // --- Lógica de Flutuação Estável (quando não está a mergulhar ou a saltar da água) ---
                     const K_SPRING = 250;
                     const C_DAMPING = 35;
                     const gravityMagnitude = Math.abs(world.gravity.y);
