@@ -372,6 +372,8 @@
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
+        let skyFog, underwaterFog; // NOVO: Para o efeito subaquático
+        let skyColor, underwaterColor; // NOVO: Para as cores do ambiente
         // Variáveis para corpos e malhas de jogador, terreno (rua), estrada e cubo
         let playerBody;
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
@@ -1050,8 +1052,8 @@
                 mass: initialCubeMass,
                 shape: cubeShape,
                 material: cubeMaterial,
-                linearDamping: 0.99,
-                angularDamping: 0.99,
+                linearDamping: 0.3,
+                angularDamping: 0.3,
                 allowSleep: true,
                 sleepSpeedLimit: 0.01,
                 sleepTimeLimit: 1.0
@@ -1260,8 +1262,15 @@
 
             // Configuração da Cena Three.js
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x87CEEB); // Cor de fundo: azul claro (céu)
-            scene.fog = new THREE.Fog(0x87CEEB, 100, 200); // Adiciona nevoeiro que começa a 100m e é total a 200m
+            skyColor = new THREE.Color(0x87CEEB);
+            underwaterColor = new THREE.Color(0x001e3d);
+            scene.background = skyColor; // Começa com a cor do céu
+
+            // Inicializa ambos os nevoeiros
+            skyFog = new THREE.Fog(skyColor, 100, 200);
+            underwaterFog = new THREE.Fog(underwaterColor, 1, 30); // Nevoeiro denso para debaixo d'água
+
+            scene.fog = skyFog; // Começa com o nevoeiro do céu
 
             // Configuração da Câmera Three.js
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
@@ -2399,6 +2408,20 @@
                 });
             });
 
+            // NOVO: Remove objetos que caem na água
+            for (let i = collectibleBoxes.length - 1; i >= 0; i--) {
+                const box = collectibleBoxes[i];
+                if (box.body.position.y < waterLevel - 1) { // Se o objeto afundar
+                    // Remove o corpo do mundo da física
+                    world.removeBody(box.body);
+                    // Remove todas as malhas visuais da cena
+                    box.meshes.forEach(m => scene.remove(m.mesh));
+                    // Remove a caixa da nossa lista de rastreamento
+                    collectibleBoxes.splice(i, 1);
+                }
+            }
+
+
             // Atualiza as posições de todas as malhas visuais dos blocos colocados
             placedConstructionBodies.forEach((body, index) => {
                 const meshesArray = placedConstructionMeshesArrays[index];
@@ -2608,7 +2631,7 @@
 
 
             // Lógica de agachamento
-            if (keysPressed['c'] && !isCrouching) {
+            if (keysPressed['c'] && !isCrouching && !isInWater) {
                 isCrouching = true;
                 // Remove a forma original, adiciona a forma de agachamento
                 playerBody.removeShape(originalPlayerShape);
@@ -2640,6 +2663,15 @@
             // Atualiza a posição da câmera para a posição do corpo de física do jogador
             camera.position.copy(playerBody.position);
             camera.position.y += cameraEyeLevelOffset;
+
+            // NOVO: Lógica do efeito subaquático
+            if (camera.position.y < waterLevel) {
+                scene.background = underwaterColor;
+                scene.fog = underwaterFog;
+            } else {
+                scene.background = skyColor;
+                scene.fog = skyFog;
+            }
 
             // Atualiza a posição e o alvo da luz direcional para seguir a câmera/jogador
             directionalLight.position.copy(camera.position);
@@ -2696,7 +2728,13 @@
                 const dampingForce = -C_DAMPING * verticalVelocity;
 
                 // 4. Força total de flutuação
-                const totalBuoyancyForce = antiGravityForce + springForce + dampingForce;
+                let totalBuoyancyForce = antiGravityForce + springForce + dampingForce;
+
+                // Lógica de Mergulho: Se 'c' for pressionado na água, aplica uma força para baixo
+                if (keysPressed['c']) {
+                    totalBuoyancyForce -= 80 * 50; // Força de mergulho para baixo
+                }
+
                 playerBody.applyForce(new CANNON.Vec3(0, totalBuoyancyForce, 0), playerBody.position);
 
 
