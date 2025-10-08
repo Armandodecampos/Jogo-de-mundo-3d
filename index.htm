@@ -381,7 +381,6 @@
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
-        let seabedBody; // NOVO: Corpo de física para o fundo do mar
 
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
         let collectibleBoxes = [];
@@ -1411,17 +1410,31 @@
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
             // Cria o Terreno (Ilha Redonda)
-            // Primeiro, cria a geometria visual para que possamos usar seus dados para a física.
+            // A geometria visual continua a ser um único cone truncado para uma aparência suave.
             const islandGeometry = new THREE.CylinderGeometry(islandRadiusTop, islandRadiusBottom, islandHeight, 64);
 
-            // Em seguida, cria a forma de física Trimesh a partir da geometria.
-            const vertices = islandGeometry.attributes.position.array;
-            const indices = islandGeometry.index.array;
-            const islandShape = new CANNON.Trimesh(vertices, indices);
+            // Cria o corpo de física usando uma forma Composta para máxima estabilidade.
+            // Isso aproxima a forma cônica com uma série de cilindros empilhados.
+            islandBody = new CANNON.Body({ mass: 0, material: islandMaterial });
+            islandBody.position.set(0, (islandSurfaceHeight + seabedLevel) / 2, 0); // Posição central do corpo composto
 
-            islandBody = new CANNON.Body({ mass: 0, shape: islandShape, material: islandMaterial });
-            // Posiciona o corpo de física para corresponder à geometria visual.
-            islandBody.position.set(0, (islandSurfaceHeight + seabedLevel) / 2, 0);
+            const numSegments = 10; // Número de cilindros para aproximar a inclinação
+            const segmentHeight = islandHeight / numSegments;
+
+            for (let i = 0; i < numSegments; i++) {
+                // Interpola o raio para cada segmento, do mais largo (base) ao mais estreito (topo)
+                const t = (i + 0.5) / numSegments;
+                const radius = islandRadiusBottom * (1 - t) + islandRadiusTop * t;
+
+                const shape = new CANNON.Cylinder(radius, radius, segmentHeight, 32);
+
+                // Calcula a posição Y do centro de cada segmento, relativa ao centro do corpo composto.
+                const y_offset = (-islandHeight / 2) + (i * segmentHeight) + (segmentHeight / 2);
+                const offset = new CANNON.Vec3(0, y_offset, 0);
+
+                islandBody.addShape(shape, offset);
+            }
+
             world.addBody(islandBody);
             const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
@@ -1467,8 +1480,11 @@
                 }
             }
 
-            // O corpo de física do fundo do mar foi removido, pois a Trimesh da ilha já se estende até o fundo.
-            // Isso evita conflitos de física que poderiam fazer o jogador cair.
+            // NOVO: Adiciona o corpo de física do fundo do mar ao corpo composto da ilha.
+            const seabedShape = new CANNON.Box(new CANNON.Vec3(worldSize / 2, 0.5, worldSize / 2)); // Caixa grossa
+            // Calcula o offset Y para a forma do fundo do mar em relação ao centro do corpo composto da ilha.
+            const seabedOffset_Y = (seabedLevel - 0.5) - islandBody.position.y;
+            islandBody.addShape(seabedShape, new CANNON.Vec3(0, seabedOffset_Y, 0));
 
 
             // A rua foi removida, então o código relacionado a ela foi excluído.
@@ -1496,7 +1512,7 @@
             playerBody.addEventListener('collide', (event) => {
                 // canJump é verdadeiro APENAS se o corpo colidido NÃO for o objeto que está sendo segurado
                 // A lista de corpos "chão" agora inclui apenas superfícies que podem ser pisadas
-                const allGroundBodies = [islandBody, seabedBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+                const allGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
                 if (event.body !== pickedObjectBody && allGroundBodies.includes(event.body)) {
                     canJump = true;
                 }
@@ -2179,6 +2195,11 @@
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
 
+            // Expor variáveis para fins de teste
+            window.collectibleBoxes = collectibleBoxes;
+            window.playerBody = playerBody;
+            window.world = world;
+
         }
 
         // Função para lidar com o redimensionamento da janela
@@ -2808,7 +2829,7 @@
             // Verifica colisão com terreno (rua), estrada, cubos e blocos
             world.raycastAny(rayOriginLow, rayTargetLow, {}, rayResultStep);
             // A lista de corpos "chão" para subida de degraus
-            const stepClimbGroundBodies = [islandBody, seabedBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+            const stepClimbGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
             if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
                 hitLow = true;
             }
