@@ -1411,13 +1411,18 @@
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
             // Cria o Terreno (Ilha Redonda)
-            const islandShape = new CANNON.Cylinder(islandRadiusTop, islandRadiusBottom, islandHeight, 32);
+            // Primeiro, cria a geometria visual para que possamos usar seus dados para a física.
+            const islandGeometry = new THREE.CylinderGeometry(islandRadiusTop, islandRadiusBottom, islandHeight, 64);
+
+            // Em seguida, cria a forma de física Trimesh a partir da geometria.
+            const vertices = islandGeometry.attributes.position.array;
+            const indices = islandGeometry.index.array;
+            const islandShape = new CANNON.Trimesh(vertices, indices);
+
             islandBody = new CANNON.Body({ mass: 0, shape: islandShape, material: islandMaterial });
-            // Posiciona o cilindro para que o topo fique em islandSurfaceHeight e a base em seabedLevel
+            // Posiciona o corpo de física para corresponder à geometria visual.
             islandBody.position.set(0, (islandSurfaceHeight + seabedLevel) / 2, 0);
             world.addBody(islandBody);
-
-            const islandGeometry = new THREE.CylinderGeometry(islandRadiusTop, islandRadiusBottom, islandHeight, 64);
             const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
@@ -1462,12 +1467,8 @@
                 }
             }
 
-            // NOVO: Cria o corpo de física para o fundo do mar (agora uma caixa muito grossa para evitar tunelamento)
-            const seabedShape = new CANNON.Box(new CANNON.Vec3(worldSize / 2, 10, worldSize / 2)); // Caixa muito grossa
-            seabedBody = new CANNON.Body({ mass: 0, shape: seabedShape, material: islandMaterial });
-            // Posiciona a caixa para que seu topo esteja em seabedLevel
-            seabedBody.position.y = seabedLevel - 10;
-            world.addBody(seabedBody);
+            // O corpo de física do fundo do mar foi removido, pois a Trimesh da ilha já se estende até o fundo.
+            // Isso evita conflitos de física que poderiam fazer o jogador cair.
 
 
             // A rua foi removida, então o código relacionado a ela foi excluído.
