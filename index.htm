@@ -1411,8 +1411,7 @@
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
             // Cria o Terreno (Ilha Redonda)
-            // Usa um cilindro reto com o raio da base para uma colisão estável (parede invisível)
-            const islandShape = new CANNON.Cylinder(islandRadiusBottom, islandRadiusBottom, islandHeight, 32);
+            const islandShape = new CANNON.Cylinder(islandRadiusTop, islandRadiusBottom, islandHeight, 32);
             islandBody = new CANNON.Body({ mass: 0, shape: islandShape, material: islandMaterial });
             // Posiciona o cilindro para que o topo fique em islandSurfaceHeight e a base em seabedLevel
             islandBody.position.set(0, (islandSurfaceHeight + seabedLevel) / 2, 0);
@@ -1463,11 +1462,11 @@
                 }
             }
 
-            // NOVO: Cria o corpo de física para o fundo do mar (agora uma caixa para evitar tunelamento)
-            const seabedShape = new CANNON.Box(new CANNON.Vec3(worldSize / 2, 0.5, worldSize / 2)); // Caixa grossa
+            // NOVO: Cria o corpo de física para o fundo do mar (agora uma caixa muito grossa para evitar tunelamento)
+            const seabedShape = new CANNON.Box(new CANNON.Vec3(worldSize / 2, 10, worldSize / 2)); // Caixa muito grossa
             seabedBody = new CANNON.Body({ mass: 0, shape: seabedShape, material: islandMaterial });
             // Posiciona a caixa para que seu topo esteja em seabedLevel
-            seabedBody.position.y = seabedLevel - 0.5;
+            seabedBody.position.y = seabedLevel - 10;
             world.addBody(seabedBody);
 
 
