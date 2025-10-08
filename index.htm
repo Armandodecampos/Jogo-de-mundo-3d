@@ -372,8 +372,6 @@
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
-        let skyFog, underwaterFog; // NOVO: Para o efeito subaquático
-        let skyColor, underwaterColor; // NOVO: Para as cores do ambiente
         // Variáveis para corpos e malhas de jogador, terreno (rua), estrada e cubo
         let playerBody;
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
@@ -1052,8 +1050,8 @@
                 mass: initialCubeMass,
                 shape: cubeShape,
                 material: cubeMaterial,
-                linearDamping: 0.3,
-                angularDamping: 0.3,
+                linearDamping: 0.99,
+                angularDamping: 0.99,
                 allowSleep: true,
                 sleepSpeedLimit: 0.01,
                 sleepTimeLimit: 1.0
@@ -1262,15 +1260,8 @@
 
             // Configuração da Cena Three.js
             scene = new THREE.Scene();
-            skyColor = new THREE.Color(0x87CEEB);
-            underwaterColor = new THREE.Color(0x001e3d);
-            scene.background = skyColor; // Começa com a cor do céu
-
-            // Inicializa ambos os nevoeiros
-            skyFog = new THREE.Fog(skyColor, 100, 200);
-            underwaterFog = new THREE.Fog(underwaterColor, 1, 30); // Nevoeiro denso para debaixo d'água
-
-            scene.fog = skyFog; // Começa com o nevoeiro do céu
+            scene.background = new THREE.Color(0x87CEEB); // Cor de fundo: azul claro (céu)
+            scene.fog = new THREE.Fog(0x87CEEB, 100, 200); // Adiciona nevoeiro que começa a 100m e é total a 200m
 
             // Configuração da Câmera Three.js
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
@@ -2630,41 +2621,34 @@
             }
 
 
-            // Lógica de agachamento
+            // NOVO: Calcula se o jogador está na água no início do loop de animação
+            const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
+            const isInWater = playerBottomY < waterLevel;
+
+            // Lógica de agachamento (agora verifica `isInWater` corretamente)
             if (keysPressed['c'] && !isCrouching && !isInWater) {
                 isCrouching = true;
-                // Remove a forma original, adiciona a forma de agachamento
                 playerBody.removeShape(originalPlayerShape);
                 playerBody.addShape(crouchPlayerShape);
-
-                // Ajusta a posição do corpo do jogador para manter a base no mesmo nível
-                // Ajuste baseado na diferença de raio das esferas
-                playerBody.position.y -= (originalPlayerShape.radius - crouchPlayerShape.radius);
-
-                cameraEyeLevelOffset = crouchPlayerShape.radius; // Câmera no centro da esfera agachada
-                playerBody.velocity.y = 0; // Para qualquer movimento vertical imediatamente ao agachar
-                playerBody.wakeUp(); // Garante que o corpo esteja ativo após a mudança de forma
+                playerBody.position.y -= (playerRadius - crouchRadius);
+                cameraEyeLevelOffset = crouchRadius;
+                playerBody.velocity.y = 0;
+                playerBody.wakeUp();
             } else if (!keysPressed['c'] && isCrouching) {
-                // Levanta-se diretamente quando 'C' é solto e o personagem está agachado
                 isCrouching = false;
-                // Remove a forma de agachamento, adiciona a forma original
                 playerBody.removeShape(crouchPlayerShape);
                 playerBody.addShape(originalPlayerShape);
-
-                // Ajusta a posição do corpo do jogador para manter a base no mesmo nível
-                // Ajuste baseado na diferença de raio das esferas
-                playerBody.position.y += (originalPlayerShape.radius - crouchPlayerShape.radius);
-
-                cameraEyeLevelOffset = originalPlayerShape.radius; // Câmera no centro da esfera original
-                playerBody.velocity.y = 0; // Para qualquer movimento vertical imediatamente ao levantar
-                playerBody.wakeUp(); // Garante que o corpo esteja ativo após a mudança de forma
+                playerBody.position.y += (playerRadius - crouchRadius);
+                cameraEyeLevelOffset = playerRadius;
+                playerBody.velocity.y = 0;
+                playerBody.wakeUp();
             }
 
             // Atualiza a posição da câmera para a posição do corpo de física do jogador
             camera.position.copy(playerBody.position);
             camera.position.y += cameraEyeLevelOffset;
 
-            // NOVO: Lógica do efeito subaquático
+            // Lógica do efeito subaquático
             if (camera.position.y < waterLevel) {
                 scene.background = underwaterColor;
                 scene.fog = underwaterFog;
@@ -2675,22 +2659,21 @@
 
             // Atualiza a posição e o alvo da luz direcional para seguir a câmera/jogador
             directionalLight.position.copy(camera.position);
-            directionalLight.position.x += 10; // Offset da câmera para a fonte de luz
+            directionalLight.position.x += 10;
             directionalLight.position.y += 15;
             directionalLight.position.z += 10;
-            directionalLight.target.position.copy(camera.position); // Faz com que o alvo da luz seja a posição da câmera
-            directionalLight.target.updateMatrixWorld(); // Atualiza a matriz do alvo
+            directionalLight.target.position.copy(camera.position);
+            directionalLight.target.updateMatrixWorld();
 
             // Sincroniza a rotação horizontal do corpo do jogador com a rotação da câmera
-            // Para uma esfera, a rotação fixa é menos crítica, mas mantida para consistência com a câmera
             playerBody.quaternion.setFromEuler(0, camera.rotation.y, 0);
 
             // Lógica de movimento do jogador com base nas teclas pressionadas
-            let currentMoveSpeed = walkSpeed; // Começa com a velocidade de caminhada
-            if (keysPressed['shift']) { // Verifica se Shift está pressionado
-                currentMoveSpeed *= runSpeedMultiplier; // Aplica o multiplicador de corrida
+            let currentMoveSpeed = walkSpeed;
+            if (keysPressed['shift']) {
+                currentMoveSpeed *= runSpeedMultiplier;
             }
-            if (isCrouching) { // Aplica a redução de velocidade ao agachar
+            if (isCrouching) {
                 currentMoveSpeed *= crouchSpeedMultiplier;
             }
 
@@ -2703,45 +2686,30 @@
             forward.normalize();
             right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
-            // NOVO: Lógica de física da água para o jogador
-            let isInWater = false;
-            const playerBottomY = playerBody.position.y - currentPlayerRadius;
-            if (playerBottomY < waterLevel) {
-                isInWater = true;
-
-                // --- Nova Lógica de Flutuação Estável ---
-                const K_SPRING = 250; // Constante da mola (rigidez)
-                const C_DAMPING = 35;  // Constante de amortecimento
-
-                // 1. Anular a gravidade
-                const gravityMagnitude = Math.abs(world.gravity.y);
-                const antiGravityForce = playerBody.mass * gravityMagnitude;
-
-                // 2. Força da mola para empurrar para a posição de flutuação
-                // O alvo é o centro do jogador estar no nível da água.
-                const targetY = waterLevel;
-                const displacement = playerBody.position.y - targetY;
-                const springForce = -K_SPRING * displacement;
-
-                // 3. Força de amortecimento para evitar oscilações
-                const verticalVelocity = playerBody.velocity.y;
-                const dampingForce = -C_DAMPING * verticalVelocity;
-
-                // 4. Força total de flutuação
-                let totalBuoyancyForce = antiGravityForce + springForce + dampingForce;
-
-                // Lógica de Mergulho: Se 'c' for pressionado na água, aplica uma força para baixo
+            // Lógica de física da água e mergulho
+            if (isInWater) {
+                // Lógica de Mergulho: Se 'c' for pressionado, define uma velocidade para baixo
                 if (keysPressed['c']) {
-                    totalBuoyancyForce -= 80 * 50; // Força de mergulho para baixo
+                    playerBody.velocity.y = -walkSpeed; // Mergulha com a velocidade de caminhada
+                } else {
+                    // --- Lógica de Flutuação Estável (quando não está a mergulhar) ---
+                    const K_SPRING = 250;
+                    const C_DAMPING = 35;
+                    const gravityMagnitude = Math.abs(world.gravity.y);
+                    const antiGravityForce = playerBody.mass * gravityMagnitude;
+                    const targetY = waterLevel + (isCrouching ? crouchRadius : playerRadius); // Flutua na superfície
+                    const displacement = playerBody.position.y - targetY;
+                    const springForce = -K_SPRING * displacement;
+                    const verticalVelocity = playerBody.velocity.y;
+                    const dampingForce = -C_DAMPING * verticalVelocity;
+                    const totalBuoyancyForce = antiGravityForce + springForce + dampingForce;
+                    playerBody.applyForce(new CANNON.Vec3(0, totalBuoyancyForce, 0), playerBody.position);
                 }
 
-                playerBody.applyForce(new CANNON.Vec3(0, totalBuoyancyForce, 0), playerBody.position);
-
-
-                // Aplica arrasto/resistência da água (aumentado para uma sensação mais "pesada")
+                // Aplica arrasto/resistência da água
                 playerBody.velocity.x *= 0.90;
                 playerBody.velocity.z *= 0.90;
-                currentMoveSpeed *= 0.5; // Reduz a velocidade de movimento na água
+                currentMoveSpeed *= 0.5;
             }
 
 
