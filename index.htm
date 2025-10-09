@@ -1326,7 +1326,9 @@
                 islandMaterial,
                 {
                     friction: 0.7,
-                    restitution: 0
+                    restitution: 0,
+                    contactEquationStiffness: 1e8, // Aumenta a rigidez para evitar que os objectos se "afundem"
+                    contactEquationRelaxation: 4    // Proporciona um ligeiro "amortecimento" para evitar o ressalto
                 }
             );
             world.addContactMaterial(cubeGroundContactMaterial);
@@ -1410,24 +1412,59 @@
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
             // Cria o Terreno (Ilha Redonda)
-            // A geometria visual continua a ser um único cone truncado para uma aparência suave.
-            const islandGeometry = new THREE.CylinderGeometry(islandRadiusTop, islandRadiusBottom, islandHeight, 64);
+            // A geometria visual é agora um plano segmentado cujos vértices correspondem ao Heightfield.
+            const hfGridSize = 128; // A resolução DEVE corresponder à do Heightfield
+            const islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
 
-            // Cria o corpo de física da ilha usando uma forma Composta para máxima precisão.
+            // --- Criação do Corpo de Física da Ilha com Heightfield ---
+            const hfMatrix = [];
+            for (let i = 0; i < hfGridSize; i++) {
+                hfMatrix.push([]);
+                for (let j = 0; j < hfGridSize; j++) {
+                    // Mapeia os índices da grelha para coordenadas do mundo
+                    const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
+                    const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
+                    const distance = Math.sqrt(x * x + z * z);
+                    let height;
+
+                    if (distance <= islandRadiusTop) {
+                        height = islandSurfaceHeight;
+                    } else if (distance <= islandRadiusBottom) {
+                        // Interpola linearmente da superfície da ilha para o fundo do mar
+                        const t = (distance - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
+                        height = islandSurfaceHeight * (1 - t) + seabedLevel * t;
+                    } else {
+                        height = seabedLevel;
+                    }
+                    hfMatrix[i][j] = height;
+                }
+            }
+
+            // Gira a geometria para ficar no plano XZ.
+            islandGeometry.rotateX(-Math.PI / 2);
+
+            // Define a altura de cada vértice na geometria para corresponder à matriz do Heightfield.
+            const vertices = islandGeometry.attributes.position.array;
+            for (let i = 0; i < hfGridSize; i++) {
+                for (let j = 0; j < hfGridSize; j++) {
+                    const height = hfMatrix[i][j];
+                    const index = (i * hfGridSize + j) * 3;
+                    vertices[index + 1] = height; // Atualiza a coordenada Y
+                }
+            }
+            islandGeometry.attributes.position.needsUpdate = true;
+            islandGeometry.computeVertexNormals(); // Recalcula as normais para uma iluminação correta
+
+            const hfShape = new CANNON.Heightfield(hfMatrix, {
+                elementSize: worldSize / (hfGridSize - 1)
+            });
+
             islandBody = new CANNON.Body({ mass: 0, material: islandMaterial });
-            islandBody.position.set(0, (islandSurfaceHeight + seabedLevel) / 2, 0); // Posição central do corpo composto
-
-            // 1. Adiciona a forma de cone truncado para a ilha.
-            const islandShape = new CANNON.Cylinder(islandRadiusTop, islandRadiusBottom, islandHeight, 64);
-            // O offset é zero porque o centro da forma está alinhado com o centro do corpo.
-            islandBody.addShape(islandShape, new CANNON.Vec3(0, 0, 0));
-
-            // 2. Adiciona a forma de caixa para o fundo do mar.
-            const seabedShape = new CANNON.Box(new CANNON.Vec3(worldSize / 2, 0.5, worldSize / 2));
-            // Calcula o offset Y para a forma do fundo do mar em relação ao centro do corpo composto da ilha.
-            const seabedOffset_Y = (seabedLevel - 0.5) - islandBody.position.y;
-            islandBody.addShape(seabedShape, new CANNON.Vec3(0, seabedOffset_Y, 0));
-
+            islandBody.addShape(hfShape);
+            // Os Heightfields são criados no plano XY, por isso rodamos para o plano XZ.
+            islandBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+            // Posiciona o corpo no canto do mundo para alinhar a grelha.
+            islandBody.position.set(-worldSize / 2, 0, worldSize / 2);
             world.addBody(islandBody);
             const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
@@ -2396,9 +2433,9 @@
             // Atualiza as posições das malhas do terreno com base na posição envolvida do jogador
             islandMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
+                tile.mesh.position.y = 0; // O plano está agora centrado em Y=0
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                tile.mesh.position.y = islandBody.position.y; // Alinha o centro da malha visual com o centro do corpo de física
-                tile.mesh.quaternion.copy(islandBody.quaternion);
+                // A rotação da malha é definida uma vez na inicialização e não precisa de ser atualizada.
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
