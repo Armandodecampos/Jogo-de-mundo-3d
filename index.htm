@@ -981,57 +981,43 @@
                 draggingGhostElement = null;
             }
 
-            const targetElement = e.target.closest('.slot'); // Encontra o slot mais próximo
+            const targetSlotElement = e.target.closest('.slot');
 
-            const sourceItem = draggedItem.item;
-            const sourceIndex = draggedItem.sourceIndex;
+            // Get source details
             const sourceLocation = draggedItem.sourceLocation;
+            const sourceIndex = draggedItem.sourceIndex;
+            const sourceItem = draggedItem.item; // This is a copy of the item being dragged
 
-            // NOVO: Adiciona um caso especial para soltar o item de volta no mesmo slot
-            if (targetElement && sourceLocation === targetElement.dataset.containerType && sourceIndex == targetElement.dataset.slotIndex) {
-                if (sourceLocation === 'belt') {
-                    beltItems[sourceIndex] = sourceItem;
-                } else {
-                    backpackItems[sourceIndex] = sourceItem;
+            // Get source array
+            const sourceArray = sourceLocation === 'belt' ? beltItems : backpackItems;
+
+            // If dropped on a valid slot
+            if (targetSlotElement) {
+                const targetLocation = targetSlotElement.dataset.containerType;
+                const targetIndex = parseInt(targetSlotElement.dataset.slotIndex);
+                const targetArray = targetLocation === 'belt' ? beltItems : backpackItems;
+                const originalTargetItem = targetArray[targetIndex]; // Item at destination before drop
+
+                // Case 1: Dropping back into the same slot.
+                if (sourceArray === targetArray && sourceIndex === targetIndex) {
+                    sourceArray[sourceIndex] = sourceItem; // Just put it back
                 }
-            } else if (targetElement) { // Se o item foi solto em um slot válido (mas não o original)
-                let targetIndex = parseInt(targetElement.dataset.slotIndex);
-                let targetLocation = targetElement.dataset.containerType;
-                let tempTargetInventory = targetLocation === 'belt' ? beltItems : backpackItems;
-                let targetItem = tempTargetInventory[targetIndex];
-
-                if (targetItem && targetItem.name === sourceItem.name) {
-                    // Mescla pilhas se for o mesmo item
-                    targetItem.quantity += sourceItem.quantity;
-                } else {
-                    // Troca ou move
-                    let sourceInventory = sourceLocation === 'belt' ? beltItems : backpackItems;
-                    let targetInventory = targetLocation === 'belt' ? beltItems : backpackItems;
-
-                    // Coloca o item de origem no destino
-                    targetInventory[targetIndex] = sourceItem;
-
-                    // Coloca o item de destino de volta na origem (pode ser nulo)
-                    if (sourceLocation === 'belt' && sourceIndex === 0) {
-                        // Trata o caso especial onde a mão esquerda (slot 0) recebe o item da mochila
-                        // e o item que estava na mão esquerda (se houver) vai para a mochila.
-                        sourceInventory[sourceIndex] = null;
-                        if (targetItem) {
-                            addItemToInventory(backpackItems, targetItem);
-                        }
-                    } else {
-                        sourceInventory[sourceIndex] = targetItem;
-                    }
+                // Case 2: Stacking onto an existing item
+                else if (originalTargetItem && originalTargetItem.name === sourceItem.name) {
+                    targetArray[targetIndex].quantity += sourceItem.quantity;
+                    sourceArray[sourceIndex] = null; // Source slot is now empty
                 }
-            } else { // Solto fora de qualquer slot válido, retorna o item para o slot original
-                if (sourceLocation === 'belt') {
-                    beltItems[sourceIndex] = sourceItem;
-                } else {
-                    backpackItems[sourceIndex] = sourceItem;
+                // Case 3: Swapping with another item (or moving to an empty slot)
+                else {
+                    targetArray[targetIndex] = sourceItem;
+                    sourceArray[sourceIndex] = originalTargetItem; // originalTargetItem can be null
                 }
+            } else {
+                // Dropped outside any slot, return item to original position
+                sourceArray[sourceIndex] = sourceItem;
             }
 
-            // Remove a classe drag-over de todos os slots
+            // Common cleanup and UI refresh
             document.querySelectorAll('.slot.drag-over').forEach(slot => {
                 slot.classList.remove('drag-over');
             });
@@ -1132,12 +1118,6 @@
                 randomizedTreeDimensions = randomizeTreeDimensions(treeStages['muda']);
                 const stageData = randomizedTreeDimensions; // Use randomized data
 
-                // Adjust the body's y-position to align the visual model with the ground, not the physics model.
-                const trunkHeightVisual = stageData.visual.trunk.height;
-                const leavesRadiusVisual = stageData.visual.leaves.radius;
-                const groupHeightVisual = trunkHeightVisual + leavesRadiusVisual;
-                const overallPhysicsHeight = stageData.overallPhysicsHeight;
-                position.y += (groupHeightVisual / 2) - (overallPhysicsHeight / 2);
 
                 initialMass = initialTreeSaplingMass;
                 durability = treeSaplingDurability;
@@ -2922,24 +2902,31 @@
                         const newOverallPhysicsHeight = nextRandomizedData.overallPhysicsHeight;
                         blockBody.position.y += (newOverallPhysicsHeight - oldOverallPhysicsHeight) / 2;
 
-                        // Update Three.js mesh (the group)
-                        treeGroup.children.forEach(child => child.geometry.dispose()); // Dispose old geometries
-                        treeGroup.remove(...treeGroup.children); // Remove all children
+                        // Itera sobre todas as malhas visuais da árvore (para o efeito de mundo infinito) e atualiza-as.
+                        blockMeshArray.forEach(item => {
+                            const visualGroup = item.mesh; // Este é o THREE.Group para esta cópia visual
 
-                        // Create new trunk and leaves for the next stage
-                        const trunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
-                        const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
-                        trunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
-                        trunkMesh.castShadow = true;
-                        trunkMesh.receiveShadow = true;
-                        treeGroup.add(trunkMesh);
+                            // Limpa as geometrias e filhos existentes
+                            visualGroup.children.forEach(child => {
+                                if (child.geometry) child.geometry.dispose();
+                            });
+                            visualGroup.remove(...visualGroup.children);
 
-                        const leavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
-                        const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
-                        leavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
-                        leavesMesh.castShadow = true;
-                        leavesMesh.receiveShadow = true;
-                        treeGroup.add(leavesMesh);
+                            // Cria e adiciona o novo tronco e folhas
+                            const newTrunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
+                            const newTrunkMesh = new THREE.Mesh(newTrunkGeometry, treeTrunkMaterialMesh);
+                            newTrunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
+                            newTrunkMesh.castShadow = true;
+                            newTrunkMesh.receiveShadow = true;
+                            visualGroup.add(newTrunkMesh);
+
+                            const newLeavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
+                            const newLeavesMesh = new THREE.Mesh(newLeavesGeometry, treeLeavesMaterialMesh);
+                            newLeavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
+                            newLeavesMesh.castShadow = true;
+                            newLeavesMesh.receiveShadow = true;
+                            visualGroup.add(newLeavesMesh);
+                        });
 
                         // Update userData
                         blockBody.userData.dimensions = {
