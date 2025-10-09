@@ -381,6 +381,7 @@
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
+        let seabedBody; // NOVO: Corpo de física para o fundo do mar
 
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
         let collectibleBoxes = [];
@@ -601,12 +602,12 @@
         const treeStages = {
             'muda': {
                 physics: {
-                    trunk: { width: cobWidth / 2, height: 0.5, depth: cobWidth / 2, yOffset: -0.2 },
-                    leaves: { width: cobWidth, height: cobWidth, depth: cobWidth, yOffset: 0.25 }
+                    trunk: { width: 0.1, height: 0.5, depth: 0.1, yOffset: -0.2 },
+                    leaves: { width: 0.3, height: 0.4, depth: 0.3, yOffset: 0.25 }
                 },
                 visual: {
-                    trunk: { radius: cobWidth / 4, height: 0.5, yOffsetInGroup: (0.5 / 2) - (0.9 / 2) },
-                    leaves: { radius: cobWidth / 2, yOffsetInGroup: (0.5 + 0.2) - (0.9 / 2) }
+                    trunk: { radius: 0.05, height: 0.5, yOffsetInGroup: -0.15 },
+                    leaves: { radius: 0.15, yOffsetInGroup: 0.25 }
                 },
                 overallPhysicsHeight: 0.9,
                 growthTime: 10 // Time in seconds to grow to next stage
@@ -981,43 +982,57 @@
                 draggingGhostElement = null;
             }
 
-            const targetSlotElement = e.target.closest('.slot');
+            const targetElement = e.target.closest('.slot'); // Encontra o slot mais próximo
 
-            // Get source details
-            const sourceLocation = draggedItem.sourceLocation;
+            const sourceItem = draggedItem.item;
             const sourceIndex = draggedItem.sourceIndex;
-            const sourceItem = draggedItem.item; // This is a copy of the item being dragged
+            const sourceLocation = draggedItem.sourceLocation;
 
-            // Get source array
-            const sourceArray = sourceLocation === 'belt' ? beltItems : backpackItems;
+            // NOVO: Adiciona um caso especial para soltar o item de volta no mesmo slot
+            if (targetElement && sourceLocation === targetElement.dataset.containerType && sourceIndex == targetElement.dataset.slotIndex) {
+                if (sourceLocation === 'belt') {
+                    beltItems[sourceIndex] = sourceItem;
+                } else {
+                    backpackItems[sourceIndex] = sourceItem;
+                }
+            } else if (targetElement) { // Se o item foi solto em um slot válido (mas não o original)
+                let targetIndex = parseInt(targetElement.dataset.slotIndex);
+                let targetLocation = targetElement.dataset.containerType;
+                let tempTargetInventory = targetLocation === 'belt' ? beltItems : backpackItems;
+                let targetItem = tempTargetInventory[targetIndex];
 
-            // If dropped on a valid slot
-            if (targetSlotElement) {
-                const targetLocation = targetSlotElement.dataset.containerType;
-                const targetIndex = parseInt(targetSlotElement.dataset.slotIndex);
-                const targetArray = targetLocation === 'belt' ? beltItems : backpackItems;
-                const originalTargetItem = targetArray[targetIndex]; // Item at destination before drop
+                if (targetItem && targetItem.name === sourceItem.name) {
+                    // Mescla pilhas se for o mesmo item
+                    targetItem.quantity += sourceItem.quantity;
+                } else {
+                    // Troca ou move
+                    let sourceInventory = sourceLocation === 'belt' ? beltItems : backpackItems;
+                    let targetInventory = targetLocation === 'belt' ? beltItems : backpackItems;
 
-                // Case 1: Dropping back into the same slot.
-                if (sourceArray === targetArray && sourceIndex === targetIndex) {
-                    sourceArray[sourceIndex] = sourceItem; // Just put it back
+                    // Coloca o item de origem no destino
+                    targetInventory[targetIndex] = sourceItem;
+
+                    // Coloca o item de destino de volta na origem (pode ser nulo)
+                    if (sourceLocation === 'belt' && sourceIndex === 0) {
+                        // Trata o caso especial onde a mão esquerda (slot 0) recebe o item da mochila
+                        // e o item que estava na mão esquerda (se houver) vai para a mochila.
+                        sourceInventory[sourceIndex] = null;
+                        if (targetItem) {
+                            addItemToInventory(backpackItems, targetItem);
+                        }
+                    } else {
+                        sourceInventory[sourceIndex] = targetItem;
+                    }
                 }
-                // Case 2: Stacking onto an existing item
-                else if (originalTargetItem && originalTargetItem.name === sourceItem.name) {
-                    targetArray[targetIndex].quantity += sourceItem.quantity;
-                    sourceArray[sourceIndex] = null; // Source slot is now empty
+            } else { // Solto fora de qualquer slot válido, retorna o item para o slot original
+                if (sourceLocation === 'belt') {
+                    beltItems[sourceIndex] = sourceItem;
+                } else {
+                    backpackItems[sourceIndex] = sourceItem;
                 }
-                // Case 3: Swapping with another item (or moving to an empty slot)
-                else {
-                    targetArray[targetIndex] = sourceItem;
-                    sourceArray[sourceIndex] = originalTargetItem; // originalTargetItem can be null
-                }
-            } else {
-                // Dropped outside any slot, return item to original position
-                sourceArray[sourceIndex] = sourceItem;
             }
 
-            // Common cleanup and UI refresh
+            // Remove a classe drag-over de todos os slots
             document.querySelectorAll('.slot.drag-over').forEach(slot => {
                 slot.classList.remove('drag-over');
             });
@@ -1118,6 +1133,12 @@
                 randomizedTreeDimensions = randomizeTreeDimensions(treeStages['muda']);
                 const stageData = randomizedTreeDimensions; // Use randomized data
 
+                // Adjust the body's y-position to align the visual model with the ground, not the physics model.
+                const trunkHeightVisual = stageData.visual.trunk.height;
+                const leavesRadiusVisual = stageData.visual.leaves.radius;
+                const groupHeightVisual = trunkHeightVisual + leavesRadiusVisual;
+                const overallPhysicsHeight = stageData.overallPhysicsHeight;
+                position.y += (groupHeightVisual / 2) - (overallPhysicsHeight / 2);
 
                 initialMass = initialTreeSaplingMass;
                 durability = treeSaplingDurability;
@@ -1306,9 +1327,7 @@
                 islandMaterial,
                 {
                     friction: 0.7,
-                    restitution: 0,
-                    contactEquationStiffness: 1e8, // Aumenta a rigidez para evitar que os objectos se "afundem"
-                    contactEquationRelaxation: 4    // Proporciona um ligeiro "amortecimento" para evitar o ressalto
+                    restitution: 0
                 }
             );
             world.addContactMaterial(cubeGroundContactMaterial);
@@ -1392,60 +1411,13 @@
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
             // Cria o Terreno (Ilha Redonda)
-            // A geometria visual é agora um plano segmentado cujos vértices correspondem ao Heightfield.
-            const hfGridSize = 128; // A resolução DEVE corresponder à do Heightfield
-            const islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
-
-            // --- Criação do Corpo de Física da Ilha com Heightfield ---
-            const hfMatrix = [];
-            for (let i = 0; i < hfGridSize; i++) {
-                hfMatrix.push([]);
-                for (let j = 0; j < hfGridSize; j++) {
-                    // Mapeia os índices da grelha para coordenadas do mundo
-                    const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
-                    const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
-                    const distance = Math.sqrt(x * x + z * z);
-                    let height;
-
-                    if (distance <= islandRadiusTop) {
-                        height = islandSurfaceHeight;
-                    } else if (distance <= islandRadiusBottom) {
-                        // Interpola linearmente da superfície da ilha para o fundo do mar
-                        const t = (distance - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
-                        height = islandSurfaceHeight * (1 - t) + seabedLevel * t;
-                    } else {
-                        height = seabedLevel;
-                    }
-                    hfMatrix[i][j] = height;
-                }
-            }
-
-            // Gira a geometria para ficar no plano XZ.
-            islandGeometry.rotateX(-Math.PI / 2);
-
-            // Define a altura de cada vértice na geometria para corresponder à matriz do Heightfield.
-            const vertices = islandGeometry.attributes.position.array;
-            for (let i = 0; i < hfGridSize; i++) {
-                for (let j = 0; j < hfGridSize; j++) {
-                    const height = hfMatrix[i][j];
-                    const index = (i * hfGridSize + j) * 3;
-                    vertices[index + 1] = height; // Atualiza a coordenada Y
-                }
-            }
-            islandGeometry.attributes.position.needsUpdate = true;
-            islandGeometry.computeVertexNormals(); // Recalcula as normais para uma iluminação correta
-
-            const hfShape = new CANNON.Heightfield(hfMatrix, {
-                elementSize: worldSize / (hfGridSize - 1)
-            });
-
-            islandBody = new CANNON.Body({ mass: 0, material: islandMaterial });
-            islandBody.addShape(hfShape);
-            // Os Heightfields são criados no plano XY, por isso rodamos para o plano XZ.
-            islandBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-            // Posiciona o corpo no canto do mundo para alinhar a grelha.
-            islandBody.position.set(-worldSize / 2, 0, worldSize / 2);
+            const islandShape = new CANNON.Cylinder(islandRadiusTop, islandRadiusBottom, islandHeight, 32);
+            islandBody = new CANNON.Body({ mass: 0, shape: islandShape, material: islandMaterial });
+            // Posiciona o cilindro para que o topo fique em islandSurfaceHeight e a base em seabedLevel
+            islandBody.position.set(0, (islandSurfaceHeight + seabedLevel) / 2, 0);
             world.addBody(islandBody);
+
+            const islandGeometry = new THREE.CylinderGeometry(islandRadiusTop, islandRadiusBottom, islandHeight, 64);
             const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
@@ -1490,6 +1462,14 @@
                 }
             }
 
+            // NOVO: Cria o corpo de física para o fundo do mar (agora uma caixa para evitar tunelamento)
+            const seabedShape = new CANNON.Box(new CANNON.Vec3(worldSize / 2, 0.5, worldSize / 2)); // Caixa grossa
+            seabedBody = new CANNON.Body({ mass: 0, shape: seabedShape, material: islandMaterial });
+            // Posiciona a caixa para que seu topo esteja em seabedLevel
+            seabedBody.position.y = seabedLevel - 0.5;
+            world.addBody(seabedBody);
+
+
             // A rua foi removida, então o código relacionado a ela foi excluído.
 
             // Cria o Corpo de Física do Jogador (esfera)
@@ -1515,7 +1495,7 @@
             playerBody.addEventListener('collide', (event) => {
                 // canJump é verdadeiro APENAS se o corpo colidido NÃO for o objeto que está sendo segurado
                 // A lista de corpos "chão" agora inclui apenas superfícies que podem ser pisadas
-                const allGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+                const allGroundBodies = [islandBody, seabedBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
                 if (event.body !== pickedObjectBody && allGroundBodies.includes(event.body)) {
                     canJump = true;
                 }
@@ -2413,9 +2393,9 @@
             // Atualiza as posições das malhas do terreno com base na posição envolvida do jogador
             islandMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
-                tile.mesh.position.y = 0; // O plano está agora centrado em Y=0
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                // A rotação da malha é definida uma vez na inicialização e não precisa de ser atualizada.
+                tile.mesh.position.y = islandBody.position.y; // Alinha o centro da malha visual com o centro do corpo de física
+                tile.mesh.quaternion.copy(islandBody.quaternion);
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
@@ -2827,7 +2807,7 @@
             // Verifica colisão com terreno (rua), estrada, cubos e blocos
             world.raycastAny(rayOriginLow, rayTargetLow, {}, rayResultStep);
             // A lista de corpos "chão" para subida de degraus
-            const stepClimbGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+            const stepClimbGroundBodies = [islandBody, seabedBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
             if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
                 hitLow = true;
             }
@@ -2902,31 +2882,24 @@
                         const newOverallPhysicsHeight = nextRandomizedData.overallPhysicsHeight;
                         blockBody.position.y += (newOverallPhysicsHeight - oldOverallPhysicsHeight) / 2;
 
-                        // Itera sobre todas as malhas visuais da árvore (para o efeito de mundo infinito) e atualiza-as.
-                        blockMeshArray.forEach(item => {
-                            const visualGroup = item.mesh; // Este é o THREE.Group para esta cópia visual
+                        // Update Three.js mesh (the group)
+                        treeGroup.children.forEach(child => child.geometry.dispose()); // Dispose old geometries
+                        treeGroup.remove(...treeGroup.children); // Remove all children
 
-                            // Limpa as geometrias e filhos existentes
-                            visualGroup.children.forEach(child => {
-                                if (child.geometry) child.geometry.dispose();
-                            });
-                            visualGroup.remove(...visualGroup.children);
+                        // Create new trunk and leaves for the next stage
+                        const trunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
+                        const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
+                        trunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
+                        trunkMesh.castShadow = true;
+                        trunkMesh.receiveShadow = true;
+                        treeGroup.add(trunkMesh);
 
-                            // Cria e adiciona o novo tronco e folhas
-                            const newTrunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
-                            const newTrunkMesh = new THREE.Mesh(newTrunkGeometry, treeTrunkMaterialMesh);
-                            newTrunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
-                            newTrunkMesh.castShadow = true;
-                            newTrunkMesh.receiveShadow = true;
-                            visualGroup.add(newTrunkMesh);
-
-                            const newLeavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
-                            const newLeavesMesh = new THREE.Mesh(newLeavesGeometry, treeLeavesMaterialMesh);
-                            newLeavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
-                            newLeavesMesh.castShadow = true;
-                            newLeavesMesh.receiveShadow = true;
-                            visualGroup.add(newLeavesMesh);
-                        });
+                        const leavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
+                        const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
+                        leavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
+                        leavesMesh.castShadow = true;
+                        leavesMesh.receiveShadow = true;
+                        treeGroup.add(leavesMesh);
 
                         // Update userData
                         blockBody.userData.dimensions = {
