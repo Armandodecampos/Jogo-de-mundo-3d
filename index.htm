@@ -1413,27 +1413,20 @@
             // A geometria visual continua a ser um único cone truncado para uma aparência suave.
             const islandGeometry = new THREE.CylinderGeometry(islandRadiusTop, islandRadiusBottom, islandHeight, 64);
 
-            // Cria o corpo de física usando uma forma Composta para máxima estabilidade.
-            // Isso aproxima a forma cônica com uma série de cilindros empilhados.
+            // Cria o corpo de física da ilha usando uma forma Composta para máxima precisão.
             islandBody = new CANNON.Body({ mass: 0, material: islandMaterial });
             islandBody.position.set(0, (islandSurfaceHeight + seabedLevel) / 2, 0); // Posição central do corpo composto
 
-            const numSegments = 10; // Número de cilindros para aproximar a inclinação
-            const segmentHeight = islandHeight / numSegments;
+            // 1. Adiciona a forma de cone truncado para a ilha.
+            const islandShape = new CANNON.Cylinder(islandRadiusTop, islandRadiusBottom, islandHeight, 64);
+            // O offset é zero porque o centro da forma está alinhado com o centro do corpo.
+            islandBody.addShape(islandShape, new CANNON.Vec3(0, 0, 0));
 
-            for (let i = 0; i < numSegments; i++) {
-                // Interpola o raio para cada segmento, do mais largo (base) ao mais estreito (topo)
-                const t = (i + 0.5) / numSegments;
-                const radius = islandRadiusBottom * (1 - t) + islandRadiusTop * t;
-
-                const shape = new CANNON.Cylinder(radius, radius, segmentHeight, 32);
-
-                // Calcula a posição Y do centro de cada segmento, relativa ao centro do corpo composto.
-                const y_offset = (-islandHeight / 2) + (i * segmentHeight) + (segmentHeight / 2);
-                const offset = new CANNON.Vec3(0, y_offset, 0);
-
-                islandBody.addShape(shape, offset);
-            }
+            // 2. Adiciona a forma de caixa para o fundo do mar.
+            const seabedShape = new CANNON.Box(new CANNON.Vec3(worldSize / 2, 0.5, worldSize / 2));
+            // Calcula o offset Y para a forma do fundo do mar em relação ao centro do corpo composto da ilha.
+            const seabedOffset_Y = (seabedLevel - 0.5) - islandBody.position.y;
+            islandBody.addShape(seabedShape, new CANNON.Vec3(0, seabedOffset_Y, 0));
 
             world.addBody(islandBody);
             const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
@@ -2194,11 +2187,6 @@
             // Listeners para o botão da mochila
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
-
-            // Expor variáveis para fins de teste
-            window.collectibleBoxes = collectibleBoxes;
-            window.playerBody = playerBody;
-            window.world = world;
 
         }
 
