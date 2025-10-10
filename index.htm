@@ -478,14 +478,8 @@
         let gamePaused = false; // Novo: Flag para pausar/retomar a lógica do jogo
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
 
-        // NOVO: Gerenciador de Carregamento para rastrear quando todos os assets estiverem prontos
-        const loadingManager = new THREE.LoadingManager();
-        loadingManager.onLoad = () => {
-            console.log("Todos os assets foram carregados. O jogo está pronto!");
-            window.gameIsReady = true; // Flag para o Playwright
-        };
-        // Instância do carregador de textura (agora usa o gerenciador)
-        const textureLoader = new THREE.TextureLoader(loadingManager);
+        // Instância do carregador de textura
+        const textureLoader = new THREE.TextureLoader();
 
         // Referência ao botão de ícone do menu
         let menuIconButton;
@@ -1121,7 +1115,8 @@
                 const leavesRadiusVisual = stageData.visual.leaves.radius;
                 const groupHeightVisual = trunkHeightVisual + leavesRadiusVisual;
                 const overallPhysicsHeight = stageData.overallPhysicsHeight;
-                position.y += (groupHeightVisual / 2) - (overallPhysicsHeight / 2);
+                // A linha abaixo foi removida pois causava o bug de colocação da muda.
+                // position.y += (groupHeightVisual / 2) - (overallPhysicsHeight / 2);
 
                 initialMass = initialTreeSaplingMass;
                 durability = treeSaplingDurability;
@@ -2173,17 +2168,6 @@
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
 
-            // --- EXPOSURE FOR TESTING ---
-            window.THREE = THREE;
-            window.CANNON = CANNON;
-            window.world = world;
-            window.playerBody = playerBody;
-            window.placeBlock = placeBlock;
-            window.treeSaplingItemName = treeSaplingItemName;
-            window.placedConstructionBodies = placedConstructionBodies;
-            window.createPlaceableBlock = createPlaceableBlock;
-            window.animate = animate;
-            // --- END EXPOSURE FOR TESTING ---
         }
 
         // Função para lidar com o redimensionamento da janela
@@ -2961,9 +2945,10 @@
                         currentGhostDepth = woodenPlankDepth;
                     } else if (currentBlockType === 'muda_arvore') {
                         const saplingBaseData = treeStages['muda'];
-                        currentGhostWidth = Math.max(saplingBaseData.physics.trunk.width, saplingBaseData.physics.leaves.width);
-                        currentGhostDepth = Math.max(saplingBaseData.physics.trunk.depth, saplingBaseData.physics.leaves.depth);
-                        currentGhostHeight = saplingBaseData.overallPhysicsHeight;
+                        const tempRandomized = randomizeTreeDimensions(saplingBaseData);
+                        currentGhostHeight = tempRandomized.overallPhysicsHeight;
+                        currentGhostWidth = tempRandomized.physics.leaves.width;
+                        currentGhostDepth = tempRandomized.physics.leaves.depth;
                     } else if (currentBlockType === 'tronco_arvore') { // NOVO: Altura do ghost para tronco
                         currentGhostWidth = trunkRadius * 2;
                         currentGhostHeight = trunkHeight;
