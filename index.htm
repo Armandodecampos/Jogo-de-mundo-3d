@@ -516,7 +516,7 @@
         // NOVO: Variáveis para o sistema de colocação de blocos (Cob, Piso, Muda de Árvore, Tronco de Árvore, Tábuas)
         const cobItemName = 'cob'; // Nome do item de cob no inventário
         const floorItemName = 'piso'; // Nome do item de piso no inventário
-        const treeSaplingItemName = 'muda_arvore'; // Nome do item de muda de árvore no inventário
+        const treeSaplingItemName = 'semente_arvore'; // Nome do item de semente de árvore no inventário
         const treeTrunkItemName = 'tronco_arvore'; // NOVO: Nome do item de tronco de árvore
         const woodenPlankItemName = 'tábuas'; // NOVO: Nome do item de tábuas de madeira
         const boxItemName = 'caixote'; // NOVO: Nome do item de caixote
@@ -600,18 +600,18 @@
         // Define tree stages with base physics bounding box and visual geometry properties
         // These are base values that will be randomized for each tree instance
         const treeStages = {
-            'muda': {
+            'semente': {
                 physics: {
-                    trunk: { width: 0.1, height: 0.5, depth: 0.1 },
-                    leaves: { width: 0.3, height: 0.4, depth: 0.3 }
+                    height: 0.1,
+                    radius: 0.05
                 },
                 visual: {
-                    trunk: { radius: 0.05, height: 0.5 },
-                    leaves: { radius: 0.15 } // Radius of the plane for the sprout
+                    height: 0.1,
+                    radius: 0.05
                 },
                 growthTime: 10
             },
-            'media': {
+            'arvore_pequena': {
                 physics: {
                     trunk: { width: cobWidth, height: 2.0, depth: cobWidth },
                     leaves: { width: cobWidth * 4, height: cobWidth * 4, depth: cobWidth * 4 }
@@ -637,11 +637,17 @@
 
         function randomizeTreeDimensions(baseStageData) {
             const randomFactor = (min, max) => min + (Math.random() * (max - min));
+            const randomized = JSON.parse(JSON.stringify(baseStageData));
+
+            // Se for uma semente, não há randomização
+            if (!baseStageData.physics.trunk) {
+                randomized.overallPhysicsHeight = randomized.physics.height;
+                return randomized;
+            }
+
             const trunkHeightFactor = randomFactor(0.8, 1.2);
             const trunkRadiusFactor = randomFactor(0.8, 1.2);
             const leavesRadiusFactor = randomFactor(0.8, 1.2);
-
-            const randomized = JSON.parse(JSON.stringify(baseStageData));
 
             randomized.visual.trunk.height *= trunkHeightFactor;
             randomized.visual.trunk.radius *= trunkRadiusFactor;
@@ -1106,61 +1112,23 @@
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), floorMaterialMesh);
                 initialMass = initialFloorMass;
                 durability = floorDurability;
-            } else if (type === 'muda_arvore') {
-                randomizedTreeDimensions = randomizeTreeDimensions(treeStages['muda']);
-                const stageData = randomizedTreeDimensions; // Use randomized data
-
-                // Adjust the body's y-position to align the visual model with the ground, not the physics model.
-                const trunkHeightVisual = stageData.visual.trunk.height;
-                const leavesRadiusVisual = stageData.visual.leaves.radius;
-                const groupHeightVisual = trunkHeightVisual + leavesRadiusVisual;
-                const overallPhysicsHeight = stageData.overallPhysicsHeight;
-                // A linha abaixo foi removida pois causava o bug de colocação da muda.
-                // position.y += (groupHeightVisual / 2) - (overallPhysicsHeight / 2);
-
+            } else if (type === 'semente_arvore') {
+                randomizedTreeDimensions = randomizeTreeDimensions(treeStages['semente']);
+                const stageData = randomizedTreeDimensions;
                 initialMass = initialTreeSaplingMass;
                 durability = treeSaplingDurability;
 
-                // Add trunk physics shape
-                const trunkPhysics = stageData.physics.trunk;
-                const trunkShape = new CANNON.Box(new CANNON.Vec3(trunkPhysics.width / 2, trunkPhysics.height / 2, trunkPhysics.depth / 2));
-                blockBody.addShape(trunkShape, new CANNON.Vec3(0, trunkPhysics.yOffset, 0));
+                // Física da semente: uma pequena cápsula
+                const seedShape = new CANNON.Sphere(stageData.physics.radius);
+                blockBody.addShape(seedShape);
 
-                // Add leaves physics shape
-                const leavesPhysics = stageData.physics.leaves;
-                const leavesShape = new CANNON.Box(new CANNON.Vec3(leavesPhysics.width / 2, leavesPhysics.height / 2, leavesPhysics.depth / 2));
-                blockBody.addShape(leavesShape, new CANNON.Vec3(0, leavesPhysics.yOffset, 0));
+                // Visual da semente: um pequeno cilindro para se assemelhar a uma semente/cápsula
+                const seedGeometry = new THREE.CylinderGeometry(stageData.visual.radius, stageData.visual.radius, stageData.visual.height, 8);
+                mesh = new THREE.Mesh(seedGeometry, treeTrunkMaterialMesh); // Reutiliza o material do tronco
 
-                // Create a THREE.Group for the tree visual
-                const treeGroup = new THREE.Group();
-
-                // Trunk visual
-                const trunkGeometry = new THREE.CylinderGeometry(stageData.visual.trunk.radius, stageData.visual.trunk.radius, stageData.visual.trunk.height, 8);
-                const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
-                trunkMesh.position.y = stageData.visual.trunk.yOffsetInGroup;
-                trunkMesh.castShadow = true;
-                trunkMesh.receiveShadow = true;
-                treeGroup.add(trunkMesh);
-
-                // --- New Sprout-like Leaves Visual ---
-                const leafSize = stageData.visual.leaves.radius * 2.5; // Use radius to define plane size
-                const leafGeometry = new THREE.PlaneGeometry(leafSize, leafSize);
-
-                // First plane
-                const leavesMesh1 = new THREE.Mesh(leafGeometry, treeLeavesMaterialMesh);
-                leavesMesh1.position.y = stageData.visual.leaves.yOffsetInGroup;
-                leavesMesh1.castShadow = true;
-                treeGroup.add(leavesMesh1);
-
-                // Second plane, rotated 90 degrees on Y axis
-                const leavesMesh2 = leavesMesh1.clone();
-                leavesMesh2.rotation.y = Math.PI / 2;
-                treeGroup.add(leavesMesh2);
-
-                mesh = treeGroup; // The mesh is now the group
-                width = stageData.overallPhysicsHeight; // Use overall height for ghost block dimensions
-                height = stageData.overallPhysicsHeight;
-                depth = stageData.overallPhysicsHeight;
+                width = stageData.physics.radius * 2;
+                height = stageData.physics.height;
+                depth = stageData.physics.radius * 2;
             } else if (type === 'tronco_arvore') { // NOVO: Bloco de tronco de árvore
                 width = trunkRadius * 2; // Diâmetro para largura
                 height = trunkHeight;
@@ -2827,18 +2795,18 @@
                 }
             }
 
-            // Lógica de crescimento da muda de árvore
+            // Lógica de crescimento da semente
             for (let i = placedConstructionBodies.length - 1; i >= 0; i--) {
                 const blockBody = placedConstructionBodies[i];
-                if (blockBody.userData.type === 'muda_arvore' && !blockBody.userData.isFullyGrown) {
+                if (blockBody.userData.type === 'semente_arvore' && !blockBody.userData.isFullyGrown) {
                     const blockMeshArray = placedConstructionMeshesArrays[i];
                     const currentGrowthStageName = blockBody.userData.growthStage;
                     const currentBaseStageData = treeStages[currentGrowthStageName];
 
                     let nextGrowthStageName = null;
-                    if (currentGrowthStageName === 'muda' && world.time - blockBody.userData.growthStartTime >= currentBaseStageData.growthTime) {
-                        nextGrowthStageName = 'media';
-                    } else if (currentGrowthStageName === 'media' && world.time - blockBody.userData.growthStartTime >= currentBaseStageData.growthTime) {
+                    if (currentGrowthStageName === 'semente' && world.time - blockBody.userData.growthStartTime >= currentBaseStageData.growthTime) {
+                        nextGrowthStageName = 'arvore_pequena';
+                    } else if (currentGrowthStageName === 'arvore_pequena' && world.time - blockBody.userData.growthStartTime >= currentBaseStageData.growthTime) {
                         nextGrowthStageName = 'arvore_adulta';
                     }
 
@@ -2864,6 +2832,17 @@
                         blockBody.position.y += (newOverallPhysicsHeight - oldOverallPhysicsHeight) / 2;
 
                         blockMeshArray.forEach(item => {
+                            const visualObject = item.mesh;
+                            // Se era uma semente, agora é um grupo. Limpa a malha antiga.
+                            if (currentGrowthStageName === 'semente') {
+                                if(visualObject.geometry) visualObject.geometry.dispose();
+                                // Transforma a malha em um grupo
+                                item.mesh = new THREE.Group();
+                                item.mesh.userData.physicsBody = blockBody;
+                                scene.remove(visualObject);
+                                scene.add(item.mesh);
+                            }
+
                             const visualGroup = item.mesh;
                             visualGroup.children.forEach(child => {
                                 if (child.geometry) child.geometry.dispose();
@@ -2943,12 +2922,11 @@
                         currentGhostWidth = woodenPlankWidth;
                         currentGhostHeight = woodenPlankHeight;
                         currentGhostDepth = woodenPlankDepth;
-                    } else if (currentBlockType === 'muda_arvore') {
-                        const saplingBaseData = treeStages['muda'];
-                        const tempRandomized = randomizeTreeDimensions(saplingBaseData);
-                        currentGhostHeight = tempRandomized.overallPhysicsHeight;
-                        currentGhostWidth = tempRandomized.physics.leaves.width;
-                        currentGhostDepth = tempRandomized.physics.leaves.depth;
+                    } else if (currentBlockType === 'semente_arvore') {
+                        const seedBaseData = treeStages['semente'];
+                        currentGhostHeight = seedBaseData.physics.height;
+                        currentGhostWidth = seedBaseData.physics.radius * 2;
+                        currentGhostDepth = seedBaseData.physics.radius * 2;
                     } else if (currentBlockType === 'tronco_arvore') { // NOVO: Altura do ghost para tronco
                         currentGhostWidth = trunkRadius * 2;
                         currentGhostHeight = trunkHeight;
