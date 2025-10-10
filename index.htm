@@ -652,6 +652,10 @@
 
         // Function to randomize tree dimensions based on a base stage data
         function randomizeTreeDimensions(baseStageData) {
+            // Adiciona uma cláusula de guarda para o estágio 'semente', que não precisa de randomização
+            if (!baseStageData.visual.trunk) {
+                return JSON.parse(JSON.stringify(baseStageData)); // Retorna uma cópia profunda para segurança
+            }
             const randomFactor = (min, max) => min + (Math.random() * (max - min));
 
             // Apply random factors (e.g., +/- 20% variation)
@@ -2893,13 +2897,12 @@
                     }
 
                     if (nextGrowthStageName) {
-                        // Ao crescer da semente para a muda, precisamos descartar o material do broto
+                        // Ao crescer da semente para a muda, descartamos a geometria e o material antigos
                         if (currentGrowthStageName === 'semente') {
-                            treeGroup.children.forEach(child => {
-                                if (child.material) {
-                                    child.material.dispose();
-                                }
-                            });
+                            if (treeGroup.isMesh) { // O estágio da semente é uma malha única
+                                treeGroup.geometry.dispose();
+                                treeGroup.material.dispose();
+                            }
                         }
 
                         console.log(`Árvore crescendo de ${currentGrowthStageName} para ${nextGrowthStageName} no tempo do mundo: ${world.time.toFixed(2)}`); // Log para depuração
