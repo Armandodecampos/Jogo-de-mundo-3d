@@ -381,7 +381,6 @@
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
-        let seabedBody; // NOVO: Corpo de física para o fundo do mar
 
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
         let collectibleBoxes = [];
@@ -516,7 +515,7 @@
         // NOVO: Variáveis para o sistema de colocação de blocos (Cob, Piso, Muda de Árvore, Tronco de Árvore, Tábuas)
         const cobItemName = 'cob'; // Nome do item de cob no inventário
         const floorItemName = 'piso'; // Nome do item de piso no inventário
-        const treeSaplingItemName = 'semente_arvore'; // Nome do item de semente de árvore no inventário
+        const treeSaplingItemName = 'muda_arvore'; // Nome do item de muda de árvore no inventário
         const treeTrunkItemName = 'tronco_arvore'; // NOVO: Nome do item de tronco de árvore
         const woodenPlankItemName = 'tábuas'; // NOVO: Nome do item de tábuas de madeira
         const boxItemName = 'caixote'; // NOVO: Nome do item de caixote
@@ -600,77 +599,94 @@
         // Define tree stages with base physics bounding box and visual geometry properties
         // These are base values that will be randomized for each tree instance
         const treeStages = {
-            'semente': {
+            'muda': {
                 physics: {
-                    height: 0.1,
-                    radius: 0.05
+                    trunk: { width: cobWidth / 2, height: 0.5, depth: cobWidth / 2, yOffset: -0.2 },
+                    leaves: { width: cobWidth, height: cobWidth, depth: cobWidth, yOffset: 0.25 }
                 },
                 visual: {
-                    height: 0.1,
-                    radius: 0.05
+                    trunk: { radius: cobWidth / 4, height: 0.5, yOffsetInGroup: (0.5 / 2) - (0.9 / 2) },
+                    leaves: { radius: cobWidth / 2, yOffsetInGroup: (0.5 + 0.2) - (0.9 / 2) }
                 },
-                growthTime: 10
+                overallPhysicsHeight: 0.9,
+                growthTime: 10 // Time in seconds to grow to next stage
             },
-            'arvore_pequena': {
+            'media': {
                 physics: {
-                    trunk: { width: cobWidth, height: 2.0, depth: cobWidth },
-                    leaves: { width: cobWidth * 4, height: cobWidth * 4, depth: cobWidth * 4 }
+                    trunk: { width: cobWidth, height: 2.0, depth: cobWidth, yOffset: -0.8 },
+                    leaves: { width: cobWidth * 4, height: cobWidth * 4, depth: cobWidth * 4, yOffset: 0.8 }
                 },
                 visual: {
-                    trunk: { radius: cobWidth / 2, height: 2.0 },
-                    leaves: { radius: cobWidth * 2 }
+                    trunk: { radius: cobWidth / 2, height: 2.0, yOffsetInGroup: (2.0 / 2) - (3.6 / 2) },
+                    leaves: { radius: cobWidth * 2, yOffsetInGroup: (2.0 + 0.8) - (3.6 / 2) }
                 },
+                overallPhysicsHeight: 3.6, // Will be recalculated by randomizeTreeDimensions
                 growthTime: 10
             },
             'arvore_adulta': {
                 physics: {
-                    trunk: { width: cobWidth, height: 5.0, depth: cobWidth },
-                    leaves: { width: cobWidth * 8, height: cobWidth * 8, depth: cobWidth * 8 }
+                    trunk: { width: cobWidth, height: 5.0, depth: cobWidth, yOffset: -2.0 },
+                    leaves: { width: cobWidth * 8, height: cobWidth * 8, depth: cobWidth * 8, yOffset: 2.0 }
                 },
                 visual: {
-                    trunk: { radius: cobWidth / 2, height: 5.0 },
-                    leaves: { radius: cobWidth * 4 }
+                    trunk: { radius: cobWidth / 2, height: 5.0, yOffsetInGroup: (5.0 / 2) - (9.0 / 2) },
+                    leaves: { radius: cobWidth * 4, yOffsetInGroup: (5.0 + 2.0) - (9.0 / 2) }
                 },
-                growthTime: Infinity
+                overallPhysicsHeight: 9.0, // Will be recalculated by randomizeTreeDimensions
+                growthTime: Infinity // Fully grown
             }
         };
 
+        // Function to randomize tree dimensions based on a base stage data
         function randomizeTreeDimensions(baseStageData) {
             const randomFactor = (min, max) => min + (Math.random() * (max - min));
-            const randomized = JSON.parse(JSON.stringify(baseStageData));
 
-            // Se for uma semente, não há randomização
-            if (!baseStageData.physics.trunk) {
-                randomized.overallPhysicsHeight = randomized.physics.height;
-                return randomized;
-            }
-
+            // Apply random factors (e.g., +/- 20% variation)
             const trunkHeightFactor = randomFactor(0.8, 1.2);
             const trunkRadiusFactor = randomFactor(0.8, 1.2);
             const leavesRadiusFactor = randomFactor(0.8, 1.2);
 
+            const randomized = JSON.parse(JSON.stringify(baseStageData)); // Deep copy
+
+            // Randomize trunk dimensions
+            randomized.physics.trunk.height *= trunkHeightFactor;
+            randomized.physics.trunk.width *= trunkRadiusFactor;
+            randomized.physics.trunk.depth *= trunkRadiusFactor;
             randomized.visual.trunk.height *= trunkHeightFactor;
             randomized.visual.trunk.radius *= trunkRadiusFactor;
+
+            // Randomize leaves dimensions
+            randomized.physics.leaves.width *= leavesRadiusFactor;
+            randomized.physics.leaves.height *= leavesRadiusFactor;
+            randomized.physics.leaves.depth *= leavesRadiusFactor;
             randomized.visual.leaves.radius *= leavesRadiusFactor;
 
-            randomized.physics.trunk.height = randomized.visual.trunk.height;
-            randomized.physics.trunk.width = randomized.visual.trunk.radius * 2;
-            randomized.physics.trunk.depth = randomized.visual.trunk.radius * 2;
+            // Recalculate yOffsets and overallPhysicsHeight based on randomized dimensions
+            const trunkHeightVisual = randomized.visual.trunk.height;
+            const leavesRadiusVisual = randomized.visual.leaves.radius;
 
-            randomized.physics.leaves.width = randomized.visual.leaves.radius * 2;
-            randomized.physics.leaves.height = randomized.visual.leaves.radius * 2;
-            randomized.physics.leaves.depth = randomized.visual.leaves.radius * 2;
+            // The visual group's total height is the trunk plus the leaves' diameter.
+            const groupHeightVisual = trunkHeightVisual + (leavesRadiusVisual * 2);
 
-            const trunkHeight = randomized.physics.trunk.height;
-            const leavesHeight = randomized.physics.leaves.height;
-            randomized.overallPhysicsHeight = trunkHeight + leavesHeight;
-            const bodyCenterY = randomized.overallPhysicsHeight / 2;
+            // Position the trunk so its bottom aligns with the group's bottom.
+            // The group is centered, so its bottom is at -groupHeight/2. The trunk's center
+            // is then placed at -groupHeight/2 + trunkHeight/2.
+            randomized.visual.trunk.yOffsetInGroup = (trunkHeightVisual / 2) - (groupHeightVisual / 2);
 
-            randomized.physics.trunk.yOffset = (trunkHeight / 2) - bodyCenterY;
-            randomized.physics.leaves.yOffset = (trunkHeight + leavesHeight / 2) - bodyCenterY;
+            // Position the leaves so their center is on top of the trunk's top.
+            // The trunk's top is at trunk.yOffset + trunk.height/2.
+            // The leaves' center should be at that position, plus their radius.
+            const trunkTopY = randomized.visual.trunk.yOffsetInGroup + (trunkHeightVisual / 2);
+            randomized.visual.leaves.yOffsetInGroup = trunkTopY + leavesRadiusVisual;
 
-            randomized.visual.trunk.yOffsetInGroup = trunkHeight / 2;
-            randomized.visual.leaves.yOffsetInGroup = trunkHeight;
+            // For physics, approximate the overall height for positioning
+            const trunkTopPhysics = randomized.physics.trunk.height / 2;
+            const leavesBottomPhysics = trunkTopPhysics;
+            randomized.overallPhysicsHeight = randomized.physics.trunk.height + (randomized.physics.leaves.height); // Sum of trunk and leaves physics height
+
+            // Adjust physics yOffsets to be relative to the new overallPhysicsHeight center
+            randomized.physics.trunk.yOffset = (randomized.physics.trunk.height / 2) - (randomized.overallPhysicsHeight / 2);
+            randomized.physics.leaves.yOffset = (leavesBottomPhysics + randomized.physics.leaves.height / 2) - (randomized.overallPhysicsHeight / 2);
 
             return randomized;
         }
@@ -1112,23 +1128,53 @@
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), floorMaterialMesh);
                 initialMass = initialFloorMass;
                 durability = floorDurability;
-            } else if (type === 'semente_arvore') {
-                randomizedTreeDimensions = randomizeTreeDimensions(treeStages['semente']);
-                const stageData = randomizedTreeDimensions;
+            } else if (type === 'muda_arvore') {
+                randomizedTreeDimensions = randomizeTreeDimensions(treeStages['muda']);
+                const stageData = randomizedTreeDimensions; // Use randomized data
+
+                // Adjust the body's y-position to align the visual model with the ground, not the physics model.
+                const trunkHeightVisual = stageData.visual.trunk.height;
+                const leavesRadiusVisual = stageData.visual.leaves.radius;
+                const groupHeightVisual = trunkHeightVisual + leavesRadiusVisual;
+                const overallPhysicsHeight = stageData.overallPhysicsHeight;
+                position.y += (groupHeightVisual / 2) - (overallPhysicsHeight / 2);
+
                 initialMass = initialTreeSaplingMass;
                 durability = treeSaplingDurability;
 
-                // Física da semente: uma pequena cápsula
-                const seedShape = new CANNON.Sphere(stageData.physics.radius);
-                blockBody.addShape(seedShape);
+                // Add trunk physics shape
+                const trunkPhysics = stageData.physics.trunk;
+                const trunkShape = new CANNON.Box(new CANNON.Vec3(trunkPhysics.width / 2, trunkPhysics.height / 2, trunkPhysics.depth / 2));
+                blockBody.addShape(trunkShape, new CANNON.Vec3(0, trunkPhysics.yOffset, 0));
 
-                // Visual da semente: um pequeno cilindro para se assemelhar a uma semente/cápsula
-                const seedGeometry = new THREE.CylinderGeometry(stageData.visual.radius, stageData.visual.radius, stageData.visual.height, 8);
-                mesh = new THREE.Mesh(seedGeometry, treeTrunkMaterialMesh); // Reutiliza o material do tronco
+                // Add leaves physics shape
+                const leavesPhysics = stageData.physics.leaves;
+                const leavesShape = new CANNON.Box(new CANNON.Vec3(leavesPhysics.width / 2, leavesPhysics.height / 2, leavesPhysics.depth / 2));
+                blockBody.addShape(leavesShape, new CANNON.Vec3(0, leavesPhysics.yOffset, 0));
 
-                width = stageData.physics.radius * 2;
-                height = stageData.physics.height;
-                depth = stageData.physics.radius * 2;
+                // Create a THREE.Group for the tree visual
+                const treeGroup = new THREE.Group();
+
+                // Trunk visual
+                const trunkGeometry = new THREE.CylinderGeometry(stageData.visual.trunk.radius, stageData.visual.trunk.radius, stageData.visual.trunk.height, 8);
+                const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
+                trunkMesh.position.y = stageData.visual.trunk.yOffsetInGroup;
+                trunkMesh.castShadow = true;
+                trunkMesh.receiveShadow = true;
+                treeGroup.add(trunkMesh);
+
+                // Leaves visual
+                const leavesGeometry = new THREE.SphereGeometry(stageData.visual.leaves.radius, 16, 16);
+                const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
+                leavesMesh.position.y = stageData.visual.leaves.yOffsetInGroup;
+                leavesMesh.castShadow = true;
+                leavesMesh.receiveShadow = true;
+                treeGroup.add(leavesMesh);
+
+                mesh = treeGroup; // The mesh is now the group
+                width = stageData.overallPhysicsHeight; // Use overall height for ghost block dimensions
+                height = stageData.overallPhysicsHeight;
+                depth = stageData.overallPhysicsHeight;
             } else if (type === 'tronco_arvore') { // NOVO: Bloco de tronco de árvore
                 width = trunkRadius * 2; // Diâmetro para largura
                 height = trunkHeight;
@@ -1280,7 +1326,9 @@
                 islandMaterial,
                 {
                     friction: 0.7,
-                    restitution: 0
+                    restitution: 0,
+                    contactEquationStiffness: 1e8, // Aumenta a rigidez para evitar que os objectos se "afundem"
+                    contactEquationRelaxation: 4    // Proporciona um ligeiro "amortecimento" para evitar o ressalto
                 }
             );
             world.addContactMaterial(cubeGroundContactMaterial);
@@ -1364,13 +1412,60 @@
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
             // Cria o Terreno (Ilha Redonda)
-            const islandShape = new CANNON.Cylinder(islandRadiusTop, islandRadiusBottom, islandHeight, 32);
-            islandBody = new CANNON.Body({ mass: 0, shape: islandShape, material: islandMaterial });
-            // Posiciona o cilindro para que o topo fique em islandSurfaceHeight e a base em seabedLevel
-            islandBody.position.set(0, (islandSurfaceHeight + seabedLevel) / 2, 0);
-            world.addBody(islandBody);
+            // A geometria visual é agora um plano segmentado cujos vértices correspondem ao Heightfield.
+            const hfGridSize = 128; // A resolução DEVE corresponder à do Heightfield
+            const islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
 
-            const islandGeometry = new THREE.CylinderGeometry(islandRadiusTop, islandRadiusBottom, islandHeight, 64);
+            // --- Criação do Corpo de Física da Ilha com Heightfield ---
+            const hfMatrix = [];
+            for (let i = 0; i < hfGridSize; i++) {
+                hfMatrix.push([]);
+                for (let j = 0; j < hfGridSize; j++) {
+                    // Mapeia os índices da grelha para coordenadas do mundo
+                    const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
+                    const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
+                    const distance = Math.sqrt(x * x + z * z);
+                    let height;
+
+                    if (distance <= islandRadiusTop) {
+                        height = islandSurfaceHeight;
+                    } else if (distance <= islandRadiusBottom) {
+                        // Interpola linearmente da superfície da ilha para o fundo do mar
+                        const t = (distance - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
+                        height = islandSurfaceHeight * (1 - t) + seabedLevel * t;
+                    } else {
+                        height = seabedLevel;
+                    }
+                    hfMatrix[i][j] = height;
+                }
+            }
+
+            // Gira a geometria para ficar no plano XZ.
+            islandGeometry.rotateX(-Math.PI / 2);
+
+            // Define a altura de cada vértice na geometria para corresponder à matriz do Heightfield.
+            const vertices = islandGeometry.attributes.position.array;
+            for (let i = 0; i < hfGridSize; i++) {
+                for (let j = 0; j < hfGridSize; j++) {
+                    const height = hfMatrix[i][j];
+                    const index = (i * hfGridSize + j) * 3;
+                    vertices[index + 1] = height; // Atualiza a coordenada Y
+                }
+            }
+            islandGeometry.attributes.position.needsUpdate = true;
+            islandGeometry.computeVertexNormals(); // Recalcula as normais para uma iluminação correta
+
+            const hfShape = new CANNON.Heightfield(hfMatrix, {
+                elementSize: worldSize / (hfGridSize - 1)
+            });
+
+            islandBody = new CANNON.Body({ mass: 0, material: islandMaterial });
+            islandBody.addShape(hfShape);
+            // Os Heightfields são criados no plano XY, por isso rodamos para o plano XZ.
+            islandBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+            // Posiciona o corpo no canto do mundo para alinhar a grelha.
+            islandBody.position.set(-worldSize / 2, 0, worldSize / 2);
+            world.addBody(islandBody);
             const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
@@ -1415,14 +1510,6 @@
                 }
             }
 
-            // NOVO: Cria o corpo de física para o fundo do mar (agora uma caixa para evitar tunelamento)
-            const seabedShape = new CANNON.Box(new CANNON.Vec3(worldSize / 2, 0.5, worldSize / 2)); // Caixa grossa
-            seabedBody = new CANNON.Body({ mass: 0, shape: seabedShape, material: islandMaterial });
-            // Posiciona a caixa para que seu topo esteja em seabedLevel
-            seabedBody.position.y = seabedLevel - 0.5;
-            world.addBody(seabedBody);
-
-
             // A rua foi removida, então o código relacionado a ela foi excluído.
 
             // Cria o Corpo de Física do Jogador (esfera)
@@ -1448,7 +1535,7 @@
             playerBody.addEventListener('collide', (event) => {
                 // canJump é verdadeiro APENAS se o corpo colidido NÃO for o objeto que está sendo segurado
                 // A lista de corpos "chão" agora inclui apenas superfícies que podem ser pisadas
-                const allGroundBodies = [islandBody, seabedBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+                const allGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
                 if (event.body !== pickedObjectBody && allGroundBodies.includes(event.body)) {
                     canJump = true;
                 }
@@ -1555,15 +1642,10 @@
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1); // Adjust as needed for leaves
-                treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({
-                    map: texture,
-                    transparent: true,
-                    alphaTest: 0.5, // Keeps transparent parts of the texture from rendering
-                    side: THREE.DoubleSide // Ensures the leaf planes are visible from both sides
-                });
+                treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ map: texture, transparent: true, alphaTest: 0.5 }); // alphaTest for transparency
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura das folhas da árvore:', error);
-                treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22, side: THREE.DoubleSide }); // Fallback dark green
+                treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 }); // Fallback dark green
             });
 
             // Cria um corpo "grabber" invisível para segurar objetos
@@ -2351,9 +2433,9 @@
             // Atualiza as posições das malhas do terreno com base na posição envolvida do jogador
             islandMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
+                tile.mesh.position.y = 0; // O plano está agora centrado em Y=0
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                tile.mesh.position.y = islandBody.position.y; // Alinha o centro da malha visual com o centro do corpo de física
-                tile.mesh.quaternion.copy(islandBody.quaternion);
+                // A rotação da malha é definida uma vez na inicialização e não precisa de ser atualizada.
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
@@ -2765,7 +2847,7 @@
             // Verifica colisão com terreno (rua), estrada, cubos e blocos
             world.raycastAny(rayOriginLow, rayTargetLow, {}, rayResultStep);
             // A lista de corpos "chão" para subida de degraus
-            const stepClimbGroundBodies = [islandBody, seabedBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+            const stepClimbGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
             if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
                 hitLow = true;
             }
@@ -2795,84 +2877,85 @@
                 }
             }
 
-            // Lógica de crescimento da semente
+            // Lógica de crescimento da muda de árvore
             for (let i = placedConstructionBodies.length - 1; i >= 0; i--) {
                 const blockBody = placedConstructionBodies[i];
-                if (blockBody.userData.type === 'semente_arvore' && !blockBody.userData.isFullyGrown) {
-                    const blockMeshArray = placedConstructionMeshesArrays[i];
+                const blockMeshArray = placedConstructionMeshesArrays[i];
+                const treeGroup = blockMeshArray[0].mesh; // This is the THREE.Group
+
+                if (blockBody.userData.type === 'muda_arvore' && !blockBody.userData.isFullyGrown) {
                     const currentGrowthStageName = blockBody.userData.growthStage;
                     const currentBaseStageData = treeStages[currentGrowthStageName];
+                    const currentRandomizedData = blockBody.userData.randomizedDimensions;
 
                     let nextGrowthStageName = null;
-                    if (currentGrowthStageName === 'semente' && world.time - blockBody.userData.growthStartTime >= currentBaseStageData.growthTime) {
-                        nextGrowthStageName = 'arvore_pequena';
-                    } else if (currentGrowthStageName === 'arvore_pequena' && world.time - blockBody.userData.growthStartTime >= currentBaseStageData.growthTime) {
+                    if (currentGrowthStageName === 'muda' && world.time - blockBody.userData.growthStartTime >= currentBaseStageData.growthTime) {
+                        nextGrowthStageName = 'media';
+                    } else if (currentGrowthStageName === 'media' && world.time - blockBody.userData.growthStartTime >= currentBaseStageData.growthTime) {
                         nextGrowthStageName = 'arvore_adulta';
                     }
 
                     if (nextGrowthStageName) {
+                        console.log(`Árvore crescendo de ${currentGrowthStageName} para ${nextGrowthStageName} no tempo do mundo: ${world.time.toFixed(2)}`); // Log para depuração
                         const nextBaseStageData = treeStages[nextGrowthStageName];
-                        const nextRandomizedData = randomizeTreeDimensions(nextBaseStageData);
+                        const nextRandomizedData = randomizeTreeDimensions(nextBaseStageData); // Randomize for the next stage
 
-                        const oldOverallPhysicsHeight = blockBody.userData.dimensions.height;
-                        const newOverallPhysicsHeight = nextRandomizedData.overallPhysicsHeight;
+                        // Get current overall physics height from user data
+                        const oldOverallPhysicsHeight = currentRandomizedData.overallPhysicsHeight;
 
+                        // Clear existing shapes from the body
                         while (blockBody.shapes.length > 0) {
                             blockBody.removeShape(blockBody.shapes[0]);
                         }
 
+                        // Add new trunk physics shape
                         const trunkPhysics = nextRandomizedData.physics.trunk;
                         const trunkShape = new CANNON.Box(new CANNON.Vec3(trunkPhysics.width / 2, trunkPhysics.height / 2, trunkPhysics.depth / 2));
                         blockBody.addShape(trunkShape, new CANNON.Vec3(0, trunkPhysics.yOffset, 0));
 
+                        // Add new leaves physics shape
                         const leavesPhysics = nextRandomizedData.physics.leaves;
                         const leavesShape = new CANNON.Box(new CANNON.Vec3(leavesPhysics.width / 2, leavesPhysics.height / 2, leavesPhysics.depth / 2));
                         blockBody.addShape(leavesShape, new CANNON.Vec3(0, leavesPhysics.yOffset, 0));
 
+                        // Adjust position to keep the bottom of the block on the ground
+                        const newOverallPhysicsHeight = nextRandomizedData.overallPhysicsHeight;
                         blockBody.position.y += (newOverallPhysicsHeight - oldOverallPhysicsHeight) / 2;
 
-                        blockMeshArray.forEach(item => {
-                            const visualObject = item.mesh;
-                            // Se era uma semente, agora é um grupo. Limpa a malha antiga.
-                            if (currentGrowthStageName === 'semente') {
-                                if(visualObject.geometry) visualObject.geometry.dispose();
-                                // Transforma a malha em um grupo
-                                item.mesh = new THREE.Group();
-                                item.mesh.userData.physicsBody = blockBody;
-                                scene.remove(visualObject);
-                                scene.add(item.mesh);
-                            }
+                        // Update Three.js mesh (the group)
+                        treeGroup.children.forEach(child => child.geometry.dispose()); // Dispose old geometries
+                        treeGroup.remove(...treeGroup.children); // Remove all children
 
-                            const visualGroup = item.mesh;
-                            visualGroup.children.forEach(child => {
-                                if (child.geometry) child.geometry.dispose();
-                            });
-                            visualGroup.remove(...visualGroup.children);
+                        // Create new trunk and leaves for the next stage
+                        const trunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
+                        const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
+                        trunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
+                        trunkMesh.castShadow = true;
+                        trunkMesh.receiveShadow = true;
+                        treeGroup.add(trunkMesh);
 
-                            const newTrunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
-                            const newTrunkMesh = new THREE.Mesh(newTrunkGeometry, treeTrunkMaterialMesh);
-                            newTrunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
-                            newTrunkMesh.castShadow = true;
-                            newTrunkMesh.receiveShadow = true;
-                            visualGroup.add(newTrunkMesh);
+                        const leavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
+                        const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
+                        leavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
+                        leavesMesh.castShadow = true;
+                        leavesMesh.receiveShadow = true;
+                        treeGroup.add(leavesMesh);
 
-                            const newLeavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
-                            const newLeavesMesh = new THREE.Mesh(newLeavesGeometry, treeLeavesMaterialMesh);
-                            newLeavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
-                            newLeavesMesh.castShadow = true;
-                            newLeavesMesh.receiveShadow = true;
-                            visualGroup.add(newLeavesMesh);
-                        });
-
-                        blockBody.userData.dimensions.height = newOverallPhysicsHeight;
+                        // Update userData
+                        blockBody.userData.dimensions = {
+                            width: nextRandomizedData.physics.trunk.width, // Store trunk width as a representative
+                            height: newOverallPhysicsHeight, // Store the new overall height
+                            depth: nextRandomizedData.physics.trunk.depth // Store trunk depth as a representative
+                        };
                         blockBody.userData.growthStage = nextGrowthStageName;
                         blockBody.userData.growthStartTime = world.time;
-                        blockBody.userData.randomizedDimensions = nextRandomizedData;
+                        blockBody.userData.randomizedDimensions = nextRandomizedData; // Update randomized dimensions
 
                         if (nextGrowthStageName === 'arvore_adulta') {
                             blockBody.userData.isFullyGrown = true;
+                            console.log('Árvore totalmente crescida!');
                         }
-                        blockBody.wakeUp();
+                        blockBody.wakeUp(); // Ensure the body is active after shape changes
                     }
                 }
             }
@@ -2922,11 +3005,11 @@
                         currentGhostWidth = woodenPlankWidth;
                         currentGhostHeight = woodenPlankHeight;
                         currentGhostDepth = woodenPlankDepth;
-                    } else if (currentBlockType === 'semente_arvore') {
-                        const seedBaseData = treeStages['semente'];
-                        currentGhostHeight = seedBaseData.physics.height;
-                        currentGhostWidth = seedBaseData.physics.radius * 2;
-                        currentGhostDepth = seedBaseData.physics.radius * 2;
+                    } else if (currentBlockType === 'muda_arvore') {
+                        const saplingBaseData = treeStages['muda'];
+                        currentGhostWidth = Math.max(saplingBaseData.physics.trunk.width, saplingBaseData.physics.leaves.width);
+                        currentGhostDepth = Math.max(saplingBaseData.physics.trunk.depth, saplingBaseData.physics.leaves.depth);
+                        currentGhostHeight = saplingBaseData.overallPhysicsHeight;
                     } else if (currentBlockType === 'tronco_arvore') { // NOVO: Altura do ghost para tronco
                         currentGhostWidth = trunkRadius * 2;
                         currentGhostHeight = trunkHeight;
