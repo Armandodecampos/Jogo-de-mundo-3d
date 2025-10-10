@@ -599,6 +599,19 @@
         // Define tree stages with base physics bounding box and visual geometry properties
         // These are base values that will be randomized for each tree instance
         const treeStages = {
+            'semente': {
+                physics: {
+                    // A semente quase não tem corpo de física, apenas uma pequena caixa para detecção
+                    trunk: { width: 0.1, height: 0.1, depth: 0.1, yOffset: 0 },
+                    leaves: { width: 0, height: 0, depth: 0, yOffset: 0 } // Sem folhas
+                },
+                visual: {
+                    // A semente visual será dois pequenos planos cruzados
+                    sprout: { width: 0.2, height: 0.2 }
+                },
+                overallPhysicsHeight: 0.1,
+                growthTime: 10 // Tempo em segundos para crescer para a próxima fase
+            },
             'muda': {
                 physics: {
                     trunk: { width: cobWidth / 2, height: 0.5, depth: cobWidth / 2, yOffset: -0.2 },
@@ -1129,50 +1142,40 @@
                 initialMass = initialFloorMass;
                 durability = floorDurability;
             } else if (type === 'muda_arvore') {
-                randomizedTreeDimensions = randomizeTreeDimensions(treeStages['muda']);
-                const stageData = randomizedTreeDimensions; // Use randomized data
+                // Ao colocar uma 'muda', na verdade começamos com o estágio 'semente'
+                randomizedTreeDimensions = randomizeTreeDimensions(treeStages['semente']);
+                const stageData = randomizedTreeDimensions; // Usa dados randomizados
 
-                // Adjust the body's y-position to align the visual model with the ground, not the physics model.
-                const trunkHeightVisual = stageData.visual.trunk.height;
-                const leavesRadiusVisual = stageData.visual.leaves.radius;
-                const groupHeightVisual = trunkHeightVisual + leavesRadiusVisual;
+                // Ajusta a posição Y do corpo para alinhar o modelo visual com o chão
+                const groupHeightVisual = stageData.visual.sprout.height;
                 const overallPhysicsHeight = stageData.overallPhysicsHeight;
                 position.y += (groupHeightVisual / 2) - (overallPhysicsHeight / 2);
 
                 initialMass = initialTreeSaplingMass;
                 durability = treeSaplingDurability;
 
-                // Add trunk physics shape
+                // Adiciona a forma de física (caixa minúscula para a semente)
                 const trunkPhysics = stageData.physics.trunk;
                 const trunkShape = new CANNON.Box(new CANNON.Vec3(trunkPhysics.width / 2, trunkPhysics.height / 2, trunkPhysics.depth / 2));
                 blockBody.addShape(trunkShape, new CANNON.Vec3(0, trunkPhysics.yOffset, 0));
 
-                // Add leaves physics shape
-                const leavesPhysics = stageData.physics.leaves;
-                const leavesShape = new CANNON.Box(new CANNON.Vec3(leavesPhysics.width / 2, leavesPhysics.height / 2, leavesPhysics.depth / 2));
-                blockBody.addShape(leavesShape, new CANNON.Vec3(0, leavesPhysics.yOffset, 0));
-
-                // Create a THREE.Group for the tree visual
+                // Cria um THREE.Group para o visual da árvore
                 const treeGroup = new THREE.Group();
 
-                // Trunk visual
-                const trunkGeometry = new THREE.CylinderGeometry(stageData.visual.trunk.radius, stageData.visual.trunk.radius, stageData.visual.trunk.height, 8);
-                const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
-                trunkMesh.position.y = stageData.visual.trunk.yOffsetInGroup;
-                trunkMesh.castShadow = true;
-                trunkMesh.receiveShadow = true;
-                treeGroup.add(trunkMesh);
+                // Visual para o estágio 'semente': dois planos cruzados para parecer um broto
+                const sproutMaterial = new THREE.MeshStandardMaterial({ color: 0x90EE90, side: THREE.DoubleSide }); // Verde claro, dupla face
+                const sproutGeo = new THREE.PlaneGeometry(stageData.visual.sprout.width, stageData.visual.sprout.height);
+                const sproutMesh1 = new THREE.Mesh(sproutGeo, sproutMaterial);
+                sproutMesh1.castShadow = true;
 
-                // Leaves visual
-                const leavesGeometry = new THREE.SphereGeometry(stageData.visual.leaves.radius, 16, 16);
-                const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
-                leavesMesh.position.y = stageData.visual.leaves.yOffsetInGroup;
-                leavesMesh.castShadow = true;
-                leavesMesh.receiveShadow = true;
-                treeGroup.add(leavesMesh);
+                const sproutMesh2 = sproutMesh1.clone();
+                sproutMesh2.rotation.y = Math.PI / 2;
 
-                mesh = treeGroup; // The mesh is now the group
-                width = stageData.overallPhysicsHeight; // Use overall height for ghost block dimensions
+                treeGroup.add(sproutMesh1);
+                treeGroup.add(sproutMesh2);
+
+                mesh = treeGroup; // A malha agora é o grupo
+                width = stageData.overallPhysicsHeight;
                 height = stageData.overallPhysicsHeight;
                 depth = stageData.overallPhysicsHeight;
             } else if (type === 'tronco_arvore') { // NOVO: Bloco de tronco de árvore
@@ -1208,7 +1211,7 @@
                 type: type, // Armazena o tipo de bloco
                 dimensions: { width, height, depth }, // Armazena as dimensões para referência (overall for trees)
                 initialDimensions: { width, height, depth }, // Store initial dimensions for growth
-                growthStage: (type === 'muda_arvore') ? 'muda' : null, // Initial growth stage for trees
+                growthStage: (type === 'muda_arvore') ? 'semente' : null, // O estágio de crescimento inicial para árvores é 'semente'
                 growthStartTime: (type === 'muda_arvore') ? world.time : null, // Time when placed for trees
                 randomizedDimensions: randomizedTreeDimensions // Store randomized dimensions for trees
             };
@@ -2567,12 +2570,13 @@
                         currentGhostDepth = woodenPlankDepth;
                         ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
                     } else if (currentBlockType === 'muda_arvore') {
-                        // For ghost block, use the base dimensions of the sapling stage
-                        const saplingBaseData = treeStages['muda'];
-                        currentGhostWidth = Math.max(saplingBaseData.physics.trunk.width, saplingBaseData.physics.leaves.width);
-                        currentGhostDepth = Math.max(saplingBaseData.physics.trunk.depth, saplingBaseData.physics.leaves.depth);
-                        currentGhostHeight = saplingBaseData.overallPhysicsHeight;
-                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth); // Usar BoxGeometry para o ghost de árvore
+                        // O ghost block para 'muda_arvore' deve corresponder ao estágio inicial 'semente'
+                        const seedBaseData = treeStages['semente'];
+                        currentGhostWidth = seedBaseData.visual.sprout.width;
+                        currentGhostDepth = seedBaseData.visual.sprout.width; // É um quadrado
+                        currentGhostHeight = seedBaseData.visual.sprout.height;
+                        // Usar uma geometria de plano para o ghost block da semente para melhor corresponder
+                        ghostBlockMesh.geometry = new THREE.PlaneGeometry(currentGhostWidth, currentGhostHeight);
                     } else if (currentBlockType === 'tronco_arvore') { // NOVO: Geometria do ghost para tronco
                         currentGhostWidth = trunkRadius * 2;
                         currentGhostHeight = trunkHeight;
@@ -2889,13 +2893,24 @@
                     const currentRandomizedData = blockBody.userData.randomizedDimensions;
 
                     let nextGrowthStageName = null;
-                    if (currentGrowthStageName === 'muda' && world.time - blockBody.userData.growthStartTime >= currentBaseStageData.growthTime) {
+                    if (currentGrowthStageName === 'semente' && world.time - blockBody.userData.growthStartTime >= currentBaseStageData.growthTime) {
+                        nextGrowthStageName = 'muda';
+                    } else if (currentGrowthStageName === 'muda' && world.time - blockBody.userData.growthStartTime >= currentBaseStageData.growthTime) {
                         nextGrowthStageName = 'media';
                     } else if (currentGrowthStageName === 'media' && world.time - blockBody.userData.growthStartTime >= currentBaseStageData.growthTime) {
                         nextGrowthStageName = 'arvore_adulta';
                     }
 
                     if (nextGrowthStageName) {
+                        // Ao crescer da semente para a muda, precisamos descartar o material do broto
+                        if (currentGrowthStageName === 'semente') {
+                            treeGroup.children.forEach(child => {
+                                if (child.material) {
+                                    child.material.dispose();
+                                }
+                            });
+                        }
+
                         console.log(`Árvore crescendo de ${currentGrowthStageName} para ${nextGrowthStageName} no tempo do mundo: ${world.time.toFixed(2)}`); // Log para depuração
                         const nextBaseStageData = treeStages[nextGrowthStageName];
                         const nextRandomizedData = randomizeTreeDimensions(nextBaseStageData); // Randomize for the next stage
@@ -2915,8 +2930,10 @@
 
                         // Add new leaves physics shape
                         const leavesPhysics = nextRandomizedData.physics.leaves;
-                        const leavesShape = new CANNON.Box(new CANNON.Vec3(leavesPhysics.width / 2, leavesPhysics.height / 2, leavesPhysics.depth / 2));
-                        blockBody.addShape(leavesShape, new CANNON.Vec3(0, leavesPhysics.yOffset, 0));
+                        if (leavesPhysics.width > 0) { // Só adiciona a forma das folhas se elas existirem
+                            const leavesShape = new CANNON.Box(new CANNON.Vec3(leavesPhysics.width / 2, leavesPhysics.height / 2, leavesPhysics.depth / 2));
+                            blockBody.addShape(leavesShape, new CANNON.Vec3(0, leavesPhysics.yOffset, 0));
+                        }
 
                         // Adjust position to keep the bottom of the block on the ground
                         const newOverallPhysicsHeight = nextRandomizedData.overallPhysicsHeight;
