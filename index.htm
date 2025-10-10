@@ -2897,60 +2897,69 @@
                     }
 
                     if (nextGrowthStageName) {
-                        // Ao crescer da semente para a muda, descartamos a geometria e o material antigos
-                        if (currentGrowthStageName === 'semente') {
-                            if (treeGroup.isMesh) { // O estágio da semente é uma malha única
-                                treeGroup.geometry.dispose();
-                                treeGroup.material.dispose();
-                            }
-                        }
-
-                        console.log(`Árvore crescendo de ${currentGrowthStageName} para ${nextGrowthStageName} no tempo do mundo: ${world.time.toFixed(2)}`); // Log para depuração
+                        console.log(`Árvore crescendo de ${currentGrowthStageName} para ${nextGrowthStageName} no tempo do mundo: ${world.time.toFixed(2)}`);
                         const nextBaseStageData = treeStages[nextGrowthStageName];
-                        const nextRandomizedData = randomizeTreeDimensions(nextBaseStageData); // Randomize for the next stage
+                        const nextRandomizedData = randomizeTreeDimensions(nextBaseStageData);
 
-                        // Get current overall physics height from user data
                         const oldOverallPhysicsHeight = currentRandomizedData.overallPhysicsHeight;
 
-                        // Clear existing shapes from the body
                         while (blockBody.shapes.length > 0) {
                             blockBody.removeShape(blockBody.shapes[0]);
                         }
 
-                        // Add new trunk physics shape
                         const trunkPhysics = nextRandomizedData.physics.trunk;
                         const trunkShape = new CANNON.Box(new CANNON.Vec3(trunkPhysics.width / 2, trunkPhysics.height / 2, trunkPhysics.depth / 2));
                         blockBody.addShape(trunkShape, new CANNON.Vec3(0, trunkPhysics.yOffset, 0));
 
-                        // Add new leaves physics shape
                         const leavesPhysics = nextRandomizedData.physics.leaves;
-                        if (leavesPhysics.width > 0) { // Só adiciona a forma das folhas se elas existirem
+                        if (leavesPhysics.width > 0) {
                             const leavesShape = new CANNON.Box(new CANNON.Vec3(leavesPhysics.width / 2, leavesPhysics.height / 2, leavesPhysics.depth / 2));
                             blockBody.addShape(leavesShape, new CANNON.Vec3(0, leavesPhysics.yOffset, 0));
                         }
 
-                        // Adjust position to keep the bottom of the block on the ground
                         const newOverallPhysicsHeight = nextRandomizedData.overallPhysicsHeight;
                         blockBody.position.y += (newOverallPhysicsHeight - oldOverallPhysicsHeight) / 2;
 
-                        // Update Three.js mesh (the group)
-                        treeGroup.children.forEach(child => child.geometry.dispose()); // Dispose old geometries
-                        treeGroup.remove(...treeGroup.children); // Remove all children
+                        // Itera sobre cada malha visual espelhada para esta árvore para substituí-la
+                        blockMeshArray.forEach(item => {
+                            const oldVisualObject = item.mesh;
 
-                        // Create new trunk and leaves for the next stage
-                        const trunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
-                        const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
-                        trunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
-                        trunkMesh.castShadow = true;
-                        trunkMesh.receiveShadow = true;
-                        treeGroup.add(trunkMesh);
+                            // Remove e descarta o objeto antigo da cena
+                            if (oldVisualObject) {
+                                if (oldVisualObject.isGroup) {
+                                    oldVisualObject.children.forEach(child => {
+                                        if (child.geometry) child.geometry.dispose();
+                                        if (child.material) child.material.dispose();
+                                    });
+                                } else { // é uma Malha
+                                    if (oldVisualObject.geometry) oldVisualObject.geometry.dispose();
+                                    if (oldVisualObject.material) oldVisualObject.material.dispose();
+                                }
+                                scene.remove(oldVisualObject);
+                            }
 
-                        const leavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
-                        const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
-                        leavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
-                        leavesMesh.castShadow = true;
-                        leavesMesh.receiveShadow = true;
-                        treeGroup.add(leavesMesh);
+                            // Cria o novo objeto visual (sempre um grupo para estágios de árvore)
+                            const newTreeGroup = new THREE.Group();
+                            const trunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
+                            const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
+                            trunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
+                            trunkMesh.castShadow = true;
+                            trunkMesh.receiveShadow = true;
+                            newTreeGroup.add(trunkMesh);
+
+                            const leavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
+                            const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
+                            leavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
+                            leavesMesh.castShadow = true;
+                            leavesMesh.receiveShadow = true;
+                            newTreeGroup.add(leavesMesh);
+
+                            newTreeGroup.userData.physicsBody = blockBody;
+                            scene.add(newTreeGroup);
+
+                            // Atualiza a referência no array para o novo objeto
+                            item.mesh = newTreeGroup;
+                        });
 
                         // Update userData
                         blockBody.userData.dimensions = {
