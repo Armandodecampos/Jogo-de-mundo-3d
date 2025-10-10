@@ -606,8 +606,8 @@
                     leaves: { width: 0, height: 0, depth: 0, yOffset: 0 } // Sem folhas
                 },
                 visual: {
-                    // A semente visual será dois pequenos planos cruzados
-                    sprout: { width: 0.2, height: 0.2 }
+                    // O visual da semente agora é uma esfera
+                    sphere: { radius: 0.1 }
                 },
                 overallPhysicsHeight: 0.1,
                 growthTime: 10 // Tempo em segundos para crescer para a próxima fase
@@ -1147,7 +1147,7 @@
                 const stageData = randomizedTreeDimensions; // Usa dados randomizados
 
                 // Ajusta a posição Y do corpo para alinhar o modelo visual com o chão
-                const groupHeightVisual = stageData.visual.sprout.height;
+                const groupHeightVisual = stageData.visual.sphere.radius * 2;
                 const overallPhysicsHeight = stageData.overallPhysicsHeight;
                 position.y += (groupHeightVisual / 2) - (overallPhysicsHeight / 2);
 
@@ -1159,22 +1159,13 @@
                 const trunkShape = new CANNON.Box(new CANNON.Vec3(trunkPhysics.width / 2, trunkPhysics.height / 2, trunkPhysics.depth / 2));
                 blockBody.addShape(trunkShape, new CANNON.Vec3(0, trunkPhysics.yOffset, 0));
 
-                // Cria um THREE.Group para o visual da árvore
-                const treeGroup = new THREE.Group();
+                // O visual da semente é agora uma única esfera
+                const seedMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Cor de terra/marrom
+                const seedGeometry = new THREE.SphereGeometry(stageData.visual.sphere.radius, 8, 8);
+                const seedMesh = new THREE.Mesh(seedGeometry, seedMaterial);
+                seedMesh.castShadow = true;
 
-                // Visual para o estágio 'semente': dois planos cruzados para parecer um broto
-                const sproutMaterial = new THREE.MeshStandardMaterial({ color: 0x90EE90, side: THREE.DoubleSide }); // Verde claro, dupla face
-                const sproutGeo = new THREE.PlaneGeometry(stageData.visual.sprout.width, stageData.visual.sprout.height);
-                const sproutMesh1 = new THREE.Mesh(sproutGeo, sproutMaterial);
-                sproutMesh1.castShadow = true;
-
-                const sproutMesh2 = sproutMesh1.clone();
-                sproutMesh2.rotation.y = Math.PI / 2;
-
-                treeGroup.add(sproutMesh1);
-                treeGroup.add(sproutMesh2);
-
-                mesh = treeGroup; // A malha agora é o grupo
+                mesh = seedMesh; // A malha é a esfera, não um grupo
                 width = stageData.overallPhysicsHeight;
                 height = stageData.overallPhysicsHeight;
                 depth = stageData.overallPhysicsHeight;
@@ -2572,11 +2563,11 @@
                     } else if (currentBlockType === 'muda_arvore') {
                         // O ghost block para 'muda_arvore' deve corresponder ao estágio inicial 'semente'
                         const seedBaseData = treeStages['semente'];
-                        currentGhostWidth = seedBaseData.visual.sprout.width;
-                        currentGhostDepth = seedBaseData.visual.sprout.width; // É um quadrado
-                        currentGhostHeight = seedBaseData.visual.sprout.height;
-                        // Usar uma geometria de plano para o ghost block da semente para melhor corresponder
-                        ghostBlockMesh.geometry = new THREE.PlaneGeometry(currentGhostWidth, currentGhostHeight);
+                        currentGhostWidth = seedBaseData.visual.sphere.radius * 2;
+                        currentGhostDepth = seedBaseData.visual.sphere.radius * 2;
+                        currentGhostHeight = seedBaseData.visual.sphere.radius * 2;
+                        // A geometria do ghost block é agora uma esfera
+                        ghostBlockMesh.geometry = new THREE.SphereGeometry(seedBaseData.visual.sphere.radius, 8, 8);
                     } else if (currentBlockType === 'tronco_arvore') { // NOVO: Geometria do ghost para tronco
                         currentGhostWidth = trunkRadius * 2;
                         currentGhostHeight = trunkHeight;
