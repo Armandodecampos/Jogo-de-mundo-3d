@@ -478,8 +478,14 @@
         let gamePaused = false; // Novo: Flag para pausar/retomar a lógica do jogo
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
 
-        // Instância do carregador de textura
-        const textureLoader = new THREE.TextureLoader();
+        // NOVO: Gerenciador de Carregamento para rastrear quando todos os assets estiverem prontos
+        const loadingManager = new THREE.LoadingManager();
+        loadingManager.onLoad = () => {
+            console.log("Todos os assets foram carregados. O jogo está pronto!");
+            window.gameIsReady = true; // Flag para o Playwright
+        };
+        // Instância do carregador de textura (agora usa o gerenciador)
+        const textureLoader = new THREE.TextureLoader(loadingManager);
 
         // Referência ao botão de ícone do menu
         let menuIconButton;
@@ -602,92 +608,69 @@
         const treeStages = {
             'muda': {
                 physics: {
-                    trunk: { width: 0.1, height: 0.5, depth: 0.1, yOffset: -0.2 },
-                    leaves: { width: 0.3, height: 0.4, depth: 0.3, yOffset: 0.25 }
+                    trunk: { width: 0.1, height: 0.5, depth: 0.1 },
+                    leaves: { width: 0.3, height: 0.4, depth: 0.3 }
                 },
                 visual: {
-                    trunk: { radius: 0.05, height: 0.5, yOffsetInGroup: -0.15 },
-                    leaves: { radius: 0.15, yOffsetInGroup: 0.25 }
+                    trunk: { radius: 0.05, height: 0.5 },
+                    leaves: { radius: 0.15 } // Radius of the plane for the sprout
                 },
-                overallPhysicsHeight: 0.9,
-                growthTime: 10 // Time in seconds to grow to next stage
+                growthTime: 10
             },
             'media': {
                 physics: {
-                    trunk: { width: cobWidth, height: 2.0, depth: cobWidth, yOffset: -0.8 },
-                    leaves: { width: cobWidth * 4, height: cobWidth * 4, depth: cobWidth * 4, yOffset: 0.8 }
+                    trunk: { width: cobWidth, height: 2.0, depth: cobWidth },
+                    leaves: { width: cobWidth * 4, height: cobWidth * 4, depth: cobWidth * 4 }
                 },
                 visual: {
-                    trunk: { radius: cobWidth / 2, height: 2.0, yOffsetInGroup: (2.0 / 2) - (3.6 / 2) },
-                    leaves: { radius: cobWidth * 2, yOffsetInGroup: (2.0 + 0.8) - (3.6 / 2) }
+                    trunk: { radius: cobWidth / 2, height: 2.0 },
+                    leaves: { radius: cobWidth * 2 }
                 },
-                overallPhysicsHeight: 3.6, // Will be recalculated by randomizeTreeDimensions
                 growthTime: 10
             },
             'arvore_adulta': {
                 physics: {
-                    trunk: { width: cobWidth, height: 5.0, depth: cobWidth, yOffset: -2.0 },
-                    leaves: { width: cobWidth * 8, height: cobWidth * 8, depth: cobWidth * 8, yOffset: 2.0 }
+                    trunk: { width: cobWidth, height: 5.0, depth: cobWidth },
+                    leaves: { width: cobWidth * 8, height: cobWidth * 8, depth: cobWidth * 8 }
                 },
                 visual: {
-                    trunk: { radius: cobWidth / 2, height: 5.0, yOffsetInGroup: (5.0 / 2) - (9.0 / 2) },
-                    leaves: { radius: cobWidth * 4, yOffsetInGroup: (5.0 + 2.0) - (9.0 / 2) }
+                    trunk: { radius: cobWidth / 2, height: 5.0 },
+                    leaves: { radius: cobWidth * 4 }
                 },
-                overallPhysicsHeight: 9.0, // Will be recalculated by randomizeTreeDimensions
-                growthTime: Infinity // Fully grown
+                growthTime: Infinity
             }
         };
 
-        // Function to randomize tree dimensions based on a base stage data
         function randomizeTreeDimensions(baseStageData) {
             const randomFactor = (min, max) => min + (Math.random() * (max - min));
-
-            // Apply random factors (e.g., +/- 20% variation)
             const trunkHeightFactor = randomFactor(0.8, 1.2);
             const trunkRadiusFactor = randomFactor(0.8, 1.2);
             const leavesRadiusFactor = randomFactor(0.8, 1.2);
 
-            const randomized = JSON.parse(JSON.stringify(baseStageData)); // Deep copy
+            const randomized = JSON.parse(JSON.stringify(baseStageData));
 
-            // Randomize trunk dimensions
-            randomized.physics.trunk.height *= trunkHeightFactor;
-            randomized.physics.trunk.width *= trunkRadiusFactor;
-            randomized.physics.trunk.depth *= trunkRadiusFactor;
             randomized.visual.trunk.height *= trunkHeightFactor;
             randomized.visual.trunk.radius *= trunkRadiusFactor;
-
-            // Randomize leaves dimensions
-            randomized.physics.leaves.width *= leavesRadiusFactor;
-            randomized.physics.leaves.height *= leavesRadiusFactor;
-            randomized.physics.leaves.depth *= leavesRadiusFactor;
             randomized.visual.leaves.radius *= leavesRadiusFactor;
 
-            // Recalculate yOffsets and overallPhysicsHeight based on randomized dimensions
-            const trunkHeightVisual = randomized.visual.trunk.height;
-            const leavesRadiusVisual = randomized.visual.leaves.radius;
+            randomized.physics.trunk.height = randomized.visual.trunk.height;
+            randomized.physics.trunk.width = randomized.visual.trunk.radius * 2;
+            randomized.physics.trunk.depth = randomized.visual.trunk.radius * 2;
 
-            // The visual group's total height is the trunk plus the leaves' diameter.
-            const groupHeightVisual = trunkHeightVisual + (leavesRadiusVisual * 2);
+            randomized.physics.leaves.width = randomized.visual.leaves.radius * 2;
+            randomized.physics.leaves.height = randomized.visual.leaves.radius * 2;
+            randomized.physics.leaves.depth = randomized.visual.leaves.radius * 2;
 
-            // Position the trunk so its bottom aligns with the group's bottom.
-            // The group is centered, so its bottom is at -groupHeight/2. The trunk's center
-            // is then placed at -groupHeight/2 + trunkHeight/2.
-            randomized.visual.trunk.yOffsetInGroup = (trunkHeightVisual / 2) - (groupHeightVisual / 2);
+            const trunkHeight = randomized.physics.trunk.height;
+            const leavesHeight = randomized.physics.leaves.height;
+            randomized.overallPhysicsHeight = trunkHeight + leavesHeight;
+            const bodyCenterY = randomized.overallPhysicsHeight / 2;
 
-            // Position the leaves so their center is on top of the trunk's top.
-            // The trunk's top is at trunk.yOffset + trunk.height/2.
-            // The leaves' center should be at that position, plus their radius.
-            const trunkTopY = randomized.visual.trunk.yOffsetInGroup + (trunkHeightVisual / 2);
-            randomized.visual.leaves.yOffsetInGroup = trunkTopY + leavesRadiusVisual;
+            randomized.physics.trunk.yOffset = (trunkHeight / 2) - bodyCenterY;
+            randomized.physics.leaves.yOffset = (trunkHeight + leavesHeight / 2) - bodyCenterY;
 
-            // For physics, approximate the overall height for positioning
-            const trunkTopPhysics = randomized.physics.trunk.height / 2;
-            const leavesBottomPhysics = trunkTopPhysics;
-            randomized.overallPhysicsHeight = randomized.physics.trunk.height + (randomized.physics.leaves.height); // Sum of trunk and leaves physics height
-
-            // Adjust physics yOffsets to be relative to the new overallPhysicsHeight center
-            randomized.physics.trunk.yOffset = (randomized.physics.trunk.height / 2) - (randomized.overallPhysicsHeight / 2);
-            randomized.physics.leaves.yOffset = (leavesBottomPhysics + randomized.physics.leaves.height / 2) - (randomized.overallPhysicsHeight / 2);
+            randomized.visual.trunk.yOffsetInGroup = trunkHeight / 2;
+            randomized.visual.leaves.yOffsetInGroup = trunkHeight;
 
             return randomized;
         }
@@ -1164,13 +1147,20 @@
                 trunkMesh.receiveShadow = true;
                 treeGroup.add(trunkMesh);
 
-                // Leaves visual
-                const leavesGeometry = new THREE.SphereGeometry(stageData.visual.leaves.radius, 16, 16);
-                const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
-                leavesMesh.position.y = stageData.visual.leaves.yOffsetInGroup;
-                leavesMesh.castShadow = true;
-                leavesMesh.receiveShadow = true;
-                treeGroup.add(leavesMesh);
+                // --- New Sprout-like Leaves Visual ---
+                const leafSize = stageData.visual.leaves.radius * 2.5; // Use radius to define plane size
+                const leafGeometry = new THREE.PlaneGeometry(leafSize, leafSize);
+
+                // First plane
+                const leavesMesh1 = new THREE.Mesh(leafGeometry, treeLeavesMaterialMesh);
+                leavesMesh1.position.y = stageData.visual.leaves.yOffsetInGroup;
+                leavesMesh1.castShadow = true;
+                treeGroup.add(leavesMesh1);
+
+                // Second plane, rotated 90 degrees on Y axis
+                const leavesMesh2 = leavesMesh1.clone();
+                leavesMesh2.rotation.y = Math.PI / 2;
+                treeGroup.add(leavesMesh2);
 
                 mesh = treeGroup; // The mesh is now the group
                 width = stageData.overallPhysicsHeight; // Use overall height for ghost block dimensions
@@ -1602,10 +1592,15 @@
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1); // Adjust as needed for leaves
-                treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ map: texture, transparent: true, alphaTest: 0.5 }); // alphaTest for transparency
+                treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({
+                    map: texture,
+                    transparent: true,
+                    alphaTest: 0.5, // Keeps transparent parts of the texture from rendering
+                    side: THREE.DoubleSide // Ensures the leaf planes are visible from both sides
+                });
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura das folhas da árvore:', error);
-                treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 }); // Fallback dark green
+                treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22, side: THREE.DoubleSide }); // Fallback dark green
             });
 
             // Cria um corpo "grabber" invisível para segurar objetos
@@ -2178,6 +2173,17 @@
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
 
+            // --- EXPOSURE FOR TESTING ---
+            window.THREE = THREE;
+            window.CANNON = CANNON;
+            window.world = world;
+            window.playerBody = playerBody;
+            window.placeBlock = placeBlock;
+            window.treeSaplingItemName = treeSaplingItemName;
+            window.placedConstructionBodies = placedConstructionBodies;
+            window.createPlaceableBlock = createPlaceableBlock;
+            window.animate = animate;
+            // --- END EXPOSURE FOR TESTING ---
         }
 
         // Função para lidar com o redimensionamento da janela
@@ -2840,13 +2846,10 @@
             // Lógica de crescimento da muda de árvore
             for (let i = placedConstructionBodies.length - 1; i >= 0; i--) {
                 const blockBody = placedConstructionBodies[i];
-                const blockMeshArray = placedConstructionMeshesArrays[i];
-                const treeGroup = blockMeshArray[0].mesh; // This is the THREE.Group
-
                 if (blockBody.userData.type === 'muda_arvore' && !blockBody.userData.isFullyGrown) {
+                    const blockMeshArray = placedConstructionMeshesArrays[i];
                     const currentGrowthStageName = blockBody.userData.growthStage;
                     const currentBaseStageData = treeStages[currentGrowthStageName];
-                    const currentRandomizedData = blockBody.userData.randomizedDimensions;
 
                     let nextGrowthStageName = null;
                     if (currentGrowthStageName === 'muda' && world.time - blockBody.userData.growthStartTime >= currentBaseStageData.growthTime) {
@@ -2856,66 +2859,57 @@
                     }
 
                     if (nextGrowthStageName) {
-                        console.log(`Árvore crescendo de ${currentGrowthStageName} para ${nextGrowthStageName} no tempo do mundo: ${world.time.toFixed(2)}`); // Log para depuração
                         const nextBaseStageData = treeStages[nextGrowthStageName];
-                        const nextRandomizedData = randomizeTreeDimensions(nextBaseStageData); // Randomize for the next stage
+                        const nextRandomizedData = randomizeTreeDimensions(nextBaseStageData);
 
-                        // Get current overall physics height from user data
-                        const oldOverallPhysicsHeight = currentRandomizedData.overallPhysicsHeight;
+                        const oldOverallPhysicsHeight = blockBody.userData.dimensions.height;
+                        const newOverallPhysicsHeight = nextRandomizedData.overallPhysicsHeight;
 
-                        // Clear existing shapes from the body
                         while (blockBody.shapes.length > 0) {
                             blockBody.removeShape(blockBody.shapes[0]);
                         }
 
-                        // Add new trunk physics shape
                         const trunkPhysics = nextRandomizedData.physics.trunk;
                         const trunkShape = new CANNON.Box(new CANNON.Vec3(trunkPhysics.width / 2, trunkPhysics.height / 2, trunkPhysics.depth / 2));
                         blockBody.addShape(trunkShape, new CANNON.Vec3(0, trunkPhysics.yOffset, 0));
 
-                        // Add new leaves physics shape
                         const leavesPhysics = nextRandomizedData.physics.leaves;
                         const leavesShape = new CANNON.Box(new CANNON.Vec3(leavesPhysics.width / 2, leavesPhysics.height / 2, leavesPhysics.depth / 2));
                         blockBody.addShape(leavesShape, new CANNON.Vec3(0, leavesPhysics.yOffset, 0));
 
-                        // Adjust position to keep the bottom of the block on the ground
-                        const newOverallPhysicsHeight = nextRandomizedData.overallPhysicsHeight;
                         blockBody.position.y += (newOverallPhysicsHeight - oldOverallPhysicsHeight) / 2;
 
-                        // Update Three.js mesh (the group)
-                        treeGroup.children.forEach(child => child.geometry.dispose()); // Dispose old geometries
-                        treeGroup.remove(...treeGroup.children); // Remove all children
+                        blockMeshArray.forEach(item => {
+                            const visualGroup = item.mesh;
+                            visualGroup.children.forEach(child => {
+                                if (child.geometry) child.geometry.dispose();
+                            });
+                            visualGroup.remove(...visualGroup.children);
 
-                        // Create new trunk and leaves for the next stage
-                        const trunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
-                        const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
-                        trunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
-                        trunkMesh.castShadow = true;
-                        trunkMesh.receiveShadow = true;
-                        treeGroup.add(trunkMesh);
+                            const newTrunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
+                            const newTrunkMesh = new THREE.Mesh(newTrunkGeometry, treeTrunkMaterialMesh);
+                            newTrunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
+                            newTrunkMesh.castShadow = true;
+                            newTrunkMesh.receiveShadow = true;
+                            visualGroup.add(newTrunkMesh);
 
-                        const leavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
-                        const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
-                        leavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
-                        leavesMesh.castShadow = true;
-                        leavesMesh.receiveShadow = true;
-                        treeGroup.add(leavesMesh);
+                            const newLeavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
+                            const newLeavesMesh = new THREE.Mesh(newLeavesGeometry, treeLeavesMaterialMesh);
+                            newLeavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
+                            newLeavesMesh.castShadow = true;
+                            newLeavesMesh.receiveShadow = true;
+                            visualGroup.add(newLeavesMesh);
+                        });
 
-                        // Update userData
-                        blockBody.userData.dimensions = {
-                            width: nextRandomizedData.physics.trunk.width, // Store trunk width as a representative
-                            height: newOverallPhysicsHeight, // Store the new overall height
-                            depth: nextRandomizedData.physics.trunk.depth // Store trunk depth as a representative
-                        };
+                        blockBody.userData.dimensions.height = newOverallPhysicsHeight;
                         blockBody.userData.growthStage = nextGrowthStageName;
                         blockBody.userData.growthStartTime = world.time;
-                        blockBody.userData.randomizedDimensions = nextRandomizedData; // Update randomized dimensions
+                        blockBody.userData.randomizedDimensions = nextRandomizedData;
 
                         if (nextGrowthStageName === 'arvore_adulta') {
                             blockBody.userData.isFullyGrown = true;
-                            console.log('Árvore totalmente crescida!');
                         }
-                        blockBody.wakeUp(); // Ensure the body is active after shape changes
+                        blockBody.wakeUp();
                     }
                 }
             }
