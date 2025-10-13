@@ -378,7 +378,7 @@
         let playerBody;
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
-        let grassMeshes = []; // Array para armazenar múltiplas malhas visuais da relva
+        let grassMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da relva
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
@@ -512,6 +512,7 @@
         const hammerItemName = 'martelo'; // Nome do item de martelo no inventário
         const stoneItemName = 'pedra'; // NOVO: Nome do item de pedra no inventário
         const textureApplicatorItemName = 'pincel'; // FERRAMENTA RENOMEADA
+        const shovelItemName = 'pá'; // NOVO: Nome do item da pá
 
         // NOVO: Variáveis para o sistema de colocação de blocos (Cob, Piso, Muda de Árvore, Tronco de Árvore, Tábuas)
         const cobItemName = 'cob'; // Nome do item de cob no inventário
@@ -577,6 +578,7 @@
         const treeTrunkImageURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // NOVO: Ícone para o tronco de árvore (placeholder)
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
         const textureApplicatorImageURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Ícone para o pincel
+        const shovelImageURL = 'https://dl.dropbox.com/scl/fi/a2a99ooxlt3v7d603t203/shovel-icon.png?rlkey=259u9f7p06ko15d0qk52dw3qf&st=k5y691e9&dl=0'; // NOVO: Ícone da pá
         const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Textura de pedra para aplicar
         const grassTextureURL = "https://dl.dropbox.com/scl/fi/c8s6fisvxvg0qz9d6u2vb/Grass-texture.jpg?rlkey=9gaw6xc8o3p7t3b2ubsxmb715&st=23958hfi&dl=0";
 
@@ -830,6 +832,8 @@
                     img.src = hammerImageURL;
                 } else if (item.name === stoneItemName) { // NOVO
                     img.src = stoneImageURL;
+                } else if (item.name === shovelItemName) { // NOVO
+                    img.src = shovelImageURL;
                 } else if (item.name === textureApplicatorItemName) {
                     img.src = textureApplicatorImageURL;
                 } else if (item.name === cobItemName) {
@@ -1462,6 +1466,12 @@
             }
             grassGeometry.attributes.position.needsUpdate = true;
 
+            // NOVO: Adiciona um atributo alfa personalizado à geometria da relva
+            const vertexCount = grassVertices.length / 3;
+            const alphas = new Float32Array(vertexCount);
+            alphas.fill(1.0); // Inicializa todos os vértices como totalmente opacos
+            grassGeometry.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
+
             const hfShape = new CANNON.Heightfield(hfMatrix, {
                 elementSize: worldSize / (hfGridSize - 1)
             });
@@ -1484,12 +1494,40 @@
             textureLoader.load(grassTextureURL, (grassTexture) => {
                 grassTexture.wrapS = THREE.RepeatWrapping;
                 grassTexture.wrapT = THREE.RepeatWrapping;
-                grassTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4); // Usa a mesma repetição
+                grassTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
                 const grassMaterial = new THREE.MeshStandardMaterial({
                     map: grassTexture,
-                    transparent: true, // Permite transparência
-                    alphaTest: 0.5   // Descarta pixels com alfa abaixo de 0.5
+                    transparent: true, // A transparência é crucial
                 });
+
+                grassMaterial.onBeforeCompile = (shader) => {
+                    // Adicionar atributo e varying ao vertex shader
+                    shader.vertexShader =
+                        'attribute float alpha;\n' +
+                        'varying float vAlpha;\n' +
+                        shader.vertexShader;
+
+                    // Passar o alfa para o fragment shader
+                    shader.vertexShader = shader.vertexShader.replace(
+                        'void main() {',
+                        'void main() {\n\tvAlpha = alpha;'
+                    );
+
+                    // Adicionar varying ao fragment shader
+                    shader.fragmentShader =
+                        'varying float vAlpha;\n' +
+                        shader.fragmentShader;
+
+                    // Usar o alfa no fragment shader para modificar a transparência
+                    shader.fragmentShader = shader.fragmentShader.replace(
+                        '#include <dithering_fragment>',
+                        `
+                        #include <dithering_fragment>
+                        if (vAlpha < 0.1) discard;
+                        gl_FragColor.a *= vAlpha;
+                        `
+                    );
+                };
 
                 for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                     for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
@@ -1502,7 +1540,7 @@
 
                         // Cria e adiciona a malha de relva
                         const grassMesh = new THREE.Mesh(grassGeometry, grassMaterial);
-                        grassMesh.receiveShadow = true; // A relva também pode receber sombras
+                        grassMesh.receiveShadow = true;
                         scene.add(grassMesh);
                         grassMeshes.push({ mesh: grassMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                     }
@@ -1719,6 +1757,7 @@
             // Adiciona outros itens diretamente na mochila
             addItemToInventory(backpackItems, { name: hammerItemName, quantity: 1 });
             addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 }); // NOVO
+            addItemToInventory(backpackItems, { name: shovelItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: textureApplicatorItemName, quantity: 1 });
             addItemToInventory(backpackItems, { name: cobItemName, quantity: 100 });
             addItemToInventory(backpackItems, { name: floorItemName, quantity: 50 });
@@ -1945,6 +1984,8 @@
                         placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
                     } else if (primaryActionType === 'apply_texture') {
                         applyTexture();
+                    } else if (primaryActionType === 'dig') { // NOVO
+                        digHole();
                     }
                 } else if (event.button === 2) { // Botão direito do mouse para cima
                     if (secondaryActionType === 'place') {
@@ -1958,6 +1999,7 @@
             function getActionType(item) {
                 if (item === null) return 'grab';
                 if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName) return 'destroy';
+                if (item.name === shovelItemName) return 'dig'; // NOVO
                 if (item.name === textureApplicatorItemName) return 'apply_texture';
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
                 return null;
@@ -2170,6 +2212,59 @@
                         }
                     }
                     texturePatches.push(patchObject);
+                }
+            }
+
+            function digHole() {
+                // 1. Lança um raio a partir da câmara para ver onde o jogador está a apontar
+                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+
+                // 2. Verifica se o raio interseta alguma das malhas de relva
+                const grassMeshObjects = grassMeshes.map(item => item.mesh);
+                const intersects = raycaster.intersectObjects(grassMeshObjects);
+
+                // Se houver uma interseção, continua
+                if (intersects.length > 0) {
+                    const intersect = intersects[0];
+                    const hitPoint = intersect.point;
+                    const hitMesh = intersect.object;
+
+                    // A geometria da relva é partilhada entre todas as malhas.
+                    // Só precisamos de modificar os atributos da geometria base uma vez.
+                    const baseGeometry = hitMesh.geometry; // Todas as malhas de relva partilham a mesma geometria
+                    const positions = baseGeometry.attributes.position.array;
+                    const alphas = baseGeometry.attributes.alpha.array;
+
+                    const digRadius = 1.5; // O raio do buraco a ser cavado
+                    const digRadiusSq = digRadius * digRadius; // Usa o raio ao quadrado para cálculos de distância mais eficientes
+
+                    // 3. Converte o ponto de interseção (coordenadas mundiais) para as coordenadas locais da malha atingida.
+                    // Isto é necessário porque as posições dos vértices na geometria são locais.
+                    const localHitPoint = hitPoint.clone().sub(hitMesh.position);
+
+                    // 4. Itera sobre todos os vértices na geometria da relva
+                    for (let i = 0; i < positions.length; i += 3) {
+                        const vx = positions[i];
+                        const vz = positions[i + 2];
+
+                        // Calcula a distância ao quadrado no plano XZ do vértice ao ponto de interseção local
+                        const dx = vx - localHitPoint.x;
+                        const dz = vz - localHitPoint.z;
+                        const distSq = dx * dx + dz * dz;
+
+                        // 5. Se o vértice estiver dentro do raio de escavação, atualiza o seu valor alfa
+                        if (distSq < digRadiusSq) {
+                            const distance = Math.sqrt(distSq);
+                            // Cria um efeito de esbatimento suave. O alfa é mais baixo no centro do buraco
+                            // e aumenta em direção à borda.
+                            const newAlphaValue = Math.min(alphas[i / 3], distance / digRadius);
+                            alphas[i / 3] = newAlphaValue;
+                        }
+                    }
+
+                    // 6. Informa o Three.js que o atributo alfa precisa de ser atualizado na GPU.
+                    // Isto é crucial para que as alterações de transparência se tornem visíveis.
+                    baseGeometry.attributes.alpha.needsUpdate = true;
                 }
             }
 
@@ -2478,7 +2573,7 @@
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
-            // Atualiza as posições das malhas de relva
+            // NOVO: Atualiza as posições das malhas de relva
             grassMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.y = 0; // A posição Y já está elevada na geometria
