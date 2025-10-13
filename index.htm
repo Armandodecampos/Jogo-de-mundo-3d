@@ -509,6 +509,7 @@
         // NOVO: Variáveis para o sistema de destruição de blocos (Machado e Martelo)
         const axeItemName = 'machado'; // Nome do item de machado no inventário
         const hammerItemName = 'martelo'; // Nome do item de martelo no inventário
+        const boulderItemName = 'pedregulho'; // NOVO: Nome do item de pedregulho no inventário
         const stoneItemName = 'pedra'; // NOVO: Nome do item de pedra no inventário
         const textureApplicatorItemName = 'pincel'; // FERRAMENTA RENOMEADA
 
@@ -569,7 +570,8 @@
         const treeSaplingTextureURL = 'https://dl.dropbox.com/scl/fi/pjdpuxo189igkd5wyvp0z/icone-de-muda-de-arvore.png?rlkey=9bvfgukhymi4qo02965pt3zl4&st=xs4n6qwo&dl=0'; // Dark green placeholder for tree icon
         const axeImageURL = 'https://dl.dropbox.com/scl/fi/6td6rpc8n54j6sz62w383/icone-de-machado.png?rlkey=zepycmnfyohef27tp7f5urnx0&st=7kbd3no2&dl=0'; // Placeholder for axe image
         const hammerImageURL = 'https://dl.dropbox.com/scl/fi/vadd8ztbnmzfqi18ml1cl/icone-de-martelo.png?rlkey=45l4k78t728fh4w4fkd4tvlef&st=cbi6paz9&dl=0'; // Placeholder for hammer image
-        const stoneImageURL = 'https://placehold.co/100x100/964B00/FFFFFF?text=Pedra'; // NOVO: Imagem para a pedra
+        const boulderTextureURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Textura de pedregulho
+        const stoneImageURL = 'https://dl.dropbox.com/scl/fi/v9o0rt6zma30g4z1e2p7c/pedra.png?rlkey=ax200h4yr25u9yfd8cn6olfe6&st=7vbsf58u&dl=0'; // NOVO: Imagem para a pedra
         const treeBarkTextureURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // Corrected URL
         const treeLeavesTextureURL = 'https://dl.dropbox.com/s/scl/fi/gdz8f8qzmrdza0t0nntzs/textura-folhas-arvore.jpg?rlkey=efabv8qthg0fpxg1ugf7fpd3k&dl=0'; // Corrected URL
         const handImageURL = 'https://dl.dropbox.com/scl/fi/adirqfks81emnagkoljcw/m-o-direita.png?rlkey=pj17lswbeg8lene1n5ypdbmob&st=i2qtxssr&dl=0';
@@ -580,12 +582,14 @@
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
+        let stoneMaterialMesh; // NOVO: Material para pedras colecionáveis
         let cobMaterialMesh;
         let floorMaterialMesh;
         let treeSaplingMaterialMesh; // New material for tree saplings icon
         let treeTrunkMaterialMesh; // Material for tree trunks (3D model)
         let treeLeavesMaterialMesh; // Material for tree leaves (3D model)
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
+        let boulderMaterialMesh; // NOVO: Material para pedregulhos
         let stoneMaterial; // NOVO: Material para chão com a nova textura
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
@@ -1060,48 +1064,101 @@
 
 
         // NOVO: Função para criar uma nova caixa dinâmica
-        function createBox(position, quaternion) {
-            const cubeSize = 1;
-            const initialCubeMass = 200;
-            const cubeShape = new CANNON.Box(new CANNON.Vec3(cubeSize / 2, cubeSize / 2, cubeSize / 2));
-            const cubeGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+        function createBoulder(position) {
+            const boulderRadius = 1.5; // Raio do pedregulho
+            const boulderDurability = 3.0; // Durabilidade do pedregulho em segundos
 
-            const boxBody = new CANNON.Body({
-                mass: initialCubeMass,
-                shape: cubeShape,
-                material: cubeMaterial,
+            const boulderShape = new CANNON.Sphere(boulderRadius);
+            const boulderBody = new CANNON.Body({
+                mass: 0, // Estático
+                shape: boulderShape,
+                material: islandMaterial, // Usar o mesmo material da ilha para contato
+                type: CANNON.Body.STATIC,
+            });
+            boulderBody.position.copy(position);
+
+            world.addBody(boulderBody);
+            boulderBody.userData = {
+                isDestructible: true,
+                durability: boulderDurability,
+                type: boulderItemName,
+            };
+
+            const boulderGeometry = new THREE.SphereGeometry(boulderRadius, 16, 16);
+            const boulderMeshes = [];
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const mesh = new THREE.Mesh(boulderGeometry, boulderMaterialMesh);
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    mesh.userData.physicsBody = boulderBody;
+                    scene.add(mesh);
+                    boulderMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
+
+            // Adiciona o corpo e as malhas às listas de rastreamento de objetos colocados
+            // para que a lógica de atualização visual e destruição funcione para eles
+            placedConstructionBodies.push(boulderBody);
+            placedConstructionMeshesArrays.push(boulderMeshes);
+        }
+
+        function createCollectible(type, position, quaternion) {
+            let size, initialMass, shape, geometry, materialMesh, itemTypeName;
+
+            if (type === boxItemName) {
+                size = 1;
+                initialMass = 200;
+                shape = new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2));
+                geometry = new THREE.BoxGeometry(size, size, size);
+                materialMesh = cubeMaterialMesh;
+                itemTypeName = boxItemName;
+            } else if (type === stoneItemName) {
+                size = 0.3; // As pedras são menores
+                initialMass = 10; // E mais leves
+                shape = new CANNON.Sphere(size / 2); // Forma de esfera para as pedras
+                geometry = new THREE.SphereGeometry(size / 2, 8, 8);
+                materialMesh = stoneMaterialMesh; // Usa o material de pedra
+                itemTypeName = stoneItemName;
+            } else {
+                console.error("Tipo de colecionável desconhecido:", type);
+                return;
+            }
+
+            const body = new CANNON.Body({
+                mass: initialMass,
+                shape: shape,
+                material: cubeMaterial, // Reutiliza o material de física do cubo
                 linearDamping: 0.3,
                 angularDamping: 0.3,
                 allowSleep: true,
                 sleepSpeedLimit: 0.01,
                 sleepTimeLimit: 1.0
             });
-            boxBody.position.copy(position);
+            body.position.copy(position);
             if (quaternion) {
-                boxBody.quaternion.copy(quaternion);
+                body.quaternion.copy(quaternion);
             }
-            world.addBody(boxBody);
-            boxBody.userData = {
+            world.addBody(body);
+            body.userData = {
                 isCollectible: true,
-                type: boxItemName,
-                originalMass: initialCubeMass,
-                initialPosition: new CANNON.Vec3().copy(boxBody.position)
+                type: itemTypeName,
+                originalMass: initialMass,
+                initialPosition: new CANNON.Vec3().copy(body.position)
             };
 
-            const boxMeshes = [];
+            const meshes = [];
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh); // Usa o material global
+                    const mesh = new THREE.Mesh(geometry, materialMesh);
                     mesh.castShadow = true;
                     mesh.receiveShadow = true;
-                    mesh.userData.physicsBody = boxBody;
+                    mesh.userData.physicsBody = body;
                     scene.add(mesh);
-                    boxMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                    meshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
             }
-
-            // Adiciona a nova caixa à lista de caixas colecionáveis
-            collectibleBoxes.push({ body: boxBody, meshes: boxMeshes });
+            collectibleBoxes.push({ body: body, meshes: meshes });
         }
 
         // Função para criar um novo bloco físico e visual (cob ou piso)
@@ -1191,6 +1248,15 @@
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), woodenPlankMaterialMesh);
                 initialMass = initialWoodenPlankMass;
                 durability = woodenPlankDurability;
+            } else if (type === stoneItemName) {
+                width = 0.3;
+                height = 0.3;
+                depth = 0.3;
+                blockShape = new CANNON.Sphere(width / 2);
+                blockBody.addShape(blockShape);
+                mesh = new THREE.Mesh(new THREE.SphereGeometry(width / 2, 8, 8), stoneMaterialMesh);
+                initialMass = 20; // Massa um pouco maior que a pedra colecionável
+                durability = 1.5; // Durabilidade da pedra colocada
             }
             else {
                 console.error('Tipo de bloco desconhecido:', type);
@@ -1542,16 +1608,45 @@
             // --- Configuração dos Cubos Interativos ---
             const cubeSize = 1;
             // Carrega a textura para os cubos e cria o material global
+            const stoneTexture = textureLoader.load(stoneImageURL);
+            stoneTexture.wrapS = THREE.RepeatWrapping;
+            stoneTexture.wrapT = THREE.RepeatWrapping;
+            stoneTexture.repeat.set(1, 1);
+            stoneMaterialMesh = new THREE.MeshStandardMaterial({ map: stoneTexture });
+
             const cubeTexture = textureLoader.load(cubeTextureURL);
             cubeTexture.wrapS = THREE.RepeatWrapping;
             cubeTexture.wrapT = THREE.RepeatWrapping;
             cubeTexture.repeat.set(1, 1);
             cubeMaterialMesh = new THREE.MeshStandardMaterial({ map: cubeTexture });
 
-            // Cria as caixas iniciais usando a função createBox
-            createBox(new THREE.Vector3(0, cubeSize / 2 + islandSurfaceHeight, -10));
-            createBox(new THREE.Vector3(5, cubeSize / 2 + islandSurfaceHeight, -10));
-            createBox(new THREE.Vector3(-5, cubeSize / 2 + islandSurfaceHeight, -10));
+            // Cria as caixas iniciais usando a nova função
+            createCollectible(boxItemName, new THREE.Vector3(0, 1 / 2 + islandSurfaceHeight, -10));
+            createCollectible(boxItemName, new THREE.Vector3(5, 1 / 2 + islandSurfaceHeight, -10));
+            createCollectible(boxItemName, new THREE.Vector3(-5, 1 / 2 + islandSurfaceHeight, -10));
+
+
+            // --- Configuração dos Pedregulhos ---
+            textureLoader.load(boulderTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(2, 2); // Repete a textura no pedregulho
+                boulderMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
+
+                // Cria os pedregulhos DEPOIS que a textura for carregada
+                createBoulder(new THREE.Vector3(10, 1.5 / 2 + islandSurfaceHeight, -15));
+                createBoulder(new THREE.Vector3(-12, 1.5 / 2 + islandSurfaceHeight, -20));
+                createBoulder(new THREE.Vector3(5, 1.5 / 2 + islandSurfaceHeight, -30));
+
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura do pedregulho:', error);
+                boulderMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x888888 }); // Fallback cinza
+                // Cria os pedregulhos mesmo se a textura falhar
+                createBoulder(new THREE.Vector3(10, 1.5 / 2 + islandSurfaceHeight, -15));
+                createBoulder(new THREE.Vector3(-12, 1.5 / 2 + islandSurfaceHeight, -20));
+                createBoulder(new THREE.Vector3(5, 1.5 / 2 + islandSurfaceHeight, -30));
+            });
+
 
             // Cria o ghost block (transparente)
             const ghostBlockMaterial = new THREE.MeshBasicMaterial({
@@ -1677,7 +1772,7 @@
 
             // Adiciona outros itens diretamente na mochila
             addItemToInventory(backpackItems, { name: hammerItemName, quantity: 1 });
-            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 }); // NOVO
+            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 50 }); // Começa com 50 pedras
             addItemToInventory(backpackItems, { name: textureApplicatorItemName, quantity: 1 });
             addItemToInventory(backpackItems, { name: cobItemName, quantity: 100 });
             addItemToInventory(backpackItems, { name: floorItemName, quantity: 50 });
@@ -1916,9 +2011,9 @@
 
             function getActionType(item) {
                 if (item === null) return 'grab';
-                if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName) return 'destroy';
+                if (item.name === axeItemName || item.name === hammerItemName) return 'destroy';
                 if (item.name === textureApplicatorItemName) return 'apply_texture';
-                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === stoneItemName) return 'place';
                 return null;
             }
 
@@ -1995,27 +2090,25 @@
                     if (intersect.distance > pickUpDistance) continue;
 
                     const clickedBody = intersect.object.userData.physicsBody;
-                    if (!clickedBody || !clickedBody.userData.isCollectible || clickedBody.userData.type !== boxItemName) continue;
+                    // Generaliza a verificação para qualquer item colecionável
+                    if (!clickedBody || !clickedBody.userData.isCollectible) continue;
 
-                    // Encontra o índice da caixa na nossa lista de rastreamento
-                    const boxIndex = collectibleBoxes.findIndex(box => box.body === clickedBody);
-                    if (boxIndex > -1) {
-                        const boxToRemove = collectibleBoxes[boxIndex];
+                    const itemType = clickedBody.userData.type;
+                    if (itemType === boxItemName || itemType === stoneItemName) {
+                        const boxIndex = collectibleBoxes.findIndex(box => box.body === clickedBody);
+                        if (boxIndex > -1) {
+                            const boxToRemove = collectibleBoxes[boxIndex];
 
-                        // Remove o corpo do mundo da física
-                        world.removeBody(boxToRemove.body);
+                            world.removeBody(boxToRemove.body);
+                            boxToRemove.meshes.forEach(m => scene.remove(m.mesh));
+                            collectibleBoxes.splice(boxIndex, 1);
 
-                        // Remove todas as malhas visuais da cena
-                        boxToRemove.meshes.forEach(m => scene.remove(m.mesh));
+                            // Adiciona o tipo de item correto ao inventário
+                            addItemToInventory(backpackItems, { name: itemType, quantity: 1 });
+                            updateBackpackDisplay();
 
-                        // Remove a caixa da nossa lista de rastreamento
-                        collectibleBoxes.splice(boxIndex, 1);
-
-                        // Adiciona o item ao inventário
-                        addItemToInventory(backpackItems, { name: boxItemName, quantity: 1 });
-                        updateBackpackDisplay();
-
-                        break; // Sai do loop, pois já recolhemos um objeto
+                            break; // Sai do loop
+                        }
                     }
                 }
             }
@@ -2079,7 +2172,7 @@
 
                         if (materialLoaded) {
                             if (currentBlockType === boxItemName) {
-                                createBox(ghostBlockMesh.position, ghostBlockMesh.quaternion);
+                                createCollectible(boxItemName, ghostBlockMesh.position, ghostBlockMesh.quaternion);
                             } else {
                                 createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, currentBlockType);
                             }
@@ -2330,33 +2423,49 @@
                             position = destroyTargetMesh.position.clone();
                             const bodyIndex = placedConstructionBodies.indexOf(destroyTargetBody);
                             if (bodyIndex !== -1) {
-                               // Adiciona a lógica de recompensa de troncos com base no estágio da árvore
-                               if (destroyTargetBody.userData.growthStage === 'media') {
-                                   addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 1 });
-                               } else if (destroyTargetBody.userData.growthStage === 'arvore_adulta') {
-                                   addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 3 });
-                               }
-                               // Adiciona tábuas de madeira ao inventário se o objeto destruído for um tronco ou tábua
-                               else if (destroyTargetBody.userData.type === 'tronco_arvore' || destroyTargetBody.userData.type === 'tábuas') {
-                                   addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 2 });
-                               }
-                               // Adiciona o item original ao inventário ao destruir
-                               if (destroyTargetBody.userData.type === 'cob' || destroyTargetBody.userData.type === 'piso') {
-                                   addItemToInventory(backpackItems, { name: destroyTargetBody.userData.type, quantity: 1 });
-                               }
-                               updateBackpackDisplay();
+                                const destroyedType = destroyTargetBody.userData.type;
 
-                               world.removeBody(destroyTargetBody);
-                               placedConstructionBodies.splice(bodyIndex, 1);
-                               scene.remove(destroyTargetMesh);
-                               if (destroyTargetMesh.isGroup) {
-                                   destroyTargetMesh.children.forEach(child => {
-                                       if (child.geometry) child.geometry.dispose();
-                                   });
-                               } else if (destroyTargetMesh.geometry) {
-                                   destroyTargetMesh.geometry.dispose();
-                               }
-                               placedConstructionMeshesArrays.splice(bodyIndex, 1);
+                                // Lógica de recompensa de itens
+                                if (destroyedType === boulderItemName) {
+                                    const stoneCount = Math.floor(Math.random() * 3) + 3; // Gera entre 3 e 5 pedras
+                                    for (let i = 0; i < stoneCount; i++) {
+                                        const offset = new THREE.Vector3(
+                                            (Math.random() - 0.5) * 2,
+                                            Math.random() * 1.5,
+                                            (Math.random() - 0.5) * 2
+                                        );
+                                        const stonePosition = new THREE.Vector3().copy(position).add(offset);
+                                        createCollectible(stoneItemName, stonePosition);
+                                    }
+                                } else if (destroyTargetBody.userData.growthStage === 'media') {
+                                    addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 1 });
+                                } else if (destroyTargetBody.userData.growthStage === 'arvore_adulta') {
+                                    addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 3 });
+                                } else if (destroyedType === 'tronco_arvore' || destroyedType === 'tábuas') {
+                                    addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 2 });
+                                } else if (destroyedType === 'cob' || destroyedType === 'piso') {
+                                    addItemToInventory(backpackItems, { name: destroyedType, quantity: 1 });
+                                }
+
+                                updateBackpackDisplay();
+
+                                // Lógica de remoção do objeto
+                                world.removeBody(destroyTargetBody);
+                                placedConstructionBodies.splice(bodyIndex, 1);
+
+                                // Remove todas as malhas visuais associadas
+                                const meshesToRemove = placedConstructionMeshesArrays[bodyIndex];
+                                meshesToRemove.forEach(m => {
+                                    scene.remove(m.mesh);
+                                    if (m.mesh.isGroup) {
+                                        m.mesh.children.forEach(child => {
+                                            if (child.geometry) child.geometry.dispose();
+                                        });
+                                    } else if (m.mesh.geometry) {
+                                        m.mesh.geometry.dispose();
+                                    }
+                                });
+                                placedConstructionMeshesArrays.splice(bodyIndex, 1);
                             }
                         }
 
@@ -2522,9 +2631,9 @@
 
             if (primaryTool === null) { // Se o slot selecionado estiver vazio, a "mão" está ativa
                 isPrimaryToolGrabbing = true;
-            } else if (primaryTool.name === axeItemName || primaryTool.name === hammerItemName || primaryTool.name === stoneItemName) {
+            } else if (primaryTool.name === axeItemName || primaryTool.name === hammerItemName) {
                 isPrimaryToolDestroying = true;
-            } else if (primaryTool.name === cobItemName || primaryTool.name === floorItemName || primaryTool.name === treeSaplingItemName || primaryTool.name === woodenPlankItemName || primaryTool.name === treeTrunkItemName || primaryTool.name === boxItemName) {
+            } else if (primaryTool.name === cobItemName || primaryTool.name === floorItemName || primaryTool.name === treeSaplingItemName || primaryTool.name === woodenPlankItemName || primaryTool.name === treeTrunkItemName || primaryTool.name === boxItemName || primaryTool.name === stoneItemName) {
                 isPrimaryToolPlacing = true;
                 currentBlockType = primaryTool.name; // Define o tipo de bloco para o ghost mesh
             }
@@ -2577,6 +2686,11 @@
                         currentGhostHeight = trunkHeight;
                         currentGhostDepth = trunkRadius * 2;
                         ghostBlockMesh.geometry = new THREE.CylinderGeometry(trunkRadius, trunkRadius, trunkHeight, trunkSegments);
+                    } else if (currentBlockType === stoneItemName) { // NOVO: Geometria do ghost para a pedra
+                        currentGhostWidth = 0.3;
+                        currentGhostHeight = 0.3;
+                        currentGhostDepth = 0.3;
+                        ghostBlockMesh.geometry = new THREE.SphereGeometry(0.3 / 2, 8, 8);
                     } else if (currentBlockType === boxItemName) {
                         currentGhostWidth = 1;
                         currentGhostHeight = 1;
@@ -2996,9 +3110,9 @@
                 isPrimaryToolGrabbing = true;
             } else if (primaryToolForCrosshair.name === textureApplicatorItemName) {
                 isPrimaryToolApplyingTexture = true;
-            } else if (primaryToolForCrosshair.name === axeItemName || primaryToolForCrosshair.name === hammerItemName || primaryToolForCrosshair.name === stoneItemName) {
+            } else if (primaryToolForCrosshair.name === axeItemName || primaryToolForCrosshair.name === hammerItemName) {
                 isPrimaryToolDestroying = true;
-            } else if (primaryToolForCrosshair.name === cobItemName || primaryToolForCrosshair.name === floorItemName || primaryToolForCrosshair.name === treeSaplingItemName || primaryToolForCrosshair.name === woodenPlankItemName || primaryToolForCrosshair.name === treeTrunkItemName || primaryToolForCrosshair.name === boxItemName) {
+            } else if (primaryToolForCrosshair.name === cobItemName || primaryToolForCrosshair.name === floorItemName || primaryToolForCrosshair.name === treeSaplingItemName || primaryToolForCrosshair.name === woodenPlankItemName || primaryToolForCrosshair.name === treeTrunkItemName || primaryToolForCrosshair.name === boxItemName || primaryToolForCrosshair.name === stoneItemName) {
                 isPrimaryToolPlacing = true;
                 currentBlockType = primaryToolForCrosshair.name; // Define o tipo de bloco para o ghost mesh
             }
