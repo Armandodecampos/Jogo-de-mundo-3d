@@ -378,6 +378,7 @@
         let playerBody;
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
+        let grassMeshes = []; // Array para armazenar múltiplas malhas visuais da relva
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
@@ -577,6 +578,7 @@
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
         const textureApplicatorImageURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Ícone para o pincel
         const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Textura de pedra para aplicar
+        const grassTextureURL = "https://dl.dropbox.com/scl/fi/c8s6fisvxvg0qz9d6u2vb/Grass-texture.jpg?rlkey=9gaw6xc8o3p7t3b2ubsxmb715&st=23958hfi&dl=0";
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -1453,6 +1455,13 @@
             islandGeometry.attributes.position.needsUpdate = true;
             islandGeometry.computeVertexNormals(); // Recalcula as normais para uma iluminação correta
 
+            const grassGeometry = islandGeometry.clone();
+            const grassVertices = grassGeometry.attributes.position.array;
+            for (let i = 0; i < grassVertices.length; i += 3) {
+                grassVertices[i + 1] += 0.2; // Aumenta a coordenada Y em 0.2
+            }
+            grassGeometry.attributes.position.needsUpdate = true;
+
             const hfShape = new CANNON.Heightfield(hfMatrix, {
                 elementSize: worldSize / (hfGridSize - 1)
             });
@@ -1470,15 +1479,47 @@
                 texture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
             });
             const islandMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
-            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
-                    mesh.receiveShadow = true;
-                    mesh.userData.physicsBody = islandBody;
-                    scene.add(mesh);
-                    islandMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+
+            // Carrega a textura da relva e, no callback, cria os meshes da ilha e da relva
+            textureLoader.load(grassTextureURL, (grassTexture) => {
+                grassTexture.wrapS = THREE.RepeatWrapping;
+                grassTexture.wrapT = THREE.RepeatWrapping;
+                grassTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4); // Usa a mesma repetição
+                const grassMaterial = new THREE.MeshStandardMaterial({
+                    map: grassTexture,
+                    transparent: true, // Permite transparência
+                    alphaTest: 0.5   // Descarta pixels com alfa abaixo de 0.5
+                });
+
+                for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                        // Cria e adiciona a malha da ilha
+                        const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
+                        islandMesh.receiveShadow = true;
+                        islandMesh.userData.physicsBody = islandBody;
+                        scene.add(islandMesh);
+                        islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+
+                        // Cria e adiciona a malha de relva
+                        const grassMesh = new THREE.Mesh(grassGeometry, grassMaterial);
+                        grassMesh.receiveShadow = true; // A relva também pode receber sombras
+                        scene.add(grassMesh);
+                        grassMeshes.push({ mesh: grassMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                    }
                 }
-            }
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura da relva:', error);
+                // Fallback: Se a textura da relva falhar, continua a criar a ilha
+                for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                        const mesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
+                        mesh.receiveShadow = true;
+                        mesh.userData.physicsBody = islandBody;
+                        scene.add(mesh);
+                        islandMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                    }
+                }
+            });
 
             // Cria a Água (agora como uma grelha)
             const waterGeometry = new THREE.BoxGeometry(worldSize, 0.1, worldSize);
@@ -2436,6 +2477,13 @@
                 // A rotação da malha é definida uma vez na inicialização e não precisa de ser atualizada.
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
+
+            // Atualiza as posições das malhas de relva
+            grassMeshes.forEach(tile => {
+                tile.mesh.position.x = tile.offsetX - visualOffsetX;
+                tile.mesh.position.y = 0; // A posição Y já está elevada na geometria
+                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
+            });
 
             // NOVO: Atualiza as posições das malhas de água para o efeito de envolvimento
             waterMeshes.forEach(tile => {
