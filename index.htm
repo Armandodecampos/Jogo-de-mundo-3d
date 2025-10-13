@@ -1491,6 +1491,19 @@
                         islandMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                     }
                 }
+
+                // NOVO: Cria o Fundo do Mar DENTRO do callback para garantir que o material existe
+                const seabedGeometry = new THREE.PlaneGeometry(worldSize, worldSize);
+                for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                        const mesh = new THREE.Mesh(seabedGeometry, islandMeshMaterial); // Reutiliza o material da ilha
+                        mesh.rotation.x = -Math.PI / 2;
+                        mesh.position.y = seabedLevel;
+                        mesh.receiveShadow = true;
+                        scene.add(mesh);
+                        seabedMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                    }
+                }
             });
 
             // NOVO: Carrega a textura da grama e cria as malhas da grama
