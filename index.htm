@@ -378,7 +378,6 @@
         let playerBody;
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
-        let grassMeshes = [];
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
@@ -578,7 +577,6 @@
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
         const textureApplicatorImageURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Ícone para o pincel
         const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Textura de pedra para aplicar
-        const grassTextureURL = "https://dl.dropbox.com/scl/fi/c8s6fisvxvg0qz9d6u2vb/Grass-texture.jpg?rlkey=9gaw6xc8o3p7t3b2ubsxmb715&st=23958hfi&dl=0";
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -589,7 +587,6 @@
         let treeLeavesMaterialMesh; // Material for tree leaves (3D model)
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
         let stoneMaterial; // NOVO: Material para chão com a nova textura
-        let grassMaterial;
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
 
@@ -1456,16 +1453,6 @@
             islandGeometry.attributes.position.needsUpdate = true;
             islandGeometry.computeVertexNormals(); // Recalcula as normais para uma iluminação correta
 
-            // NOVO: Cria a geometria da grama clonando a da ilha e elevando os vértices
-            const grassGeometry = islandGeometry.clone();
-            const grassVertices = grassGeometry.attributes.position.array;
-            for (let i = 0; i < grassVertices.length; i += 3) {
-                // Apenas eleva a grama se estiver acima do nível do mar para evitar grama nas encostas subaquáticas
-                if (grassVertices[i + 1] > seabedLevel + 0.1) {
-                     grassVertices[i + 1] += 0.2;
-                }
-            }
-
             const hfShape = new CANNON.Heightfield(hfMatrix, {
                 elementSize: worldSize / (hfGridSize - 1)
             });
@@ -1481,53 +1468,17 @@
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                const islandMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
-                for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        const mesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
-                        mesh.receiveShadow = true;
-                        mesh.userData.physicsBody = islandBody;
-                        scene.add(mesh);
-                        islandMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                    }
-                }
-
-                // NOVO: Cria o Fundo do Mar DENTRO do callback para garantir que o material existe
-                const seabedGeometry = new THREE.PlaneGeometry(worldSize, worldSize);
-                for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        const mesh = new THREE.Mesh(seabedGeometry, islandMeshMaterial); // Reutiliza o material da ilha
-                        mesh.rotation.x = -Math.PI / 2;
-                        mesh.position.y = seabedLevel;
-                        mesh.receiveShadow = true;
-                        scene.add(mesh);
-                        seabedMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                    }
-                }
             });
-
-            // NOVO: Carrega a textura da grama e cria as malhas da grama
-            textureLoader.load(grassTextureURL, (texture) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                grassMaterial = new THREE.MeshStandardMaterial({
-                    map: texture,
-                    transparent: true,
-                    depthWrite: false, // Não escreve no buffer de profundidade
-                    side: THREE.DoubleSide
-                });
-
-                for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        const mesh = new THREE.Mesh(grassGeometry, grassMaterial);
-                        mesh.castShadow = false;
-                        mesh.receiveShadow = true;
-                        scene.add(mesh);
-                        grassMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                    }
+            const islandMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const mesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
+                    mesh.receiveShadow = true;
+                    mesh.userData.physicsBody = islandBody;
+                    scene.add(mesh);
+                    islandMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
-            });
+            }
 
             // Cria a Água (agora como uma grelha)
             const waterGeometry = new THREE.BoxGeometry(worldSize, 0.1, worldSize);
@@ -2483,12 +2434,6 @@
                 tile.mesh.position.y = 0; // O plano está agora centrado em Y=0
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
                 // A rotação da malha é definida uma vez na inicialização e não precisa de ser atualizada.
-            });
-
-            grassMeshes.forEach(tile => {
-                tile.mesh.position.x = tile.offsetX - visualOffsetX;
-                tile.mesh.position.y = 0;
-                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
