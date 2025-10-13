@@ -1466,14 +1466,18 @@
                 for (let j = 0; j < hfGridSize; j++) {
                     const index = (i * hfGridSize + j) * 3;
                     const baseHeight = hfMatrix[i][j];
+                    let finalHeight = baseHeight;
 
-                    // Gera ondulações suaves usando ondas senoidais
-                    const x = j / (hfGridSize - 1);
-                    const z = i / (hfGridSize - 1);
-                    const undulation = (Math.sin(x * 10) * 0.1 + Math.sin(z * 15) * 0.08);
+                    // Aplica ondulação apenas se estiver acima do nível do fundo do mar para evitar que "entre" no chão
+                    if (baseHeight > seabedLevel) {
+                        const x = j / (hfGridSize - 1);
+                        const z = i / (hfGridSize - 1);
+                        const undulation = (Math.sin(x * 10) * 0.1 + Math.sin(z * 15) * 0.08);
+                        finalHeight += undulation;
+                    }
 
-                    // A altura da grama é a altura do terreno + ondulação + um pequeno offset para evitar z-fighting
-                    grassVertices[index + 1] = baseHeight + undulation + 0.02;
+                    // A altura da grama é a altura final + um pequeno offset para evitar z-fighting
+                    grassVertices[index + 1] = finalHeight + 0.02;
                 }
             }
             grassOverlayGeometry.attributes.position.needsUpdate = true;
