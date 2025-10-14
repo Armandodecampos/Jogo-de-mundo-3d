@@ -478,8 +478,12 @@
         let gamePaused = false; // Novo: Flag para pausar/retomar a lógica do jogo
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
 
-        // Instância do carregador de textura
-        const textureLoader = new THREE.TextureLoader();
+        // NOVO: Gestor de Carregamento para rastrear quando todos os recursos estão prontos
+        const loadingManager = new THREE.LoadingManager();
+        let isWorldReady = false;
+
+        // Instância do carregador de textura (agora usa o gestor)
+        const textureLoader = new THREE.TextureLoader(loadingManager);
 
         // Referência ao botão de ícone do menu
         let menuIconButton;
@@ -1490,6 +1494,13 @@
             });
             const islandMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
 
+            // Define o callback onLoad para o gestor. Isto será acionado quando TUDO o que é carregado pelo textureLoader estiver concluído.
+            loadingManager.onLoad = () => {
+                console.log("All assets loaded, world is ready!");
+                isWorldReady = true;
+                // Opcional: ocultar um ecrã de carregamento aqui
+            };
+
             // Carrega a textura da relva e, no callback, cria os meshes da ilha e da relva
             textureLoader.load(grassTextureURL, (grassTexture) => {
                 grassTexture.wrapS = THREE.RepeatWrapping;
@@ -1933,7 +1944,7 @@
 
             // NOVO: Listener de mousedown consolidado
             renderer.domElement.addEventListener('mousedown', (event) => {
-                if (document.pointerLockElement !== renderer.domElement || gamePaused) return;
+                if (document.pointerLockElement !== renderer.domElement || gamePaused || !isWorldReady) return;
 
                 mouseDownTime = performance.now();
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
@@ -1959,7 +1970,7 @@
 
             // NOVO: Listener de mouseup consolidado
             renderer.domElement.addEventListener('mouseup', (event) => {
-                if (document.pointerLockElement !== renderer.domElement || gamePaused) return;
+                if (document.pointerLockElement !== renderer.domElement || gamePaused || !isWorldReady) return;
 
                 stopDestruction(); // Para sempre a destruição em qualquer mouseup
 
@@ -2268,7 +2279,7 @@
                 const isPrimaryToolGrabbing = primaryToolForVisuals === null; // Hand is active if slot 0 is null
 
 
-                if (isDragging && !gamePaused) { // Processa o movimento do mouse apenas se o jogo não estiver pausado
+                if (isDragging && !gamePaused && isWorldReady) { // Processa o movimento do mouse apenas se o jogo não estiver pausado E o mundo estiver pronto
                     const deltaX = event.movementX || event.mozMovementX || event.webkitMovementX || 0;
                     const deltaY = event.movementY || event.mozMovementY || event.webkitMovementY || 0;
 
