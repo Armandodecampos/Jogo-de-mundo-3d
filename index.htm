@@ -2216,44 +2216,47 @@
             }
 
             function digHole() {
-                // 1. Lança um raio a partir da câmara para ver onde o jogador está a apontar
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-
-                // 2. Verifica se o raio interseta alguma das malhas de relva
                 const grassMeshObjects = grassMeshes.map(item => item.mesh);
+
+                // Ensure there are meshes to test against before proceeding
+                if (grassMeshObjects.length === 0) {
+                    return;
+                }
+
                 const intersects = raycaster.intersectObjects(grassMeshObjects);
 
-                // Se houver uma interseção, continua
                 if (intersects.length > 0) {
                     const intersect = intersects[0];
                     const hitPoint = intersect.point;
                     const hitMesh = intersect.object;
 
-                    // A geometria da relva é partilhada entre todas as malhas.
                     const baseGeometry = hitMesh.geometry;
                     const positions = baseGeometry.attributes.position.array;
                     const alphas = baseGeometry.attributes.alpha.array;
 
-                    const digSize = 2.0; // O lado do quadrado a ser cavado
+                    const digSize = 2.0;
                     const halfDigSize = digSize / 2;
 
-                    // 3. Converte o ponto de interseção para as coordenadas locais da malha
+                    // Use the simple subtraction method for local coordinates as it's sufficient here
                     const localHitPoint = hitPoint.clone().sub(hitMesh.position);
 
-                    // 4. Itera sobre todos os vértices
+                    let verticesModified = 0;
                     for (let i = 0; i < positions.length; i += 3) {
                         const vx = positions[i];
                         const vz = positions[i + 2];
 
-                        // 5. Verifica se o vértice está dentro dos limites do quadrado
                         if (Math.abs(vx - localHitPoint.x) < halfDigSize && Math.abs(vz - localHitPoint.z) < halfDigSize) {
-                            // Define o alfa como 0 para tornar o vértice totalmente transparente
-                            alphas[i / 3] = 0.0;
+                            if (alphas[i / 3] !== 0.0) {
+                                alphas[i / 3] = 0.0;
+                                verticesModified++;
+                            }
                         }
                     }
 
-                    // 6. Informa o Three.js que o atributo alfa precisa de ser atualizado
-                    baseGeometry.attributes.alpha.needsUpdate = true;
+                    if (verticesModified > 0) {
+                        baseGeometry.attributes.alpha.needsUpdate = true;
+                    }
                 }
             }
 
