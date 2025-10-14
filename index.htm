@@ -578,7 +578,7 @@
         const treeTrunkImageURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // NOVO: Ícone para o tronco de árvore (placeholder)
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
         const textureApplicatorImageURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Ícone para o pincel
-        const shovelImageURL = 'https://www.dropbox.com/scl/fi/zjtff6t1neec7veb3fy7z/icone-de-pa.png?rlkey=hkv3raomfuxqh8zhxnjwf1axv&st=ag82pjwn&dl=0'; // NOVO: Ícone da pá
+        const shovelImageURL = 'https://dl.dropbox.com/scl/fi/zjtff6t1neec7veb3fy7z/icone-de-pa.png?rlkey=hkv3raomfuxqh8zhxnjwf1axv&st=ag82pjwn&dl=0'; // NOVO: Ícone da pá
         const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Textura de pedra para aplicar
         const grassTextureURL = "https://dl.dropbox.com/scl/fi/c8s6fisvxvg0qz9d6u2vb/Grass-texture.jpg?rlkey=9gaw6xc8o3p7t3b2ubsxmb715&st=23958hfi&dl=0";
 
@@ -2230,40 +2230,29 @@
                     const hitMesh = intersect.object;
 
                     // A geometria da relva é partilhada entre todas as malhas.
-                    // Só precisamos de modificar os atributos da geometria base uma vez.
-                    const baseGeometry = hitMesh.geometry; // Todas as malhas de relva partilham a mesma geometria
+                    const baseGeometry = hitMesh.geometry;
                     const positions = baseGeometry.attributes.position.array;
                     const alphas = baseGeometry.attributes.alpha.array;
 
-                    const digRadius = 1.5; // O raio do buraco a ser cavado
-                    const digRadiusSq = digRadius * digRadius; // Usa o raio ao quadrado para cálculos de distância mais eficientes
+                    const digSize = 2.0; // O lado do quadrado a ser cavado
+                    const halfDigSize = digSize / 2;
 
-                    // 3. Converte o ponto de interseção (coordenadas mundiais) para as coordenadas locais da malha atingida.
-                    // Isto é necessário porque as posições dos vértices na geometria são locais.
+                    // 3. Converte o ponto de interseção para as coordenadas locais da malha
                     const localHitPoint = hitPoint.clone().sub(hitMesh.position);
 
-                    // 4. Itera sobre todos os vértices na geometria da relva
+                    // 4. Itera sobre todos os vértices
                     for (let i = 0; i < positions.length; i += 3) {
                         const vx = positions[i];
                         const vz = positions[i + 2];
 
-                        // Calcula a distância ao quadrado no plano XZ do vértice ao ponto de interseção local
-                        const dx = vx - localHitPoint.x;
-                        const dz = vz - localHitPoint.z;
-                        const distSq = dx * dx + dz * dz;
-
-                        // 5. Se o vértice estiver dentro do raio de escavação, atualiza o seu valor alfa
-                        if (distSq < digRadiusSq) {
-                            const distance = Math.sqrt(distSq);
-                            // Cria um efeito de esbatimento suave. O alfa é mais baixo no centro do buraco
-                            // e aumenta em direção à borda.
-                            const newAlphaValue = Math.min(alphas[i / 3], distance / digRadius);
-                            alphas[i / 3] = newAlphaValue;
+                        // 5. Verifica se o vértice está dentro dos limites do quadrado
+                        if (Math.abs(vx - localHitPoint.x) < halfDigSize && Math.abs(vz - localHitPoint.z) < halfDigSize) {
+                            // Define o alfa como 0 para tornar o vértice totalmente transparente
+                            alphas[i / 3] = 0.0;
                         }
                     }
 
-                    // 6. Informa o Three.js que o atributo alfa precisa de ser atualizado na GPU.
-                    // Isto é crucial para que as alterações de transparência se tornem visíveis.
+                    // 6. Informa o Three.js que o atributo alfa precisa de ser atualizado
                     baseGeometry.attributes.alpha.needsUpdate = true;
                 }
             }
