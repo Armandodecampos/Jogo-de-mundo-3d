@@ -378,8 +378,7 @@
         let playerBody;
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
-        let grassMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da relva
-        let grassDetectionMeshes = []; // NOVO: Camada invisível para deteção de raycast
+        let grassTiles = []; // NOVO: Array para armazenar os azulejos de relva destrutíveis
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
@@ -1464,19 +1463,6 @@
             islandGeometry.attributes.position.needsUpdate = true;
             islandGeometry.computeVertexNormals(); // Recalcula as normais para uma iluminação correta
 
-            const grassGeometry = islandGeometry.clone();
-            const grassVertices = grassGeometry.attributes.position.array;
-            for (let i = 0; i < grassVertices.length; i += 3) {
-                grassVertices[i + 1] += 0.2; // Aumenta a coordenada Y em 0.2
-            }
-            grassGeometry.attributes.position.needsUpdate = true;
-
-            // NOVO: Adiciona um atributo alfa personalizado à geometria da relva
-            const vertexCount = grassVertices.length / 3;
-            const alphas = new Float32Array(vertexCount);
-            alphas.fill(1.0); // Inicializa todos os vértices como totalmente opacos
-            grassGeometry.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
-
             const hfShape = new CANNON.Heightfield(hfMatrix, {
                 elementSize: worldSize / (hfGridSize - 1)
             });
@@ -1502,82 +1488,49 @@
                 // Opcional: ocultar um ecrã de carregamento aqui
             };
 
-            // Carrega a textura da relva e, no callback, cria os meshes da ilha e da relva
             textureLoader.load(grassTextureURL, (grassTexture) => {
+                const tileSize = 2;
+                const grassYPosition = islandSurfaceHeight + 0.1;
+
                 grassTexture.wrapS = THREE.RepeatWrapping;
                 grassTexture.wrapT = THREE.RepeatWrapping;
-                grassTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                const grassMaterial = new THREE.MeshStandardMaterial({
-                    map: grassTexture,
-                    transparent: true, // A transparência é crucial
-                });
 
-                grassMaterial.onBeforeCompile = (shader) => {
-                    // Adicionar atributo e varying ao vertex shader
-                    shader.vertexShader =
-                        'attribute float alpha;\n' +
-                        'varying float vAlpha;\n' +
-                        shader.vertexShader;
+                const tileMaterial = new THREE.MeshStandardMaterial({ map: grassTexture });
 
-                    // Passar o alfa para o fragment shader
-                    shader.vertexShader = shader.vertexShader.replace(
-                        'void main() {',
-                        'void main() {\n\tvAlpha = alpha;'
-                    );
+                for (let i = -islandRadiusBottom; i < islandRadiusBottom; i += tileSize) {
+                    for (let j = -islandRadiusBottom; j < islandRadiusBottom; j += tileSize) {
+                        const distance = Math.sqrt(i * i + j * j);
+                        if (distance < islandRadiusBottom - tileSize) {
+                            const tileGeometry = new THREE.PlaneGeometry(tileSize, tileSize);
+                            const tileMesh = new THREE.Mesh(tileGeometry, tileMaterial);
 
-                    // Adicionar varying ao fragment shader
-                    shader.fragmentShader =
-                        'varying float vAlpha;\n' +
-                        shader.fragmentShader;
+                            tileMesh.position.set(i + tileSize / 2, grassYPosition, j + tileSize / 2);
+                            tileMesh.rotation.x = -Math.PI / 2;
+                            tileMesh.receiveShadow = true;
 
-                    // Usar o alfa no fragment shader para modificar a transparência
-                    shader.fragmentShader = shader.fragmentShader.replace(
-                        '#include <dithering_fragment>',
-                        `
-                        #include <dithering_fragment>
-                        if (vAlpha < 0.1) discard;
-                        gl_FragColor.a *= vAlpha;
-                        `
-                    );
-                };
+                            tileMesh.userData = {
+                                isDiggable: true,
+                                initialX: i + tileSize / 2,
+                                initialZ: j + tileSize / 2
+                            };
 
-                for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        // Cria e adiciona a malha da ilha
-                        const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
-                        islandMesh.receiveShadow = true;
-                        islandMesh.userData.physicsBody = islandBody;
-                        scene.add(islandMesh);
-                        islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-
-                        // Cria e adiciona a malha de relva
-                        const grassMesh = new THREE.Mesh(grassGeometry, grassMaterial);
-                        grassMesh.receiveShadow = true;
-                        scene.add(grassMesh);
-                        grassMeshes.push({ mesh: grassMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-
-                        // NOVO: Cria e adiciona a malha de deteção invisível correspondente
-                        const detectionMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 });
-                        detectionMaterial.visible = false; // Torna o material completamente invisível para renderização
-                        const detectionMesh = new THREE.Mesh(grassGeometry, detectionMaterial);
-                        detectionMesh.renderOrder = -1; // Garante que é processado antes, se visível
-                        scene.add(detectionMesh);
-                        grassDetectionMeshes.push({ mesh: detectionMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                    }
-                }
-            }, undefined, (error) => {
-                console.error('Erro ao carregar a textura da relva:', error);
-                // Fallback: Se a textura da relva falhar, continua a criar a ilha
-                for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        const mesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
-                        mesh.receiveShadow = true;
-                        mesh.userData.physicsBody = islandBody;
-                        scene.add(mesh);
-                        islandMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                            scene.add(tileMesh);
+                            grassTiles.push(tileMesh);
+                        }
                     }
                 }
             });
+
+            // Cria as malhas da ilha (agora separadamente)
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
+                    islandMesh.receiveShadow = true;
+                    islandMesh.userData.physicsBody = islandBody;
+                    scene.add(islandMesh);
+                    islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
 
             // Cria a Água (agora como uma grelha)
             const waterGeometry = new THREE.BoxGeometry(worldSize, 0.1, worldSize);
@@ -2237,45 +2190,21 @@
 
             function digHole() {
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                // APONTA PARA A CAMADA DE DETEÇÃO INVISÍVEL
-                const detectionMeshObjects = grassDetectionMeshes.map(item => item.mesh);
-
-                if (detectionMeshObjects.length === 0) {
-                    return;
-                }
-
-                const intersects = raycaster.intersectObjects(detectionMeshObjects);
+                const intersects = raycaster.intersectObjects(grassTiles);
 
                 if (intersects.length > 0) {
-                    const intersect = intersects[0];
-                    const hitPoint = intersect.point;
-                    const hitMesh = intersect.object;
+                    const intersectedTile = intersects[0].object;
 
-                    const baseGeometry = hitMesh.geometry;
-                    const positions = baseGeometry.attributes.position.array;
-                    const alphas = baseGeometry.attributes.alpha.array;
+                    // Verifica se o objeto intersectado é realmente um azulejo de relva "cavável"
+                    if (intersectedTile.userData.isDiggable) {
+                        // Remove a malha da cena
+                        scene.remove(intersectedTile);
 
-                    const digSize = 2.0;
-                    const halfDigSize = digSize / 2;
-
-                    // Use the simple subtraction method for local coordinates as it's sufficient here
-                    const localHitPoint = hitPoint.clone().sub(hitMesh.position);
-
-                    let verticesModified = 0;
-                    for (let i = 0; i < positions.length; i += 3) {
-                        const vx = positions[i];
-                        const vz = positions[i + 2];
-
-                        if (Math.abs(vx - localHitPoint.x) < halfDigSize && Math.abs(vz - localHitPoint.z) < halfDigSize) {
-                            if (alphas[i / 3] !== 0.0) {
-                                alphas[i / 3] = 0.0;
-                                verticesModified++;
-                            }
+                        // Remove o azulejo do array para que não possa ser intersectado novamente
+                        const index = grassTiles.indexOf(intersectedTile);
+                        if (index > -1) {
+                            grassTiles.splice(index, 1);
                         }
-                    }
-
-                    if (verticesModified > 0) {
-                        baseGeometry.attributes.alpha.needsUpdate = true;
                     }
                 }
             }
@@ -2585,18 +2514,19 @@
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
-            // NOVO: Atualiza as posições das malhas de relva
-            grassMeshes.forEach(tile => {
-                tile.mesh.position.x = tile.offsetX - visualOffsetX;
-                tile.mesh.position.y = 0; // A posição Y já está elevada na geometria
-                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-            });
+            // NOVO: Atualiza a posição e a visibilidade de cada azulejo de relva individualmente
+            grassTiles.forEach(tile => {
+                // Calcula a posição "desenrolada" do azulejo
+                const unwrappedX = tile.userData.initialX;
+                const unwrappedZ = tile.userData.initialZ;
 
-            // NOVO: Sincroniza a posição das malhas de deteção invisíveis
-            grassDetectionMeshes.forEach(tile => {
-                tile.mesh.position.x = tile.offsetX - visualOffsetX;
-                tile.mesh.position.y = 0;
-                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
+                // Aplica o offset visual para o envolvimento do mundo
+                tile.position.x = unwrappedX - visualOffsetX;
+                tile.position.z = unwrappedZ - visualOffsetZ;
+
+                // Oculta os azulejos que estão fora da distância de renderização
+                const distance = camera.position.distanceTo(tile.position);
+                tile.visible = distance <= renderDistance;
             });
 
             // NOVO: Atualiza as posições das malhas de água para o efeito de envolvimento
