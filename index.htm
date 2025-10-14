@@ -379,6 +379,7 @@
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
         let grassMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da relva
+        let grassDetectionMeshes = []; // NOVO: Camada invisível para deteção de raycast
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
@@ -1554,6 +1555,14 @@
                         grassMesh.receiveShadow = true;
                         scene.add(grassMesh);
                         grassMeshes.push({ mesh: grassMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+
+                        // NOVO: Cria e adiciona a malha de deteção invisível correspondente
+                        const detectionMaterial = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0 });
+                        detectionMaterial.visible = false; // Torna o material completamente invisível para renderização
+                        const detectionMesh = new THREE.Mesh(grassGeometry, detectionMaterial);
+                        detectionMesh.renderOrder = -1; // Garante que é processado antes, se visível
+                        scene.add(detectionMesh);
+                        grassDetectionMeshes.push({ mesh: detectionMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                     }
                 }
             }, undefined, (error) => {
@@ -2228,14 +2237,14 @@
 
             function digHole() {
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                const grassMeshObjects = grassMeshes.map(item => item.mesh);
+                // APONTA PARA A CAMADA DE DETEÇÃO INVISÍVEL
+                const detectionMeshObjects = grassDetectionMeshes.map(item => item.mesh);
 
-                // Ensure there are meshes to test against before proceeding
-                if (grassMeshObjects.length === 0) {
+                if (detectionMeshObjects.length === 0) {
                     return;
                 }
 
-                const intersects = raycaster.intersectObjects(grassMeshObjects);
+                const intersects = raycaster.intersectObjects(detectionMeshObjects);
 
                 if (intersects.length > 0) {
                     const intersect = intersects[0];
@@ -2580,6 +2589,13 @@
             grassMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.y = 0; // A posição Y já está elevada na geometria
+                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
+            });
+
+            // NOVO: Sincroniza a posição das malhas de deteção invisíveis
+            grassDetectionMeshes.forEach(tile => {
+                tile.mesh.position.x = tile.offsetX - visualOffsetX;
+                tile.mesh.position.y = 0;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
             });
 
