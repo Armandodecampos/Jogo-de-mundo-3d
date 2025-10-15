@@ -379,7 +379,7 @@
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
         let grassMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da relva
-
+        let diggingPlane; // NOVO: Plano invisível para detecção de escavação
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
 
@@ -1589,6 +1589,18 @@
 
             // A rua foi removida, então o código relacionado a ela foi excluído.
 
+            // NOVO: Cria o plano de escavação invisível
+            const diggingPlaneGeometry = new THREE.PlaneGeometry(worldSize, worldSize);
+            const diggingPlaneMaterial = new THREE.MeshBasicMaterial({
+                color: 0xff00ff, // Cor de depuração (magenta)
+                side: THREE.DoubleSide,
+                visible: false // Torna-o invisível na produção
+            });
+            diggingPlane = new THREE.Mesh(diggingPlaneGeometry, diggingPlaneMaterial);
+            diggingPlane.rotation.x = -Math.PI / 2;
+            diggingPlane.position.y = islandSurfaceHeight + 0.2; // Mesma altura da relva
+            scene.add(diggingPlane);
+
             // Cria o Corpo de Física do Jogador (esfera)
             originalPlayerShape = new CANNON.Sphere(playerRadius); // Esfera com raio baseado na altura
             crouchPlayerShape = new CANNON.Sphere(crouchRadius);   // Esfera agachada
@@ -1984,7 +1996,7 @@
                         placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
                     } else if (primaryActionType === 'apply_texture') {
                         applyTexture();
-                    } else if (primaryActionType === 'dig') { // NOVO
+                    } else if (getActionType(beltItems[selectedSlotIndex]) === 'dig') {
                         digHole();
                     }
                 } else if (event.button === 2) { // Botão direito do mouse para cima
@@ -2219,26 +2231,31 @@
                 // 1. Lança um raio a partir da câmara para ver onde o jogador está a apontar
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
 
-                // 2. Verifica se o raio interseta alguma das malhas de relva
-                const grassMeshObjects = grassMeshes.map(item => item.mesh);
-                const intersects = raycaster.intersectObjects(grassMeshObjects);
+                // 2. Verifica a interseção com o plano de escavação invisível
+                const intersects = raycaster.intersectObject(diggingPlane);
 
                 // Se houver uma interseção, continua
                 if (intersects.length > 0) {
                     const intersect = intersects[0];
                     const hitPoint = intersect.point;
-                    const hitMesh = intersect.object;
 
-                    // A geometria da relva é partilhada entre todas as malhas.
-                    const baseGeometry = hitMesh.geometry;
+                    // Como todas as malhas de relva partilham a mesma geometria, podemos pegar a primeira.
+                    const baseGeometry = grassMeshes[0].mesh.geometry;
                     const positions = baseGeometry.attributes.position.array;
                     const alphas = baseGeometry.attributes.alpha.array;
 
                     const digSize = 2.0; // O lado do quadrado a ser cavado
                     const halfDigSize = digSize / 2;
 
-                    // 3. Converte o ponto de interseção para as coordenadas locais da malha
-                    const localHitPoint = hitPoint.clone().sub(hitMesh.position);
+                    // 3. Converte o ponto de interseção global para o sistema de coordenadas local "desenrolado" da geometria.
+                    const unwrappedHitPointX = hitPoint.x + visualOffsetX;
+                    const unwrappedHitPointZ = hitPoint.z + visualOffsetZ;
+
+                    // Aplica o "wrap" para encontrar o ponto local correspondente na geometria base.
+                    const localHitPoint = {
+                        x: ((unwrappedHitPointX % worldSize) + worldSize) % worldSize - worldSize / 2,
+                        z: ((unwrappedHitPointZ % worldSize) + worldSize) % worldSize - worldSize / 2
+                    };
 
                     // 4. Itera sobre todos os vértices
                     for (let i = 0; i < positions.length; i += 3) {
@@ -2562,6 +2579,11 @@
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
+            // NOVO: Atualiza a posição do diggingPlane
+            if (diggingPlane) {
+                diggingPlane.position.x = -visualOffsetX;
+                diggingPlane.position.z = -visualOffsetZ;
+            }
             // NOVO: Atualiza as posições das malhas de relva
             grassMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
