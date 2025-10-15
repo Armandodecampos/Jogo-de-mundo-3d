@@ -380,6 +380,11 @@
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
         let grassMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da relva
         let diggingPlane; // NOVO: Plano invisível para detecção de escavação
+
+        const hfGridSize = 128; // NOVO: Define a resolução da grade do terreno/grama
+        let grassGrid = []; // NOVO: Grade de dados para o estado da grama
+        const grassHeight = 0.2; // NOVO: Altura da camada de grama
+
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
 
@@ -1416,57 +1421,53 @@
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
             // Cria o Terreno (Ilha Redonda)
-            // A geometria visual é agora um plano segmentado cujos vértices correspondem ao Heightfield.
-            const hfGridSize = 128; // A resolução DEVE corresponder à do Heightfield
             const islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
+            const grassGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
 
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
             const hfMatrix = [];
             for (let i = 0; i < hfGridSize; i++) {
                 hfMatrix.push([]);
+                grassGrid.push(new Array(hfGridSize).fill(1)); // Inicializa a grade da grama com 1s
+
                 for (let j = 0; j < hfGridSize; j++) {
-                    // Mapeia os índices da grelha para coordenadas do mundo
                     const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
                     const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
                     const distance = Math.sqrt(x * x + z * z);
-                    let height;
 
+                    let baseHeight;
                     if (distance <= islandRadiusTop) {
-                        height = islandSurfaceHeight;
+                        baseHeight = islandSurfaceHeight;
                     } else if (distance <= islandRadiusBottom) {
-                        // Interpola linearmente da superfície da ilha para o fundo do mar
                         const t = (distance - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
-                        height = islandSurfaceHeight * (1 - t) + seabedLevel * t;
+                        baseHeight = islandSurfaceHeight * (1 - t) + seabedLevel * t;
                     } else {
-                        height = seabedLevel;
+                        baseHeight = seabedLevel;
                     }
-                    hfMatrix[i][j] = height;
+
+                    // A altura da física inclui a camada de grama
+                    hfMatrix[i][j] = baseHeight + grassHeight;
                 }
             }
 
-            // Gira a geometria para ficar no plano XZ.
             islandGeometry.rotateX(-Math.PI / 2);
+            grassGeometry.rotateX(-Math.PI / 2);
 
-            // Define a altura de cada vértice na geometria para corresponder à matriz do Heightfield.
-            const vertices = islandGeometry.attributes.position.array;
+            const islandVertices = islandGeometry.attributes.position.array;
+            const grassVertices = grassGeometry.attributes.position.array;
             for (let i = 0; i < hfGridSize; i++) {
                 for (let j = 0; j < hfGridSize; j++) {
                     const height = hfMatrix[i][j];
                     const index = (i * hfGridSize + j) * 3;
-                    vertices[index + 1] = height; // Atualiza a coordenada Y
+                    islandVertices[index + 1] = height - grassHeight; // A ilha visual não tem a grama
+                    grassVertices[index + 1] = height; // A grama visual está no topo
                 }
             }
             islandGeometry.attributes.position.needsUpdate = true;
-            islandGeometry.computeVertexNormals(); // Recalcula as normais para uma iluminação correta
-
-            const grassGeometry = islandGeometry.clone();
-            const grassVertices = grassGeometry.attributes.position.array;
-            for (let i = 0; i < grassVertices.length; i += 3) {
-                grassVertices[i + 1] += 0.2; // Aumenta a coordenada Y em 0.2
-            }
+            islandGeometry.computeVertexNormals();
             grassGeometry.attributes.position.needsUpdate = true;
+            grassGeometry.computeVertexNormals();
 
-            // NOVO: Adiciona um atributo alfa personalizado à geometria da relva
             const vertexCount = grassVertices.length / 3;
             const alphas = new Float32Array(vertexCount);
             alphas.fill(1.0); // Inicializa todos os vértices como totalmente opacos
@@ -2228,49 +2229,52 @@
             }
 
             function digHole() {
-                // 1. Lança um raio a partir da câmara para ver onde o jogador está a apontar
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-
-                // 2. Verifica a interseção com o plano de escavação invisível
                 const intersects = raycaster.intersectObject(diggingPlane);
 
-                // Se houver uma interseção, continua
                 if (intersects.length > 0) {
-                    const intersect = intersects[0];
-                    const hitPoint = intersect.point;
+                    const hitPoint = intersects[0].point;
+                    const grassGeometry = grassMeshes[0].mesh.geometry;
+                    const alphas = grassGeometry.attributes.alpha.array;
 
-                    // Como todas as malhas de relva partilham a mesma geometria, podemos pegar a primeira.
-                    const baseGeometry = grassMeshes[0].mesh.geometry;
-                    const positions = baseGeometry.attributes.position.array;
-                    const alphas = baseGeometry.attributes.alpha.array;
+                    const digRadius = 1; // Raio em unidades do mundo
+                    const digRadiusSq = digRadius * digRadius;
 
-                    const digSize = 2.0; // O lado do quadrado a ser cavado
-                    const halfDigSize = digSize / 2;
+                    // Converte a posição do hit para coordenadas da grade
+                    const hitX = hitPoint.x + visualOffsetX;
+                    const hitZ = hitPoint.z + visualOffsetZ;
+                    const gridJ = Math.floor(((hitX + worldSize / 2) / worldSize) * hfGridSize);
+                    const gridI = Math.floor(((-hitZ + worldSize / 2) / worldSize) * hfGridSize);
 
-                    // 3. Converte o ponto de interseção global para o sistema de coordenadas local "desenrolado" da geometria.
-                    const unwrappedHitPointX = hitPoint.x + visualOffsetX;
-                    const unwrappedHitPointZ = hitPoint.z + visualOffsetZ;
+                    const hfShape = islandBody.shapes[0];
+                    let needsPhysicsUpdate = false;
 
-                    // Aplica o "wrap" para encontrar o ponto local correspondente na geometria base.
-                    const localHitPoint = {
-                        x: ((unwrappedHitPointX % worldSize) + worldSize) % worldSize - worldSize / 2,
-                        z: ((unwrappedHitPointZ % worldSize) + worldSize) % worldSize - worldSize / 2
-                    };
+                    // Itera sobre a grade para encontrar pontos dentro do raio de escavação
+                    for (let i = Math.max(0, gridI - 5); i < Math.min(hfGridSize, gridI + 5); i++) {
+                        for (let j = Math.max(0, gridJ - 5); j < Math.min(hfGridSize, gridJ + 5); j++) {
+                            // Calcula a posição no mundo para o centro da célula da grade
+                            const cellWorldX = (j / hfGridSize) * worldSize - worldSize / 2;
+                            const cellWorldZ = -(i / hfGridSize) * worldSize + worldSize / 2;
+                            const dx = cellWorldX - hitX;
+                            const dz = cellWorldZ - hitZ;
+                            const distanceSq = dx * dx + dz * dz;
 
-                    // 4. Itera sobre todos os vértices
-                    for (let i = 0; i < positions.length; i += 3) {
-                        const vx = positions[i];
-                        const vz = positions[i + 2];
-
-                        // 5. Verifica se o vértice está dentro dos limites do quadrado
-                        if (Math.abs(vx - localHitPoint.x) < halfDigSize && Math.abs(vz - localHitPoint.z) < halfDigSize) {
-                            // Define o alfa como 0 para tornar o vértice totalmente transparente
-                            alphas[i / 3] = 0.0;
+                            if (distanceSq < digRadiusSq && grassGrid[i][j] === 1) {
+                                grassGrid[i][j] = 0;
+                                hfShape.data[i][j] -= grassHeight;
+                                alphas[i * hfGridSize + j] = 0.0;
+                                needsPhysicsUpdate = true;
+                            }
                         }
                     }
 
-                    // 6. Informa o Three.js que o atributo alfa precisa de ser atualizado
-                    baseGeometry.attributes.alpha.needsUpdate = true;
+                    if (needsPhysicsUpdate) {
+                        grassGeometry.attributes.alpha.needsUpdate = true;
+                        hfShape.update();
+                        // Força uma atualização da bounding box do corpo da ilha
+                        islandBody.updateBoundingRadius();
+                        islandBody.computeAABB();
+                    }
                 }
             }
 
