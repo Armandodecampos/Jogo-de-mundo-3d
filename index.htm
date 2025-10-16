@@ -378,11 +378,7 @@
         let playerBody;
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
-        let grassMesh; // NOVO: Malha única para toda a grama
-        let diggingPlane; // NOVO: Plano invisível para detecção de escavação
-
-        const grassBlockSize = 0.4; // NOVO: Tamanho dos blocos de grama
-        let grassGrid = []; // NOVO: Grade de dados para o estado da grama
+        const topLayerBlocks = []; // NOVO: Array para armazenar os blocos individuais da camada superior
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
@@ -447,14 +443,14 @@
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
         const worldSize = 1200;
-        const islandRadiusTop = 20; // NOVO: Raio do topo da ilha
+        const islandRadiusTop = 80; // NOVO: Raio do topo da ilha
         const islandRadiusBottom = 450; // NOVO: Raio da base da ilha
         const waterLevel = 0.2; // NOVO: Nível da água
         const seabedLevel = -20; // NOVO: Nível do fundo do mar
         const renderDistance = 200; // Distância de renderização para objetos
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
-        const islandSurfaceHeight = cobSize; // A altura da superfície visível da ilha
+        const islandSurfaceHeight = cobSize / 2; // A altura da superfície visível da ilha
         const islandHeight = islandSurfaceHeight - seabedLevel; // Altura total do cilindro da ilha
         const roadWidth = 10; // Largura da estrada
         const roadHeight = 0.2; // Espessura da estrada
@@ -584,7 +580,6 @@
         const textureApplicatorImageURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Ícone para o pincel
         const shovelImageURL = 'https://dl.dropbox.com/scl/fi/zjtff6t1neec7veb3fy7z/icone-de-pa.png?rlkey=hkv3raomfuxqh8zhxnjwf1axv&st=ag82pjwn&dl=0'; // NOVO: Ícone da pá
         const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Textura de pedra para aplicar
-        const grassTextureURL = "https://dl.dropbox.com/scl/fi/c8s6fisvxvg0qz9d6u2vb/Grass-texture.jpg?rlkey=9gaw6xc8o3p7t3b2ubsxmb715&st=23958hfi&dl=0";
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -719,69 +714,6 @@
         // Global array to hold active smoke particles
         let smokeParticles = [];
 
-        // NOVO: Função para gerar/atualizar dinamicamente a malha de grama
-        function updateGrassMesh() {
-            const vertices = [];
-            const indices = [];
-            const uvs = [];
-            let vertexIndex = 0;
-
-            const halfSize = grassBlockSize / 2;
-
-            const gridSize = Math.floor((islandRadiusTop * 2) / grassBlockSize);
-
-            for (let i = 0; i < gridSize; i++) {
-                for (let j = 0; j < gridSize; j++) {
-                    if (grassGrid[i][j] === 1) {
-                        const x = j * grassBlockSize - islandRadiusTop + halfSize;
-                        const y = islandSurfaceHeight + halfSize;
-                        const z = i * grassBlockSize - islandRadiusTop + halfSize;
-
-                        if (Math.sqrt(x * x + z * z) >= islandRadiusTop) {
-                            continue;
-                        }
-
-                        // Cube vertices for each face
-                        const cubeVertices = [
-                            // Front face
-                            x - halfSize, y - halfSize, z + halfSize, x + halfSize, y - halfSize, z + halfSize, x + halfSize, y + halfSize, z + halfSize, x - halfSize, y + halfSize, z + halfSize,
-                            // Back face
-                            x - halfSize, y - halfSize, z - halfSize, x - halfSize, y + halfSize, z - halfSize, x + halfSize, y + halfSize, z - halfSize, x + halfSize, y - halfSize, z - halfSize,
-                            // Top face
-                            x - halfSize, y + halfSize, z - halfSize, x - halfSize, y + halfSize, z + halfSize, x + halfSize, y + halfSize, z + halfSize, x + halfSize, y + halfSize, z - halfSize,
-                            // Bottom face
-                            x - halfSize, y - halfSize, z - halfSize, x + halfSize, y - halfSize, z - halfSize, x + halfSize, y - halfSize, z + halfSize, x - halfSize, y - halfSize, z + halfSize,
-                            // Right face
-                            x + halfSize, y - halfSize, z - halfSize, x + halfSize, y + halfSize, z - halfSize, x + halfSize, y + halfSize, z + halfSize, x + halfSize, y - halfSize, z + halfSize,
-                            // Left face
-                            x - halfSize, y - halfSize, z - halfSize, x - halfSize, y - halfSize, z + halfSize, x - halfSize, y + halfSize, z + halfSize, x - halfSize, y + halfSize, z - halfSize,
-                        ];
-                        vertices.push(...cubeVertices);
-
-                        const cubeUVs = [ 0, 0, 1, 0, 1, 1, 0, 1,  0, 0, 1, 0, 1, 1, 0, 1,  0, 0, 1, 0, 1, 1, 0, 1,  0, 0, 1, 0, 1, 1, 0, 1,  0, 0, 1, 0, 1, 1, 0, 1,  0, 0, 1, 0, 1, 1, 0, 1 ];
-                        uvs.push(...cubeUVs);
-
-                        const cubeIndices = [ 0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 8, 9, 10, 8, 10, 11, 12, 13, 14, 12, 14, 15, 16, 17, 18, 16, 18, 19, 20, 21, 22, 20, 22, 23 ];
-                        for (let k = 0; k < cubeIndices.length; k++) {
-                            indices.push(cubeIndices[k] + vertexIndex);
-                        }
-                        vertexIndex += 24;
-                    }
-                }
-            }
-
-            let geometry = grassMesh ? grassMesh.geometry : new THREE.BufferGeometry();
-
-            geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-            geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-            geometry.setIndex(indices);
-            geometry.computeVertexNormals();
-            geometry.attributes.position.needsUpdate = true;
-            geometry.attributes.uv.needsUpdate = true;
-            geometry.index.needsUpdate = true;
-            geometry.computeBoundingSphere();
-        }
-
         // Função para mostrar a tela de opções e pausar o jogo
         function showOptionsScreen() {
             gamePaused = true;
@@ -899,7 +831,7 @@
                     img.src = hammerImageURL;
                 } else if (item.name === stoneItemName) { // NOVO
                     img.src = stoneImageURL;
-                } else if (item.name === shovelItemName) { // NOVO
+                } else if (item.name === shovelItemName) {
                     img.src = shovelImageURL;
                 } else if (item.name === textureApplicatorItemName) {
                     img.src = textureApplicatorImageURL;
@@ -1118,38 +1050,6 @@
                     beltItems[sourceIndex] = sourceItem;
                 } else {
                     backpackItems[sourceIndex] = sourceItem;
-                }
-            }
-
-            function digHole() {
-                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                const intersects = raycaster.intersectObject(diggingPlane);
-
-                if (intersects.length > 0) {
-                    const hitPoint = intersects[0].point;
-                    const gridSize = Math.floor((islandRadiusTop * 2) / grassBlockSize);
-
-                    const j = Math.floor((hitPoint.x + islandRadiusTop) / grassBlockSize);
-                    const i = Math.floor((hitPoint.z + islandRadiusTop) / grassBlockSize);
-
-                    if (i >= 0 && i < gridSize && j >= 0 && j < gridSize) {
-                        if (grassGrid[i][j] === 1) {
-                            grassGrid[i][j] = 0;
-                            updateGrassMesh();
-
-                            // Update physics heightfield
-                            const hfShape = islandBody.shapes[0];
-                            const gridX = Math.floor(j * (hfShape.data[0].length / gridSize));
-                            const gridY = Math.floor(i * (hfShape.data.length / gridSize));
-
-                            if (hfShape.data[gridY] && hfShape.data[gridY][gridX] !== undefined) {
-                                hfShape.data[gridY][gridX] -= grassBlockSize;
-                                hfShape.update();
-                                islandBody.updateBoundingRadius();
-                                islandBody.computeAABB();
-                            }
-                        }
-                    }
                 }
             }
 
@@ -1514,123 +1414,41 @@
             scene.add(directionalLight);
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
-            // Cria o Terreno (Ilha Redonda)
-            // A geometria visual é agora um plano segmentado cujos vértices correspondem ao Heightfield.
-            const hfGridSize = 128; // A resolução DEVE corresponder à do Heightfield
+            // Cria o Terreno (Segunda Camada - Fundo do Mar)
+            const hfGridSize = 128;
             const islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
-
-            // --- Criação do Corpo de Física da Ilha com Heightfield ---
             const hfMatrix = [];
             for (let i = 0; i < hfGridSize; i++) {
                 hfMatrix.push([]);
                 for (let j = 0; j < hfGridSize; j++) {
-                    // Mapeia os índices da grelha para coordenadas do mundo
-                    const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
-                    const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
-                    const distance = Math.sqrt(x * x + z * z);
-                    let height;
-
-                    if (distance <= islandRadiusTop) {
-                        height = islandSurfaceHeight;
-                    } else if (distance <= islandRadiusBottom) {
-                        // Interpola linearmente da superfície da ilha para o fundo do mar
-                        const t = (distance - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
-                        height = islandSurfaceHeight * (1 - t) + seabedLevel * t;
-                    } else {
-                        height = seabedLevel;
-                    }
-                    hfMatrix[i][j] = height;
+                    hfMatrix[i][j] = seabedLevel;
                 }
             }
-
-            // Gira a geometria para ficar no plano XZ.
             islandGeometry.rotateX(-Math.PI / 2);
-
-            // Define a altura de cada vértice na geometria para corresponder à matriz do Heightfield.
             const vertices = islandGeometry.attributes.position.array;
             for (let i = 0; i < hfGridSize; i++) {
                 for (let j = 0; j < hfGridSize; j++) {
-                    const height = hfMatrix[i][j];
-                    const index = (i * hfGridSize + j) * 3;
-                    vertices[index + 1] = height; // Atualiza a coordenada Y
+                    vertices[(i * hfGridSize + j) * 3 + 1] = hfMatrix[i][j];
                 }
             }
             islandGeometry.attributes.position.needsUpdate = true;
-            islandGeometry.computeVertexNormals(); // Recalcula as normais para uma iluminação correta
-
-            const grassGeometry = islandGeometry.clone();
-            const grassVertices = grassGeometry.attributes.position.array;
-            for (let i = 0; i < grassVertices.length; i += 3) {
-                grassVertices[i + 1] += 0.2; // Aumenta a coordenada Y em 0.2
-            }
-            grassGeometry.attributes.position.needsUpdate = true;
-
-            // NOVO: Adiciona um atributo alfa personalizado à geometria da relva
-            const vertexCount = grassVertices.length / 3;
-            const alphas = new Float32Array(vertexCount);
-            alphas.fill(1.0); // Inicializa todos os vértices como totalmente opacos
-            grassGeometry.setAttribute('alpha', new THREE.BufferAttribute(alphas, 1));
-
-            const hfShape = new CANNON.Heightfield(hfMatrix, {
-                elementSize: worldSize / (hfGridSize - 1)
-            });
-
+            islandGeometry.computeVertexNormals();
+            const hfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
             islandBody = new CANNON.Body({ mass: 0, material: islandMaterial });
             islandBody.addShape(hfShape);
-            // Os Heightfields são criados no plano XY, por isso rodamos para o plano XZ.
             islandBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-            // Posiciona o corpo no canto do mundo para alinhar a grelha.
             islandBody.position.set(-worldSize / 2, 0, worldSize / 2);
             world.addBody(islandBody);
+
             const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
+
+                // --- Criação Visual do Fundo do Mar (Heightfield escavável) ---
                 texture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-            });
-            const islandMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
-
-            // Carrega a textura da relva e, no callback, cria os meshes da ilha e da relva
-            textureLoader.load(grassTextureURL, (grassTexture) => {
-                grassTexture.wrapS = THREE.RepeatWrapping;
-                grassTexture.wrapT = THREE.RepeatWrapping;
-                grassTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                const grassMaterial = new THREE.MeshStandardMaterial({
-                    map: grassTexture,
-                    transparent: true, // A transparência é crucial
-                });
-
-                grassMaterial.onBeforeCompile = (shader) => {
-                    // Adicionar atributo e varying ao vertex shader
-                    shader.vertexShader =
-                        'attribute float alpha;\n' +
-                        'varying float vAlpha;\n' +
-                        shader.vertexShader;
-
-                    // Passar o alfa para o fragment shader
-                    shader.vertexShader = shader.vertexShader.replace(
-                        'void main() {',
-                        'void main() {\n\tvAlpha = alpha;'
-                    );
-
-                    // Adicionar varying ao fragment shader
-                    shader.fragmentShader =
-                        'varying float vAlpha;\n' +
-                        shader.fragmentShader;
-
-                    // Usar o alfa no fragment shader para modificar a transparência
-                    shader.fragmentShader = shader.fragmentShader.replace(
-                        '#include <dithering_fragment>',
-                        `
-                        #include <dithering_fragment>
-                        if (vAlpha < 0.1) discard;
-                        gl_FragColor.a *= vAlpha;
-                        `
-                    );
-                };
-
+                const islandMeshMaterial = new THREE.MeshStandardMaterial({ map: texture });
                 for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                     for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        // Cria e adiciona a malha da ilha
                         const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
                         islandMesh.receiveShadow = true;
                         islandMesh.userData.physicsBody = islandBody;
@@ -1638,16 +1456,43 @@
                         islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                     }
                 }
-            }, undefined, (error) => {
-                console.error('Erro ao carregar a textura da relva:', error);
-                // Fallback: Se a textura da relva falhar, continua a criar a ilha
-                for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        const mesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
-                        mesh.receiveShadow = true;
-                        mesh.userData.physicsBody = islandBody;
-                        scene.add(mesh);
-                        islandMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+
+                // --- Criação da Camada Superior da Ilha (Blocos Individuais) ---
+                const topLayerTexture = texture.clone();
+                topLayerTexture.needsUpdate = true;
+                topLayerTexture.repeat.set(1, 1);
+                const topLayerMaterial = new THREE.MeshStandardMaterial({ map: topLayerTexture });
+                const boxGeometry = new THREE.BoxGeometry(cobSize, islandSurfaceHeight, cobSize);
+                const boxShape = new CANNON.Box(new CANNON.Vec3(cobSize / 2, islandSurfaceHeight / 2, cobSize / 2));
+                const numBlocksX = Math.floor(islandRadiusTop * 2 / cobSize);
+                const numBlocksZ = Math.floor(islandRadiusTop * 2 / cobSize);
+
+                for (let i = 0; i < numBlocksX; i++) {
+                    for (let j = 0; j < numBlocksZ; j++) {
+                        const x = (i - numBlocksX / 2 + 0.5) * cobSize;
+                        const z = (j - numBlocksZ / 2 + 0.5) * cobSize;
+
+                        if (Math.sqrt(x * x + z * z) <= islandRadiusTop) {
+                            const blockBody = new CANNON.Body({
+                                mass: 0,
+                                shape: boxShape,
+                                material: islandMaterial
+                            });
+                            blockBody.position.set(x, islandSurfaceHeight / 2, z);
+                            world.addBody(blockBody);
+
+                            const blockMesh = new THREE.Mesh(boxGeometry, topLayerMaterial);
+                            blockMesh.position.copy(blockBody.position);
+                            blockMesh.castShadow = true;
+                            blockMesh.receiveShadow = true;
+                            scene.add(blockMesh);
+
+                            blockBody.userData.isDiggable = true;
+                            blockBody.userData.mesh = blockMesh;
+                            blockMesh.userData.body = blockBody;
+
+                            topLayerBlocks.push({ body: blockBody, mesh: blockMesh });
+                        }
                     }
                 }
             });
@@ -1664,44 +1509,6 @@
                     waterMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
             }
-
-            // NOVO: Cria o Fundo do Mar
-            const seabedGeometry = new THREE.PlaneGeometry(worldSize, worldSize);
-            // Reutiliza o material da ilha para o fundo do mar para consistência
-            const seabedMaterial = islandMeshMaterial;
-            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(seabedGeometry, seabedMaterial);
-                    mesh.rotation.x = -Math.PI / 2; // Gira o plano para ficar deitado
-                    mesh.position.y = seabedLevel; // Posição no fundo do mar
-                    mesh.receiveShadow = true; // O fundo do mar pode receber sombras
-                    scene.add(mesh);
-                    seabedMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                }
-            }
-
-            // A rua foi removida, então o código relacionado a ela foi excluído.
-
-            // NOVO: Inicializa a grade da grama
-            const gridSize = Math.floor((islandRadiusTop * 2) / grassBlockSize);
-            for (let i = 0; i < gridSize; i++) {
-                grassGrid.push(new Array(gridSize).fill(1));
-            }
-
-            // NOVO: Cria a malha de grama única e o material
-            const grassMaterial = new THREE.MeshStandardMaterial({ map: textureLoader.load(grassTextureURL) });
-            grassMesh = new THREE.Mesh(new THREE.BufferGeometry(), grassMaterial);
-            grassMesh.receiveShadow = true;
-            scene.add(grassMesh);
-            updateGrassMesh(); // Constrói a malha inicial
-
-            // NOVO: Cria o plano de escavação invisível
-            const diggingPlaneGeometry = new THREE.PlaneGeometry(islandRadiusTop * 2, islandRadiusTop * 2);
-            const diggingPlaneMaterial = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });
-            diggingPlane = new THREE.Mesh(diggingPlaneGeometry, diggingPlaneMaterial);
-            diggingPlane.rotation.x = -Math.PI / 2;
-            diggingPlane.position.y = islandSurfaceHeight + grassBlockSize; // Posiciona no topo da camada de grama
-            scene.add(diggingPlane);
 
             // Cria o Corpo de Física do Jogador (esfera)
             originalPlayerShape = new CANNON.Sphere(playerRadius); // Esfera com raio baseado na altura
@@ -1726,7 +1533,8 @@
             playerBody.addEventListener('collide', (event) => {
                 // canJump é verdadeiro APENAS se o corpo colidido NÃO for o objeto que está sendo segurado
                 // A lista de corpos "chão" agora inclui apenas superfícies que podem ser pisadas
-                const allGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+                const topLayerBodies = topLayerBlocks.map(b => b.body);
+                const allGroundBodies = [...topLayerBodies, islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
                 if (event.body !== pickedObjectBody && allGroundBodies.includes(event.body)) {
                     canJump = true;
                 }
@@ -2331,31 +2139,26 @@
 
             function digHole() {
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                const intersects = raycaster.intersectObject(diggingPlane);
+                const intersects = raycaster.intersectObjects(scene.children);
 
-                if (intersects.length > 0) {
-                    const hitPoint = intersects[0].point;
-                    const gridSize = Math.floor((islandRadiusTop * 2) / grassBlockSize);
+                for (const intersect of intersects) {
+                    const intersectedMesh = intersect.object;
+                    if (intersectedMesh.userData.body && intersectedMesh.userData.body.userData.isDiggable) {
+                        const blockBody = intersectedMesh.userData.body;
+                        const blockIndex = topLayerBlocks.findIndex(b => b.body === blockBody);
 
-                    const j = Math.floor((hitPoint.x + islandRadiusTop) / grassBlockSize);
-                    const i = Math.floor((hitPoint.z + islandRadiusTop) / grassBlockSize);
+                        if (blockIndex !== -1) {
+                            const block = topLayerBlocks[blockIndex];
 
-                    if (i >= 0 && i < gridSize && j >= 0 && j < gridSize) {
-                        if (grassGrid[i][j] === 1) {
-                            grassGrid[i][j] = 0;
-                            updateGrassMesh();
+                            world.removeBody(block.body);
+                            scene.remove(block.mesh);
 
-                            // Update physics heightfield
-                            const hfShape = islandBody.shapes[0];
-                            const gridX = Math.floor(j * (hfShape.data[0].length / gridSize));
-                            const gridY = Math.floor(i * (hfShape.data.length / gridSize));
+                            topLayerBlocks.splice(blockIndex, 1);
 
-                            if (hfShape.data[gridY] && hfShape.data[gridY][gridX] !== undefined) {
-                                hfShape.data[gridY][gridX] -= grassBlockSize;
-                                hfShape.update();
-                                islandBody.updateBoundingRadius();
-                                islandBody.computeAABB();
-                            }
+                            addItemToInventory(backpackItems, { name: 'cob', quantity: 1 });
+                            updateBackpackDisplay();
+
+                            break;
                         }
                     }
                 }
@@ -2664,27 +2467,16 @@
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
                 // A rotação da malha é definida uma vez na inicialização e não precisa de ser atualizada.
             });
-            // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
-            // NOVO: Atualiza a posição do diggingPlane e da grassMesh para o world-wrapping
-            if (diggingPlane) {
-                diggingPlane.position.x = visualOffsetX;
-                diggingPlane.position.z = visualOffsetZ;
-            }
-            if (grassMesh) {
-                grassMesh.position.x = visualOffsetX;
-                grassMesh.position.z = visualOffsetZ;
-            }
+            // NOVO: Atualiza a posição dos blocos da camada superior para o envolvimento do mundo
+            topLayerBlocks.forEach(block => {
+                block.mesh.position.x = block.body.position.x - visualOffsetX;
+                block.mesh.position.y = block.body.position.y;
+                block.mesh.position.z = block.body.position.z - visualOffsetZ;
+            });
 
             // NOVO: Atualiza as posições das malhas de água para o efeito de envolvimento
             waterMeshes.forEach(tile => {
-                tile.mesh.position.x = tile.offsetX - visualOffsetX;
-                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                // A posição Y é estática, por isso não precisa de ser atualizada no loop.
-            });
-
-            // NOVO: Atualiza as posições das malhas do fundo do mar para o efeito de envolvimento
-            seabedMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
                 // A posição Y é estática, por isso não precisa de ser atualizada no loop.
@@ -2827,7 +2619,8 @@
 
 
                     // Lista de todos os corpos que podem ser base para colocação
-                    const allPlaceableSurfaces = [islandBody, ...placedConstructionBodies];
+                    const topLayerBodies = topLayerBlocks.map(b => b.body);
+                    const allPlaceableSurfaces = [...topLayerBodies, islandBody, ...placedConstructionBodies];
 
                     for (let i = 0; i < intersects.length; i++) {
                         const intersectedObject = intersects[i].object;
@@ -3085,7 +2878,8 @@
             // Verifica colisão com terreno (rua), estrada, cubos e blocos
             world.raycastAny(rayOriginLow, rayTargetLow, {}, rayResultStep);
             // A lista de corpos "chão" para subida de degraus
-            const stepClimbGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+            const topLayerBodies = topLayerBlocks.map(b => b.body);
+            const stepClimbGroundBodies = [...topLayerBodies, islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
             if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
                 hitLow = true;
             }
@@ -3284,7 +3078,8 @@
                         if (intersectedObject.userData.isWater) continue; // Ignora a água
 
                         const intersectedBody = intersectedObject.userData.physicsBody;
-                        const allPlaceableSurfaces = [islandBody, ...placedConstructionBodies];
+                        const topLayerBodies = topLayerBlocks.map(b => b.body);
+                        const allPlaceableSurfaces = [...topLayerBodies, islandBody, ...placedConstructionBodies];
 
                         if (intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) {
                             if (intersects[i].distance <= pickUpDistance + 1) {
@@ -3420,7 +3215,6 @@
 
         // Função para iniciar o jogo
         function startGame() {
-            document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
