@@ -447,7 +447,7 @@
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
         const worldSize = 1200;
-        const islandRadiusTop = 150; // NOVO: Raio do topo da ilha
+        const islandRadiusTop = 20; // NOVO: Raio do topo da ilha
         const islandRadiusBottom = 450; // NOVO: Raio da base da ilha
         const waterLevel = 0.2; // NOVO: Nível da água
         const seabedLevel = -20; // NOVO: Nível do fundo do mar
@@ -1121,7 +1121,6 @@
                 }
             }
 
-            // NOVO: Função de escavação baseada em grade
             function digHole() {
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObject(diggingPlane);
@@ -1138,7 +1137,7 @@
                             grassGrid[i][j] = 0;
                             updateGrassMesh();
 
-                            // Atualiza a física
+                            // Update physics heightfield
                             const hfShape = islandBody.shapes[0];
                             const gridX = Math.floor(j * (hfShape.data[0].length / gridSize));
                             const gridY = Math.floor(i * (hfShape.data.length / gridSize));
@@ -2331,44 +2330,34 @@
             }
 
             function digHole() {
-                // 1. Lança um raio a partir da câmara para ver onde o jogador está a apontar
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                const intersects = raycaster.intersectObject(diggingPlane);
 
-                // 2. Verifica se o raio interseta alguma das malhas de relva
-                const grassMeshObjects = grassMeshes.map(item => item.mesh);
-                const intersects = raycaster.intersectObjects(grassMeshObjects);
-
-                // Se houver uma interseção, continua
                 if (intersects.length > 0) {
-                    const intersect = intersects[0];
-                    const hitPoint = intersect.point;
-                    const hitMesh = intersect.object;
+                    const hitPoint = intersects[0].point;
+                    const gridSize = Math.floor((islandRadiusTop * 2) / grassBlockSize);
 
-                    // A geometria da relva é partilhada entre todas as malhas.
-                    const baseGeometry = hitMesh.geometry;
-                    const positions = baseGeometry.attributes.position.array;
-                    const alphas = baseGeometry.attributes.alpha.array;
+                    const j = Math.floor((hitPoint.x + islandRadiusTop) / grassBlockSize);
+                    const i = Math.floor((hitPoint.z + islandRadiusTop) / grassBlockSize);
 
-                    const digSize = 2.0; // O lado do quadrado a ser cavado
-                    const halfDigSize = digSize / 2;
+                    if (i >= 0 && i < gridSize && j >= 0 && j < gridSize) {
+                        if (grassGrid[i][j] === 1) {
+                            grassGrid[i][j] = 0;
+                            updateGrassMesh();
 
-                    // 3. Converte o ponto de interseção para as coordenadas locais da malha
-                    const localHitPoint = hitPoint.clone().sub(hitMesh.position);
+                            // Update physics heightfield
+                            const hfShape = islandBody.shapes[0];
+                            const gridX = Math.floor(j * (hfShape.data[0].length / gridSize));
+                            const gridY = Math.floor(i * (hfShape.data.length / gridSize));
 
-                    // 4. Itera sobre todos os vértices
-                    for (let i = 0; i < positions.length; i += 3) {
-                        const vx = positions[i];
-                        const vz = positions[i + 2];
-
-                        // 5. Verifica se o vértice está dentro dos limites do quadrado
-                        if (Math.abs(vx - localHitPoint.x) < halfDigSize && Math.abs(vz - localHitPoint.z) < halfDigSize) {
-                            // Define o alfa como 0 para tornar o vértice totalmente transparente
-                            alphas[i / 3] = 0.0;
+                            if (hfShape.data[gridY] && hfShape.data[gridY][gridX] !== undefined) {
+                                hfShape.data[gridY][gridX] -= grassBlockSize;
+                                hfShape.update();
+                                islandBody.updateBoundingRadius();
+                                islandBody.computeAABB();
+                            }
                         }
                     }
-
-                    // 6. Informa o Three.js que o atributo alfa precisa de ser atualizado
-                    baseGeometry.attributes.alpha.needsUpdate = true;
                 }
             }
 
