@@ -1137,6 +1137,18 @@
                         if (grassGrid[i][j] === 1) {
                             grassGrid[i][j] = 0;
                             updateGrassMesh();
+
+                            // Atualiza a física
+                            const hfShape = islandBody.shapes[0];
+                            const gridX = Math.floor(j * (hfShape.data[0].length / gridSize));
+                            const gridY = Math.floor(i * (hfShape.data.length / gridSize));
+
+                            if (hfShape.data[gridY] && hfShape.data[gridY][gridX] !== undefined) {
+                                hfShape.data[gridY][gridX] -= grassBlockSize;
+                                hfShape.update();
+                                islandBody.updateBoundingRadius();
+                                islandBody.computeAABB();
+                            }
                         }
                     }
                 }
@@ -1625,12 +1637,6 @@
                         islandMesh.userData.physicsBody = islandBody;
                         scene.add(islandMesh);
                         islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-
-                        // Cria e adiciona a malha de relva
-                        const grassMesh = new THREE.Mesh(grassGeometry, grassMaterial);
-                        grassMesh.receiveShadow = true;
-                        scene.add(grassMesh);
-                        grassMeshes.push({ mesh: grassMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                     }
                 }
             }, undefined, (error) => {
@@ -2671,12 +2677,15 @@
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
-            // NOVO: Atualiza as posições das malhas de relva
-            grassMeshes.forEach(tile => {
-                tile.mesh.position.x = tile.offsetX - visualOffsetX;
-                tile.mesh.position.y = 0; // A posição Y já está elevada na geometria
-                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-            });
+            // NOVO: Atualiza a posição do diggingPlane e da grassMesh para o world-wrapping
+            if (diggingPlane) {
+                diggingPlane.position.x = visualOffsetX;
+                diggingPlane.position.z = visualOffsetZ;
+            }
+            if (grassMesh) {
+                grassMesh.position.x = visualOffsetX;
+                grassMesh.position.z = visualOffsetZ;
+            }
 
             // NOVO: Atualiza as posições das malhas de água para o efeito de envolvimento
             waterMeshes.forEach(tile => {
