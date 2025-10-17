@@ -376,8 +376,6 @@
         let skyColor, underwaterColor; // NOVO: Para as cores do ambiente
         // Variáveis para corpos e malhas de jogador, terreno (rua), estrada e cubo
         let playerBody;
-        let islandBody; // Corpo de física para o terreno (agora uma ilha)
-        let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
         const topLayerBlocks = []; // NOVO: Array para armazenar os blocos individuais da camada superior
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
@@ -450,8 +448,7 @@
         const renderDistance = 200; // Distância de renderização para objetos
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
-        const islandSurfaceHeight = cobSize / 2; // A altura da superfície visível da ilha
-        const islandHeight = islandSurfaceHeight - seabedLevel; // Altura total do cilindro da ilha
+        const islandSurfaceHeight = 0.2; // A altura da superfície visível da ilha
         const roadWidth = 10; // Largura da estrada
         const roadHeight = 0.2; // Espessura da estrada
         const numTiles = 3; // Para uma grade 3x3 de tiles visíveis (e cubos)
@@ -1414,48 +1411,9 @@
             scene.add(directionalLight);
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
-            // Cria o Terreno (Segunda Camada - Fundo do Mar)
-            const hfGridSize = 128;
-            const islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
-            const hfMatrix = [];
-            for (let i = 0; i < hfGridSize; i++) {
-                hfMatrix.push([]);
-                for (let j = 0; j < hfGridSize; j++) {
-                    hfMatrix[i][j] = seabedLevel;
-                }
-            }
-            islandGeometry.rotateX(-Math.PI / 2);
-            const vertices = islandGeometry.attributes.position.array;
-            for (let i = 0; i < hfGridSize; i++) {
-                for (let j = 0; j < hfGridSize; j++) {
-                    vertices[(i * hfGridSize + j) * 3 + 1] = hfMatrix[i][j];
-                }
-            }
-            islandGeometry.attributes.position.needsUpdate = true;
-            islandGeometry.computeVertexNormals();
-            const hfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
-            islandBody = new CANNON.Body({ mass: 0, material: islandMaterial });
-            islandBody.addShape(hfShape);
-            islandBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-            islandBody.position.set(-worldSize / 2, 0, worldSize / 2);
-            world.addBody(islandBody);
-
             const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
-
-                // --- Criação Visual do Fundo do Mar (Heightfield escavável) ---
-                texture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                const islandMeshMaterial = new THREE.MeshStandardMaterial({ map: texture });
-                for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
-                        islandMesh.receiveShadow = true;
-                        islandMesh.userData.physicsBody = islandBody;
-                        scene.add(islandMesh);
-                        islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                    }
-                }
 
                 // --- Criação da Camada Superior da Ilha (Blocos Individuais) ---
                 const topLayerTexture = texture.clone();
@@ -1525,8 +1483,8 @@
                 sleepSpeedLimit: 0.01, // Velocidade linear mínima para "acordar"
                 sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer"
             });
-            // Posição inicial: centro da esfera em playerRadius + islandSurfaceHeight
-            playerBody.position.set(0, playerRadius + islandSurfaceHeight, 0); // Posição inicial ajustada do jogador
+            // Posição inicial: centro da esfera em islandSurfaceHeight + playerRadius
+            playerBody.position.set(0, islandSurfaceHeight + playerRadius, 0); // Posição inicial ajustada do jogador
             world.addBody(playerBody);
 
             // Reintroduz o listener de colisão para canJump, mas com uma verificação adicional
@@ -1534,7 +1492,7 @@
                 // canJump é verdadeiro APENAS se o corpo colidido NÃO for o objeto que está sendo segurado
                 // A lista de corpos "chão" agora inclui apenas superfícies que podem ser pisadas
                 const topLayerBodies = topLayerBlocks.map(b => b.body);
-                const allGroundBodies = [...topLayerBodies, islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+                const allGroundBodies = [...topLayerBodies, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
                 if (event.body !== pickedObjectBody && allGroundBodies.includes(event.body)) {
                     canJump = true;
                 }
@@ -2102,7 +2060,7 @@
             function applyTexture() {
                 if (!stoneMaterial) return;
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                const groundMeshes = islandMeshes.map(item => item.mesh);
+                const groundMeshes = topLayerBlocks.map(item => item.mesh);
                 const intersects = raycaster.intersectObjects(groundMeshes);
                 if (intersects.length > 0) {
                     const intersect = intersects[0];
@@ -2460,14 +2418,6 @@
                 }
             });
 
-            // Atualiza as posições das malhas do terreno com base na posição envolvida do jogador
-            islandMeshes.forEach(tile => {
-                tile.mesh.position.x = tile.offsetX - visualOffsetX;
-                tile.mesh.position.y = 0; // O plano está agora centrado em Y=0
-                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                // A rotação da malha é definida uma vez na inicialização e não precisa de ser atualizada.
-            });
-
             // NOVO: Atualiza a posição dos blocos da camada superior para o envolvimento do mundo
             topLayerBlocks.forEach(block => {
                 block.mesh.position.x = block.body.position.x - visualOffsetX;
@@ -2620,7 +2570,7 @@
 
                     // Lista de todos os corpos que podem ser base para colocação
                     const topLayerBodies = topLayerBlocks.map(b => b.body);
-                    const allPlaceableSurfaces = [...topLayerBodies, islandBody, ...placedConstructionBodies];
+                    const allPlaceableSurfaces = [...topLayerBodies, ...placedConstructionBodies];
 
                     for (let i = 0; i < intersects.length; i++) {
                         const intersectedObject = intersects[i].object;
@@ -2651,10 +2601,7 @@
                                 placementPosition.x = snappedUnwrappedX - visualOffsetX;
                                 placementPosition.z = snappedUnwrappedZ - visualOffsetZ;
 
-                                // NOVO: Alinha a posição Y na grade, considerando a altura da superfície da ilha como a base.
-                                // Isso garante que os blocos se encaixem verticalmente.
-                                const n_y = Math.round((basePosition.y - islandSurfaceHeight) / currentGhostHeight - 0.5);
-                                placementPosition.y = islandSurfaceHeight + (n_y + 0.5) * currentGhostHeight;
+                                placementPosition.y = basePosition.y;
 
 
                                 // A rotação agora é apenas a rotação manual, garantindo que o bloco fique sempre na vertical
@@ -2879,7 +2826,7 @@
             world.raycastAny(rayOriginLow, rayTargetLow, {}, rayResultStep);
             // A lista de corpos "chão" para subida de degraus
             const topLayerBodies = topLayerBlocks.map(b => b.body);
-            const stepClimbGroundBodies = [...topLayerBodies, islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+            const stepClimbGroundBodies = [...topLayerBodies, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
             if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
                 hitLow = true;
             }
@@ -3079,7 +3026,7 @@
 
                         const intersectedBody = intersectedObject.userData.physicsBody;
                         const topLayerBodies = topLayerBlocks.map(b => b.body);
-                        const allPlaceableSurfaces = [...topLayerBodies, islandBody, ...placedConstructionBodies];
+                        const allPlaceableSurfaces = [...topLayerBodies, ...placedConstructionBodies];
 
                         if (intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) {
                             if (intersects[i].distance <= pickUpDistance + 1) {
