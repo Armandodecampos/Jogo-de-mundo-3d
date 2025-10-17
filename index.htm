@@ -1259,8 +1259,8 @@
 
         let mounds = []; // Array para armazenar informações sobre os montes
         const maxMounds = 50; // Número máximo de montes no mapa
-        const moundRadius = 5; // Raio de um monte
-        const moundHeight = 2; // Altura máxima de um monte
+        const moundRadius = 10; // Raio de um monte
+        const moundHeight = 4; // Altura máxima de um monte
 
         // Função para adicionar um monte em uma posição aleatória
         function addMound() {
@@ -1273,7 +1273,7 @@
             const x = Math.cos(angle) * distance;
             const z = Math.sin(angle) * distance;
 
-            const newMound = { x, z, radius: moundRadius, height: moundHeight, creationTime: world.time };
+            const newMound = { x, z, radius: moundRadius, height: moundHeight, stage: 3, creationTime: world.time };
             mounds.push(newMound);
 
             // Atualiza a geometria da ilha para adicionar o novo monte
@@ -1309,7 +1309,7 @@
                         const distSq = dx * dx + dz * dz;
                         if (distSq < mound.radius * mound.radius) {
                             const moundInfluence = (1 - Math.sqrt(distSq) / mound.radius);
-                            height += mound.height * moundInfluence;
+                            height += (mound.height * (mound.stage / 3)) * moundInfluence;
                         }
                     });
 
@@ -1385,7 +1385,7 @@
                 playerMaterial,
                 islandMaterial,
                 {
-                    friction: 0, // Attrition set to 0
+                    friction: 0.4,
                     restitution: 0,
                     contactEquationStiffness: 1e9, // Increased for higher rigidity
                     contactEquationRelaxation: 3
@@ -1411,7 +1411,7 @@
                 cubeMaterial,
                 islandMaterial,
                 {
-                    friction: 0.7,
+                    friction: 0.9,
                     restitution: 0,
                     contactEquationStiffness: 1e8, // Aumenta a rigidez para evitar que os objectos se "afundem"
                     contactEquationRelaxation: 4    // Proporciona um ligeiro "amortecimento" para evitar o ressalto
@@ -2225,7 +2225,11 @@
                     });
 
                     if (moundToRemove !== -1) {
-                        mounds.splice(moundToRemove, 1);
+                        const mound = mounds[moundToRemove];
+                        mound.stage--;
+                        if (mound.stage <= 0) {
+                            mounds.splice(moundToRemove, 1);
+                        }
                         updateIslandGeometry();
                     }
                 }
