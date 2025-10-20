@@ -579,8 +579,10 @@
         const textureApplicatorImageURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Ícone para o pincel
         const shovelImageURL = 'https://dl.dropbox.com/scl/fi/zjtff6t1neec7veb3fy7z/icone-de-pa.png?rlkey=hkv3raomfuxqh8zhxnjwf1axv&st=ag82pjwn&dl=0'; // NOVO: Ícone da pá
         const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Textura de pedra para aplicar
+        const stoneDepositTextureURL = "https://dl.dropbox.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=uv3fqtpz&dl=0";
 
         // Global variables for materials
+        let stoneDepositMaterial;
         let cubeMaterialMesh; // NOVO: Material da caixa global
         let cobMaterialMesh;
         let floorMaterialMesh;
@@ -1258,6 +1260,7 @@
 
 
         let mounds = []; // Array para armazenar informações sobre os montes
+        let stoneDeposits = []; // NOVO: Array para armazenar os depósitos de pedra achatados
         const maxMounds = 50; // Número máximo de montes no mapa
         const moundRadius = 5; // Raio de um monte
         const moundHeight = 2; // Altura máxima de um monte
@@ -1273,7 +1276,7 @@
             const x = Math.cos(angle) * distance;
             const z = Math.sin(angle) * distance;
 
-            const newMound = { x, z, radius: moundRadius, height: moundHeight, creationTime: world.time };
+            const newMound = { x, z, radius: moundRadius, height: moundHeight, creationTime: world.time, flattened: false };
             mounds.push(newMound);
 
             // Atualiza a geometria da ilha para adicionar o novo monte
@@ -1304,12 +1307,17 @@
 
                     // Adiciona a altura dos montes
                     mounds.forEach(mound => {
+                        if (mound.flattened) return;
                         const dx = worldX - mound.x;
                         const dz = worldZ - mound.z;
                         const distSq = dx * dx + dz * dz;
                         if (distSq < mound.radius * mound.radius) {
-                            const moundInfluence = (1 - Math.sqrt(distSq) / mound.radius);
-                            height += mound.height * moundInfluence;
+                            // Usa uma fórmula de domo (semi-esfera) para uma aparência mais arredondada
+                            const heightAtCenter = mound.height;
+                            const radiusSq = mound.radius * mound.radius;
+                            const domeHeight = Math.sqrt(Math.max(0, radiusSq - distSq));
+                            // Normaliza a altura do domo para o intervalo [0, 1] e depois escala pela altura do monte
+                            height += (domeHeight / mound.radius) * heightAtCenter;
                         }
                     });
 
@@ -1624,6 +1632,16 @@
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura de pedra:', error);
                 stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, receiveShadow: true }); // Fallback cinza
+            });
+
+            textureLoader.load(stoneDepositTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                stoneDepositMaterial = new THREE.MeshStandardMaterial({ map: texture, receiveShadow: true });
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura de depósito de pedra:', error);
+                stoneDepositMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, receiveShadow: true }); // Fallback cinza
             });
 
             // Load the cob texture and create the material once
@@ -2200,6 +2218,7 @@
             }
 
             function flattenMound() {
+                if (!stoneDepositMaterial) return;
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(islandMeshes.map(item => item.mesh));
 
@@ -2208,25 +2227,45 @@
                     const hitPoint = intersect.point;
 
                     // Encontra o monte mais próximo do ponto de interseção
-                    let moundToRemove = -1;
+                    let moundToFlatten = null;
                     let minDistanceSq = Infinity;
 
                     const unwrappedHitPointX = hitPoint.x + visualOffsetX;
                     const unwrappedHitPointZ = hitPoint.z + visualOffsetZ;
 
-                    mounds.forEach((mound, index) => {
+                    mounds.forEach((mound) => {
+                        if (mound.flattened) return;
                         const dx = unwrappedHitPointX - mound.x;
                         const dz = unwrappedHitPointZ - mound.z;
                         const distSq = dx * dx + dz * dz;
                         if (distSq < mound.radius * mound.radius && distSq < minDistanceSq) {
                             minDistanceSq = distSq;
-                            moundToRemove = index;
+                            moundToFlatten = mound;
                         }
                     });
 
-                    if (moundToRemove !== -1) {
-                        mounds.splice(moundToRemove, 1);
+                    if (moundToFlatten) {
+                        moundToFlatten.flattened = true;
                         updateIslandGeometry();
+
+                        const depositGeometry = new THREE.CircleGeometry(moundToFlatten.radius, 32);
+                        const depositMeshes = [];
+                        const depositObject = {
+                            position: new CANNON.Vec3(moundToFlatten.x, islandSurfaceHeight + 0.01, moundToFlatten.z),
+                            meshes: depositMeshes,
+                            radius: moundToFlatten.radius
+                        };
+
+                        for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                                const mesh = new THREE.Mesh(depositGeometry, stoneDepositMaterial);
+                                mesh.receiveShadow = true;
+                                mesh.rotation.x = -Math.PI / 2;
+                                scene.add(mesh);
+                                depositMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                            }
+                        }
+                        stoneDeposits.push(depositObject);
                     }
                 }
             }
@@ -2593,6 +2632,21 @@
                         visualObject.position.x = patch.position.x + item.offsetX - visualOffsetX;
                         visualObject.position.y = patch.position.y;
                         visualObject.position.z = patch.position.z + item.offsetZ - visualOffsetZ;
+                    }
+                });
+            });
+
+            stoneDeposits.forEach(deposit => {
+                const distance = calculateWrappedDistance(playerBody.position, deposit.position);
+                const isVisible = distance <= renderDistance;
+
+                deposit.meshes.forEach(item => {
+                    item.mesh.visible = isVisible;
+                    if (isVisible) {
+                        const visualObject = item.mesh;
+                        visualObject.position.x = deposit.position.x + item.offsetX - visualOffsetX;
+                        visualObject.position.y = deposit.position.y;
+                        visualObject.position.z = deposit.position.z + item.offsetZ - visualOffsetZ;
                     }
                 });
             });
