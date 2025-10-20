@@ -1,41 +1,47 @@
-
-import re
-from playwright.sync_api import sync_playwright, Page, expect
+from playwright.sync_api import sync_playwright, expect
+import pathlib
+import time
 
 def run(playwright):
     browser = playwright.chromium.launch(headless=True)
-    context = browser.new_context()
-    page = context.new_page()
+    page = browser.new_page()
+    page.on("console", lambda msg: print(f"PAGE LOG: {msg.text}"))
 
-    # Go to the local HTML file
-    page.goto("file:///app/index.htm", wait_until="load")
+    try:
+        file_path = f"file://{pathlib.Path.cwd()}/index.htm"
+        page.goto(file_path, wait_until="load")
 
-    # Click the start button
-    page.locator("#startButton").click()
+        page.locator("#startButton").click()
+        expect(page.locator("#crosshair")).to_be_visible(timeout=30000)
+        page.wait_for_timeout(2000) # wait for assets
 
-    # Wait for the game to be ready by checking for the crosshair
-    expect(page.locator("#crosshair")).to_be_visible(timeout=15000)
+        # Click canvas to get pointer lock
+        page.locator("canvas").click()
+        page.wait_for_timeout(500)
 
-    # Use evaluate to dispatch a KeyboardEvent for pressing "e"
-    page.evaluate("""() => {
-        document.dispatchEvent(new KeyboardEvent('keydown', {'key': 'e'}));
-    }""")
+        # Select axe
+        page.keyboard.press("e")
+        page.wait_for_timeout(500)
 
-    # Position the mouse over the center of the canvas (where the crosshair is)
-    page.mouse.move(page.viewport_size['width'] / 2, page.viewport_size['height'] / 2)
+        # Destroy the deposit (it should be right in front)
+        page.mouse.down()
+        page.wait_for_timeout(1600) # durability is 1.5s
+        page.mouse.up()
 
-    # Simulate a long press to destroy the stone deposit
-    page.mouse.down()
-    page.wait_for_timeout(2000)  # Hold for 2 seconds
-    page.mouse.up()
+        page.wait_for_timeout(500)
 
-    # Wait for the "dono" to respawn
-    page.wait_for_timeout(65000) # 65 seconds to be safe
+        # Screenshot 1: flattened dono
+        page.screenshot(path="jules-scratch/verification/flattened_dono.png")
 
-    # Take a screenshot
-    page.screenshot(path="jules-scratch/verification/verification.png")
+        # Wait for respawn
+        print("Waiting 61 seconds for respawn...")
+        time.sleep(61)
 
-    browser.close()
+        # Screenshot 2: respawned dono
+        page.screenshot(path="jules-scratch/verification/verification.png")
+
+    finally:
+        browser.close()
 
 with sync_playwright() as playwright:
     run(playwright)

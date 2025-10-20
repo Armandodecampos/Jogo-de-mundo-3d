@@ -2344,16 +2344,21 @@
 
         // NOVO: Função separada para configurar os depósitos de pedra
         function setupStoneDeposits() {
+            // Inicializa os materiais com uma cor de fallback para evitar condições de corrida
+            stoneDepositMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
+            flattenedStoneDepositMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
             textureLoader.load(stoneDepositTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(4, 2); // Repete a textura na cúpula
-                stoneDepositMaterial = new THREE.MeshStandardMaterial({ map: texture });
+                stoneDepositMaterial.map = texture;
+                stoneDepositMaterial.needsUpdate = true;
 
                 const flatTexture = texture.clone();
                 flatTexture.needsUpdate = true; // Importante ao clonar
                 flatTexture.repeat.set(1, 1);
-                flattenedStoneDepositMaterial = new THREE.MeshStandardMaterial({ map: flatTexture });
+                flattenedStoneDepositMaterial.map = flatTexture;
+                flattenedStoneDepositMaterial.needsUpdate = true;
 
                 // Gera os dados dos depósitos de pedra
                 for (let i = 0; i < numStoneDeposits; i++) {
@@ -2501,7 +2506,7 @@
                                 mass: 0, // Estático
                                 shape: flattenedShape,
                                 material: islandMaterial, // Reutiliza o material da ilha
-                                position: new CANNON.Vec3(position.x, position.y + 0.05, position.z)
+                                position: new CANNON.Vec3(position.x, position.y, position.z)
                             });
                             world.addBody(flattenedBody);
                             destroyTargetDeposit.flattenedBody = flattenedBody; // Armazena a referência
@@ -2763,7 +2768,7 @@
                     if (item.mesh.visible) {
                         item.mesh.position.set(
                             deposit.x + item.offsetX - visualOffsetX,
-                            deposit.y + 0.05, // Um pouco acima da base para evitar z-fighting
+                            deposit.y + 0.1, // Um pouco acima da base para evitar z-fighting
                             deposit.z + item.offsetZ - visualOffsetZ
                         );
                     }
