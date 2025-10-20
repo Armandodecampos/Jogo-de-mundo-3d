@@ -2379,9 +2379,10 @@
                     stoneDeposits.push({
                         x: x, z: z, y: 0,
                         flattened: false,
-                        regenerationTimer: 0,
+                        regenerationStartTime: 0,
                         domeMeshes: domeMeshes,
-                        flattenedMeshes: []
+                        flattenedMeshes: [],
+                        flattenedBody: null // Corpo de física para o estado achatado
                     });
                 }
                 updateIslandGeometry(); // Chama para incorporar as cúpulas na física
@@ -2487,12 +2488,23 @@
                         if (destroyTargetDeposit) {
                             position = new THREE.Vector3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
                             destroyTargetDeposit.flattened = true;
-                            destroyTargetDeposit.regenerationTimer = 60; // Inicia o temporizador de 1 minuto
+                            destroyTargetDeposit.regenerationStartTime = world.time; // Inicia o temporizador de 1 minuto
                             updateIslandGeometry(); // Atualiza a física para remover a cúpula de colisão
 
                             const flattenedGeometry = new THREE.CylinderGeometry(stoneDepositRadius, stoneDepositRadius, 0.1, 16);
                             const flattenedMesh = new THREE.Mesh(flattenedGeometry, flattenedStoneDepositMaterial);
                             flattenedMesh.receiveShadow = true;
+
+                            // Cria o corpo de física para o estado achatado
+                            const flattenedShape = new CANNON.Cylinder(stoneDepositRadius, stoneDepositRadius, 0.1, 16);
+                            const flattenedBody = new CANNON.Body({
+                                mass: 0, // Estático
+                                shape: flattenedShape,
+                                material: islandMaterial, // Reutiliza o material da ilha
+                                position: new CANNON.Vec3(position.x, position.y + 0.05, position.z)
+                            });
+                            world.addBody(flattenedBody);
+                            destroyTargetDeposit.flattenedBody = flattenedBody; // Armazena a referência
 
                             for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                                 for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
@@ -2580,10 +2592,15 @@
 
             // NOVO: Lógica de regeneração dos depósitos de pedra
             stoneDeposits.forEach(deposit => {
-                if (deposit.flattened && deposit.regenerationTimer > 0) {
-                    deposit.regenerationTimer -= 1 / 60; // Subtrai o tempo do frame
-                    if (deposit.regenerationTimer <= 0) {
+                if (deposit.flattened && deposit.regenerationStartTime > 0) {
+                    if (world.time - deposit.regenerationStartTime >= 60) {
                         deposit.flattened = false;
+                        deposit.regenerationStartTime = 0; // Reseta o temporizador
+                        // Remove o corpo de física do estado achatado
+                        if (deposit.flattenedBody) {
+                            world.removeBody(deposit.flattenedBody);
+                            deposit.flattenedBody = null;
+                        }
                         // Remove e descarta as malhas achatadas
                         deposit.flattenedMeshes.forEach(item => {
                             scene.remove(item.mesh);
@@ -2746,7 +2763,7 @@
                     if (item.mesh.visible) {
                         item.mesh.position.set(
                             deposit.x + item.offsetX - visualOffsetX,
-                            deposit.y + 0.01, // Um pouco acima da base para evitar z-fighting
+                            deposit.y + 0.05, // Um pouco acima da base para evitar z-fighting
                             deposit.z + item.offsetZ - visualOffsetZ
                         );
                     }
