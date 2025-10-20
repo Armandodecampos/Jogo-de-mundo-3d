@@ -1473,25 +1473,6 @@
                     }
                 }
 
-                // Adiciona as cúpulas de colisão dos depósitos de pedra no heightfield
-                stoneDeposits.forEach(deposit => {
-                    if (!deposit.flattened) {
-                        for (let i = 0; i < hfGridSize; i++) {
-                            for (let j = 0; j < hfGridSize; j++) {
-                                const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
-                                const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
-                                const distSq = (x - deposit.x) * (x - deposit.x) + (z - deposit.z) * (z - deposit.z);
-                                const radiusSq = stoneDepositRadius * stoneDepositRadius;
-
-                                if (distSq < radiusSq) {
-                                    const domeHeight = Math.sqrt(radiusSq - distSq) * (stoneDepositHeight / stoneDepositRadius);
-                                    hfMatrix[i][j] += domeHeight;
-                                }
-                            }
-                        }
-                    }
-                });
-
                 // Atualiza a forma de física
                 // Verifica se o corpo da ilha já tem uma forma antes de tentar removê-la
                 if (islandBody && islandBody.shapes.length > 0) {
@@ -2041,7 +2022,7 @@
                     // NOVO: Verifica se o objeto intersectado é um depósito de pedra
                     const deposit = stoneDeposits.find(d => d.domeMeshes.some(m => m.mesh === intersectedObject));
                     if (deposit && !deposit.flattened) {
-                        target = { body: null, mesh: intersectedObject, patchObject: null };
+                        target = { body: deposit.body, mesh: intersectedObject, patchObject: null };
                         destroyTargetDeposit = deposit;
                         break;
                     }
@@ -2376,15 +2357,29 @@
                         }
                     }
 
+                    // CRIA O CORPO DE FÍSICA SÓLIDO PARA O DEPÓSITO
+                    const domeShape = new CANNON.Cylinder(stoneDepositRadius, stoneDepositRadius, stoneDepositHeight, 16);
+                    const domeBody = new CANNON.Body({
+                        mass: 0, // Estático
+                        type: CANNON.Body.STATIC,
+                        shape: domeShape,
+                        material: islandMaterial // Usa o mesmo material da ilha para colisões consistentes
+                    });
+                    // A posição Y será definida no loop de animação com base na altura do terreno
+                    domeBody.position.set(x, 0, z);
+                    world.addBody(domeBody);
+
+
                     stoneDeposits.push({
                         x: x, z: z, y: 0,
                         flattened: false,
                         regenerationTimer: 0,
                         domeMeshes: domeMeshes,
-                        flattenedMeshes: []
+                        flattenedMeshes: [],
+                        body: domeBody // Armazena a referência ao corpo de física
                     });
                 }
-                updateIslandGeometry(); // Chama para incorporar as cúpulas na física
+                updateIslandGeometry();
             }, undefined, (error) => {
                 console.error("Falha ao carregar a textura do depósito de pedra:", error);
             });
@@ -2488,22 +2483,27 @@
                             position = new THREE.Vector3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
                             destroyTargetDeposit.flattened = true;
                             destroyTargetDeposit.regenerationTimer = 60; // Inicia o temporizador de 1 minuto
-                            updateIslandGeometry(); // Atualiza a física para remover a cúpula de colisão
 
-                            const flattenedGeometry = new THREE.CylinderGeometry(stoneDepositRadius, stoneDepositRadius, 0.1, 16);
+                            // Remove o corpo de física principal
+                            if (destroyTargetDeposit.body) {
+                                world.removeBody(destroyTargetDeposit.body);
+                            }
+
+                            const flattenedHeight = 0.2;
+                            const flattenedGeometry = new THREE.CylinderGeometry(stoneDepositRadius, stoneDepositRadius, flattenedHeight, 16);
                             const flattenedMesh = new THREE.Mesh(flattenedGeometry, flattenedStoneDepositMaterial);
                             flattenedMesh.receiveShadow = true;
 
                             // CRIA O CORPO DE FÍSICA SÓLIDO PARA O DEPÓSITO ACHATADO
-                            const flattenedShape = new CANNON.Cylinder(stoneDepositRadius, stoneDepositRadius, 0.1, 16);
+                            const flattenedShape = new CANNON.Cylinder(stoneDepositRadius, stoneDepositRadius, flattenedHeight, 16);
                             const flattenedBody = new CANNON.Body({
                                 mass: 0, // Estático
                                 type: CANNON.Body.STATIC,
                                 shape: flattenedShape,
                                 material: islandMaterial // Usa o mesmo material da ilha para colisões consistentes
                             });
-                            // A posição Y do centro do cilindro (altura 0.1) para que a base fique em y + 0.01
-                            flattenedBody.position.set(destroyTargetDeposit.x, destroyTargetDeposit.y + 0.06, destroyTargetDeposit.z);
+                            // A posição Y do centro do cilindro (altura 0.2) para que a base fique no chão
+                            flattenedBody.position.set(destroyTargetDeposit.x, destroyTargetDeposit.y + flattenedHeight / 2, destroyTargetDeposit.z);
                             world.addBody(flattenedBody);
                             destroyTargetDeposit.flattenedBody = flattenedBody; // Armazena a referência para remoção posterior
 
@@ -2603,6 +2603,10 @@
                             world.removeBody(deposit.flattenedBody);
                             deposit.flattenedBody = null;
                         }
+                        // Readiciona o corpo de física original
+                        if (deposit.body) {
+                            world.addBody(deposit.body);
+                        }
                         // Remove e descarta as malhas achatadas
                         deposit.flattenedMeshes.forEach(item => {
                             scene.remove(item.mesh);
@@ -2610,7 +2614,6 @@
                             // O material é partilhado, por isso não o descartamos aqui
                         });
                         deposit.flattenedMeshes = []; // Limpa o array
-                        updateIslandGeometry(); // Restaura a colisão da cúpula
                         deposit.domeMeshes.forEach(item => item.mesh.visible = true);
                     }
                 }
@@ -2743,6 +2746,12 @@
                     baseHeight = seabedLevel;
                 }
                 deposit.y = baseHeight;
+
+                // ATUALIZA A POSIÇÃO Y DO CORPO DE FÍSICA
+                if (deposit.body && !deposit.flattened) {
+                    deposit.body.position.y = baseHeight + stoneDepositHeight / 2;
+                }
+
 
                 const depositPosition = new THREE.Vector3(deposit.x, deposit.y, deposit.z);
                 const distance = calculateWrappedDistance(playerBody.position, depositPosition);
