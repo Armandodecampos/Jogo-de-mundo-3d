@@ -378,7 +378,6 @@
         let playerBody;
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
-        let grassMeshes = []; // Array para armazenar múltiplas malhas visuais da relva
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
@@ -1455,13 +1454,6 @@
             islandGeometry.attributes.position.needsUpdate = true;
             islandGeometry.computeVertexNormals(); // Recalcula as normais para uma iluminação correta
 
-            const grassGeometry = islandGeometry.clone();
-            const grassVertices = grassGeometry.attributes.position.array;
-            for (let i = 0; i < grassVertices.length; i += 3) {
-                grassVertices[i + 1] += 0.2; // Aumenta a coordenada Y em 0.2
-            }
-            grassGeometry.attributes.position.needsUpdate = true;
-
             const hfShape = new CANNON.Heightfield(hfMatrix, {
                 elementSize: worldSize / (hfGridSize - 1)
             });
@@ -1499,12 +1491,6 @@
                         islandMesh.userData.physicsBody = islandBody;
                         scene.add(islandMesh);
                         islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-
-                        // Cria e adiciona a malha de relva
-                        const grassMesh = new THREE.Mesh(grassGeometry, grassMaterial);
-                        grassMesh.receiveShadow = true; // A relva também pode receber sombras
-                        scene.add(grassMesh);
-                        grassMeshes.push({ mesh: grassMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                     }
                 }
             }, undefined, (error) => {
@@ -2477,13 +2463,6 @@
                 // A rotação da malha é definida uma vez na inicialização e não precisa de ser atualizada.
             });
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
-
-            // Atualiza as posições das malhas de relva
-            grassMeshes.forEach(tile => {
-                tile.mesh.position.x = tile.offsetX - visualOffsetX;
-                tile.mesh.position.y = 0; // A posição Y já está elevada na geometria
-                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-            });
 
             // NOVO: Atualiza as posições das malhas de água para o efeito de envolvimento
             waterMeshes.forEach(tile => {
