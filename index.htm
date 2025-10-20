@@ -2344,21 +2344,16 @@
 
         // NOVO: Função separada para configurar os depósitos de pedra
         function setupStoneDeposits() {
-            // Inicializa os materiais com uma cor de fallback para evitar condições de corrida
-            stoneDepositMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
-            flattenedStoneDepositMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
             textureLoader.load(stoneDepositTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(4, 2); // Repete a textura na cúpula
-                stoneDepositMaterial.map = texture;
-                stoneDepositMaterial.needsUpdate = true;
+                stoneDepositMaterial = new THREE.MeshStandardMaterial({ map: texture });
 
                 const flatTexture = texture.clone();
                 flatTexture.needsUpdate = true; // Importante ao clonar
                 flatTexture.repeat.set(1, 1);
-                flattenedStoneDepositMaterial.map = flatTexture;
-                flattenedStoneDepositMaterial.needsUpdate = true;
+                flattenedStoneDepositMaterial = new THREE.MeshStandardMaterial({ map: flatTexture });
 
                 // Gera os dados dos depósitos de pedra
                 for (let i = 0; i < numStoneDeposits; i++) {
@@ -2384,10 +2379,9 @@
                     stoneDeposits.push({
                         x: x, z: z, y: 0,
                         flattened: false,
-                        regenerationStartTime: 0,
+                        regenerationTimer: 0,
                         domeMeshes: domeMeshes,
-                        flattenedMeshes: [],
-                        flattenedBody: null // Corpo de física para o estado achatado
+                        flattenedMeshes: []
                     });
                 }
                 updateIslandGeometry(); // Chama para incorporar as cúpulas na física
@@ -2493,23 +2487,26 @@
                         if (destroyTargetDeposit) {
                             position = new THREE.Vector3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
                             destroyTargetDeposit.flattened = true;
-                            destroyTargetDeposit.regenerationStartTime = world.time; // Inicia o temporizador de 1 minuto
+                            destroyTargetDeposit.regenerationTimer = 60; // Inicia o temporizador de 1 minuto
                             updateIslandGeometry(); // Atualiza a física para remover a cúpula de colisão
 
                             const flattenedGeometry = new THREE.CylinderGeometry(stoneDepositRadius, stoneDepositRadius, 0.1, 16);
                             const flattenedMesh = new THREE.Mesh(flattenedGeometry, flattenedStoneDepositMaterial);
                             flattenedMesh.receiveShadow = true;
 
-                            // Cria o corpo de física para o estado achatado
+                            // CRIA O CORPO DE FÍSICA SÓLIDO PARA O DEPÓSITO ACHATADO
                             const flattenedShape = new CANNON.Cylinder(stoneDepositRadius, stoneDepositRadius, 0.1, 16);
                             const flattenedBody = new CANNON.Body({
                                 mass: 0, // Estático
+                                type: CANNON.Body.STATIC,
                                 shape: flattenedShape,
-                                material: islandMaterial, // Reutiliza o material da ilha
-                                position: new CANNON.Vec3(position.x, position.y, position.z)
+                                material: islandMaterial // Usa o mesmo material da ilha para colisões consistentes
                             });
+                            // A posição Y do centro do cilindro (altura 0.1) para que a base fique em y + 0.01
+                            flattenedBody.position.set(destroyTargetDeposit.x, destroyTargetDeposit.y + 0.06, destroyTargetDeposit.z);
                             world.addBody(flattenedBody);
-                            destroyTargetDeposit.flattenedBody = flattenedBody; // Armazena a referência
+                            destroyTargetDeposit.flattenedBody = flattenedBody; // Armazena a referência para remoção posterior
+
 
                             for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                                 for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
@@ -2597,11 +2594,11 @@
 
             // NOVO: Lógica de regeneração dos depósitos de pedra
             stoneDeposits.forEach(deposit => {
-                if (deposit.flattened && deposit.regenerationStartTime > 0) {
-                    if (world.time - deposit.regenerationStartTime >= 60) {
+                if (deposit.flattened && deposit.regenerationTimer > 0) {
+                    deposit.regenerationTimer -= 1 / 60; // Subtrai o tempo do frame
+                    if (deposit.regenerationTimer <= 0) {
                         deposit.flattened = false;
-                        deposit.regenerationStartTime = 0; // Reseta o temporizador
-                        // Remove o corpo de física do estado achatado
+                        // REMOVE O CORPO DE FÍSICA DO DEPÓSITO ACHATADO
                         if (deposit.flattenedBody) {
                             world.removeBody(deposit.flattenedBody);
                             deposit.flattenedBody = null;
@@ -2614,6 +2611,7 @@
                         });
                         deposit.flattenedMeshes = []; // Limpa o array
                         updateIslandGeometry(); // Restaura a colisão da cúpula
+                        deposit.domeMeshes.forEach(item => item.mesh.visible = true);
                     }
                 }
             });
@@ -2768,7 +2766,7 @@
                     if (item.mesh.visible) {
                         item.mesh.position.set(
                             deposit.x + item.offsetX - visualOffsetX,
-                            deposit.y + 0.1, // Um pouco acima da base para evitar z-fighting
+                            deposit.y + 0.06, // Corresponde à posição do corpo de física
                             deposit.z + item.offsetZ - visualOffsetZ
                         );
                     }
