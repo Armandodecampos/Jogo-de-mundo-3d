@@ -369,6 +369,9 @@
         // Importa as bibliotecas Three.js e Cannon-es de CDNs
         import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
         import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js';
+        window.THREE = THREE;
+        window.CANNON = CANNON;
+        window.gameReady = false;
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -406,14 +409,6 @@
         const pickUpDistance = 3.0; // Distância máxima para pegar um objeto
         const destroyDistance = 5.0; // Distância máxima para destruir um objeto
 
-        // NOVO: Variáveis para o sistema de destruição progressiva
-        let isDestroying = false;
-        let destroyProgress = 0;
-        let targetDestroyTime = 0; // Tempo necessário para destruir o objeto (em segundos)
-        let destroyTargetBody = null; // Corpo que está sendo destruído
-        let destroyTargetMesh = null; // Malha visual do corpo
-        let destroyTargetPatchObject = null;
-
         // NOVO: Variáveis para a lógica de clique vs. segurar
         let mouseDownTime = 0;
         let clickHoldTimer = null;
@@ -450,6 +445,16 @@
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
         const islandSurfaceHeight = cobSize; // A altura da superfície visível da ilha
+
+        // NOVO: Constantes e variáveis para depósitos de pedra
+        const stoneDepositTextureURL = "https://dl.dropbox.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=uv3fqtpz&dl=0";
+        let stoneDepositMaterial;
+        let flattenedStoneDepositMaterial; // Material para o estado achatado
+        const numStoneDeposits = 20;
+        const stoneDepositRadius = 3;
+        const stoneDepositHeight = 2; // Altura da cúpula
+        let stoneDeposits = []; // Array para rastrear o estado e os objetos de cada depósito
+        window.stoneDeposits = stoneDeposits;
         const islandHeight = islandSurfaceHeight - seabedLevel; // Altura total do cilindro da ilha
         const roadWidth = 10; // Largura da estrada
         const roadHeight = 0.2; // Espessura da estrada
@@ -505,10 +510,12 @@
 
         // NOVO: Variáveis para o sistema de agarrar objetos (Mão)
         const handItemName = 'mao'; // Nome do item de mão no inventário
+        const handImageURL = 'https://dl.dropbox.com/scl/fi/v20v5s4v5v5v5v5v5v5v5/hand.png?rlkey=v5v5v5v5v5v5v5v5v5v5&st=v5v5v5v5&dl=0';
 
         // NOVO: Variáveis para o sistema de destruição de blocos (Machado e Martelo)
         const axeItemName = 'machado'; // Nome do item de machado no inventário
         const hammerItemName = 'martelo'; // Nome do item de martelo no inventário
+        const pickaxeItemName = 'picareta'; // NOVO: Nome do item de picareta no inventário
         const stoneItemName = 'pedra'; // NOVO: Nome do item de pedra no inventário
         const textureApplicatorItemName = 'pincel'; // FERRAMENTA RENOMEADA
 
@@ -561,23 +568,6 @@
         const snappingThreshold = 0.7; // Distância máxima para o bloco fantasma "grudar"
         // NOVO: Distância mínima para colocar árvores (para evitar sobreposição)
         const minTreePlacementDistance = 6.0; // Aumentado para 6.0 para maior espaçamento
-
-        // URLs das texturas
-        const cubeTextureURL = 'https://dl.dropbox.com/scl/fi/gj6zul0y5tl74dbyysnz8/caixote.jpg?rlkey=4v81yak0nb08mllkfh1eceijw&st=lqj60d8g&dl=0';
-        const cobTextureURL = 'https://dl.dropbox.com/scl/fi/cp3ueclujrd32o6hv8d73/Cob-2.png?rlkey=5x29w33xvgol1aoxqk3p9jdkm&st=1kahc5pq&dl=0';
-        const floorTextureURL = 'https://dl.dropbox.com/scl/fi/cp3ueclujrd32o6hv8d73/Cob-2.png?rlkey=5x29w33xvgol1aoxqk3p9jdkm&st=1kahc5pq&dl=0'; // Nova textura para pisos (exemplo)
-        const treeSaplingTextureURL = 'https://dl.dropbox.com/scl/fi/pjdpuxo189igkd5wyvp0z/icone-de-muda-de-arvore.png?rlkey=9bvfgukhymi4qo02965pt3zl4&st=xs4n6qwo&dl=0'; // Dark green placeholder for tree icon
-        const axeImageURL = 'https://dl.dropbox.com/scl/fi/6td6rpc8n54j6sz62w383/icone-de-machado.png?rlkey=zepycmnfyohef27tp7f5urnx0&st=7kbd3no2&dl=0'; // Placeholder for axe image
-        const hammerImageURL = 'https://dl.dropbox.com/scl/fi/vadd8ztbnmzfqi18ml1cl/icone-de-martelo.png?rlkey=45l4k78t728fh4w4fkd4tvlef&st=cbi6paz9&dl=0'; // Placeholder for hammer image
-        const stoneImageURL = 'https://placehold.co/100x100/964B00/FFFFFF?text=Pedra'; // NOVO: Imagem para a pedra
-        const treeBarkTextureURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // Corrected URL
-        const treeLeavesTextureURL = 'https://dl.dropbox.com/s/scl/fi/gdz8f8qzmrdza0t0nntzs/textura-folhas-arvore.jpg?rlkey=efabv8qthg0fpxg1ugf7fpd3k&dl=0'; // Corrected URL
-        const handImageURL = 'https://dl.dropbox.com/scl/fi/adirqfks81emnagkoljcw/m-o-direita.png?rlkey=pj17lswbeg8lene1n5ypdbmob&st=i2qtxssr&dl=0';
-        const treeTrunkImageURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // NOVO: Ícone para o tronco de árvore (placeholder)
-        const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
-        const textureApplicatorImageURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Ícone para o pincel
-        const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Textura de pedra para aplicar
-        const grassTextureURL = "https://dl.dropbox.com/scl/fi/c8s6fisvxvg0qz9d6u2vb/Grass-texture.jpg?rlkey=9gaw6xc8o3p7t3b2ubsxmb715&st=23958hfi&dl=0";
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -819,34 +809,13 @@
             }
 
             if (item) {
+                // Use a an img element for the icon
                 const img = document.createElement('img');
-                const quantitySpan = document.createElement('span');
-
-                // Define o ícone com base no nome do item
-                if (item.name === axeItemName) {
-                    img.src = axeImageURL;
-                } else if (item.name === hammerItemName) {
-                    img.src = hammerImageURL;
-                } else if (item.name === stoneItemName) { // NOVO
-                    img.src = stoneImageURL;
-                } else if (item.name === textureApplicatorItemName) {
-                    img.src = textureApplicatorImageURL;
-                } else if (item.name === cobItemName) {
-                    img.src = cobTextureURL;
-                } else if (item.name === floorItemName) {
-                    img.src = floorTextureURL;
-                } else if (item.name === treeSaplingItemName) {
-                    img.src = treeSaplingTextureURL;
-                } else if (item.name === treeTrunkItemName) { // Ícone para tronco de árvore
-                    img.src = treeTrunkImageURL;
-                } else if (item.name === woodenPlankItemName) { // Ícone para tábuas de madeira
-                    img.src = woodenPlankTextureURL;
-                } else if (item.name === boxItemName) {
-                    img.src = cubeTextureURL;
-                }
+                img.src = item.iconURL;
                 img.classList.add('slot-icon');
                 slotDiv.appendChild(img);
 
+                const quantitySpan = document.createElement('span');
                 if (item.quantity > 1) { // Só mostra a quantidade se for maior que 1
                     quantitySpan.classList.add('slot-quantity');
                     quantitySpan.textContent = item.quantity;
@@ -1275,6 +1244,7 @@
             // Configuração da Câmera Three.js
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
             camera.rotation.order = 'YXZ'; // Define a ordem de rotação para guinada (Y), inclinação (X), rolagem (Z)
+            window.camera = camera; // Expor após a criação
 
             // Configuração do Renderizador Three.js
             renderer = new THREE.WebGLRenderer({ antialiased: true }); // Habilita antialiasing para gráficos mais suaves
@@ -1439,6 +1409,76 @@
                 }
             }
 
+            // NOVO: Função para atualizar a geometria e física da ilha
+            function updateIslandGeometry() {
+                const hfGridSize = 128; // Manter consistente com a inicialização
+                const hfMatrix = [];
+                for (let i = 0; i < hfGridSize; i++) {
+                    hfMatrix.push([]);
+                    for (let j = 0; j < hfGridSize; j++) {
+                        const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
+                        const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
+                        const distance = Math.sqrt(x * x + z * z);
+                        let height;
+
+                        if (distance <= islandRadiusTop) {
+                            height = islandSurfaceHeight;
+                        } else if (distance <= islandRadiusBottom) {
+                            const t = (distance - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
+                            height = islandSurfaceHeight * (1 - t) + seabedLevel * t;
+                        } else {
+                            height = seabedLevel;
+                        }
+                        hfMatrix[i][j] = height;
+                    }
+                }
+
+                // Adiciona as cúpulas de colisão dos depósitos de pedra no heightfield
+                stoneDeposits.forEach(deposit => {
+                    if (!deposit.flattened) {
+                        for (let i = 0; i < hfGridSize; i++) {
+                            for (let j = 0; j < hfGridSize; j++) {
+                                const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
+                                const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
+                                const distSq = (x - deposit.x) * (x - deposit.x) + (z - deposit.z) * (z - deposit.z);
+                                const radiusSq = stoneDepositRadius * stoneDepositRadius;
+
+                                if (distSq < radiusSq) {
+                                    const domeHeight = Math.sqrt(radiusSq - distSq) * (stoneDepositHeight / stoneDepositRadius);
+                                    hfMatrix[i][j] += domeHeight;
+                                }
+                            }
+                        }
+                    }
+                });
+
+                // Atualiza a forma de física
+                // Verifica se o corpo da ilha já tem uma forma antes de tentar removê-la
+                if (islandBody && islandBody.shapes.length > 0) {
+                    const newHfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
+                    islandBody.removeShape(islandBody.shapes[0]); // Remove a forma antiga
+                    islandBody.addShape(newHfShape); // Adiciona a nova forma
+                    islandBody.wakeUp();
+                }
+
+
+                // Atualiza a geometria visual (apenas a primeira malha, as outras são clones)
+                if (islandMeshes.length > 0) {
+                    const mainIslandMesh = islandMeshes[0].mesh;
+                    const vertices = mainIslandMesh.geometry.attributes.position.array;
+                    for (let i = 0; i < hfGridSize; i++) {
+                        for (let j = 0; j < hfGridSize; j++) {
+                            const height = hfMatrix[i][j];
+                            const index = (i * hfGridSize + j) * 3;
+                            vertices[index + 1] = height; // Atualiza a coordenada Y
+                        }
+                    }
+                    mainIslandMesh.geometry.attributes.position.needsUpdate = true;
+                    mainIslandMesh.geometry.computeVertexNormals();
+                }
+            }
+
+
             // Gira a geometria para ficar no plano XZ.
             islandGeometry.rotateX(-Math.PI / 2);
 
@@ -1465,47 +1505,19 @@
             // Posiciona o corpo no canto do mundo para alinhar a grelha.
             islandBody.position.set(-worldSize / 2, 0, worldSize / 2);
             world.addBody(islandBody);
-            const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=6iqo4hws&dl=0', (texture) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-            });
-            const islandMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
+            window.playerBody = playerBody; // Expor após a criação
+            const islandMeshMaterial = new THREE.MeshStandardMaterial({ color: 0xD2B48C });
 
-            // Carrega a textura da relva e, no callback, cria os meshes da ilha e da relva
-            textureLoader.load(grassTextureURL, (grassTexture) => {
-                grassTexture.wrapS = THREE.RepeatWrapping;
-                grassTexture.wrapT = THREE.RepeatWrapping;
-                grassTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4); // Usa a mesma repetição
-                const grassMaterial = new THREE.MeshStandardMaterial({
-                    map: grassTexture,
-                    transparent: true, // Permite transparência
-                    alphaTest: 0.5   // Descarta pixels com alfa abaixo de 0.5
-                });
-
-                for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        // Cria e adiciona a malha da ilha
-                        const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
-                        islandMesh.receiveShadow = true;
-                        islandMesh.userData.physicsBody = islandBody;
-                        scene.add(islandMesh);
-                        islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                    }
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    // Cria e adiciona a malha da ilha
+                    const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
+                    islandMesh.receiveShadow = true;
+                    islandMesh.userData.physicsBody = islandBody;
+                    scene.add(islandMesh);
+                    islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
-            }, undefined, (error) => {
-                console.error('Erro ao carregar a textura da relva:', error);
-                // Fallback: Se a textura da relva falhar, continua a criar a ilha
-                for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        const mesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
-                        mesh.receiveShadow = true;
-                        mesh.userData.physicsBody = islandBody;
-                        scene.add(mesh);
-                        islandMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                    }
-                }
-            });
+            }
 
             // Cria a Água (agora como uma grelha)
             const waterGeometry = new THREE.BoxGeometry(worldSize, 0.1, worldSize);
@@ -1555,6 +1567,7 @@
             // Posição inicial: centro da esfera em playerRadius + islandSurfaceHeight
             playerBody.position.set(0, playerRadius + islandSurfaceHeight, 0); // Posição inicial ajustada do jogador
             world.addBody(playerBody);
+            window.playerBody = playerBody; // Expor após a criação
 
             // Reintroduz o listener de colisão para canJump, mas com uma verificação adicional
             playerBody.addEventListener('collide', (event) => {
@@ -1568,12 +1581,7 @@
 
             // --- Configuração dos Cubos Interativos ---
             const cubeSize = 1;
-            // Carrega a textura para os cubos e cria o material global
-            const cubeTexture = textureLoader.load(cubeTextureURL);
-            cubeTexture.wrapS = THREE.RepeatWrapping;
-            cubeTexture.wrapT = THREE.RepeatWrapping;
-            cubeTexture.repeat.set(1, 1);
-            cubeMaterialMesh = new THREE.MeshStandardMaterial({ map: cubeTexture });
+            cubeMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xA0522D });
 
             // Cria as caixas iniciais usando a função createBox
             createBox(new THREE.Vector3(0, cubeSize / 2 + islandSurfaceHeight, -10));
@@ -1592,86 +1600,13 @@
             ghostBlockMesh.visible = false; // Inicialmente invisível
             scene.add(ghostBlockMesh);
 
-            // NOVO: Carrega a textura de pedra para a ferramenta aplicadora
-            textureLoader.load(stoneTextureURL, (texture) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(1, 1); // A textura cobre um patch
-                stoneMaterial = new THREE.MeshStandardMaterial({ map: texture, receiveShadow: true });
-            }, undefined, (error) => {
-                console.error('Erro ao carregar a textura de pedra:', error);
-                stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, receiveShadow: true }); // Fallback cinza
-            });
-
-            // Load the cob texture and create the material once
-            textureLoader.load(cobTextureURL, (texture) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(1, 1);
-                cobMaterialMesh = new THREE.MeshStandardMaterial({ map: texture }); // Create the material here
-                window.cobMaterialMesh = cobMaterialMesh; // Expose for verification
-            }, undefined, (error) => {
-                console.error('Erro ao carregar a textura do cob:', error);
-                // Fallback to a plain color if texture fails to load
-                cobMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Brown color
-                window.cobMaterialMesh = cobMaterialMesh; // Expose for verification even on error
-            });
-
-            // Load the floor texture and create the material once
-            textureLoader.load(floorTextureURL, (texture) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(1, 1);
-                floorMaterialMesh = new THREE.MeshStandardMaterial({ map: texture }); // Create the material here
-            }, undefined, (error) => {
-                console.error('Erro ao carregar a textura do piso:', error);
-                // Fallback to a plain color if texture fails to load
-                floorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xAAAAAA }); // Grey color for floor
-            });
-
-            // Load the wooden plank texture and create the material once
-            textureLoader.load(woodenPlankTextureURL, (texture) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(1, 1);
-                woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
-            }, undefined, (error) => {
-                console.error('Erro ao carregar a textura da tábua de madeira:', error);
-                woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xdeb887 }); // Fallback brown
-            });
-
-            // Load the tree sapling texture (for icon) and create the material once
-            textureLoader.load(treeSaplingTextureURL, (texture) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(1, 1);
-                treeSaplingMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
-            }, undefined, (error) => {
-                console.error('Erro ao carregar a textura da muda de árvore:', error);
-                treeSaplingMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 }); // Dark green color
-            });
-
-            // Load tree bark texture and create material
-            textureLoader.load(treeBarkTextureURL, (texture) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(1, 1); // Adjust as needed for bark
-                treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
-            }, undefined, (error) => {
-                console.error('Erro ao carregar a textura do tronco da árvore:', error);
-                treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Fallback brown
-            });
-
-            // Load tree leaves texture and create material
-            textureLoader.load(treeLeavesTextureURL, (texture) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(1, 1); // Adjust as needed for leaves
-                treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ map: texture, transparent: true, alphaTest: 0.5 }); // alphaTest for transparency
-            }, undefined, (error) => {
-                console.error('Erro ao carregar a textura das folhas da árvore:', error);
-                treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 }); // Fallback dark green
-            });
+            stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x808080, receiveShadow: true });
+            cobMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xD2B48C });
+            floorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xDEB887 });
+            treeSaplingMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 });
+            treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22, transparent: true, alphaTest: 0.5 });
 
             // Cria um corpo "grabber" invisível para segurar objetos
             grabberBody = new CANNON.Body({ mass: 0, type: CANNON.Body.KINEMATIC });
@@ -1699,19 +1634,20 @@
             backpackItems = new Array(numBackpackSlots).fill(null);
 
             // Itens padrão para os dois slots do cinto
-            // beltItems[0] agora começa como null para representar a mão quando vazio
-            beltItems[1] = { name: axeItemName, quantity: 1 }; // Machado no slot direito (secundário)
+            beltItems[0] = { name: pickaxeItemName, quantity: 1, toolType: 'pickaxe', iconURL: 'https://dl.dropbox.com/scl/fi/t0n135l8yl1233yr82z06/pickaxe.png?rlkey=k52lv99s5g1rcvy19h1x4y02z&st=qj2wyb0p&dl=0' }; // Picareta no slot esquerdo
+            beltItems[1] = null; // Mão no slot direito (secundário)
 
             // Adiciona outros itens diretamente na mochila
-            addItemToInventory(backpackItems, { name: hammerItemName, quantity: 1 });
-            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 }); // NOVO
-            addItemToInventory(backpackItems, { name: textureApplicatorItemName, quantity: 1 });
-            addItemToInventory(backpackItems, { name: cobItemName, quantity: 100 });
-            addItemToInventory(backpackItems, { name: floorItemName, quantity: 50 });
-            addItemToInventory(backpackItems, { name: treeSaplingItemName, quantity: 10 });
-            addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 20 }); // NOVO: Adiciona troncos de árvore à mochila
-            addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 10 }); // NOVO: Adiciona tábuas de madeira à mochila
-            addItemToInventory(backpackItems, { name: boxItemName, quantity: 20 }); // Adiciona 20 caixas ao inventário inicial
+            addItemToInventory(backpackItems, { name: axeItemName, quantity: 1, toolType: 'axe', iconURL: 'https://dl.dropbox.com/scl/fi/fplu1kvcuj111v65fc315/axe.png?rlkey=y9l2m3ot36xg9s9j1r5p6c8x9&st=8vqdnlq7&dl=0' });
+            addItemToInventory(backpackItems, { name: hammerItemName, quantity: 1, toolType: 'hammer', iconURL: 'https://dl.dropbox.com/scl/fi/y4kj4ws54q1lj18my892h/hammer.png?rlkey=gyf0da4mt7uyn142y3n8s77x2&st=y77c3aob&dl=0' });
+            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1, iconURL: 'https://dl.dropbox.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=8m77qn2k&dl=0' }); // NOVO
+            addItemToInventory(backpackItems, { name: textureApplicatorItemName, quantity: 1, iconURL: 'https://dl.dropbox.com/scl/fi/j130k9jdyx571qw573k9s/paint-brush.png?rlkey=sci2upk31yuv3r2n52cfh3k1j&st=3r7s7xik&dl=0' });
+            addItemToInventory(backpackItems, { name: cobItemName, quantity: 100, iconURL: 'https://dl.dropbox.com/scl/fi/2kkubl188g11y7e9xpxe3/cob.png?rlkey=130836j41a3j329z4k4z1j4j1&st=ajqjjvcv&dl=0' });
+            addItemToInventory(backpackItems, { name: floorItemName, quantity: 50, iconURL: 'https://dl.dropbox.com/scl/fi/w5l5o9l5m3b2q9e4j2j5h/floor.png?rlkey=3d0n5n5x5m9d1n2n7n5n1n5n3&st=q5j2j2j2&dl=0' });
+            addItemToInventory(backpackItems, { name: treeSaplingItemName, quantity: 10, iconURL: 'https://dl.dropbox.com/scl/fi/n5m2m5n5n5n5n5n5n5n5/tree_sapling.png?rlkey=n5n5n5n5n5n5n5n5n5n5&st=n5n5n5n5&dl=0' });
+            addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 20, iconURL: 'https://dl.dropbox.com/scl/fi/n5m2m5n5n5n5n5n5n5n5/tree_trunk.png?rlkey=n5n5n5n5n5n5n5n5n5n5&st=n5n5n5n5&dl=0' }); // NOVO: Adiciona troncos de árvore à mochila
+            addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 10, iconURL: 'https://dl.dropbox.com/scl/fi/n5m2m5n5n5n5n5n5n5n5/wooden_plank.png?rlkey=n5n5n5n5n5n5n5n5n5n5&st=n5n5n5n5&dl=0' }); // NOVO: Adiciona tábuas de madeira à mochila
+            addItemToInventory(backpackItems, { name: boxItemName, quantity: 20, iconURL: 'https://dl.dropbox.com/scl/fi/n5m2m5n5n5n5n5n5n5n5/box.png?rlkey=n5n5n5n5n5n5n5n5n5n5&st=n5n5n5n5&dl=0' }); // Adiciona 20 caixas ao inventário inicial
 
             // Pega o elemento do cinto de inventário e seus slots
             inventoryBeltElement = document.getElementById('inventoryBelt');
@@ -1839,11 +1775,6 @@
                         return; // Sai da função para evitar pegar outro objeto imediatamente
                     }
 
-                    // Reinicia a destruição se o pointer lock for perdido
-                    isDestroying = false;
-                    destroyProgress = 0;
-                    progressContainer.style.display = 'none';
-
                     document.body.style.cursor = 'default'; // Mostra o cursor
                     if (renderer && renderer.domElement) {
                         renderer.domElement.style.cursor = 'default'; // Mostra o cursor do canvas
@@ -1882,24 +1813,28 @@
             renderer.domElement.addEventListener('mousedown', (event) => {
                 if (document.pointerLockElement !== renderer.domElement || gamePaused) return;
 
-                mouseDownTime = performance.now();
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
+                const secondaryActionType = getActionType(beltItems[1]);
 
-                if (event.button === 0) { // Clique esquerdo
+                if (event.button === 0) { // Botão esquerdo
                     if (primaryActionType === 'destroy') {
-                        startDestruction();
+                        handleDestroy();
                     } else if (primaryActionType === 'grab') {
-                        // Inicia o temporizador. Se for mantido, irá AGARRAR o objeto.
+                        // A lógica de clique/segurar para pegar/soltar é um pouco diferente
+                        mouseDownTime = performance.now();
                         clickHoldTimer = setTimeout(() => {
-                            if (!pickedObjectBody) { // O clique longo só funciona para AGARRAR
+                            if (!pickedObjectBody) {
                                 grabObject();
                             }
-                            clickHoldTimer = null; // O temporizador disparou
                         }, CLICK_HOLD_DURATION);
+                    } else if (primaryActionType === 'place') {
+                        placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
+                    } else if (primaryActionType === 'apply_texture') {
+                        applyTexture();
                     }
-                } else if (event.button === 2) { // Clique direito
-                    if (getActionType(beltItems[1]) === 'destroy') {
-                        startDestruction();
+                } else if (event.button === 2) { // Botão direito
+                     if (secondaryActionType === 'place') {
+                        placeBlock(beltItems[1], 1);
                     }
                 }
             });
@@ -1908,33 +1843,21 @@
             renderer.domElement.addEventListener('mouseup', (event) => {
                 if (document.pointerLockElement !== renderer.domElement || gamePaused) return;
 
-                stopDestruction(); // Para sempre a destruição em qualquer mouseup
+                clearTimeout(clickHoldTimer); // Sempre limpa o temporizador no mouseup
 
-                const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
-                const secondaryActionType = getActionType(beltItems[1]);
+                const pressDuration = performance.now() - mouseDownTime;
 
-                if (event.button === 0) { // Botão esquerdo do mouse para cima
-                    if (clickHoldTimer) { // Se o temporizador ainda existir, foi um clique curto
-                        clearTimeout(clickHoldTimer);
-                        clickHoldTimer = null;
+                if (event.button === 0) { // Apenas para o clique esquerdo
+                    if (pressDuration < CLICK_HOLD_DURATION) {
+                         // Se for um clique curto e a ação principal for 'grab'
+                        const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
                         if (primaryActionType === 'grab') {
                             if (pickedObjectBody) {
-                                dropObject(); // Clique curto enquanto segura -> largar
+                                dropObject();
                             } else {
-                                collectObject(); // Clique curto enquanto não segura -> recolher
+                                collectObject();
                             }
                         }
-                    }
-                    // Se foi um clique longo, o temporizador é nulo e a função grabObject() já foi chamada.
-
-                    if (primaryActionType === 'place') {
-                        placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
-                    } else if (primaryActionType === 'apply_texture') {
-                        applyTexture();
-                    }
-                } else if (event.button === 2) { // Botão direito do mouse para cima
-                    if (secondaryActionType === 'place') {
-                        placeBlock(beltItems[1], 1);
                     }
                 }
             });
@@ -1943,31 +1866,71 @@
 
             function getActionType(item) {
                 if (item === null) return 'grab';
-                if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName) return 'destroy';
+                if (item.name === axeItemName || item.name === hammerItemName || item.name === pickaxeItemName) return 'destroy';
                 if (item.name === textureApplicatorItemName) return 'apply_texture';
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
                 return null;
             }
 
-            function startDestruction() {
+            // NOVO: Função de destruição instantânea
+            function handleDestroy() {
+                const tool = beltItems[selectedSlotIndex];
+                if (!tool) return; // Nenhuma ferramenta selecionada
+
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
-                let target = null;
+
                 for (let i = 0; i < intersects.length; i++) {
                     if (intersects[i].distance > destroyDistance) continue;
                     let intersectedObject = intersects[i].object;
+                    let position;
 
-                    // Lógica de destruição de patch atualizada
-                    if (intersectedObject.userData.patchObject) {
-                        const patchObject = intersectedObject.userData.patchObject;
-                        target = {
-                            body: null, // Patches não têm corpo de física
-                            mesh: intersectedObject, // A malha específica que foi atingida
-                            patchObject: patchObject // O objeto principal do patch
-                        };
-                        break;
+                    // Lógica para depósitos de pedra
+                    const deposit = intersectedObject.userData.deposit;
+                    if (deposit && !deposit.flattened && tool.toolType === 'pickaxe') {
+                         position = new THREE.Vector3(deposit.x, deposit.y, deposit.z);
+                            console.log(`[TEST] Destroying deposit at (${deposit.x.toFixed(2)}, ${deposit.z.toFixed(2)})`);
+                            deposit.flattened = true;
+                            deposit.regenerationTimer = 60; // Inicia o temporizador de 1 minuto
+                            console.log(`[TEST] Regeneration timer started: ${deposit.regenerationTimer}s`);
+                            updateIslandGeometry(); // Atualiza a física para remover a cúpula de colisão
+
+                            const flattenedGeometry = new THREE.CylinderGeometry(stoneDepositRadius, stoneDepositRadius, 0.1, 16);
+                            const flattenedMesh = new THREE.Mesh(flattenedGeometry, flattenedStoneDepositMaterial);
+                            flattenedMesh.receiveShadow = true;
+
+                            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                                for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
+                                    const mesh = flattenedMesh.clone();
+                                    scene.add(mesh);
+                                    deposit.flattenedMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                                }
+                            }
+                            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 5 });
+                            updateBackpackDisplay();
+                            createSmokeEffect(position);
+                        return; // Sai após destruir um objeto
                     }
 
+                    // Lógica para patches de textura
+                    if (intersectedObject.userData.patchObject && tool.toolType === 'pickaxe') {
+                        const patchObject = intersectedObject.userData.patchObject;
+                        position = patchObject.position.clone();
+                        const patchIndex = texturePatches.indexOf(patchObject);
+                        if (patchIndex > -1) {
+                            texturePatches.splice(patchIndex, 1);
+                        }
+                        patchObject.meshes.forEach(m => {
+                            scene.remove(m.mesh);
+                            if (m.mesh.geometry) m.mesh.geometry.dispose();
+                        });
+                        addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
+                        updateBackpackDisplay();
+                        createSmokeEffect(position);
+                        return;
+                    }
+
+                    // Lógica para blocos destrutíveis
                     let mainObject = null, intersectedBody = null;
                     let currentObject = intersectedObject;
                     while (currentObject) {
@@ -1978,41 +1941,45 @@
                         }
                         currentObject = currentObject.parent;
                     }
+
                     if (mainObject && intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible) {
-                        target = { body: intersectedBody, mesh: mainObject };
-                        break;
+                        const { type, growthStage } = intersectedBody.userData;
+                        const isWood = type === 'muda_arvore' || type === 'tronco_arvore' || type === 'tábuas';
+                        const isStone = type === 'cob' || type === 'piso';
+
+                        if ((isWood && tool.toolType === 'axe') || (isStone && tool.toolType === 'pickaxe')) {
+                            position = mainObject.position.clone();
+                            const bodyIndex = placedConstructionBodies.indexOf(intersectedBody);
+                            if (bodyIndex !== -1) {
+                               if (growthStage === 'media') {
+                                   addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 1 });
+                               } else if (growthStage === 'arvore_adulta') {
+                                   addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 3 });
+                               } else if (type === 'tronco_arvore' || type === 'tábuas') {
+                                   addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 2 });
+                               }
+                               if (type === 'cob' || type === 'piso') {
+                                   addItemToInventory(backpackItems, { name: type, quantity: 1 });
+                               }
+                               updateBackpackDisplay();
+
+                               world.removeBody(intersectedBody);
+                               placedConstructionBodies.splice(bodyIndex, 1);
+                               scene.remove(mainObject);
+                               if (mainObject.isGroup) {
+                                   mainObject.children.forEach(child => {
+                                       if (child.geometry) child.geometry.dispose();
+                                   });
+                               } else if (mainObject.geometry) {
+                                   mainObject.geometry.dispose();
+                               }
+                               placedConstructionMeshesArrays.splice(bodyIndex, 1);
+                               createSmokeEffect(position);
+                               return;
+                            }
+                        }
                     }
                 }
-                if (target) {
-                    isDestroying = true;
-                    destroyProgress = 0;
-                    destroyTargetBody = target.body;
-                    destroyTargetMesh = target.mesh;
-                    destroyTargetPatchObject = target.patchObject || null; // Armazena o objeto do patch se existir
-
-                    let targetUserData;
-                    if (destroyTargetPatchObject) {
-                        targetUserData = destroyTargetPatchObject.userData;
-                    } else if (destroyTargetBody) {
-                        targetUserData = destroyTargetBody.userData;
-                    }
-
-                    if (targetUserData) {
-                        targetDestroyTime = targetUserData.durability || 1.0;
-                        progressContainer.style.display = 'block';
-                    } else {
-                        isDestroying = false; // Não encontrou dados do usuário, cancela a destruição
-                    }
-                }
-            }
-
-            function stopDestruction() {
-                isDestroying = false;
-                destroyProgress = 0;
-                progressContainer.style.display = 'none';
-                destroyTargetBody = null;
-                destroyTargetMesh = null;
-                destroyTargetPatchObject = null;
             }
 
             function collectObject() {
@@ -2243,6 +2210,51 @@
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
 
+            textureLoader.load(stoneDepositTextureURL, (texture) => {
+                const stoneMaterial = new THREE.MeshStandardMaterial({ map: texture });
+                const flattenedMaterial = new THREE.MeshStandardMaterial({ color: 0x808080 }); // Mantém cinza por enquanto
+                setupStoneDeposits(stoneMaterial, flattenedMaterial);
+                window.stoneDeposits = stoneDeposits; // Garante que a variável global seja definida após a configuração
+            });
+        }
+
+        // NOVO: Função separada para configurar os depósitos de pedra
+        function setupStoneDeposits(stoneMaterial, flattenedMaterial) {
+            stoneDepositMaterial = stoneMaterial;
+            flattenedStoneDepositMaterial = flattenedMaterial;
+
+            // Gera os dados dos depósitos de pedra
+            for (let i = 0; i < numStoneDeposits; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const radius = Math.random() * (islandRadiusBottom + 50);
+                const x = Math.cos(angle) * radius;
+                const z = Math.sin(angle) * radius;
+
+                const domeGeometry = new THREE.SphereGeometry(stoneDepositRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+                const domeMesh = new THREE.Mesh(domeGeometry, stoneDepositMaterial);
+                domeMesh.castShadow = true;
+                domeMesh.receiveShadow = true;
+
+                const domeMeshes = [];
+                const deposit = {
+                    x: x, z: z, y: 0,
+                    flattened: false,
+                    regenerationTimer: 0,
+                    domeMeshes: domeMeshes,
+                    flattenedMeshes: []
+                };
+                stoneDeposits.push(deposit);
+
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
+                        const mesh = domeMesh.clone();
+                        mesh.userData.deposit = deposit; // Vínculo de volta ao objeto pai
+                        scene.add(mesh);
+                        domeMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                    }
+                }
+            }
+            updateIslandGeometry(); // Chama para incorporar as cúpulas na física
         }
 
         // Função para lidar com o redimensionamento da janela
@@ -2300,117 +2312,31 @@
                 return;
             }
 
-            // Lógica de destruição progressiva
-            if (isDestroying && (destroyTargetMesh || destroyTargetPatchObject)) {
-                // --- Verificação de mira atualizada ---
-                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                const intersects = raycaster.intersectObjects(scene.children, true);
-
-                let stillOnTarget = false;
-                if (intersects.length > 0 && intersects[0].distance <= destroyDistance) {
-                    let intersectedObject = intersects[0].object;
-
-                    if (destroyTargetPatchObject) {
-                        // Se estivermos destruindo um patch, verifica se a malha atingida pertence ao patch
-                        if (intersectedObject.userData.patchObject === destroyTargetPatchObject) {
-                            stillOnTarget = true;
-                        }
-                    } else if (destroyTargetMesh) {
-                        // Se estivermos destruindo um bloco, faz a verificação normal
-                        let currentObject = intersectedObject;
-                        while (currentObject) {
-                            if (currentObject === destroyTargetMesh) {
-                                stillOnTarget = true;
-                                break;
-                            }
-                            currentObject = currentObject.parent;
-                        }
-                    }
-                }
-
-                // Se não estiver mais na mira, reseta
-                if (!stillOnTarget) {
-                    stopDestruction();
-                } else {
-                    // Se estiver na mira, continua o progresso
-                    destroyProgress += 1 / 60;
-                    if (destroyProgress >= targetDestroyTime) {
-                        // Objeto destruído!
-                        let position;
-
-                        // Handle patch destruction
-                        if (destroyTargetPatchObject) {
-                            position = destroyTargetPatchObject.position.clone();
-                            const patchIndex = texturePatches.indexOf(destroyTargetPatchObject);
-                            if (patchIndex > -1) {
-                                texturePatches.splice(patchIndex, 1);
-                            }
-                            destroyTargetPatchObject.meshes.forEach(m => {
-                                scene.remove(m.mesh);
-                                if (m.mesh.geometry) m.mesh.geometry.dispose();
-                            });
-                            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
-                            updateBackpackDisplay();
-                        }
-                        // Handle regular block destruction
-                        else if (destroyTargetBody) {
-                            position = destroyTargetMesh.position.clone();
-                            const bodyIndex = placedConstructionBodies.indexOf(destroyTargetBody);
-                            if (bodyIndex !== -1) {
-                               // Adiciona a lógica de recompensa de troncos com base no estágio da árvore
-                               if (destroyTargetBody.userData.growthStage === 'media') {
-                                   addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 1 });
-                               } else if (destroyTargetBody.userData.growthStage === 'arvore_adulta') {
-                                   addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 3 });
-                               }
-                               // Adiciona tábuas de madeira ao inventário se o objeto destruído for um tronco ou tábua
-                               else if (destroyTargetBody.userData.type === 'tronco_arvore' || destroyTargetBody.userData.type === 'tábuas') {
-                                   addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 2 });
-                               }
-                               // Adiciona o item original ao inventário ao destruir
-                               if (destroyTargetBody.userData.type === 'cob' || destroyTargetBody.userData.type === 'piso') {
-                                   addItemToInventory(backpackItems, { name: destroyTargetBody.userData.type, quantity: 1 });
-                               }
-                               updateBackpackDisplay();
-
-                               world.removeBody(destroyTargetBody);
-                               placedConstructionBodies.splice(bodyIndex, 1);
-                               scene.remove(destroyTargetMesh);
-                               if (destroyTargetMesh.isGroup) {
-                                   destroyTargetMesh.children.forEach(child => {
-                                       if (child.geometry) child.geometry.dispose();
-                                   });
-                               } else if (destroyTargetMesh.geometry) {
-                                   destroyTargetMesh.geometry.dispose();
-                               }
-                               placedConstructionMeshesArrays.splice(bodyIndex, 1);
-                            }
-                        }
-
-                        if (position) createSmokeEffect(position);
-                        stopDestruction(); // Reseta tudo
-
-                    } else {
-                        // Atualiza a barra de progresso
-                        progressBar.style.width = `${(destroyProgress / targetDestroyTime) * 100}%`;
-                    }
-                }
-            } else {
-                 // Reseta a barra de progresso se o usuário parar de destruir
-                if (isDestroying) { // Apenas se a destruição foi cancelada no último frame
-                    stopDestruction();
-                }
-                if (progressBar.style.width !== '0%') {
-                    progressBar.style.width = '0%';
-                }
-            }
-
 
             // Define currentPlayerRadius no início da função animate
             const currentPlayerRadius = isCrouching ? crouchRadius : playerRadius;
 
             // Atualiza o mundo da física
             world.step(1 / 60);
+
+            // NOVO: Lógica de regeneração dos depósitos de pedra
+            stoneDeposits.forEach(deposit => {
+                if (deposit.flattened && deposit.regenerationTimer > 0) {
+                    deposit.regenerationTimer -= 1 / 60; // Subtrai o tempo do frame
+                    if (deposit.regenerationTimer <= 0) {
+                        console.log(`[TEST] Regenerating deposit at (${deposit.x.toFixed(2)}, ${deposit.z.toFixed(2)})`);
+                        deposit.flattened = false;
+                        // Remove e descarta as malhas achatadas
+                        deposit.flattenedMeshes.forEach(item => {
+                            scene.remove(item.mesh);
+                            if (item.mesh.geometry) item.mesh.geometry.dispose();
+                            // O material é partilhado, por isso não o descartamos aqui
+                        });
+                        deposit.flattenedMeshes = []; // Limpa o array
+                        updateIslandGeometry(); // Restaura a colisão da cúpula
+                    }
+                }
+            });
 
             // Lógica para os cubos e blocos: sempre dinâmicos e com massa original, a menos que sejam segurados
             // Apenas os cubos são pickable agora
@@ -2521,6 +2447,53 @@
                         visualObject.position.x = patch.position.x + item.offsetX - visualOffsetX;
                         visualObject.position.y = patch.position.y;
                         visualObject.position.z = patch.position.z + item.offsetZ - visualOffsetZ;
+                    }
+                });
+            });
+
+            // NOVO: Atualiza a posição e visibilidade dos depósitos de pedra
+            stoneDeposits.forEach(deposit => {
+                // Calcula a altura do terreno na posição do depósito para posicionar a cúpula corretamente
+                const distanceToCenter = Math.sqrt(deposit.x * deposit.x + deposit.z * deposit.z);
+                let baseHeight;
+                if (distanceToCenter <= islandRadiusTop) {
+                    baseHeight = islandSurfaceHeight;
+                } else if (distanceToCenter <= islandRadiusBottom) {
+                    const t = (distanceToCenter - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
+                    baseHeight = islandSurfaceHeight * (1 - t) + seabedLevel * t;
+                } else {
+                    baseHeight = seabedLevel;
+                }
+                deposit.y = baseHeight;
+
+                const depositPosition = new THREE.Vector3(deposit.x, deposit.y, deposit.z);
+                const distance = calculateWrappedDistance(playerBody.position, depositPosition);
+                const isVisible = distance <= renderDistance;
+
+                // Atualiza as malhas da cúpula
+                deposit.domeMeshes.forEach(item => {
+                    item.mesh.visible = isVisible && !deposit.flattened;
+                    if (item.mesh.visible) {
+                        item.mesh.position.set(
+                            deposit.x + item.offsetX - visualOffsetX,
+                            deposit.y,
+                            deposit.z + item.offsetZ - visualOffsetZ
+                        );
+                    }
+                });
+
+                // Atualiza as malhas do estado achatado
+                deposit.flattenedMeshes.forEach(item => {
+                    item.mesh.visible = isVisible && deposit.flattened;
+                    if (item.mesh.visible) {
+                        // A geometria do cilindro (altura 0.1) está centrada, então para que sua base
+                        // fique no nível do solo (deposit.y), seu centro precisa estar em deposit.y + altura/2.
+                        // Adicionamos um pequeno offset extra para garantir que não haja z-fighting.
+                        item.mesh.position.set(
+                            deposit.x + item.offsetX - visualOffsetX,
+                            deposit.y + (0.1 / 2) + 0.01, // Posição corrigida para evitar z-fighting
+                            deposit.z + item.offsetZ - visualOffsetZ
+                        );
                     }
                 });
             });
@@ -3125,32 +3098,36 @@
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                     const intersects = raycaster.intersectObjects(scene.children, true);
                     let canDestroy = false;
+                    const tool = beltItems[selectedSlotIndex];
+
                     for (let i = 0; i < intersects.length; i++) {
                         if (intersects[i].distance > destroyDistance) continue;
-
                         let intersectedObject = intersects[i].object;
 
+                        // Check for stone deposits
+                        if (intersectedObject.userData.deposit && !intersectedObject.userData.deposit.flattened && tool && tool.toolType === 'pickaxe') {
+                            canDestroy = true;
+                            break;
+                        }
+
                         // Check for patches
-                        if (intersectedObject.userData && intersectedObject.userData.isDestructible && intersectedObject.userData.type === 'patch') {
+                        if (intersectedObject.userData.patchObject && tool && tool.toolType === 'pickaxe') {
                             canDestroy = true;
                             break;
                         }
 
                         // Check for blocks with physics bodies
-                        let intersectedBody = null;
-                        let currentObject = intersectedObject;
-                        while (currentObject) {
-                            if (currentObject.userData && currentObject.userData.physicsBody) {
-                                intersectedBody = currentObject.userData.physicsBody;
-                                if (intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible) {
-                                    canDestroy = true;
-                                }
+                        let intersectedBody = intersectedObject.userData.physicsBody;
+                        if (intersectedBody && intersectedBody.userData.isDestructible) {
+                            const { type } = intersectedBody.userData;
+                            const isWood = type === 'muda_arvore' || type === 'tronco_arvore' || type === 'tábuas';
+                            const isStone = type === 'cob' || type === 'piso';
+
+                            if ((isWood && tool.toolType === 'axe') || (isStone && tool.toolType === 'pickaxe')) {
+                                canDestroy = true;
                                 break;
                             }
-                            currentObject = currentObject.parent;
                         }
-
-                        if (canDestroy) break;
                     }
                     crosshairColor = canDestroy ? 'red' : 'white';
                 } else if (isPrimaryToolGrabbing) {
@@ -3209,14 +3186,12 @@
         // Função para iniciar o jogo
         function startGame() {
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
-            init(); // Inicializa os componentes do jogo
             animate(); // Inicia o loop de animação
-            // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
             if (menuIconButton) {
-                menuIconButton.style.display = 'flex'; // Mostra o botão do menu ao iniciar o jogo
+                menuIconButton.style.display = 'flex';
             }
             if (inventoryBeltElement) {
-                inventoryBeltElement.style.visibility = 'visible'; // Mostra o cinto de inventário ao iniciar o jogo
+                inventoryBeltElement.style.visibility = 'visible';
                 inventoryBeltElement.style.opacity = '1';
             }
         }
@@ -3224,7 +3199,8 @@
         // Listener de evento para o botão "Jogar"
         document.getElementById('startButton').addEventListener('click', startGame);
 
-        // Não há necessidade de window.onload aqui, pois startGame será chamado pelo clique do botão
+        // Inicializa o jogo imediatamente
+        init();
     </script>
 </body>
 </html>
