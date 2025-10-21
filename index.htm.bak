@@ -1295,6 +1295,7 @@
 
             // Configuração do Mundo Cannon-es (física)
             world = new CANNON.World();
+            window.world = world; // Expose world to the global scope for Playwright
             world.gravity.set(0, -30, 0); // Define a gravidade (para baixo), aumentada para -30
             world.solver.iterations = 40; // Aumenta as iterações do solver para melhor estabilidade (de 20 para 40)
 
@@ -1667,10 +1668,10 @@
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1); // A textura cobre um patch
-                stoneMaterial = new THREE.MeshStandardMaterial({ map: texture });
+                stoneMaterial = new THREE.MeshStandardMaterial({ map: texture, receiveShadow: true });
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura de pedra:', error);
-                stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 }); // Fallback cinza
+                stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x888888, receiveShadow: true }); // Fallback cinza
             });
 
             // Load the cob texture and create the material once
@@ -1978,11 +1979,104 @@
             renderer.domElement.addEventListener('mouseup', (event) => {
                 if (document.pointerLockElement !== renderer.domElement || gamePaused) return;
 
-                // A destruição agora é tratada por animate().
-                // Apenas precisamos de parar o processo se o botão for libertado mais cedo.
-                if (isDestroying) {
-                    stopDestruction();
+                // Handle destruction completion
+                if (isDestroying && destroyProgress >= targetDestroyTime) {
+                    // Objeto destruído!
+                    let position;
+
+                    // NOVO: Lógica de destruição de depósitos de pedra
+                    if (destroyTargetDeposit) {
+                        position = new THREE.Vector3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
+                        destroyTargetDeposit.flattened = true;
+                        destroyTargetDeposit.regenerationTimer = 60; // Inicia o temporizador de 1 minuto
+
+                        // Remove o corpo de física principal
+                        if (destroyTargetDeposit.body) {
+                            world.removeBody(destroyTargetDeposit.body);
+                        }
+
+                        const flattenedHeight = 0.2;
+                        const flattenedGeometry = new THREE.CylinderGeometry(stoneDepositRadius, stoneDepositRadius, flattenedHeight, 16);
+                        const flattenedMesh = new THREE.Mesh(flattenedGeometry, flattenedStoneDepositMaterial);
+                        flattenedMesh.receiveShadow = true;
+
+                        // CRIA O CORPO DE FÍSICA SÓLIDO PARA O DEPÓSITO ACHATADO
+                        const flattenedShape = new CANNON.Cylinder(stoneDepositRadius, stoneDepositRadius, flattenedHeight, 16);
+                        const flattenedBody = new CANNON.Body({
+                            mass: 0, // Estático
+                            type: CANNON.Body.STATIC,
+                            shape: flattenedShape,
+                            material: islandMaterial // Usa o mesmo material da ilha para colisões consistentes
+                        });
+                        // A posição Y do centro do cilindro (altura 0.2) para que a base fique no chão
+                        flattenedBody.position.set(destroyTargetDeposit.x, destroyTargetDeposit.y + flattenedHeight / 2, destroyTargetDeposit.z);
+                        world.addBody(flattenedBody);
+                        destroyTargetDeposit.flattenedBody = flattenedBody; // Armazena a referência para remoção posterior
+
+
+                        for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                            for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
+                                const mesh = flattenedMesh.clone();
+                                scene.add(mesh);
+                                destroyTargetDeposit.flattenedMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                            }
+                        }
+                        addItemToInventory(backpackItems, { name: stoneItemName, quantity: 5 });
+                        updateBackpackDisplay();
+                    }
+                    // Lida com a destruição de patches
+                    else if (destroyTargetPatchObject) {
+                        position = destroyTargetPatchObject.position.clone();
+                        const patchIndex = texturePatches.indexOf(destroyTargetPatchObject);
+                        if (patchIndex > -1) {
+                            texturePatches.splice(patchIndex, 1);
+                        }
+                        destroyTargetPatchObject.meshes.forEach(m => {
+                            scene.remove(m.mesh);
+                            if (m.mesh.geometry) m.mesh.geometry.dispose();
+                        });
+                        addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
+                        updateBackpackDisplay();
+                    }
+                    // Handle regular block destruction
+                    else if (destroyTargetBody) {
+                        position = destroyTargetMesh.position.clone();
+                        const bodyIndex = placedConstructionBodies.indexOf(destroyTargetBody);
+                        if (bodyIndex !== -1) {
+                           // Adiciona a lógica de recompensa de troncos com base no estágio da árvore
+                           if (destroyTargetBody.userData.growthStage === 'media') {
+                               addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 1 });
+                           } else if (destroyTargetBody.userData.growthStage === 'arvore_adulta') {
+                               addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 3 });
+                           }
+                           // Adiciona tábuas de madeira ao inventário se o objeto destruído for um tronco ou tábua
+                           else if (destroyTargetBody.userData.type === 'tronco_arvore' || destroyTargetBody.userData.type === 'tábuas') {
+                               addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 2 });
+                           }
+                           // Adiciona o item original ao inventário ao destruir
+                           if (destroyTargetBody.userData.type === 'cob' || destroyTargetBody.userData.type === 'piso') {
+                               addItemToInventory(backpackItems, { name: destroyTargetBody.userData.type, quantity: 1 });
+                           }
+                           updateBackpackDisplay();
+
+                           world.removeBody(destroyTargetBody);
+                           placedConstructionBodies.splice(bodyIndex, 1);
+                           scene.remove(destroyTargetMesh);
+                           if (destroyTargetMesh.isGroup) {
+                               destroyTargetMesh.children.forEach(child => {
+                                   if (child.geometry) child.geometry.dispose();
+                               });
+                           } else if (destroyTargetMesh.geometry) {
+                               destroyTargetMesh.geometry.dispose();
+                           }
+                           placedConstructionMeshesArrays.splice(bodyIndex, 1);
+                        }
+                    }
+
+                    if (position) createSmokeEffect(position);
                 }
+
+                stopDestruction(); // Para sempre a destruição em qualquer mouseup
 
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
                 const secondaryActionType = getActionType(beltItems[1]);
@@ -2454,7 +2548,7 @@
             }
 
             // Lógica de destruição progressiva
-            if (isDestroying && (destroyTargetMesh || destroyTargetPatchObject || destroyTargetDeposit)) {
+            if (isDestroying && (destroyTargetMesh || destroyTargetPatchObject)) {
                 // --- Verificação de mira atualizada ---
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
@@ -2495,105 +2589,6 @@
 
                     // Atualiza a barra de progresso
                     progressBar.style.width = `${(destroyProgress / targetDestroyTime) * 100}%`;
-
-                    // AQUI: Verifica se a destruição está completa
-                    if (destroyProgress >= targetDestroyTime) {
-                        // Objeto destruído!
-                        let position;
-
-                        // NOVO: Lógica de destruição de depósitos de pedra
-                        if (destroyTargetDeposit) {
-                            position = new THREE.Vector3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
-                            destroyTargetDeposit.flattened = true;
-                            destroyTargetDeposit.regenerationTimer = 60; // Inicia o temporizador de 1 minuto
-
-                            // Remove o corpo de física principal
-                            if (destroyTargetDeposit.body) {
-                                world.removeBody(destroyTargetDeposit.body);
-                            }
-
-                            const flattenedHeight = 0.2;
-                            const flattenedGeometry = new THREE.CylinderGeometry(stoneDepositRadius, stoneDepositRadius, flattenedHeight, 16);
-                            const flattenedMesh = new THREE.Mesh(flattenedGeometry, flattenedStoneDepositMaterial);
-                            flattenedMesh.receiveShadow = true;
-
-                            // CRIA O CORPO DE FÍSICA SÓLIDO PARA O DEPÓSITO ACHATADO
-                            const flattenedShape = new CANNON.Cylinder(stoneDepositRadius, stoneDepositRadius, flattenedHeight, 16);
-                            const flattenedBody = new CANNON.Body({
-                                mass: 0, // Estático
-                                type: CANNON.Body.STATIC,
-                                shape: flattenedShape,
-                                material: islandMaterial // Usa o mesmo material da ilha para colisões consistentes
-                            });
-                            // A posição Y do centro do cilindro (altura 0.2) para que a base fique no chão
-                            flattenedBody.position.set(destroyTargetDeposit.x, destroyTargetDeposit.y + flattenedHeight / 2, destroyTargetDeposit.z);
-                            world.addBody(flattenedBody);
-                            destroyTargetDeposit.flattenedBody = flattenedBody; // Armazena a referência para remoção posterior
-
-                            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                                for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                                    const mesh = flattenedMesh.clone();
-                                    scene.add(mesh);
-                                    destroyTargetDeposit.flattenedMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
-                                }
-                            }
-                            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 5 });
-                            updateBackpackDisplay();
-                        }
-                        // Lida com a destruição de patches
-                        else if (destroyTargetPatchObject) {
-                            position = destroyTargetPatchObject.position.clone();
-                            const patchIndex = texturePatches.indexOf(destroyTargetPatchObject);
-                            if (patchIndex > -1) {
-                                texturePatches.splice(patchIndex, 1);
-                            }
-                            destroyTargetPatchObject.meshes.forEach(m => {
-                                scene.remove(m.mesh);
-                                if (m.mesh.geometry) m.mesh.geometry.dispose();
-                            });
-                            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
-                            updateBackpackDisplay();
-                        }
-                        // Handle regular block destruction
-                        else if (destroyTargetBody) {
-                            position = destroyTargetMesh.position.clone();
-                            const bodyIndex = placedConstructionBodies.indexOf(destroyTargetBody);
-                            if (bodyIndex !== -1) {
-                                // Adiciona a lógica de recompensa de troncos com base no estágio da árvore
-                                if (destroyTargetBody.userData.growthStage === 'media') {
-                                    addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 1 });
-                                } else if (destroyTargetBody.userData.growthStage === 'arvore_adulta') {
-                                    addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 3 });
-                                }
-                                // Adiciona tábuas de madeira ao inventário se o objeto destruído for um tronco ou tábua
-                                else if (destroyTargetBody.userData.type === 'tronco_arvore' || destroyTargetBody.userData.type === 'tábuas') {
-                                    addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 2 });
-                                }
-                                // Adiciona o item original ao inventário ao destruir
-                                if (destroyTargetBody.userData.type === 'cob' || destroyTargetBody.userData.type === 'piso') {
-                                    addItemToInventory(backpackItems, { name: destroyTargetBody.userData.type, quantity: 1 });
-                                }
-                                updateBackpackDisplay();
-
-                                world.removeBody(destroyTargetBody);
-                                placedConstructionBodies.splice(bodyIndex, 1);
-                                scene.remove(destroyTargetMesh);
-                                if (destroyTargetMesh.isGroup) {
-                                    destroyTargetMesh.children.forEach(child => {
-                                        if (child.geometry) child.geometry.dispose();
-                                    });
-                                } else if (destroyTargetMesh.geometry) {
-                                    destroyTargetMesh.geometry.dispose();
-                                }
-                                placedConstructionMeshesArrays.splice(bodyIndex, 1);
-                            }
-                        }
-
-                        if (position) createSmokeEffect(position);
-
-                        // Para o processo de destruição para que não se repita
-                        stopDestruction();
-                    }
                 }
             } else {
                  // Reseta a barra de progresso se o usuário parar de destruir
