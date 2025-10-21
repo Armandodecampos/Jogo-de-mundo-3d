@@ -380,6 +380,7 @@
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
+        let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
 
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
         let collectibleBoxes = [];
@@ -1525,82 +1526,68 @@
             // Posiciona o corpo no canto do mundo para alinhar a grelha.
             islandBody.position.set(-worldSize / 2, 0, worldSize / 2);
             world.addBody(islandBody);
-            const groundTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/7vesla91xayt0nn4m58c7/textura-terra-com-grama.png?rlkey=l380g7obxjkqv92xf10yhtfpe&st=eq9oonef&dl=0', (texture) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-            });
-            const seabedTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/r5hmn4v6qzkj93t57ug8l/textura-de-fundo-do-mar.png?rlkey=0ik91qb6r5n71csiqfu7pdsc8&st=96kb9v6q&dl=0', (seabedTex) => {
-                seabedTex.wrapS = THREE.RepeatWrapping;
-                seabedTex.wrapT = THREE.RepeatWrapping;
-                seabedTex.repeat.set(islandRadiusBottom / 4, islandRadiusBottom / 4);
-            });
+            const groundTextureURL = "https://dl.dropbox.com/scl/fi/7vesla91xayt0nn4m58c7/textura-terra-com-grama.png?rlkey=l380g7obxjkqv92xf10yhtfpe&st=eq9oonef&dl=0";
+            const seabedTextureURL = "https://dl.dropbox.com/scl/fi/r5hmn4v6qzkj93t57ug8l/textura-de-fundo-do-mar.png?rlkey=0ik91qb6r5n71csiqfu7pdsc8&st=96kb9v6q&dl=0";
 
-            const islandMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
+            textureLoader.load(groundTextureURL, (groundTexture) => {
+                textureLoader.load(seabedTextureURL, (seabedTexture) => {
+                    // Ambas as texturas estão carregadas, agora podemos criar o material e as malhas
+                    [groundTexture, seabedTexture].forEach(texture => {
+                        texture.wrapS = THREE.RepeatWrapping;
+                        texture.wrapT = THREE.RepeatWrapping;
+                        texture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                    });
 
-            islandMeshMaterial.onBeforeCompile = (shader) => {
-                shader.uniforms.seabedTexture = { value: seabedTexture };
-                shader.uniforms.waterLevel = { value: waterLevel };
+                    const islandMeshMaterial = new THREE.MeshStandardMaterial({
+                        map: groundTexture,
+                    });
 
-                shader.vertexShader = 'varying vec3 vWorldPosition;\n' + shader.vertexShader;
-                shader.vertexShader = shader.vertexShader.replace(
-                    '#include <worldpos_vertex>',
-                    '#include <worldpos_vertex>\nvWorldPosition = worldPosition.xyz;'
-                );
+                    islandMeshMaterial.onBeforeCompile = (shader) => {
+                        shader.uniforms.uSeabedTexture = { value: seabedTexture };
+                        shader.uniforms.uWaterLevel = { value: waterLevel };
 
-                shader.fragmentShader = 'varying vec3 vWorldPosition;\n' + shader.fragmentShader;
-                shader.fragmentShader = 'uniform sampler2D seabedTexture;\n' + shader.fragmentShader;
-                shader.fragmentShader = 'uniform float waterLevel;\n' + shader.fragmentShader;
+                        shader.vertexShader = `
+                            varying vec3 vWorldPosition;
+                            ${shader.vertexShader}
+                        `.replace(
+                            `#include <worldpos_vertex>`,
+                            `
+                            #include <worldpos_vertex>
+                            vWorldPosition = worldPosition.xyz;
+                            `
+                        );
 
-                shader.fragmentShader = shader.fragmentShader.replace(
-                    'vec4 diffuseColor = vec4( diffuse, opacity );',
-                    `
-                    vec4 groundColor = texture2D(map, vUv);
-                    vec4 seabedColor = texture2D(seabedTexture, vUv);
+                        shader.fragmentShader = `
+                            uniform sampler2D uSeabedTexture;
+                            uniform float uWaterLevel;
+                            varying vec3 vWorldPosition;
+                            ${shader.fragmentShader}
+                        `.replace(
+                            `#include <map_fragment>`,
+                            `
+                            #ifdef USE_MAP
+                                vec4 groundColor = texture2D(map, vUv);
+                                vec4 seabedColor = texture2D(uSeabedTexture, vUv);
+                                float blendFactor = smoothstep(uWaterLevel - 2.0, uWaterLevel, vWorldPosition.y);
+                                vec3 mixedColor = mix(seabedColor.rgb, groundColor.rgb, blendFactor);
+                                diffuseColor *= vec4(mixedColor, 1.0);
+                            #endif
+                            `
+                        );
+                    };
 
-                    // Smoothly blend between textures based on world height
-                    float blendFactor = smoothstep(waterLevel - 0.5, waterLevel + 0.5, vWorldPosition.y);
-                    vec4 finalColor = mix(seabedColor, groundColor, blendFactor);
-
-                    vec4 diffuseColor = vec4(diffuse * finalColor.rgb, opacity);
-                    `
-                );
-            };
-
-            // Carrega a textura da relva e, no callback, cria os meshes da ilha e da relva
-            textureLoader.load(grassTextureURL, (grassTexture) => {
-                grassTexture.wrapS = THREE.RepeatWrapping;
-                grassTexture.wrapT = THREE.RepeatWrapping;
-                grassTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4); // Usa a mesma repetição
-                const grassMaterial = new THREE.MeshStandardMaterial({
-                    map: grassTexture,
-                    transparent: true, // Permite transparência
-                    alphaTest: 0.5   // Descarta pixels com alfa abaixo de 0.5
-                });
-
-                for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        // Cria e adiciona a malha da ilha
-                        const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
-                        islandMesh.receiveShadow = true;
-                        islandMesh.userData.physicsBody = islandBody;
-                        scene.add(islandMesh);
-                        islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                    for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                        for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                            const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
+                            islandMesh.receiveShadow = true;
+                            islandMesh.userData.physicsBody = islandBody;
+                            scene.add(islandMesh);
+                            islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                        }
                     }
-                }
-            }, undefined, (error) => {
-                console.error('Erro ao carregar a textura da relva:', error);
-                // Fallback: Se a textura da relva falhar, continua a criar a ilha
-                for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        const mesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
-                        mesh.receiveShadow = true;
-                        mesh.userData.physicsBody = islandBody;
-                        scene.add(mesh);
-                        islandMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                    }
-                }
-            });
+                    islandMeshMaterial.needsUpdate = true;
+                }, undefined, (error) => console.error('Falha ao carregar a textura do fundo do mar:', error));
+            }, undefined, (error) => console.error('Falha ao carregar a textura do solo:', error));
 
             // Cria a Água (agora como uma grelha)
             const waterGeometry = new THREE.BoxGeometry(worldSize, 0.1, worldSize);
@@ -1615,20 +1602,7 @@
                 }
             }
 
-            // NOVO: Cria o Fundo do Mar
-            const seabedGeometry = new THREE.PlaneGeometry(worldSize, worldSize);
-            // Reutiliza o material da ilha para o fundo do mar para consistência
-            const seabedMaterial = islandMeshMaterial;
-            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(seabedGeometry, seabedMaterial);
-                    mesh.rotation.x = -Math.PI / 2; // Gira o plano para ficar deitado
-                    mesh.position.y = seabedLevel; // Posição no fundo do mar
-                    mesh.receiveShadow = true; // O fundo do mar pode receber sombras
-                    scene.add(mesh);
-                    seabedMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                }
-            }
+            // O fundo do mar é agora renderizado pela própria ilha, pelo que esta secção foi removida.
 
             // A rua foi removida, então o código relacionado a ela foi excluído.
 
@@ -2712,6 +2686,12 @@
                 // A posição Y é estática, por isso não precisa de ser atualizada no loop.
             });
 
+            // NOVO: Atualiza as posições das malhas do fundo do mar para o efeito de envolvimento
+            seabedMeshes.forEach(tile => {
+                tile.mesh.position.x = tile.offsetX - visualOffsetX;
+                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
+                // A posição Y é estática, por isso não precisa de ser atualizada no loop.
+            });
 
             // Atualiza as posições de todas as malhas visuais dos cubos/caixas
             collectibleBoxes.forEach(box => {
