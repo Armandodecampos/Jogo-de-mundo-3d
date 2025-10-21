@@ -380,7 +380,6 @@
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
-        let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
 
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
         let collectibleBoxes = [];
@@ -1531,7 +1530,42 @@
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
             });
+            const seabedTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/r5hmn4v6qzkj93t57ug8l/textura-de-fundo-do-mar.png?rlkey=0ik91qb6r5n71csiqfu7pdsc8&st=96kb9v6q&dl=0', (seabedTex) => {
+                seabedTex.wrapS = THREE.RepeatWrapping;
+                seabedTex.wrapT = THREE.RepeatWrapping;
+                seabedTex.repeat.set(islandRadiusBottom / 4, islandRadiusBottom / 4);
+            });
+
             const islandMeshMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
+
+            islandMeshMaterial.onBeforeCompile = (shader) => {
+                shader.uniforms.seabedTexture = { value: seabedTexture };
+                shader.uniforms.waterLevel = { value: waterLevel };
+
+                shader.vertexShader = 'varying vec3 vWorldPosition;\n' + shader.vertexShader;
+                shader.vertexShader = shader.vertexShader.replace(
+                    '#include <worldpos_vertex>',
+                    '#include <worldpos_vertex>\nvWorldPosition = worldPosition.xyz;'
+                );
+
+                shader.fragmentShader = 'varying vec3 vWorldPosition;\n' + shader.fragmentShader;
+                shader.fragmentShader = 'uniform sampler2D seabedTexture;\n' + shader.fragmentShader;
+                shader.fragmentShader = 'uniform float waterLevel;\n' + shader.fragmentShader;
+
+                shader.fragmentShader = shader.fragmentShader.replace(
+                    'vec4 diffuseColor = vec4( diffuse, opacity );',
+                    `
+                    vec4 groundColor = texture2D(map, vUv);
+                    vec4 seabedColor = texture2D(seabedTexture, vUv);
+
+                    // Smoothly blend between textures based on world height
+                    float blendFactor = smoothstep(waterLevel - 0.5, waterLevel + 0.5, vWorldPosition.y);
+                    vec4 finalColor = mix(seabedColor, groundColor, blendFactor);
+
+                    vec4 diffuseColor = vec4(diffuse * finalColor.rgb, opacity);
+                    `
+                );
+            };
 
             // Carrega a textura da relva e, no callback, cria os meshes da ilha e da relva
             textureLoader.load(grassTextureURL, (grassTexture) => {
@@ -1583,12 +1617,8 @@
 
             // NOVO: Cria o Fundo do Mar
             const seabedGeometry = new THREE.PlaneGeometry(worldSize, worldSize);
-            const seabedTexture = textureLoader.load('https://dl.dropbox.com/scl/fi/r5hmn4v6qzkj93t57ug8l/textura-de-fundo-do-mar.png?rlkey=0ik91qb6r5n71csiqfu7pdsc8&st=96kb9v6q&dl=0', (texture) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(islandRadiusBottom / 4, islandRadiusBottom / 4);
-            });
-            const seabedMaterial = new THREE.MeshStandardMaterial({ map: seabedTexture });
+            // Reutiliza o material da ilha para o fundo do mar para consistência
+            const seabedMaterial = islandMeshMaterial;
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                     const mesh = new THREE.Mesh(seabedGeometry, seabedMaterial);
@@ -2682,12 +2712,6 @@
                 // A posição Y é estática, por isso não precisa de ser atualizada no loop.
             });
 
-            // NOVO: Atualiza as posições das malhas do fundo do mar para o efeito de envolvimento
-            seabedMeshes.forEach(tile => {
-                tile.mesh.position.x = tile.offsetX - visualOffsetX;
-                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                // A posição Y é estática, por isso não precisa de ser atualizada no loop.
-            });
 
             // Atualiza as posições de todas as malhas visuais dos cubos/caixas
             collectibleBoxes.forEach(box => {
