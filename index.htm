@@ -370,13 +370,21 @@
         import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
         import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js';
 
+        // Expose for verification
+        window.THREE = THREE;
+        window.CANNON = CANNON;
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
+        window.scene = scene;
+        window.camera = camera;
+        window.renderer = renderer;
+        window.world = world;
         let skyFog, underwaterFog; // NOVO: Para o efeito subaquático
         let skyColor, underwaterColor; // NOVO: Para as cores do ambiente
         // Variáveis para corpos e malhas de jogador, terreno (rua), estrada e cubo
         let playerBody;
+        window.playerBody = playerBody;
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
 
@@ -463,6 +471,7 @@
         const stoneDepositRadius = 3;
         const stoneDepositHeight = 2; // Altura da cúpula
         let stoneDeposits = []; // Array para rastrear o estado e os objetos de cada depósito
+        window.stoneDeposits = stoneDeposits;
         const islandHeight = islandSurfaceHeight - seabedLevel; // Altura total do cilindro da ilha
         const roadWidth = 10; // Largura da estrada
         const roadHeight = 0.2; // Espessura da estrada
@@ -1503,7 +1512,6 @@
                 }
             }
 
-
             // Gira a geometria para ficar no plano XZ.
             islandGeometry.rotateX(-Math.PI / 2);
 
@@ -1979,13 +1987,13 @@
             renderer.domElement.addEventListener('mouseup', (event) => {
                 if (document.pointerLockElement !== renderer.domElement || gamePaused) return;
 
-                // Se a destruição estava em andamento (barra a encher), cancela-a.
-                if (isDestroying) {
+                // Se a destruição estava em andamento ou acabou de ser concluída,
+                // soltar o mouse deve redefinir completamente o estado.
+                if (isDestroying || destructionComplete) {
                     stopDestruction();
-                }
-                // Se a destruição foi concluída, soltar o rato apenas repõe a flag.
-                if (destructionComplete) {
-                    destructionComplete = false;
+                    // IMPORTANTE: Retorna aqui para evitar que outras ações (como 'placeBlock')
+                    // sejam acionadas acidentalmente pelo mesmo evento de mouseup.
+                    return;
                 }
 
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
@@ -2114,6 +2122,7 @@
                 destroyTargetMesh = null;
                 destroyTargetPatchObject = null;
                 destroyTargetDeposit = null; // Reseta o depósito alvo
+                destructionComplete = false; // Garante que a flag seja resetada
             }
 
             function collectObject() {
@@ -2347,9 +2356,9 @@
             // NOVO: Chama a função para configurar os depósitos de pedra de forma assíncrona
             setupStoneDeposits();
 
-            // Expose variables for verification
-            window.scene = scene;
-            window.camera = camera;
+        // Expose variables for verification
+        window.scene = scene;
+        window.camera = camera;
             window.renderer = renderer;
             window.world = world;
             window.playerBody = playerBody;
@@ -2473,36 +2482,30 @@
             window.isDestroying = isDestroying;
             window.destructionComplete = destructionComplete;
 
-            if (gamePaused) {
-                // Se o jogo estiver pausado, apenas renderiza a cena, não atualiza a física ou o movimento do jogador
-                renderer.render(scene, camera);
-                return;
-            }
-
-            // Processa a destruição pendente no início do frame para evitar congelamentos
-            if (pendingDestruction) {
+            // NOVO: Processa a destruição pendente de forma assíncrona
+            if (window.pendingDestruction) {
                 setTimeout(() => {
                     let position;
-                    const { deposit, patch, body, mesh } = pendingDestruction;
+                    const { deposit, patch, body, mesh } = window.pendingDestruction;
 
                     if (deposit) {
                         position = new THREE.Vector3(deposit.x, deposit.y, deposit.z);
                         deposit.flattened = true;
-                        deposit.regenerationTimer = 60;
-
+                        deposit.regenerationTimer = 60; // Inicia a regeneração
                         if (deposit.body) world.removeBody(deposit.body);
 
+                        // Cria a base achatada
                         const flattenedHeight = 0.2;
                         const flattenedGeometry = new THREE.CylinderGeometry(stoneDepositRadius, stoneDepositRadius, flattenedHeight, 16);
                         const flattenedMesh = new THREE.Mesh(flattenedGeometry, flattenedStoneDepositMaterial);
                         flattenedMesh.receiveShadow = true;
-
                         const flattenedShape = new CANNON.Cylinder(stoneDepositRadius, stoneDepositRadius, flattenedHeight, 16);
                         const flattenedBody = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC, shape: flattenedShape, material: islandMaterial });
-                        flattenedBody.position.set(deposit.x, deposit.y + flattenedHeight / 2, deposit.z);
+                        flattenedBody.position.set(deposit.x, deposit.y + flattenedHeight / 2, deposit.z); // Posição corrigida
                         world.addBody(flattenedBody);
-                        deposit.flattenedBody = flattenedBody;
+                        deposit.flattenedBody = flattenedBody; // Armazena a referência
 
+                        deposit.flattenedMeshes = []; // Limpa as malhas antigas
                         for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                             for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
                                 const meshClone = flattenedMesh.clone();
@@ -2510,33 +2513,42 @@
                                 deposit.flattenedMeshes.push({ mesh: meshClone, offsetX: j * worldSize, offsetZ: k * worldSize });
                             }
                         }
-                        addItemToInventory(backpackItems, { name: stoneItemName, quantity: 5 });
-                        updateBackpackDisplay();
+                        addItemToInventory(backpackItems, { name: stoneItemName, quantity: 5 }); // Exemplo: Dá 5 pedras
                     } else if (patch) {
                         position = patch.position.clone();
                         const patchIndex = texturePatches.indexOf(patch);
-                        if (patchIndex > -1) texturePatches.splice(patchIndex, 1);
+                        if (patchIndex > -1) {
+                            texturePatches.splice(patchIndex, 1);
+                        }
+                        // Remove todas as malhas visuais e descarta a geometria
                         patch.meshes.forEach(m => {
                             scene.remove(m.mesh);
                             if (m.mesh.geometry) m.mesh.geometry.dispose();
                         });
                         addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
-                        updateBackpackDisplay();
                     } else if (body) {
                         position = mesh.position.clone();
                         const bodyIndex = placedConstructionBodies.indexOf(body);
                         if (bodyIndex !== -1) {
-                            if (body.userData.growthStage === 'media') addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 1 });
-                            else if (body.userData.growthStage === 'arvore_adulta') addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 3 });
-                            else if (body.userData.type === 'tronco_arvore' || body.userData.type === 'tábuas') addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 2 });
-                            if (body.userData.type === 'cob' || body.userData.type === 'piso') addItemToInventory(backpackItems, { name: body.userData.type, quantity: 1 });
+                            // Lógica de queda de item (exemplo)
+                            if (body.userData.growthStage === 'media') {
+                                addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 1 });
+                            } else if (body.userData.growthStage === 'arvore_adulta') {
+                                addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 3 });
+                            } else if (body.userData.type === 'tronco_arvore' || body.userData.type === 'tábuas') {
+                                addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 2 });
+                            }
+                            if (body.userData.type === 'cob' || body.userData.type === 'piso') {
+                                addItemToInventory(backpackItems, { name: body.userData.type, quantity: 1 });
+                            }
 
-                            updateBackpackDisplay();
                             world.removeBody(body);
                             placedConstructionBodies.splice(bodyIndex, 1);
                             scene.remove(mesh);
                             if (mesh.isGroup) {
-                                mesh.children.forEach(child => { if (child.geometry) child.geometry.dispose(); });
+                                mesh.children.forEach(child => {
+                                    if (child.geometry) child.geometry.dispose();
+                                });
                             } else if (mesh.geometry) {
                                 mesh.geometry.dispose();
                             }
@@ -2544,10 +2556,18 @@
                         }
                     }
 
-                    if (position) createSmokeEffect(position);
-                    destructionComplete = true; // Define a flag de conclusão AQUI
-                }, 0); // Executa de forma assíncrona
-                pendingDestruction = null; // Limpa a flag imediatamente
+                    if (position) {
+                        createSmokeEffect(position);
+                    }
+                    updateBackpackDisplay(); // Atualiza a mochila se algum item foi adicionado
+                }, 0);
+                window.pendingDestruction = null; // Limpa a flag para que não seja processado novamente
+            }
+
+            if (gamePaused) {
+                // Se o jogo estiver pausado, apenas renderiza a cena, não atualiza a física ou o movimento do jogador
+                renderer.render(scene, camera);
+                return;
             }
 
             // Lógica de destruição progressiva
@@ -2558,26 +2578,23 @@
 
                 let stillOnTarget = false;
                 if (intersects.length > 0 && intersects[0].distance <= destroyDistance) {
-                    let intersectedObject = intersects[0].object;
+                    const intersectedObject = intersects[0].object;
 
                     if (destroyTargetPatchObject) {
-                        // Se estivermos destruindo um patch, verifica se a malha atingida pertence ao patch
+                        // Para patches de textura, que não têm corpo de física, comparamos o objeto de patch principal.
                         if (intersectedObject.userData.patchObject === destroyTargetPatchObject) {
                             stillOnTarget = true;
                         }
-                    } else if (destroyTargetDeposit) {
-                        // Se estivermos a destruir um depósito, verifica se a malha atingida pertence a esse depósito
-                        const deposit = stoneDeposits.find(d => d.domeMeshes.some(m => m.mesh === intersectedObject));
-                        if (deposit === destroyTargetDeposit) {
-                            stillOnTarget = true;
-                        }
-                    } else if (destroyTargetMesh) {
-                        // Se estivermos destruindo um bloco, faz a verificação normal
+                    } else {
+                        // Para todos os outros objetos (depósitos, blocos), comparamos o corpo de física subjacente.
+                        // Isso funciona para malhas clonadas, pois todas elas apontam para o mesmo corpo de física.
                         let currentObject = intersectedObject;
                         while (currentObject) {
-                            if (currentObject === destroyTargetMesh) {
-                                stillOnTarget = true;
-                                break;
+                            if (currentObject.userData && currentObject.userData.physicsBody) {
+                                if (currentObject.userData.physicsBody === destroyTargetBody) {
+                                    stillOnTarget = true;
+                                }
+                                break; // Encontrou o corpo de física, pode parar de subir na hierarquia.
                             }
                             currentObject = currentObject.parent;
                         }
@@ -2601,16 +2618,21 @@
 
                     // AQUI: Verifica se a destruição está completa
                     if (destroyProgress >= targetDestroyTime) {
-                        // Defere a lógica de destruição para o próximo frame
+                        // A destruição está completa!
+                        destructionComplete = true; // Define a flag
+
+                        // Adia a lógica de destruição pesada para o próximo ciclo de eventos
                         pendingDestruction = {
                             deposit: destroyTargetDeposit,
                             patch: destroyTargetPatchObject,
                             body: destroyTargetBody,
                             mesh: destroyTargetMesh
                         };
-                        // Para o processo de destruição para que não se repita
-                        isDestroying = false; // Para a barra de progresso
-                        progressContainer.style.display = 'none'; // Oculta a barra de progresso
+
+                        // NÃO chama stopDestruction() aqui. A limpeza do estado
+                        // agora é tratada pelo evento mouseup para evitar o loop.
+                        // Apenas oculta a barra de progresso.
+                        progressContainer.style.display = 'none';
                     }
                 }
             }
