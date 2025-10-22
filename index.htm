@@ -2910,21 +2910,28 @@
                             continue; // Pula a água, não pode construir nela
                         }
 
-                        // NOVO: Adicionar verificação para depósitos de pedra
-                        // Verifica se o objeto intersectado faz parte de um depósito de pedra não achatado
-                        const isStoneDeposit = stoneDeposits.some(deposit =>
-                            !deposit.flattened && deposit.domeMeshes.some(m => m.mesh === intersectedObject)
-                        );
-
-                        // Se for um depósito de pedra, ignora-o como uma superfície de colocação
-                        if (isStoneDeposit) {
-                            continue;
-                        }
-
                         if (intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) {
                             // Verifica a distância máxima para colocação
                             if (intersects[i].distance <= pickUpDistance + 1) { // Um pouco mais longe que pegar
                                 const hitPoint = intersects[i].point;
+
+                                // NOVO: Verificar se o ponto de impacto está dentro da área de um depósito de pedra
+                                let isOnStoneDepositArea = false;
+                                for (const deposit of stoneDeposits) {
+                                    // Calcula a distância horizontal ao quadrado (no plano XZ)
+                                    const dx = hitPoint.x - deposit.x;
+                                    const dz = hitPoint.z - deposit.z;
+                                    if (dx * dx + dz * dz < stoneDepositRadius * stoneDepositRadius) {
+                                        isOnStoneDepositArea = true;
+                                        break;
+                                    }
+                                }
+
+                                if (isOnStoneDepositArea) {
+                                    continue; // Pula para o próximo objeto intersectado, impedindo a colocação
+                                }
+
+
                                 const hitNormal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
 
                                 // Calcula a posição do centro do bloco acima da superfície
