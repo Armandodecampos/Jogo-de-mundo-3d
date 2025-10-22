@@ -723,56 +723,6 @@
         // Global array to hold active smoke particles
         let smokeParticles = [];
 
-        // NOVO: Função para atualizar a geometria e física da ilha
-        function updateIslandGeometry() {
-            const hfGridSize = 128; // Manter consistente com a inicialização
-            const hfMatrix = [];
-            for (let i = 0; i < hfGridSize; i++) {
-                hfMatrix.push([]);
-                for (let j = 0; j < hfGridSize; j++) {
-                    const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
-                    const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
-                    const distance = Math.sqrt(x * x + z * z);
-                    let height;
-
-                    if (distance <= islandRadiusTop) {
-                        height = islandSurfaceHeight;
-                    } else if (distance <= islandRadiusBottom) {
-                        const t = (distance - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
-                        height = islandSurfaceHeight * (1 - t) + seabedLevel * t;
-                    } else {
-                        height = seabedLevel;
-                    }
-                    hfMatrix[i][j] = height;
-                }
-            }
-
-            // Atualiza a forma de física
-            // Verifica se o corpo da ilha já tem uma forma antes de tentar removê-la
-            if (islandBody && islandBody.shapes.length > 0) {
-                const newHfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
-                islandBody.removeShape(islandBody.shapes[0]); // Remove a forma antiga
-                islandBody.addShape(newHfShape); // Adiciona a nova forma
-                islandBody.wakeUp();
-            }
-
-
-            // Atualiza a geometria visual (apenas a primeira malha, as outras são clones)
-            if (islandMeshes.length > 0) {
-                const mainIslandMesh = islandMeshes[0].mesh;
-                const vertices = mainIslandMesh.geometry.attributes.position.array;
-                for (let i = 0; i < hfGridSize; i++) {
-                    for (let j = 0; j < hfGridSize; j++) {
-                        const height = hfMatrix[i][j];
-                        const index = (i * hfGridSize + j) * 3;
-                        vertices[index + 1] = height; // Atualiza a coordenada Y
-                    }
-                }
-                mainIslandMesh.geometry.attributes.position.needsUpdate = true;
-                mainIslandMesh.geometry.computeVertexNormals();
-            }
-        }
-
         // Função para mostrar a tela de opções e pausar o jogo
         function showOptionsScreen() {
             gamePaused = true;
@@ -1317,7 +1267,6 @@
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function init() {
-            try {
             // Define o offset inicial do nível dos olhos da câmera como o raio da esfera
             cameraEyeLevelOffset = playerRadius;
             originalCameraEyeLevelOffset = cameraEyeLevelOffset; // Para armazenar o valor inicial
@@ -1501,6 +1450,57 @@
                 }
             }
 
+            // NOVO: Função para atualizar a geometria e física da ilha
+            function updateIslandGeometry() {
+                const hfGridSize = 128; // Manter consistente com a inicialização
+                const hfMatrix = [];
+                for (let i = 0; i < hfGridSize; i++) {
+                    hfMatrix.push([]);
+                    for (let j = 0; j < hfGridSize; j++) {
+                        const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
+                        const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
+                        const distance = Math.sqrt(x * x + z * z);
+                        let height;
+
+                        if (distance <= islandRadiusTop) {
+                            height = islandSurfaceHeight;
+                        } else if (distance <= islandRadiusBottom) {
+                            const t = (distance - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
+                            height = islandSurfaceHeight * (1 - t) + seabedLevel * t;
+                        } else {
+                            height = seabedLevel;
+                        }
+                        hfMatrix[i][j] = height;
+                    }
+                }
+
+                // Atualiza a forma de física
+                // Verifica se o corpo da ilha já tem uma forma antes de tentar removê-la
+                if (islandBody && islandBody.shapes.length > 0) {
+                    const newHfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
+                    islandBody.removeShape(islandBody.shapes[0]); // Remove a forma antiga
+                    islandBody.addShape(newHfShape); // Adiciona a nova forma
+                    islandBody.wakeUp();
+                }
+
+
+                // Atualiza a geometria visual (apenas a primeira malha, as outras são clones)
+                if (islandMeshes.length > 0) {
+                    const mainIslandMesh = islandMeshes[0].mesh;
+                    const vertices = mainIslandMesh.geometry.attributes.position.array;
+                    for (let i = 0; i < hfGridSize; i++) {
+                        for (let j = 0; j < hfGridSize; j++) {
+                            const height = hfMatrix[i][j];
+                            const index = (i * hfGridSize + j) * 3;
+                            vertices[index + 1] = height; // Atualiza a coordenada Y
+                        }
+                    }
+                    mainIslandMesh.geometry.attributes.position.needsUpdate = true;
+                    mainIslandMesh.geometry.computeVertexNormals();
+                }
+            }
+
+
             // Gira a geometria para ficar no plano XZ.
             islandGeometry.rotateX(-Math.PI / 2);
 
@@ -1625,14 +1625,6 @@
             // Posição inicial: centro da esfera em playerRadius + islandSurfaceHeight
             playerBody.position.set(0, playerRadius + islandSurfaceHeight, 0); // Posição inicial ajustada do jogador
             world.addBody(playerBody);
-            window.playerBody = playerBody;
-            window.camera = camera;
-            window.scene = scene;
-            window.stoneDeposits = stoneDeposits;
-            window.beltItems = beltItems;
-            window.cobItemName = cobItemName;
-            window.selectedSlotIndex = selectedSlotIndex;
-            window.updateBeltDisplay = updateBeltDisplay;
 
             // Reintroduz o listener de colisão para canJump, mas com uma verificação adicional
             playerBody.addEventListener('collide', (event) => {
@@ -2345,10 +2337,7 @@
 
             // NOVO: Chama a função para configurar os depósitos de pedra de forma assíncrona
             setupStoneDeposits();
-        } catch (e) {
-            console.error("Error in init function:", e);
         }
-    }
 
         // NOVO: Função separada para configurar os depósitos de pedra
         function setupStoneDeposits() {
@@ -2925,6 +2914,24 @@
                             // Verifica a distância máxima para colocação
                             if (intersects[i].distance <= pickUpDistance + 1) { // Um pouco mais longe que pegar
                                 const hitPoint = intersects[i].point;
+
+                                // NOVO: Verificar se o ponto de impacto está dentro da área de um depósito de pedra
+                                let isOnStoneDepositArea = false;
+                                for (const deposit of stoneDeposits) {
+                                    // Calcula a distância horizontal ao quadrado (no plano XZ)
+                                    const dx = hitPoint.x - deposit.x;
+                                    const dz = hitPoint.z - deposit.z;
+                                    if (dx * dx + dz * dz < stoneDepositRadius * stoneDepositRadius) {
+                                        isOnStoneDepositArea = true;
+                                        break;
+                                    }
+                                }
+
+                                if (isOnStoneDepositArea) {
+                                    continue; // Pula para o próximo objeto intersectado, impedindo a colocação
+                                }
+
+
                                 const hitNormal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
 
                                 // Calcula a posição do centro do bloco acima da superfície
@@ -3502,49 +3509,19 @@
             // console.log("Corpos de construção colocados (animate):", placedConstructionBodies.map(b => ({ id: b.id, type: b.userData.type, position: b.position })));
         }
 
-
-
         // Função para iniciar o jogo
         function startGame() {
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
-            // A inicialização agora acontece após o carregamento de todas as texturas
-            loadAllTextures();
-        }
-
-        function loadAllTextures() {
-            const loadingManager = new THREE.LoadingManager();
-            let isWorldReady = false;
-            loadingManager.onLoad = () => {
-                console.log("All assets loaded, initializing...");
-                if (!isWorldReady) {
-                    isWorldReady = true;
-                    window.isWorldReady = true;
-                    init();
-                    animate();
-                    if (menuIconButton) menuIconButton.style.display = 'flex';
-                    if (inventoryBeltElement) {
-                        inventoryBeltElement.style.visibility = 'visible';
-                        inventoryBeltElement.style.opacity = '1';
-                    }
-                }
-            };
-
-            const textureLoader = new THREE.TextureLoader(loadingManager);
-
-            // Start loading all textures
-            textureLoader.load(grassTextureURL, (texture) => {
-                console.log('Loaded grassTextureURL');
-                // Configure and assign texture in the callback
-            });
-            textureLoader.load(stoneTextureURL, (texture) => { console.log('Loaded stoneTextureURL'); });
-            textureLoader.load(cubeTextureURL, (texture) => { console.log('Loaded cubeTextureURL'); });
-            textureLoader.load(cobTextureURL, (texture) => { console.log('Loaded cobTextureURL'); });
-            textureLoader.load(floorTextureURL, (texture) => { console.log('Loaded floorTextureURL'); });
-            textureLoader.load(woodenPlankTextureURL, (texture) => { console.log('Loaded woodenPlankTextureURL'); });
-            textureLoader.load(treeSaplingTextureURL, (texture) => { console.log('Loaded treeSaplingTextureURL'); });
-            textureLoader.load(treeBarkTextureURL, (texture) => { console.log('Loaded treeBarkTextureURL'); });
-            textureLoader.load(treeLeavesTextureURL, (texture) => { console.log('Loaded treeLeavesTextureURL'); });
-            textureLoader.load(stoneDepositTextureURL, (texture) => { console.log('Loaded stoneDepositTextureURL'); });
+            init(); // Inicializa os componentes do jogo
+            animate(); // Inicia o loop de animação
+            // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
+            if (menuIconButton) {
+                menuIconButton.style.display = 'flex'; // Mostra o botão do menu ao iniciar o jogo
+            }
+            if (inventoryBeltElement) {
+                inventoryBeltElement.style.visibility = 'visible'; // Mostra o cinto de inventário ao iniciar o jogo
+                inventoryBeltElement.style.opacity = '1';
+            }
         }
 
         // Listener de evento para o botão "Jogar"
