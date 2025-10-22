@@ -414,6 +414,7 @@
         let destroyTargetMesh = null; // Malha visual do corpo
         let destroyTargetPatchObject = null;
         let destroyTargetDeposit = null; // Para rastrear o depósito alvo
+        let destructionComplete = false; // NOVO: Flag para gerenciar o estado de destruição
 
         // NOVO: Variáveis para a lógica de clique vs. segurar
         let mouseDownTime = 0;
@@ -2019,6 +2020,7 @@
             }
 
             function startDestruction() {
+                destructionComplete = false; // NOVO: Redefine a flag no início de uma nova destruição
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
                 let target = null;
@@ -2090,13 +2092,19 @@
             }
 
             function stopDestruction() {
-                isDestroying = false;
-                destroyProgress = 0;
-                progressContainer.style.display = 'none';
+                // Esta função agora apenas limpa o estado.
+                // A lógica de parar a barra de progresso foi movida para o loop de animação.
+                if (isDestroying) {
+                    isDestroying = false;
+                    destroyProgress = 0;
+                    progressContainer.style.display = 'none';
+                }
+                // Limpa os alvos apenas quando o botão do mouse é solto ou a mira é perdida.
                 destroyTargetBody = null;
                 destroyTargetMesh = null;
                 destroyTargetPatchObject = null;
                 destroyTargetDeposit = null; // Reseta o depósito alvo
+                destructionComplete = false; // Garante que a flag seja redefinida
             }
 
             function collectObject() {
@@ -2449,7 +2457,8 @@
             }
 
             // Lógica de destruição progressiva
-            if (isDestroying && (destroyTargetMesh || destroyTargetPatchObject)) {
+            // NOVO: A lógica só continua se a destruição estiver em andamento E não estiver completa.
+            if (isDestroying && !destructionComplete) {
                 // --- Verificação de mira atualizada ---
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
@@ -2461,6 +2470,11 @@
                     if (destroyTargetPatchObject) {
                         // Se estivermos destruindo um patch, verifica se a malha atingida pertence ao patch
                         if (intersectedObject.userData.patchObject === destroyTargetPatchObject) {
+                            stillOnTarget = true;
+                        }
+                    } else if (destroyTargetDeposit) { // NOVO: Verifica se o depósito é o alvo
+                        const deposit = stoneDeposits.find(d => d.domeMeshes.some(m => m.mesh === intersectedObject));
+                        if (deposit === destroyTargetDeposit) {
                             stillOnTarget = true;
                         }
                     } else if (destroyTargetMesh) {
@@ -2476,7 +2490,8 @@
                     }
                 }
 
-                // Se não estiver mais na mira, reseta
+                // Se não estiver mais na mira, para tudo.
+                // A função stopDestruction agora limpa todas as variáveis de estado.
                 if (!stillOnTarget) {
                     stopDestruction();
                 } else {
@@ -2575,8 +2590,12 @@
                             }
                         }
 
-                        if (position) createSmokeEffect(position);
-                        stopDestruction(); // Reseta tudo
+                        if (position) {
+                            createSmokeEffect(position);
+                        }
+                        destructionComplete = true; // A destruição está completa!
+                        isDestroying = false; // Para a barra de progresso
+                        progressContainer.style.display = 'none'; // Esconde a barra de progresso
 
                     } else {
                         // Atualiza a barra de progresso
@@ -2585,7 +2604,8 @@
                 }
             } else {
                  // Reseta a barra de progresso se o usuário parar de destruir
-                if (isDestroying) { // Apenas se a destruição foi cancelada no último frame
+                // NOVO: Agora só chama stopDestruction se a destruição NÃO foi concluída com sucesso.
+                if (isDestroying && !destructionComplete) {
                     stopDestruction();
                 }
                 if (progressBar.style.width !== '0%') {
