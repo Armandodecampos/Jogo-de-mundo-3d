@@ -451,7 +451,7 @@
         const renderDistance = 200; // Distância de renderização para objetos
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
-        const islandSurfaceHeight = cobSize; // A altura da superfície visível da ilha
+        const islandSurfaceHeight = cobSize * 2; // A altura da superfície visível da ilha
 
         // NOVO: Constantes e variáveis para depósitos de pedra
         const stoneDepositTextureURL = "https://dl.dropbox.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=uv3fqtpz&dl=0";
@@ -1599,6 +1599,7 @@
                             shader.uniforms.uSeabedTexture = { value: seabedTexture };
                             shader.uniforms.uSandTexture = { value: sandTexture };
                             shader.uniforms.uWaterLevel = { value: waterLevel };
+                            shader.uniforms.uIslandSurfaceHeight = { value: islandSurfaceHeight };
 
                             shader.vertexShader = `
                                 varying vec3 vWorldPosition;
@@ -1615,6 +1616,7 @@
                                 uniform sampler2D uSeabedTexture;
                                 uniform sampler2D uSandTexture;
                                 uniform float uWaterLevel;
+                                uniform float uIslandSurfaceHeight;
                                 varying vec3 vWorldPosition;
                                 ${shader.fragmentShader}
                             `.replace(
@@ -1630,7 +1632,7 @@
                                     vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
 
                                     // Depois, mistura o resultado com a grama para criar a praia
-                                    float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
+                                    float sandToGrassBlend = smoothstep(uWaterLevel, uIslandSurfaceHeight, vWorldPosition.y);
                                     vec3 finalMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
 
                                     diffuseColor *= vec4(finalMix, 1.0);
