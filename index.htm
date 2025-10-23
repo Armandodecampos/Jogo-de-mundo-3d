@@ -1579,64 +1579,77 @@
             world.addBody(islandBody);
             const groundTextureURL = "https://dl.dropbox.com/scl/fi/7vesla91xayt0nn4m58c7/textura-terra-com-grama.png?rlkey=l380g7obxjkqv92xf10yhtfpe&st=eq9oonef&dl=0";
             const seabedTextureURL = "https://dl.dropbox.com/scl/fi/r5hmn4v6qzkj93t57ug8l/textura-de-fundo-do-mar.png?rlkey=0ik91qb6r5n71csiqfu7pdsc8&st=96kb9v6q&dl=0";
+            const beachTextureURL = "https://dl.dropbox.com/scl/fi/2ediqx91o54kqrua9l4jk/Textura-de-areia.png?rlkey=pale1g1zkjqlrkjhpz4kr3ypw&st=fbuzn6iu&dl=0";
 
             textureLoader.load(groundTextureURL, (groundTexture) => {
                 textureLoader.load(seabedTextureURL, (seabedTexture) => {
-                    // Ambas as texturas estão carregadas, agora podemos criar o material e as malhas
-                    [groundTexture, seabedTexture].forEach(texture => {
-                        texture.wrapS = THREE.RepeatWrapping;
-                        texture.wrapT = THREE.RepeatWrapping;
-                        texture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                    });
+                    textureLoader.load(beachTextureURL, (beachTexture) => {
+                        // Todas as três texturas estão carregadas, agora podemos criar o material e as malhas
+                        [groundTexture, seabedTexture, beachTexture].forEach(texture => {
+                            texture.wrapS = THREE.RepeatWrapping;
+                            texture.wrapT = THREE.RepeatWrapping;
+                            texture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                        });
 
-                    const islandMeshMaterial = new THREE.MeshStandardMaterial({
-                        map: groundTexture,
-                    });
+                        const islandMeshMaterial = new THREE.MeshStandardMaterial({
+                            map: groundTexture,
+                        });
 
-                    islandMeshMaterial.onBeforeCompile = (shader) => {
-                        shader.uniforms.uSeabedTexture = { value: seabedTexture };
-                        shader.uniforms.uWaterLevel = { value: waterLevel };
+                        islandMeshMaterial.onBeforeCompile = (shader) => {
+                            shader.uniforms.uSeabedTexture = { value: seabedTexture };
+                            shader.uniforms.uBeachTexture = { value: beachTexture };
+                            shader.uniforms.uWaterLevel = { value: waterLevel };
 
-                        shader.vertexShader = `
-                            varying vec3 vWorldPosition;
-                            ${shader.vertexShader}
-                        `.replace(
-                            `#include <worldpos_vertex>`,
-                            `
-                            #include <worldpos_vertex>
-                            vWorldPosition = worldPosition.xyz;
-                            `
-                        );
+                            shader.vertexShader = `
+                                varying vec3 vWorldPosition;
+                                ${shader.vertexShader}
+                            `.replace(
+                                `#include <worldpos_vertex>`,
+                                `
+                                #include <worldpos_vertex>
+                                vWorldPosition = worldPosition.xyz;
+                                `
+                            );
 
-                        shader.fragmentShader = `
-                            uniform sampler2D uSeabedTexture;
-                            uniform float uWaterLevel;
-                            varying vec3 vWorldPosition;
-                            ${shader.fragmentShader}
-                        `.replace(
-                            `#include <map_fragment>`,
-                            `
-                            #ifdef USE_MAP
-                                vec4 groundColor = texture2D(map, vUv);
-                                vec4 seabedColor = texture2D(uSeabedTexture, vUv);
-                                float blendFactor = smoothstep(uWaterLevel - 2.0, uWaterLevel, vWorldPosition.y);
-                                vec3 mixedColor = mix(seabedColor.rgb, groundColor.rgb, blendFactor);
-                                diffuseColor *= vec4(mixedColor, 1.0);
-                            #endif
-                            `
-                        );
-                    };
+                            shader.fragmentShader = `
+                                uniform sampler2D uSeabedTexture;
+                            uniform sampler2D uBeachTexture;
+                                uniform float uWaterLevel;
+                                varying vec3 vWorldPosition;
+                                ${shader.fragmentShader}
+                            `.replace(
+                                `#include <map_fragment>`,
+                                `
+                                #ifdef USE_MAP
+                                    vec4 groundColor = texture2D(map, vUv);
+                                    vec4 seabedColor = texture2D(uSeabedTexture, vUv);
+                                vec4 beachColor = texture2D(uBeachTexture, vUv);
 
-                    for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                        for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                            const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
-                            islandMesh.receiveShadow = true;
-                            islandMesh.userData.physicsBody = islandBody;
-                            scene.add(islandMesh);
-                            islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                                // Blend between seabed and beach
+                                float seabedToBeachFactor = smoothstep(uWaterLevel - 2.0, uWaterLevel + 0.5, vWorldPosition.y);
+                                vec3 seabedBeachMix = mix(seabedColor.rgb, beachColor.rgb, seabedToBeachFactor);
+
+                                // Blend between the result and the ground
+                                float beachToGroundFactor = smoothstep(uWaterLevel + 0.5, uWaterLevel + 2.5, vWorldPosition.y);
+                                vec3 finalMix = mix(seabedBeachMix, groundColor.rgb, beachToGroundFactor);
+
+                                diffuseColor *= vec4(finalMix, 1.0);
+                                #endif
+                                `
+                            );
+                        };
+
+                        for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                                const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
+                                islandMesh.receiveShadow = true;
+                                islandMesh.userData.physicsBody = islandBody;
+                                scene.add(islandMesh);
+                                islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                            }
                         }
-                    }
-                    islandMeshMaterial.needsUpdate = true;
+                        islandMeshMaterial.needsUpdate = true;
+                    }, undefined, (error) => console.error('Falha ao carregar a textura da praia:', error));
                 }, undefined, (error) => console.error('Falha ao carregar a textura do fundo do mar:', error));
             }, undefined, (error) => console.error('Falha ao carregar a textura do solo:', error));
 
