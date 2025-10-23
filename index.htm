@@ -1599,6 +1599,7 @@
                             shader.uniforms.uSeabedTexture = { value: seabedTexture };
                             shader.uniforms.uBeachTexture = { value: beachTexture };
                             shader.uniforms.uWaterLevel = { value: waterLevel };
+                            shader.uniforms.uIslandSurfaceHeight = { value: islandSurfaceHeight };
 
                             shader.vertexShader = `
                                 varying vec3 vWorldPosition;
@@ -1613,8 +1614,9 @@
 
                             shader.fragmentShader = `
                                 uniform sampler2D uSeabedTexture;
-                            uniform sampler2D uBeachTexture;
+                                uniform sampler2D uBeachTexture;
                                 uniform float uWaterLevel;
+                                uniform float uIslandSurfaceHeight;
                                 varying vec3 vWorldPosition;
                                 ${shader.fragmentShader}
                             `.replace(
@@ -1623,17 +1625,21 @@
                                 #ifdef USE_MAP
                                     vec4 groundColor = texture2D(map, vUv);
                                     vec4 seabedColor = texture2D(uSeabedTexture, vUv);
-                                vec4 beachColor = texture2D(uBeachTexture, vUv);
+                                    vec4 beachColor = texture2D(uBeachTexture, vUv);
 
-                                // Blend between seabed and beach
-                                float seabedToBeachFactor = smoothstep(uWaterLevel - 2.0, uWaterLevel + 0.5, vWorldPosition.y);
-                                vec3 seabedBeachMix = mix(seabedColor.rgb, beachColor.rgb, seabedToBeachFactor);
+                                    // Define the height range for the beach texture
+                                    float beachStartHeight = uWaterLevel - 0.2;
+                                    float beachEndHeight = uIslandSurfaceHeight - 0.05; // End beach just before grass starts
 
-                                // Blend between the result and the ground
-                                float beachToGroundFactor = smoothstep(uWaterLevel + 0.5, uWaterLevel + 2.5, vWorldPosition.y);
-                                vec3 finalMix = mix(seabedBeachMix, groundColor.rgb, beachToGroundFactor);
+                                    // Blend from seabed to beach
+                                    float seabedToBeachFactor = smoothstep(beachStartHeight, beachEndHeight, vWorldPosition.y);
+                                    vec3 seabedBeachMix = mix(seabedColor.rgb, beachColor.rgb, seabedToBeachFactor);
 
-                                diffuseColor *= vec4(finalMix, 1.0);
+                                    // Blend from the beach mix to the ground texture
+                                    float beachToGroundFactor = smoothstep(beachEndHeight, uIslandSurfaceHeight, vWorldPosition.y);
+                                    vec3 finalMix = mix(seabedBeachMix, groundColor.rgb, beachToGroundFactor);
+
+                                    diffuseColor *= vec4(finalMix, 1.0);
                                 #endif
                                 `
                             );
