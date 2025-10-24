@@ -2438,55 +2438,68 @@
                     }
 
                     if (isValid) {
-                        // NOVO: Randomiza o tamanho de cada depósito
-                        const sizeFactor = 0.3 + Math.random() * 1.7; // Variação de 30% a 200% para pedrinhas e pedras grandes
-                        const radius = stoneDepositRadius * sizeFactor;
-                        const height = stoneDepositHeight * sizeFactor;
+                        // Usa um raycast para encontrar a posição e a normal corretas no terreno
+                        const rayFrom = new CANNON.Vec3(x, islandSurfaceHeight + 20, z);
+                        const rayTo = new CANNON.Vec3(x, seabedLevel - 10, z);
+                        const rayResult = new CANNON.RaycastResult();
+                        world.raycastClosest(rayFrom, rayTo, {}, rayResult);
 
+                        if (rayResult.hasHit) {
+                            const hitPoint = rayResult.hitPointWorld;
+                            const hitNormal = rayResult.hitNormalWorld;
 
-                        const domeGeometry = new THREE.SphereGeometry(radius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+                            // Cria um quaternion para alinhar o depósito com a normal do terreno
+                            const up = new CANNON.Vec3(0, 1, 0);
+                            const quaternion = new CANNON.Quaternion();
+                            quaternion.setFromVectors(up, hitNormal);
 
-                        const domeMesh = new THREE.Mesh(domeGeometry, stoneDepositMaterial);
-                        domeMesh.castShadow = true;
-                        domeMesh.receiveShadow = true;
+                            const sizeFactor = 0.3 + Math.random() * 1.7;
+                            const depositRadius = stoneDepositRadius * sizeFactor;
+                            const depositHeight = stoneDepositHeight * sizeFactor;
 
-                        const domeMeshes = [];
-                        for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                            for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                                const mesh = domeMesh.clone();
-                                scene.add(mesh);
-                                domeMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                            const domeGeometry = new THREE.SphereGeometry(depositRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+                            const domeMesh = new THREE.Mesh(domeGeometry, stoneDepositMaterial);
+                            domeMesh.castShadow = true;
+                            domeMesh.receiveShadow = true;
+
+                            const domeMeshes = [];
+                            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                                for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
+                                    const mesh = domeMesh.clone();
+                                    scene.add(mesh);
+                                    domeMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                                }
                             }
+
+                            const domeShape = new CANNON.Sphere(depositRadius);
+                            const domeBody = new CANNON.Body({
+                                mass: 0,
+                                type: CANNON.Body.STATIC,
+                                shape: domeShape,
+                                material: islandMaterial
+                            });
+                            domeBody.position.copy(hitPoint);
+                            domeBody.quaternion.copy(quaternion);
+                            world.addBody(domeBody);
+
+                            stoneDeposits.push({
+                                x: hitPoint.x, z: hitPoint.z, y: hitPoint.y,
+                                radius: depositRadius,
+                                height: depositHeight,
+                                flattened: false,
+                                regenerationTimer: 0,
+                                domeMeshes: domeMeshes,
+                                flattenedMeshes: [],
+                                body: domeBody
+                            });
                         }
-
-                        // CRIA O CORPO DE FÍSICA SÓLIDO PARA O DEPÓSITO
-                        const domeShape = new CANNON.Sphere(radius);
-                        const domeBody = new CANNON.Body({
-                            mass: 0, // Estático
-                            type: CANNON.Body.STATIC,
-                            shape: domeShape,
-                            material: islandMaterial // Usa o mesmo material da ilha para colisões consistentes
-                        });
-                        domeBody.position.set(x, 0, z);
-                        world.addBody(domeBody);
-
-                        stoneDeposits.push({
-                            x: x, z: z, y: 0,
-                            radius: radius, // Armazena o raio para uso posterior
-                            height: height, // Armazena a altura para uso posterior
-                            flattened: false,
-                            regenerationTimer: 0,
-                            domeMeshes: domeMeshes,
-                            flattenedMeshes: [],
-                            body: domeBody
-                        });
                     }
                 }
 
                 if (attempts >= maxAttempts) {
                     console.warn(`Não foi possível colocar todos os depósitos de pedra. Apenas ${stoneDeposits.length}/${numStoneDeposits} foram colocados.`);
                 }
-                updateIslandGeometry();
+                // updateIslandGeometry(); // Não é mais necessário aqui
             }, undefined, (error) => {
                 console.error("Falha ao carregar a textura do depósito de pedra:", error);
             });
@@ -2608,18 +2621,18 @@
                             const flattenedMesh = new THREE.Mesh(flattenedGeometry, flattenedStoneDepositMaterial);
                             flattenedMesh.receiveShadow = true;
 
-                            // CRIA O CORPO DE FÍSICA SÓLIDO PARA O DEPÓSITO ACHATADO
+                            // Cria um novo corpo de física para o estado achatado, alinhado com o terreno
                             const flattenedShape = new CANNON.Cylinder(destroyTargetDeposit.radius, destroyTargetDeposit.radius, flattenedHeight, 16);
                             const flattenedBody = new CANNON.Body({
-                                mass: 0, // Estático
+                                mass: 0,
                                 type: CANNON.Body.STATIC,
                                 shape: flattenedShape,
-                                material: islandMaterial // Usa o mesmo material da ilha para colisões consistentes
+                                material: islandMaterial
                             });
-                            // A posição Y do centro do cilindro (altura 0.2) para que a base fique no chão
-                            flattenedBody.position.set(destroyTargetDeposit.x, destroyTargetDeposit.y + flattenedHeight / 2, destroyTargetDeposit.z);
+                            flattenedBody.position.copy(destroyTargetDeposit.body.position);
+                            flattenedBody.quaternion.copy(destroyTargetDeposit.body.quaternion);
                             world.addBody(flattenedBody);
-                            destroyTargetDeposit.flattenedBody = flattenedBody; // Armazena a referência para remoção posterior
+                            destroyTargetDeposit.flattenedBody = flattenedBody;
 
 
                             for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
@@ -2855,25 +2868,6 @@
 
             // NOVO: Atualiza a posição e visibilidade dos depósitos de pedra
             stoneDeposits.forEach(deposit => {
-                // Calcula a altura do terreno na posição do depósito para posicionar a cúpula corretamente
-                const distanceToCenter = Math.sqrt(deposit.x * deposit.x + deposit.z * deposit.z);
-                let baseHeight;
-                if (distanceToCenter <= islandRadiusTop) {
-                    baseHeight = islandSurfaceHeight;
-                } else if (distanceToCenter <= islandRadiusBottom) {
-                    const t = (distanceToCenter - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
-                    baseHeight = islandSurfaceHeight * (1 - t) + seabedLevel * t;
-                } else {
-                    baseHeight = seabedLevel;
-                }
-                deposit.y = baseHeight;
-
-                // ATUALIZA A POSIÇÃO Y DO CORPO DE FÍSICA
-                if (deposit.body && !deposit.flattened) {
-                    deposit.body.position.y = baseHeight;
-                }
-
-
                 const depositPosition = new THREE.Vector3(deposit.x, deposit.y, deposit.z);
                 const distance = calculateWrappedDistance(playerBody.position, depositPosition);
                 const isVisible = distance <= renderDistance;
@@ -2883,10 +2877,11 @@
                     item.mesh.visible = isVisible && !deposit.flattened;
                     if (item.mesh.visible) {
                         item.mesh.position.set(
-                            deposit.x + item.offsetX - visualOffsetX,
-                            deposit.y,
-                            deposit.z + item.offsetZ - visualOffsetZ
+                            deposit.body.position.x + item.offsetX - visualOffsetX,
+                            deposit.body.position.y,
+                            deposit.body.position.z + item.offsetZ - visualOffsetZ
                         );
+                        item.mesh.quaternion.copy(deposit.body.quaternion);
                     }
                 });
 
@@ -2895,10 +2890,11 @@
                     item.mesh.visible = isVisible && deposit.flattened;
                     if (item.mesh.visible) {
                         item.mesh.position.set(
-                            deposit.x + item.offsetX - visualOffsetX,
-                            deposit.y + 0.06, // Corresponde à posição do corpo de física
-                            deposit.z + item.offsetZ - visualOffsetZ
+                            deposit.flattenedBody.position.x + item.offsetX - visualOffsetX,
+                            deposit.flattenedBody.position.y,
+                            deposit.flattenedBody.position.z + item.offsetZ - visualOffsetZ
                         );
+                        item.mesh.quaternion.copy(deposit.flattenedBody.quaternion);
                     }
                 });
             });
@@ -3008,14 +3004,12 @@
                             if (intersects[i].distance <= pickUpDistance + 1) { // Um pouco mais longe que pegar
                                 const hitPoint = intersects[i].point;
 
-                                // NOVO: Verificar se o ponto de impacto está dentro da área de um depósito de pedra
+                                // NOVO: Verifica se o ponto de impacto está dentro do volume de um depósito de pedra
                                 let isOnStoneDepositArea = false;
                                 for (const deposit of stoneDeposits) {
-                                    // Calcula a distância horizontal ao quadrado (no plano XZ)
-                                    const dx = hitPoint.x - deposit.x;
-                                    const dz = hitPoint.z - deposit.z;
-                                    // A verificação agora usa o raio individual de cada depósito
-                                    if (dx * dx + dz * dz < deposit.radius * deposit.radius) {
+                                    const depositPosition = new THREE.Vector3().copy(deposit.body.position);
+                                    // A verificação agora é uma simples distância 3D
+                                    if (hitPoint.distanceTo(depositPosition) < deposit.radius) {
                                         isOnStoneDepositArea = true;
                                         break;
                                     }
@@ -3480,10 +3474,8 @@
                                 // NOVO: Adiciona a verificação da área do depósito de pedra à lógica da mira
                                 let isOnStoneDepositArea = false;
                                 for (const deposit of stoneDeposits) {
-                                    const dx = hitPoint.x - deposit.x;
-                                    const dz = hitPoint.z - deposit.z;
-                                    // A verificação agora usa o raio individual de cada depósito
-                                    if (dx * dx + dz * dz < deposit.radius * deposit.radius) {
+                                    const depositPosition = new THREE.Vector3().copy(deposit.body.position);
+                                    if (hitPoint.distanceTo(depositPosition) < deposit.radius) {
                                         isOnStoneDepositArea = true;
                                         break;
                                     }
