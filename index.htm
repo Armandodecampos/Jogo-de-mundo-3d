@@ -458,8 +458,8 @@
         let stoneDepositMaterial;
         let flattenedStoneDepositMaterial; // Material para o estado achatado
         const numStoneDeposits = 20;
-        const stoneDepositRadius = 3;
-        const stoneDepositHeight = 2; // Altura da cúpula
+        const stoneDepositRadius = 3; // Isso agora servirá como um raio *base*
+        const stoneDepositHeight = 2; // Isso agora servirá como uma altura *base*
         let stoneDeposits = []; // Array para rastrear o estado e os objetos de cada depósito
         const islandHeight = islandSurfaceHeight - seabedLevel; // Altura total do cilindro da ilha
         const roadWidth = 10; // Largura da estrada
@@ -2132,7 +2132,8 @@
                     destroyTargetPatchObject = target.patchObject || null;
 
                     if (destroyTargetDeposit) {
-                        targetDestroyTime = 1.5; // Durabilidade dos depósitos de pedra
+                        // O tempo de destruição agora é proporcional ao raio do depósito (ex: raio * 0.5)
+                        targetDestroyTime = destroyTargetDeposit.radius * 0.5;
                         progressContainer.style.display = 'block';
                     } else {
                         let targetUserData;
@@ -2437,7 +2438,16 @@
                     }
 
                     if (isValid) {
-                        const domeGeometry = new THREE.SphereGeometry(stoneDepositRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+                        // NOVO: Randomiza o tamanho de cada depósito
+                        const sizeFactor = 0.75 + Math.random() * 0.5; // Variação de 75% a 125%
+                        const radius = stoneDepositRadius * sizeFactor;
+                        const height = stoneDepositHeight * sizeFactor;
+
+
+                        const domeGeometry = new THREE.SphereGeometry(radius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+                        // Ajusta a escala vertical para criar uma cúpula mais achatada, se necessário
+                        domeGeometry.scale(1, height / radius, 1);
+
                         const domeMesh = new THREE.Mesh(domeGeometry, stoneDepositMaterial);
                         domeMesh.castShadow = true;
                         domeMesh.receiveShadow = true;
@@ -2452,7 +2462,7 @@
                         }
 
                         // CRIA O CORPO DE FÍSICA SÓLIDO PARA O DEPÓSITO
-                        const domeShape = new CANNON.Sphere(stoneDepositRadius);
+                        const domeShape = new CANNON.Sphere(radius);
                         const domeBody = new CANNON.Body({
                             mass: 0, // Estático
                             type: CANNON.Body.STATIC,
@@ -2464,6 +2474,8 @@
 
                         stoneDeposits.push({
                             x: x, z: z, y: 0,
+                            radius: radius, // Armazena o raio para uso posterior
+                            height: height, // Armazena a altura para uso posterior
                             flattened: false,
                             regenerationTimer: 0,
                             domeMeshes: domeMeshes,
@@ -2594,12 +2606,12 @@
                             }
 
                             const flattenedHeight = 0.2;
-                            const flattenedGeometry = new THREE.CylinderGeometry(stoneDepositRadius, stoneDepositRadius, flattenedHeight, 16);
+                            const flattenedGeometry = new THREE.CylinderGeometry(destroyTargetDeposit.radius, destroyTargetDeposit.radius, flattenedHeight, 16);
                             const flattenedMesh = new THREE.Mesh(flattenedGeometry, flattenedStoneDepositMaterial);
                             flattenedMesh.receiveShadow = true;
 
                             // CRIA O CORPO DE FÍSICA SÓLIDO PARA O DEPÓSITO ACHATADO
-                            const flattenedShape = new CANNON.Cylinder(stoneDepositRadius, stoneDepositRadius, flattenedHeight, 16);
+                            const flattenedShape = new CANNON.Cylinder(destroyTargetDeposit.radius, destroyTargetDeposit.radius, flattenedHeight, 16);
                             const flattenedBody = new CANNON.Body({
                                 mass: 0, // Estático
                                 type: CANNON.Body.STATIC,
@@ -2619,7 +2631,9 @@
                                     destroyTargetDeposit.flattenedMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
                                 }
                             }
-                            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 5 });
+                            // O rendimento da pedra agora é proporcional ao raio do depósito (ex: arredondado para o inteiro mais próximo)
+                            const stoneYield = Math.round(destroyTargetDeposit.radius * 1.5);
+                            addItemToInventory(backpackItems, { name: stoneItemName, quantity: stoneYield });
                             updateBackpackDisplay();
                         }
                         // Lida com a destruição de patches
@@ -3002,7 +3016,8 @@
                                     // Calcula a distância horizontal ao quadrado (no plano XZ)
                                     const dx = hitPoint.x - deposit.x;
                                     const dz = hitPoint.z - deposit.z;
-                                    if (dx * dx + dz * dz < stoneDepositRadius * stoneDepositRadius) {
+                                    // A verificação agora usa o raio individual de cada depósito
+                                    if (dx * dx + dz * dz < deposit.radius * deposit.radius) {
                                         isOnStoneDepositArea = true;
                                         break;
                                     }
@@ -3469,7 +3484,8 @@
                                 for (const deposit of stoneDeposits) {
                                     const dx = hitPoint.x - deposit.x;
                                     const dz = hitPoint.z - deposit.z;
-                                    if (dx * dx + dz * dz < stoneDepositRadius * stoneDepositRadius) {
+                                    // A verificação agora usa o raio individual de cada depósito
+                                    if (dx * dx + dz * dz < deposit.radius * deposit.radius) {
                                         isOnStoneDepositArea = true;
                                         break;
                                     }
