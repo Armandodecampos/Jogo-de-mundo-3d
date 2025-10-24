@@ -3015,33 +3015,29 @@
 
                                 const hitNormal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
 
-                                if (currentBlockType === 'piso') {
-                                    // Para o PISO: alinhar com a superfície
-                                    placementPosition.copy(hitPoint).add(hitNormal.clone().multiplyScalar(currentGhostHeight / 2));
+                                // Calcula a posição do centro do bloco acima da superfície
+                                let basePosition = new THREE.Vector3().copy(hitPoint);
+                                basePosition.add(hitNormal.multiplyScalar(currentGhostHeight / 2));
 
-                                    // Cria um quaternion para alinhar o "para cima" do objeto (Y) com a normal da superfície
-                                    const up = new THREE.Vector3(0, 1, 0);
-                                    const alignQuaternion = new THREE.Quaternion().setFromUnitVectors(up, hitNormal);
+                                // NOVO: Alinhamento da grade
+                                // Calcula a posição "desenrolada" (absoluta)
+                                const unwrappedX = basePosition.x + visualOffsetX;
+                                const unwrappedZ = basePosition.z + visualOffsetZ;
+                                // Alinha na grade
+                                const snappedUnwrappedX = Math.round(unwrappedX / cobSize) * cobSize;
+                                const snappedUnwrappedZ = Math.round(unwrappedZ / cobSize) * cobSize;
+                                // Converte de volta para as coordenadas do mundo visível
+                                placementPosition.x = snappedUnwrappedX - visualOffsetX;
+                                placementPosition.z = snappedUnwrappedZ - visualOffsetZ;
 
-                                    // Combina o alinhamento da superfície com a rotação manual de guinada
-                                    tempPlacementQuaternion.multiplyQuaternions(alignQuaternion, manualRotationQuaternion);
-                                } else {
-                                    // Para todos os OUTROS BLOCOS: usar a lógica de grade existente
-                                    let basePosition = new THREE.Vector3().copy(hitPoint);
-                                    basePosition.add(hitNormal.multiplyScalar(currentGhostHeight / 2));
+                                // NOVO: Alinha a posição Y na grade, considerando a altura da superfície da ilha como a base.
+                                // Isso garante que os blocos se encaixem verticalmente.
+                                const n_y = Math.round((basePosition.y - islandSurfaceHeight) / currentGhostHeight - 0.5);
+                                placementPosition.y = islandSurfaceHeight + (n_y + 0.5) * currentGhostHeight;
 
-                                    const unwrappedX = basePosition.x + visualOffsetX;
-                                    const unwrappedZ = basePosition.z + visualOffsetZ;
-                                    const snappedUnwrappedX = Math.round(unwrappedX / cobSize) * cobSize;
-                                    const snappedUnwrappedZ = Math.round(unwrappedZ / cobSize) * cobSize;
-                                    placementPosition.x = snappedUnwrappedX - visualOffsetX;
-                                    placementPosition.z = snappedUnwrappedZ - visualOffsetZ;
 
-                                    const n_y = Math.round((basePosition.y - islandSurfaceHeight) / currentGhostHeight - 0.5);
-                                    placementPosition.y = islandSurfaceHeight + (n_y + 0.5) * currentGhostHeight;
-
-                                    tempPlacementQuaternion.copy(manualRotationQuaternion);
-                                }
+                                // A rotação agora é apenas a rotação manual, garantindo que o bloco fique sempre na vertical
+                                tempPlacementQuaternion.copy(manualRotationQuaternion);
 
                                 // Verifica se a posição do ghost block não colide com o jogador
                                 const playerPos = new THREE.Vector3().copy(playerBody.position);
