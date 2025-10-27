@@ -1330,12 +1330,15 @@
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function init() {
+            window.THREE = THREE;
+            window.CANNON = CANNON;
             // Define o offset inicial do nível dos olhos da câmera como o raio da esfera
             cameraEyeLevelOffset = playerRadius;
             originalCameraEyeLevelOffset = cameraEyeLevelOffset; // Para armazenar o valor inicial
 
             // Configuração da Cena Three.js
             scene = new THREE.Scene();
+            window.scene = scene;
             skyColor = new THREE.Color(0x87CEEB);
             underwaterColor = new THREE.Color(0x001e3d);
             scene.background = skyColor; // Começa com a cor do céu
@@ -2795,7 +2798,10 @@
                                 shape: flattenedShape,
                                 material: islandMaterial
                             });
-                            flattenedBody.position.copy(destroyTargetDeposit.body.position);
+                            const normal = new CANNON.Vec3(0, 1, 0);
+                            const worldNormal = destroyTargetDeposit.body.quaternion.vmult(normal);
+                            const offset = worldNormal.scale(0.01); // 1cm offset
+                            flattenedBody.position.copy(destroyTargetDeposit.body.position.vadd(offset));
                             flattenedBody.quaternion.copy(destroyTargetDeposit.body.quaternion);
                             world.addBody(flattenedBody);
                             destroyTargetDeposit.flattenedBody = flattenedBody;
