@@ -2175,48 +2175,6 @@
                 }
             }
 
-            // NOVO: Função para pintar a textura no splat map
-            function paintTextureOnSplatMap() {
-                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                const groundMeshes = islandMeshes.map(item => item.mesh);
-                const intersects = raycaster.intersectObjects(groundMeshes);
-
-                if (intersects.length > 0) {
-                    const intersect = intersects[0];
-                    if (intersect.uv) {
-                        const uv = intersect.uv;
-                        const splatMapSize = splatMap.image.width;
-                        const x = Math.floor(uv.x * splatMapSize);
-                        const y = Math.floor(uv.y * splatMapSize);
-
-                        const brushSize = 5; // Raio do pincel em texels
-                        const brushFalloff = 3; // Suavidade da borda do pincel
-
-                        for (let i = -brushSize; i <= brushSize; i++) {
-                            for (let j = -brushSize; j <= brushSize; j++) {
-                                const distance = Math.sqrt(i * i + j * j);
-                                if (distance <= brushSize) {
-                                    const texelX = x + j;
-                                    const texelY = y + i;
-
-                                    if (texelX >= 0 && texelX < splatMapSize && texelY >= 0 && texelY < splatMapSize) {
-                                        const index = (texelY * splatMapSize) + texelX;
-                                        const currentValue = splatMap.image.data[index];
-
-                                        // Calcula a intensidade com base na distância do centro do pincel
-                                        const intensity = Math.max(0, (brushSize - distance) / brushFalloff);
-                                        const newValue = Math.min(255, currentValue + intensity * 35); // Aumenta o valor
-
-                                        splatMap.image.data[index] = newValue;
-                                    }
-                                }
-                            }
-                        }
-                        splatMap.needsUpdate = true; // Sinaliza que a textura precisa ser atualizada
-                    }
-                }
-            }
-
             function stopDestruction() {
                 // Esta função agora apenas limpa o estado.
                 // A lógica de parar a barra de progresso foi movida para o loop de animação.
@@ -2574,6 +2532,48 @@
             const wrappedDz = Math.min(dz, worldSize - dz);
 
             return Math.sqrt(wrappedDx * wrappedDx + dy * dy + wrappedDz * wrappedDz);
+        }
+
+        // NOVO: Função para pintar a textura no splat map
+        function paintTextureOnSplatMap() {
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const groundMeshes = islandMeshes.map(item => item.mesh);
+            const intersects = raycaster.intersectObjects(groundMeshes);
+
+            if (intersects.length > 0) {
+                const intersect = intersects[0];
+                if (intersect.uv) {
+                    const uv = intersect.uv;
+                    const splatMapSize = splatMap.image.width;
+                    const x = Math.floor(uv.x * splatMapSize);
+                    const y = Math.floor(uv.y * splatMapSize);
+
+                    const brushSize = 5; // Raio do pincel em texels
+                    const brushFalloff = 3; // Suavidade da borda do pincel
+
+                    for (let i = -brushSize; i <= brushSize; i++) {
+                        for (let j = -brushSize; j <= brushSize; j++) {
+                            const distance = Math.sqrt(i * i + j * j);
+                            if (distance <= brushSize) {
+                                const texelX = x + j;
+                                const texelY = y + i;
+
+                                if (texelX >= 0 && texelX < splatMapSize && texelY >= 0 && texelY < splatMapSize) {
+                                    const index = (texelY * splatMapSize) + texelX;
+                                    const currentValue = splatMap.image.data[index];
+
+                                    // Calcula a intensidade com base na distância do centro do pincel
+                                    const intensity = Math.max(0, (brushSize - distance) / brushFalloff);
+                                    const newValue = Math.min(255, currentValue + intensity * 35); // Aumenta o valor
+
+                                    splatMap.image.data[index] = newValue;
+                                }
+                            }
+                        }
+                    }
+                    splatMap.needsUpdate = true; // Sinaliza que a textura precisa ser atualizada
+                }
+            }
         }
 
         // Loop principal de animação do jogo
