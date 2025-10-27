@@ -407,7 +407,6 @@
         const destroyDistance = 5.0; // Distância máxima para destruir um objeto
 
         // NOVO: Variáveis para o sistema de destruição progressiva
-        let isPainting = false; // NOVO: Flag para pintura contínua de textura
         let isDestroying = false;
         let destroyProgress = 0;
         let targetDestroyTime = 0; // Tempo necessário para destruir o objeto (em segundos)
@@ -600,7 +599,8 @@
         let treeLeavesMaterialMesh; // Material for tree leaves (3D model)
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
         let stoneMaterial; // NOVO: Material para chão com a nova textura
-        let splatMap; // NOVO: DataTexture para o splat mapping
+
+        const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
 
         // Declare physics materials globally
         let playerMaterial;
@@ -1474,15 +1474,6 @@
             // Cria o Terreno (Ilha Redonda)
             // A geometria visual é agora um plano segmentado cujos vértices correspondem ao Heightfield.
             const hfGridSize = 128; // A resolução DEVE corresponder à do Heightfield
-
-            // NOVO: Criação do Splat Map
-            const splatMapSize = hfGridSize;
-            const splatMapData = new Uint8Array(splatMapSize * splatMapSize); // Um valor por texel
-            splatMapData.fill(0); // Inicia tudo com 0 (grama)
-            splatMap = new THREE.DataTexture(splatMapData, splatMapSize, splatMapSize, THREE.RedFormat, THREE.UnsignedByteType);
-            splatMap.needsUpdate = true;
-
-
             const islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
 
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
@@ -1593,86 +1584,74 @@
             textureLoader.load(groundTextureURL, (groundTexture) => {
                 textureLoader.load(seabedTextureURL, (seabedTexture) => {
                     textureLoader.load(sandTextureURL, (sandTexture) => {
-                        textureLoader.load(stoneTextureURL, (stoneTexture) => {
-                            // Todas as quatro texturas estão carregadas
-                            [groundTexture, seabedTexture, sandTexture, stoneTexture].forEach(texture => {
-                                texture.wrapS = THREE.RepeatWrapping;
-                                texture.wrapT = THREE.RepeatWrapping;
-                                texture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                            });
-
-                            const islandMeshMaterial = new THREE.MeshStandardMaterial({
-                                map: groundTexture,
-                            });
-
-                            islandMeshMaterial.onBeforeCompile = (shader) => {
-                                shader.uniforms.uSeabedTexture = { value: seabedTexture };
-                                shader.uniforms.uSandTexture = { value: sandTexture };
-                                shader.uniforms.uWaterLevel = { value: waterLevel };
-                                shader.uniforms.uSplatMap = { value: splatMap };
-                                shader.uniforms.uStoneTexture = { value: stoneTexture };
-
-                                shader.vertexShader = `
-                                    varying vec3 vWorldPosition;
-                                    ${shader.vertexShader}
-                                `.replace(
-                                    `#include <worldpos_vertex>`,
-                                    `
-                                    #include <worldpos_vertex>
-                                    vWorldPosition = worldPosition.xyz;
-                                    `
-                                );
-
-                                shader.fragmentShader = `
-                                    uniform sampler2D uSeabedTexture;
-                                    uniform sampler2D uSandTexture;
-                                    uniform float uWaterLevel;
-                                    uniform sampler2D uSplatMap;
-                                    uniform sampler2D uStoneTexture;
-                                    varying vec3 vWorldPosition;
-                                    ${shader.fragmentShader}
-                                `.replace(
-                                    `#include <map_fragment>`,
-                                    `
-                                    #ifdef USE_MAP
-                                        // 1. Mistura de terreno base (grama, areia, fundo do mar)
-                                        vec4 groundColor = texture2D(map, vUv);
-                                        vec4 seabedColor = texture2D(uSeabedTexture, vUv);
-                                        vec4 sandColor = texture2D(uSandTexture, vUv);
-                                        float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
-                                        vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
-                                        float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
-                                        vec3 baseTerrainColor = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
-
-                                        // 2. Splat mapping
-                                        float splatValue = texture2D(uSplatMap, vUv).r; // Obtém o valor do canal vermelho
-                                        vec4 stoneColor = texture2D(uStoneTexture, vUv);
-
-                                        // 3. Mistura final
-                                        // Usa smoothstep para uma transição suave entre a pedra e o terreno base
-                                        float blendFactor = smoothstep(0.1, 0.4, splatValue);
-                                        vec3 finalMix = mix(baseTerrainColor, stoneColor.rgb, blendFactor);
-
-                                        diffuseColor *= vec4(finalMix, 1.0);
-                                    #endif
-                                    `
-                                );
-                            };
-
-                            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                                    const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
-                                    islandMesh.receiveShadow = true;
-                                    islandMesh.userData.physicsBody = islandBody;
-                                    scene.add(islandMesh);
-                                    islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                                }
-                            }
-                            islandMeshMaterial.needsUpdate = true;
+                        // Todas as três texturas estão carregadas
+                        [groundTexture, seabedTexture, sandTexture].forEach(texture => {
+                            texture.wrapS = THREE.RepeatWrapping;
+                            texture.wrapT = THREE.RepeatWrapping;
+                            texture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
                         });
-                    }, undefined, (error) => console.error('Falha ao carregar a textura de areia:', error));
-                }, undefined, (error) => console.error('Falha ao carregar a textura do fundo do mar:', error));
-            }, undefined, (error) => console.error('Falha ao carregar a textura do solo:', error));
+
+                        const islandMeshMaterial = new THREE.MeshStandardMaterial({
+                            map: groundTexture,
+                        });
+
+                        islandMeshMaterial.onBeforeCompile = (shader) => {
+                            shader.uniforms.uSeabedTexture = { value: seabedTexture };
+                            shader.uniforms.uSandTexture = { value: sandTexture };
+                            shader.uniforms.uWaterLevel = { value: waterLevel };
+
+                            shader.vertexShader = `
+                                varying vec3 vWorldPosition;
+                                ${shader.vertexShader}
+                            `.replace(
+                                `#include <worldpos_vertex>`,
+                                `
+                                #include <worldpos_vertex>
+                                vWorldPosition = worldPosition.xyz;
+                                `
+                            );
+
+                            shader.fragmentShader = `
+                                uniform sampler2D uSeabedTexture;
+                                uniform sampler2D uSandTexture;
+                                uniform float uWaterLevel;
+                                varying vec3 vWorldPosition;
+                                ${shader.fragmentShader}
+                            `.replace(
+                                `#include <map_fragment>`,
+                                `
+                                #ifdef USE_MAP
+                                    vec4 groundColor = texture2D(map, vUv);
+                                    vec4 seabedColor = texture2D(uSeabedTexture, vUv);
+                                    vec4 sandColor = texture2D(uSandTexture, vUv);
+
+                                    // Primeiro, mistura o fundo do mar com a areia
+                                    float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
+                                    vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
+
+                                    // Depois, mistura o resultado com a grama para criar a praia
+                                    float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
+                                    vec3 finalMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
+
+                                    diffuseColor *= vec4(finalMix, 1.0);
+                                #endif
+                                `
+                            );
+                        };
+
+                        for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                        for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                            const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
+                            islandMesh.receiveShadow = true;
+                            islandMesh.userData.physicsBody = islandBody;
+                            scene.add(islandMesh);
+                            islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                        }
+                    }
+                    islandMeshMaterial.needsUpdate = true;
+                }, undefined, (error) => console.error('Falha ao carregar a textura de areia:', error));
+            }, undefined, (error) => console.error('Falha ao carregar a textura do fundo do mar:', error));
+        }, undefined, (error) => console.error('Falha ao carregar a textura do solo:', error));
 
             // Cria a Água (agora como uma grelha)
             const waterGeometry = new THREE.BoxGeometry(worldSize, 0.1, worldSize);
@@ -2040,8 +2019,6 @@
                 if (event.button === 0) { // Clique esquerdo
                     if (primaryActionType === 'destroy') {
                         startDestruction();
-                    } else if (primaryActionType === 'apply_texture') { // NOVO
-                        isPainting = true;
                     } else if (primaryActionType === 'grab') {
                         // Inicia o temporizador. Se for mantido, irá AGARRAR o objeto.
                         clickHoldTimer = setTimeout(() => {
@@ -2063,7 +2040,6 @@
                 if (document.pointerLockElement !== renderer.domElement || gamePaused) return;
 
                 stopDestruction(); // Para sempre a destruição em qualquer mouseup
-                isPainting = false; // NOVO: Para a pintura de textura
 
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
                 const secondaryActionType = getActionType(beltItems[1]);
@@ -2084,6 +2060,8 @@
 
                     if (primaryActionType === 'place') {
                         placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
+                    } else if (primaryActionType === 'apply_texture') {
+                        applyTexture();
                     }
                 } else if (event.button === 2) { // Botão direito do mouse para cima
                     if (secondaryActionType === 'place') {
@@ -2293,6 +2271,68 @@
                             updateBeltDisplay();
                             updateBackpackDisplay(); // Atualiza a mochila também, caso o item venha de lá
                         }
+                    }
+                }
+            }
+
+            function applyTexture() {
+                if (!stoneMaterial) return;
+
+                // Primeiro Raycast: para encontrar a posição aproximada e o objeto
+                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                const groundMeshes = islandMeshes.map(item => item.mesh);
+                const intersects = raycaster.intersectObjects(groundMeshes);
+
+                if (intersects.length > 0) {
+                    const intersect = intersects[0];
+                    const hitPoint = intersect.point;
+                    const patchSize = cobSize;
+
+                    // Calcula a posição "desenrolada" (absoluta) e alinhada à grade
+                    const unwrappedHitPointX = hitPoint.x + visualOffsetX;
+                    const unwrappedHitPointZ = hitPoint.z + visualOffsetZ;
+                    const snappedX = Math.round(unwrappedHitPointX / patchSize) * patchSize;
+                    const snappedZ = Math.round(unwrappedHitPointZ / patchSize) * patchSize;
+
+                    // Segundo Raycast (Física): para obter a normal e a altura exatas no centro da célula da grade
+                    const rayFrom = new CANNON.Vec3(snappedX, islandSurfaceHeight + 10, snappedZ);
+                    const rayTo = new CANNON.Vec3(snappedX, seabedLevel - 10, snappedZ);
+                    const rayResult = new CANNON.RaycastResult();
+                    world.raycastClosest(rayFrom, rayTo, { collisionFilterMask: 1 }, rayResult); // Apenas colide com o grupo padrão (terreno)
+
+                    if (rayResult.hasHit) {
+                        const preciseHitPoint = rayResult.hitPointWorld;
+                        const preciseHitNormal = rayResult.hitNormalWorld;
+
+                        // Impede a colocação de texturas debaixo d'água
+                        if (preciseHitPoint.y < waterLevel) {
+                            return;
+                        }
+
+                        // Calcula a rotação para alinhar o patch com a normal do terreno
+                        const up = new CANNON.Vec3(0, 1, 0);
+                        const quaternion = new CANNON.Quaternion();
+                        quaternion.setFromVectors(up, preciseHitNormal);
+
+                        const patchGeometry = new THREE.BoxGeometry(patchSize, 0.01, patchSize);
+                        const patchMeshes = [];
+                        const patchObject = {
+                            position: preciseHitPoint.vadd(preciseHitNormal.scale(0.005)), // Posição com um ligeiro deslocamento
+                            quaternion: quaternion, // Armazena a rotação
+                            meshes: patchMeshes,
+                            userData: { isDestructible: true, durability: 0.5, type: 'patch' }
+                        };
+
+                        for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                                const mesh = new THREE.Mesh(patchGeometry, stoneMaterial);
+                                mesh.receiveShadow = true;
+                                mesh.userData.patchObject = patchObject;
+                                scene.add(mesh);
+                                patchMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                            }
+                        }
+                        texturePatches.push(patchObject);
                     }
                 }
             }
@@ -2534,55 +2574,9 @@
             return Math.sqrt(wrappedDx * wrappedDx + dy * dy + wrappedDz * wrappedDz);
         }
 
-        // NOVO: Função para pintar a textura no splat map
-        function paintTextureOnSplatMap() {
-            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-            const groundMeshes = islandMeshes.map(item => item.mesh);
-            const intersects = raycaster.intersectObjects(groundMeshes);
-
-            if (intersects.length > 0) {
-                const intersect = intersects[0];
-                if (intersect.uv) {
-                    const uv = intersect.uv;
-                    const splatMapSize = splatMap.image.width;
-                    const x = Math.floor(uv.x * splatMapSize);
-                    const y = Math.floor(uv.y * splatMapSize);
-
-                    const brushSize = 5; // Raio do pincel em texels
-                    const brushFalloff = 3; // Suavidade da borda do pincel
-
-                    for (let i = -brushSize; i <= brushSize; i++) {
-                        for (let j = -brushSize; j <= brushSize; j++) {
-                            const distance = Math.sqrt(i * i + j * j);
-                            if (distance <= brushSize) {
-                                const texelX = x + j;
-                                const texelY = y + i;
-
-                                if (texelX >= 0 && texelX < splatMapSize && texelY >= 0 && texelY < splatMapSize) {
-                                    const index = (texelY * splatMapSize) + texelX;
-                                    const currentValue = splatMap.image.data[index];
-
-                                    // Calcula a intensidade com base na distância do centro do pincel
-                                    const intensity = Math.max(0, (brushSize - distance) / brushFalloff);
-                                    const newValue = Math.min(255, currentValue + intensity * 35); // Aumenta o valor
-
-                                    splatMap.image.data[index] = newValue;
-                                }
-                            }
-                        }
-                    }
-                    splatMap.needsUpdate = true; // Sinaliza que a textura precisa ser atualizada
-                }
-            }
-        }
-
         // Loop principal de animação do jogo
         function animate() {
             requestAnimationFrame(animate);
-
-            if (isPainting) {
-                paintTextureOnSplatMap();
-            }
 
             if (gamePaused) {
                 // Se o jogo estiver pausado, apenas renderiza a cena, não atualiza a física ou o movimento do jogador
@@ -2675,6 +2669,20 @@
                             // O rendimento da pedra agora é proporcional ao raio do depósito (ex: arredondado para o inteiro mais próximo)
                             const stoneYield = Math.round(destroyTargetDeposit.radius * 1.5);
                             addItemToInventory(backpackItems, { name: stoneItemName, quantity: stoneYield });
+                            updateBackpackDisplay();
+                        }
+                        // Lida com a destruição de patches
+                        else if (destroyTargetPatchObject) {
+                            position = destroyTargetPatchObject.position.clone();
+                            const patchIndex = texturePatches.indexOf(destroyTargetPatchObject);
+                            if (patchIndex > -1) {
+                                texturePatches.splice(patchIndex, 1);
+                            }
+                            destroyTargetPatchObject.meshes.forEach(m => {
+                                scene.remove(m.mesh);
+                                if (m.mesh.geometry) m.mesh.geometry.dispose();
+                            });
+                            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
                             updateBackpackDisplay();
                         }
                         // Handle regular block destruction
@@ -2866,6 +2874,24 @@
                 });
             });
 
+            // NOVO: Atualiza a visibilidade e posição dos patches de textura
+            texturePatches.forEach(patch => {
+                const distance = calculateWrappedDistance(playerBody.position, patch.position);
+                const isVisible = distance <= renderDistance;
+
+                patch.meshes.forEach(item => {
+                    item.mesh.visible = isVisible;
+                    if (isVisible) {
+                        const visualObject = item.mesh;
+                        visualObject.position.x = patch.position.x + item.offsetX - visualOffsetX;
+                        visualObject.position.y = patch.position.y;
+                        visualObject.position.z = patch.position.z + item.offsetZ - visualOffsetZ;
+                        if (patch.quaternion) {
+                            visualObject.quaternion.copy(patch.quaternion);
+                        }
+                    }
+                });
+            });
 
             // NOVO: Atualiza a posição e visibilidade dos depósitos de pedra
             stoneDeposits.forEach(deposit => {
