@@ -498,8 +498,16 @@
         let gamePaused = false; // Novo: Flag para pausar/retomar a lógica do jogo
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
 
-        // Instância do carregador de textura
-        const textureLoader = new THREE.TextureLoader();
+        // NOVO: Gerenciador de carregamento para rastrear quando todos os recursos são carregados
+        let isWorldReady = false;
+        const loadingManager = new THREE.LoadingManager();
+        loadingManager.onLoad = () => {
+            console.log("Todos os recursos carregados, o mundo está pronto.");
+            isWorldReady = true;
+        };
+
+        // Instância do carregador de textura, agora usando o gerenciador de carregamento
+        const textureLoader = new THREE.TextureLoader(loadingManager);
 
         // Referência ao botão de ícone do menu
         let menuIconButton;
@@ -532,6 +540,7 @@
         const hammerItemName = 'martelo'; // Nome do item de martelo no inventário
         const stoneItemName = 'pedra'; // NOVO: Nome do item de pedra no inventário
         const dirtItemName = 'terra'; // NOVO: Nome do item de terra no inventário
+        const shovelItemName = 'pá'; // NOVO: Nome do item de pá no inventário
         const textureApplicatorItemName = 'pincel'; // FERRAMENTA RENOMEADA
 
         // NOVO: Variáveis para o sistema de colocação de blocos (Cob, Piso, Muda de Árvore, Tronco de Árvore, Tábuas)
@@ -593,6 +602,7 @@
         const hammerImageURL = 'https://dl.dropbox.com/scl/fi/vadd8ztbnmzfqi18ml1cl/icone-de-martelo.png?rlkey=45l4k78t728fh4w4fkd4tvlef&st=cbi6paz9&dl=0'; // Placeholder for hammer image
         const stoneImageURL = 'https://placehold.co/100x100/964B00/FFFFFF?text=Pedra'; // NOVO: Imagem para a pedra
         const dirtImageURL = 'https://placehold.co/100x100/A0522D/FFFFFF?text=Terra'; // NOVO: Imagem para a terra
+        const shovelImageURL = 'https://placehold.co/100x100/808080/FFFFFF?text=Pá'; // NOVO: Imagem para a pá
         const treeBarkTextureURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // Corrected URL
         const treeLeavesTextureURL = 'https://dl.dropbox.com/s/scl/fi/gdz8f8qzmrdza0t0nntzs/textura-folhas-arvore.jpg?rlkey=efabv8qthg0fpxg1ugf7fpd3k&dl=0'; // Corrected URL
         const handImageURL = 'https://dl.dropbox.com/scl/fi/adirqfks81emnagkoljcw/m-o-direita.png?rlkey=pj17lswbeg8lene1n5ypdbmob&st=i2qtxssr&dl=0';
@@ -600,6 +610,7 @@
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
         const textureApplicatorImageURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Ícone para o pincel
         const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Textura de pedra para aplicar
+        const holeTextureURL = 'https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=tz27qsg6&dl=0'; // NOVO: Textura do buraco
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -610,8 +621,10 @@
         let treeLeavesMaterialMesh; // Material for tree leaves (3D model)
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
         let stoneMaterial; // NOVO: Material para chão com a nova textura
+        let holeMaterial; // NOVO: Material para o buraco cavado
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
+        const holePatches = []; // NOVO: Para rastrear os buracos cavados
 
         // Declare physics materials globally
         let playerMaterial;
@@ -853,6 +866,8 @@
                     img.src = stoneImageURL;
                 } else if (item.name === dirtItemName) { // NOVO
                     img.src = dirtImageURL;
+                } else if (item.name === shovelItemName) { // NOVO
+                    img.src = shovelImageURL;
                 } else if (item.name === textureApplicatorItemName) {
                     img.src = textureApplicatorImageURL;
                 } else if (item.name === cobItemName) {
@@ -1081,6 +1096,59 @@
             draggedItem = null;
             updateBeltDisplay();
             updateBackpackDisplay();
+        }
+
+        function digHole() {
+            if (!holeMaterial) return;
+
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const groundMeshes = islandMeshes.map(item => item.mesh);
+            const intersects = raycaster.intersectObjects(groundMeshes);
+
+            if (intersects.length > 0) {
+                const intersect = intersects[0];
+                if (intersect.distance > destroyDistance) return; // Limita o alcance da escavação
+
+                const hitPoint = intersect.point;
+                const patchSize = cobSize * 2; // O buraco é um pouco maior que um bloco
+
+                // Impede a escavação debaixo d'água
+                if (hitPoint.y < waterLevel) {
+                    return;
+                }
+
+                const hitNormal = intersect.face.normal.clone().transformDirection(intersect.object.matrixWorld).normalize();
+                const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), hitNormal);
+
+                const holeGeometry = new THREE.PlaneGeometry(patchSize, patchSize);
+                const holeMesh = new THREE.Mesh(holeGeometry, holeMaterial);
+                holeMesh.position.copy(hitPoint).add(hitNormal.multiplyScalar(0.01)); // Leve deslocamento para evitar z-fighting
+                holeMesh.quaternion.copy(quaternion);
+                holeMesh.rotateX(-Math.PI / 2); // Alinha a geometria do plano com a normal
+                holeMesh.receiveShadow = true;
+
+                // Adiciona múltiplas malhas para o efeito de envolvimento
+                const holeMeshes = [];
+                 for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                        const mesh = holeMesh.clone();
+                        scene.add(mesh);
+                        holeMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                    }
+                }
+
+                holePatches.push({
+                    position: holeMesh.position.clone(),
+                    quaternion: holeMesh.quaternion.clone(),
+                    meshes: holeMeshes,
+                    createdAt: world.time,
+                    userData: { type: 'hole' }
+                });
+
+                // Adiciona o item de terra ao inventário
+                addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
+                updateBackpackDisplay();
+            }
         }
 
 
@@ -1752,6 +1820,17 @@
                 stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 }); // Fallback cinza
             });
 
+            // NOVO: Carrega a textura do buraco para a ferramenta pá
+            textureLoader.load(holeTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                holeMaterial = new THREE.MeshStandardMaterial({ map: texture, transparent: true }); // Transparente para misturar com o terreno
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura do buraco:', error);
+                holeMaterial = new THREE.MeshStandardMaterial({ color: 0x3b2712 }); // Fallback marrom escuro
+            });
+
             // Load the cob texture and create the material once
             textureLoader.load(cobTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
@@ -1853,6 +1932,7 @@
             addItemToInventory(backpackItems, { name: hammerItemName, quantity: 1 });
             addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 }); // NOVO
+            addItemToInventory(backpackItems, { name: shovelItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: textureApplicatorItemName, quantity: 1 });
             addItemToInventory(backpackItems, { name: cobItemName, quantity: 100 });
             addItemToInventory(backpackItems, { name: floorItemName, quantity: 50 });
@@ -1867,7 +1947,7 @@
 
             // Configura os Listeners de Eventos para teclado e mouse
             window.addEventListener('keydown', (event) => {
-                // Verifica se a tecla 'Escape' foi pressionada
+                // A lógica de Escape/Menu deve funcionar mesmo que o mundo não esteja pronto
                 if (event.key === 'Escape') {
                     event.preventDefault(); // IMPEDE O COMPORTAMENTO PADRÃO DO NAVEGADOR (sair do pointer lock)
 
@@ -1931,7 +2011,7 @@
             // Adiciona um listener para bloquear o ponteiro do mouse no clique do canvas
             renderer.domElement.addEventListener('click', () => {
                 // Solicita o bloqueio do ponteiro apenas se o jogo não estiver pausado e a mochila não estiver aberta
-                if (!gamePaused && !backpackModal.classList.contains('active') && document.pointerLockElement !== renderer.domElement) { // Verifica se o ponteiro já está bloqueado
+                if (isWorldReady && !gamePaused && !backpackModal.classList.contains('active') && document.pointerLockElement !== renderer.domElement) { // Verifica se o ponteiro já está bloqueado
                     if (renderer && renderer.domElement) { // Adicionado verificação para renderer.domElement
                         renderer.domElement.requestPointerLock().catch(error => { // Adicionado .catch()
                             if (error.name === 'SecurityError' && error.message.includes('exited the lock')) {
@@ -2028,7 +2108,7 @@
 
             // NOVO: Listener de mousedown consolidado
             renderer.domElement.addEventListener('mousedown', (event) => {
-                if (document.pointerLockElement !== renderer.domElement || gamePaused) return;
+                if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) return;
 
                 mouseDownTime = performance.now();
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
@@ -2036,12 +2116,13 @@
                 if (event.button === 0) { // Clique esquerdo
                     if (primaryActionType === 'destroy') {
                         startDestruction();
-                    } else if (primaryActionType === 'grab') {
+                    } else if (primaryActionType === 'grab' || primaryActionType === 'dig') {
                         // Inicia o temporizador. Se for mantido, irá AGARRAR o objeto.
                         clickHoldTimer = setTimeout(() => {
-                            if (!pickedObjectBody) { // O clique longo só funciona para AGARRAR
+                            if (primaryActionType === 'grab' && !pickedObjectBody) { // O clique longo só funciona para AGARRAR
                                 grabObject();
                             }
+                            // A escavação não tem ação de espera
                             clickHoldTimer = null; // O temporizador disparou
                         }, CLICK_HOLD_DURATION);
                     }
@@ -2054,7 +2135,7 @@
 
             // NOVO: Listener de mouseup consolidado
             renderer.domElement.addEventListener('mouseup', (event) => {
-                if (document.pointerLockElement !== renderer.domElement || gamePaused) return;
+                if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) return;
 
                 stopDestruction(); // Para sempre a destruição em qualquer mouseup
 
@@ -2071,6 +2152,8 @@
                             } else {
                                 collectObject(); // Clique curto enquanto não segura -> recolher
                             }
+                        } else if (primaryActionType === 'dig') {
+                            digHole(); // Ação de escavação no clique curto
                         }
                     }
                     // Se foi um clique longo, o temporizador é nulo e a função grabObject() já foi chamada.
@@ -2092,6 +2175,7 @@
             function getActionType(item) {
                 if (item === null) return 'grab';
                 if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName) return 'destroy';
+                if (item.name === shovelItemName) return 'dig';
                 if (item.name === textureApplicatorItemName) return 'apply_texture';
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
                 return null;
@@ -3051,6 +3135,36 @@
             });
 
             // NOVO: Atualiza a visibilidade e posição dos patches de textura
+            for (let i = holePatches.length - 1; i >= 0; i--) {
+                const patch = holePatches[i];
+                const age = world.time - patch.createdAt;
+
+                if (age > 30) { // O buraco desaparece após 30 segundos
+                    patch.meshes.forEach(m => {
+                        scene.remove(m.mesh);
+                        if (m.mesh.geometry) m.mesh.geometry.dispose();
+                    });
+                    holePatches.splice(i, 1);
+                    continue; // Pula para a próxima iteração
+                }
+
+                const distance = calculateWrappedDistance(playerBody.position, patch.position);
+                const isVisible = distance <= renderDistance;
+
+                patch.meshes.forEach(item => {
+                    item.mesh.visible = isVisible;
+                    if (isVisible) {
+                        item.mesh.position.copy(patch.position);
+                        item.mesh.quaternion.copy(patch.quaternion);
+
+                        // Aplica o deslocamento do mundo de envolvimento
+                        item.mesh.position.x += item.offsetX - visualOffsetX;
+                        item.mesh.position.z += item.offsetZ - visualOffsetZ;
+                    }
+                });
+            }
+
+
             texturePatches.forEach(patch => {
                 const distance = calculateWrappedDistance(playerBody.position, patch.position);
                 const isVisible = distance <= renderDistance;
@@ -3856,7 +3970,9 @@
             init(); // Inicializa os componentes do jogo
             window.stoneDeposits = stoneDeposits;
             window.beltItems = beltItems;
+            window.backpackItems = backpackItems; // Expor para teste
             window.updateBeltDisplay = updateBeltDisplay;
+            window.updateBackpackDisplay = updateBackpackDisplay; // Expor para teste
             window.selectedSlotIndex = selectedSlotIndex;
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
