@@ -2517,6 +2517,8 @@
                             const depositHeight = dirtDepositHeight * sizeFactor;
 
                             const domeGeometry = new THREE.SphereGeometry(depositRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+                            // ACHATAR A GEOMETRIA PARA CORRESPONDER À ALTURA
+                            domeGeometry.scale(1, depositHeight / depositRadius, 1);
                             const domeMesh = new THREE.Mesh(domeGeometry, dirtDepositMaterial);
                             domeMesh.castShadow = true;
                             domeMesh.receiveShadow = true;
@@ -2530,14 +2532,14 @@
                                 }
                             }
 
-                            const domeShape = new CANNON.Cylinder(depositRadius, depositRadius, depositRadius, 16);
+                            const domeShape = new CANNON.Cylinder(depositRadius, depositRadius, depositHeight, 16);
                             const domeBody = new CANNON.Body({
                                 mass: 0,
                                 type: CANNON.Body.STATIC,
                                 shape: domeShape,
                                 material: islandMaterial
                             });
-                            domeBody.position.copy(hitPoint).vadd(new CANNON.Vec3(0, depositRadius / 2, 0), domeBody.position);
+                            domeBody.position.copy(hitPoint).vadd(new CANNON.Vec3(0, depositHeight / 2, 0), domeBody.position);
                             domeBody.quaternion.copy(quaternion);
                             world.addBody(domeBody);
 
