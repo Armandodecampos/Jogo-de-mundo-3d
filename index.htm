@@ -2277,39 +2277,63 @@
 
             function applyTexture() {
                 if (!stoneMaterial) return;
+
+                // Primeiro Raycast: para encontrar a posição aproximada e o objeto
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const groundMeshes = islandMeshes.map(item => item.mesh);
                 const intersects = raycaster.intersectObjects(groundMeshes);
+
                 if (intersects.length > 0) {
                     const intersect = intersects[0];
                     const hitPoint = intersect.point;
                     const patchSize = cobSize;
 
-                    // Calcula a posição "desenrolada" (absoluta) do patch
+                    // Calcula a posição "desenrolada" (absoluta) e alinhada à grade
                     const unwrappedHitPointX = hitPoint.x + visualOffsetX;
                     const unwrappedHitPointZ = hitPoint.z + visualOffsetZ;
-                    const unwrappedSnappedX = Math.floor(unwrappedHitPointX / patchSize) * patchSize + patchSize / 2;
-                    const unwrappedSnappedZ = Math.floor(unwrappedHitPointZ / patchSize) * patchSize + patchSize / 2;
+                    const snappedX = Math.round(unwrappedHitPointX / patchSize) * patchSize;
+                    const snappedZ = Math.round(unwrappedHitPointZ / patchSize) * patchSize;
 
-                    const patchGeometry = new THREE.BoxGeometry(patchSize, 0.01, patchSize);
-                    const patchMeshes = [];
-                    const patchObject = {
-                        position: new CANNON.Vec3(unwrappedSnappedX, islandSurfaceHeight + 0.005, unwrappedSnappedZ),
-                        meshes: patchMeshes,
-                        userData: { isDestructible: true, durability: 0.5, type: 'patch' }
-                    };
+                    // Segundo Raycast (Física): para obter a normal e a altura exatas no centro da célula da grade
+                    const rayFrom = new CANNON.Vec3(snappedX, islandSurfaceHeight + 10, snappedZ);
+                    const rayTo = new CANNON.Vec3(snappedX, seabedLevel - 10, snappedZ);
+                    const rayResult = new CANNON.RaycastResult();
+                    world.raycastClosest(rayFrom, rayTo, { collisionFilterMask: 1 }, rayResult); // Apenas colide com o grupo padrão (terreno)
 
-                    for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                        for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                            const mesh = new THREE.Mesh(patchGeometry, stoneMaterial);
-                            mesh.receiveShadow = true;
-                            // A malha principal (0,0) obtém os dados do usuário para detecção de destruição
-                            mesh.userData.patchObject = patchObject; // Referência de volta ao objeto principal
-                            scene.add(mesh);
-                            patchMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                    if (rayResult.hasHit) {
+                        const preciseHitPoint = rayResult.hitPointWorld;
+                        const preciseHitNormal = rayResult.hitNormalWorld;
+
+                        // Impede a colocação de texturas debaixo d'água
+                        if (preciseHitPoint.y < waterLevel) {
+                            return;
                         }
+
+                        // Calcula a rotação para alinhar o patch com a normal do terreno
+                        const up = new CANNON.Vec3(0, 1, 0);
+                        const quaternion = new CANNON.Quaternion();
+                        quaternion.setFromVectors(up, preciseHitNormal);
+
+                        const patchGeometry = new THREE.BoxGeometry(patchSize, 0.01, patchSize);
+                        const patchMeshes = [];
+                        const patchObject = {
+                            position: preciseHitPoint.vadd(preciseHitNormal.scale(0.005)), // Posição com um ligeiro deslocamento
+                            quaternion: quaternion, // Armazena a rotação
+                            meshes: patchMeshes,
+                            userData: { isDestructible: true, durability: 0.5, type: 'patch' }
+                        };
+
+                        for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                                const mesh = new THREE.Mesh(patchGeometry, stoneMaterial);
+                                mesh.receiveShadow = true;
+                                mesh.userData.patchObject = patchObject;
+                                scene.add(mesh);
+                                patchMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                            }
+                        }
+                        texturePatches.push(patchObject);
                     }
-                    texturePatches.push(patchObject);
                 }
             }
 
@@ -2862,6 +2886,9 @@
                         visualObject.position.x = patch.position.x + item.offsetX - visualOffsetX;
                         visualObject.position.y = patch.position.y;
                         visualObject.position.z = patch.position.z + item.offsetZ - visualOffsetZ;
+                        if (patch.quaternion) {
+                            visualObject.quaternion.copy(patch.quaternion);
+                        }
                     }
                 });
             });
@@ -3618,6 +3645,10 @@
         function startGame() {
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
+            window.stoneDeposits = stoneDeposits;
+            window.beltItems = beltItems;
+            window.updateBeltDisplay = updateBeltDisplay;
+            window.selectedSlotIndex = selectedSlotIndex;
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
             if (menuIconButton) {
