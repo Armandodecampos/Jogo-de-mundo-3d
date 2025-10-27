@@ -463,10 +463,12 @@
         let stoneDeposits = []; // Array para rastrear o estado e os objetos de cada depósito
 
         // NOVO: Constantes e variáveis para depósitos de terra
-        const dirtDepositTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=0";
+        const dirtDepositTextureURL = "https://dl.dropbox.com/scl/fi/ivqc7sryapyzniekvy486/textura-chao.jpg?rlkey=eesvx6rt1xii3bbc1tjydprgt&st=757z3wvl&dl=0";
         let dirtDepositMaterial;
         let flattenedDirtDepositMaterial; // Material para o estado achatado
         const numDirtDeposits = 20;
+        const dirtDepositRadius = 5; // Raio base maior para depósitos mais largos
+        const dirtDepositHeight = 1; // Altura base menor para depósitos mais baixos
         let dirtDeposits = []; // Array para rastrear o estado e os objetos de cada depósito
         const islandHeight = islandSurfaceHeight - seabedLevel; // Altura total do cilindro da ilha
         const roadWidth = 10; // Largura da estrada
@@ -2510,11 +2512,13 @@
                             const quaternion = new CANNON.Quaternion();
                             quaternion.setFromVectors(up, hitNormal);
 
-                            const sizeFactor = 0.3 + Math.random() * 1.7;
-                            const depositRadius = stoneDepositRadius * sizeFactor;
-                            const depositHeight = stoneDepositHeight * sizeFactor;
+                            const sizeFactor = 0.5 + Math.random() * 1.5; // Fator de aleatorização ajustado
+                            const depositRadius = dirtDepositRadius * sizeFactor;
+                            const depositHeight = dirtDepositHeight * sizeFactor;
 
                             const domeGeometry = new THREE.SphereGeometry(depositRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+                            // ACHATAR A GEOMETRIA PARA CORRESPONDER À ALTURA
+                            domeGeometry.scale(1, depositHeight / depositRadius, 1);
                             const domeMesh = new THREE.Mesh(domeGeometry, dirtDepositMaterial);
                             domeMesh.castShadow = true;
                             domeMesh.receiveShadow = true;
@@ -2738,8 +2742,9 @@
                             stillOnTarget = true;
                         }
                     } else if (destroyTargetDeposit) { // NOVO: Verifica se o depósito é o alvo
-                        const deposit = stoneDeposits.find(d => d.domeMeshes.some(m => m.mesh === intersectedObject));
-                        if (deposit === destroyTargetDeposit) {
+                        const allDeposits = [...stoneDeposits, ...dirtDeposits];
+                        const deposit = allDeposits.find(d => d.domeMeshes.some(m => m.mesh === intersectedObject));
+                        if (deposit && deposit === destroyTargetDeposit) {
                             stillOnTarget = true;
                         }
                     } else if (destroyTargetMesh) {
@@ -2914,6 +2919,29 @@
                             // O material é partilhado, por isso não o descartamos aqui
                         });
                         deposit.flattenedMeshes = []; // Limpa o array
+                        deposit.domeMeshes.forEach(item => item.mesh.visible = true);
+                    }
+                }
+            });
+
+            // NOVO: Lógica de regeneração dos depósitos de terra
+            dirtDeposits.forEach(deposit => {
+                if (deposit.flattened && deposit.regenerationTimer > 0) {
+                    deposit.regenerationTimer -= 1 / 60; // Subtrai o tempo do frame
+                    if (deposit.regenerationTimer <= 0) {
+                        deposit.flattened = false;
+                        if (deposit.flattenedBody) {
+                            world.removeBody(deposit.flattenedBody);
+                            deposit.flattenedBody = null;
+                        }
+                        if (deposit.body) {
+                            world.addBody(deposit.body);
+                        }
+                        deposit.flattenedMeshes.forEach(item => {
+                            scene.remove(item.mesh);
+                            if (item.mesh.geometry) item.mesh.geometry.dispose();
+                        });
+                        deposit.flattenedMeshes = [];
                         deposit.domeMeshes.forEach(item => item.mesh.visible = true);
                     }
                 }
