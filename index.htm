@@ -463,7 +463,7 @@
         let stoneDeposits = []; // Array para rastrear o estado e os objetos de cada depósito
 
         // NOVO: Constantes e variáveis para depósitos de terra
-        const dirtDepositTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=2hknz00t&dl=0";
+        const dirtDepositTextureURL = "https://dl.dropbox.com/scl/fi/ivqc7sryapyzniekvy486/textura-chao.jpg?rlkey=eesvx6rt1xii3bbc1tjydprgt&st=757z3wvl&dl=0";
         let dirtDepositMaterial;
         let flattenedDirtDepositMaterial; // Material para o estado achatado
         const numDirtDeposits = 20;
@@ -2512,12 +2512,14 @@
                             const quaternion = new CANNON.Quaternion();
                             quaternion.setFromVectors(up, hitNormal);
 
-                            const sizeFactor = 0.3 + Math.random() * 1.7; // Usa o mesmo fator de aleatorização da pedra
+                            const sizeFactor = 0.5 + Math.random() * 1.5; // Fator de aleatorização ajustado
                             const depositRadius = dirtDepositRadius * sizeFactor;
                             const depositHeight = dirtDepositHeight * sizeFactor;
 
                             const domeGeometry = new THREE.SphereGeometry(depositRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-                            const domeMesh = new THREE.Mesh(domeGeometry, dirtDepositMaterial); // Usa o material de terra
+                            // ACHATAR A GEOMETRIA PARA CORRESPONDER À ALTURA
+                            domeGeometry.scale(1, depositHeight / depositRadius, 1);
+                            const domeMesh = new THREE.Mesh(domeGeometry, dirtDepositMaterial);
                             domeMesh.castShadow = true;
                             domeMesh.receiveShadow = true;
 
@@ -2530,14 +2532,23 @@
                                 }
                             }
 
-                            const domeShape = new CANNON.Sphere(depositRadius);
+                            // A forma de física é agora um cilindro para corresponder melhor à forma visual da cúpula
+                            // A altura do cilindro é definida como o raio para aproximar uma semi-esfera
+                            const domeShape = new CANNON.Cylinder(depositRadius, depositRadius, depositRadius, 16);
                             const domeBody = new CANNON.Body({
                                 mass: 0,
                                 type: CANNON.Body.STATIC,
                                 shape: domeShape,
                                 material: islandMaterial
                             });
-                            domeBody.position.copy(hitPoint);
+
+                            // Para alinhar a base do cilindro com o chão, precisamos deslocar sua posição
+                            // para cima pela metade de sua altura, ao longo da normal da superfície.
+                            const cylinderOffset = new CANNON.Vec3(0, depositRadius / 2, 0); // Deslocamento local para cima
+                            const rotatedOffset = quaternion.vmult(cylinderOffset); // Gira o deslocamento para o espaço do mundo
+                            const finalPosition = hitPoint.vadd(rotatedOffset); // Adiciona o deslocamento ao ponto de impacto
+
+                            domeBody.position.copy(finalPosition);
                             domeBody.quaternion.copy(quaternion);
                             world.addBody(domeBody);
 
@@ -2782,9 +2793,7 @@
 
                             const flattenedHeight = 0.2;
                             const flattenedGeometry = new THREE.CylinderGeometry(destroyTargetDeposit.radius, destroyTargetDeposit.radius, flattenedHeight, 16);
-                            // NOVO: Usa o material correto (pedra ou terra) para o estado achatado
-                            const flattenedMaterial = destroyTargetDeposit.type === 'stone' ? flattenedStoneDepositMaterial : flattenedDirtDepositMaterial;
-                            const flattenedMesh = new THREE.Mesh(flattenedGeometry, flattenedMaterial);
+                            const flattenedMesh = new THREE.Mesh(flattenedGeometry, flattenedStoneDepositMaterial);
                             flattenedMesh.receiveShadow = true;
 
                             // Cria um novo corpo de física para o estado achatado, alinhado com o terreno
@@ -3848,10 +3857,6 @@
         function startGame() {
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
-            window.stoneDeposits = stoneDeposits;
-            window.beltItems = beltItems;
-            window.updateBeltDisplay = updateBeltDisplay;
-            window.selectedSlotIndex = selectedSlotIndex;
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
             if (menuIconButton) {
