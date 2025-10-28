@@ -387,6 +387,8 @@
 
         // NOVO: Variáveis para o sistema de escavação de buracos
         let holes = []; // Array para armazenar os dados dos buracos
+        let holeVisuals = []; // Array para armazenar as malhas visuais dos buracos
+        let holeMaterial; // Material para as paredes do buraco
         const maxHoles = 20; // Número máximo de buracos
 
         // Variáveis para blocos de construção colocáveis pelo jogador (tijolos e pisos)
@@ -750,20 +752,49 @@
                 if (intersect.distance < destroyDistance) { // Só pode cavar perto
                     const point = intersect.point;
 
-                    // Adiciona o novo buraco
+                    // Adiciona o buraco físico para deformar o Heightfield
                     holes.push({
                         x: point.x,
                         z: point.z,
-                        radius: 0.5, // Largura de 1 metro
-                        depth: 0.5   // Profundidade proporcional
+                        radius: 5, // Raio físico de 5 metros para afetar a física do terreno
+                        depth: 2   // Profundidade física de 2 metros
                     });
 
-                    // Se exceder o limite, remove o mais antigo
+                    // Cria o objeto visual do buraco (cilindro)
+                    const holeRadius = 0.5; // Raio visual de 0.5m (1m diâmetro)
+                    const holeHeight = 2.1; // Altura visual ligeiramente maior que a profundidade física
+                    const holeGeometry = new THREE.CylinderGeometry(holeRadius, holeRadius, holeHeight, 16, 1, true); // Cilindro oco
+                    const holeMesh = new THREE.Mesh(holeGeometry, holeMaterial);
+                    holeMesh.position.copy(point);
+                    holeMesh.position.y -= holeHeight / 2; // Centraliza o cilindro no buraco
+                    holeMesh.receiveShadow = true;
+
+                    // Cria as malhas espelhadas para o efeito de mundo contínuo
+                    const holeMeshes = [];
+                    for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                        for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                            const mesh = holeMesh.clone();
+                            scene.add(mesh);
+                            // Armazena a posição original para o cálculo do envolvimento no loop de animação
+                            holeMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize, originalPosition: holeMesh.position.clone() });
+                        }
+                    }
+                    holeVisuals.push(holeMeshes);
+
+
+                    // Se exceder o limite, remove o mais antigo (físico e visual)
                     if (holes.length > maxHoles) {
                         holes.shift();
+                        const oldestVisual = holeVisuals.shift();
+                        if (oldestVisual) {
+                            oldestVisual.forEach(item => {
+                                scene.remove(item.mesh);
+                                if (item.mesh.geometry) item.mesh.geometry.dispose();
+                            });
+                        }
                     }
 
-                    // Atualiza a geometria da ilha para mostrar o novo buraco
+                    // Atualiza a geometria da ilha para mostrar o novo buraco (apenas física)
                     updateIslandGeometry();
                 }
             }
@@ -1367,14 +1398,8 @@
             // Atualiza a geometria visual (apenas a primeira malha, as outras são clones)
             if (islandMeshes.length > 0) {
                 const mainIslandMesh = islandMeshes[0].mesh;
-                const vertices = mainIslandMesh.geometry.attributes.position.array;
-                for (let i = 0; i < hfGridSize; i++) {
-                    for (let j = 0; j < hfGridSize; j++) {
-                        const height = hfMatrix[i][j];
-                        const index = (i * hfGridSize + j) * 3;
-                        vertices[index + 1] = height; // Atualiza a coordenada Y
-                    }
-                }
+                // A atualização dos vértices visuais para os buracos foi removida.
+                // A malha visual já não será deformada.
                 mainIslandMesh.geometry.attributes.position.needsUpdate = true;
                 mainIslandMesh.geometry.computeVertexNormals();
             }
@@ -2497,9 +2522,18 @@
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
 
+            // NOVO: Carrega a textura para o material do buraco
+            textureLoader.load(dirtDepositTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(2, 1); // Repete a textura nas paredes do cilindro
+                holeMaterial = new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide });
+            });
+
             // NOVO: Chama a função para configurar os depósitos de pedra de forma assíncrona
             setupStoneDeposits();
             setupDirtDeposits(); // NOVO: Chama a função para configurar os depósitos de terra
+
         }
 
         // NOVO: Função separada para configurar os depósitos de pedra e terra
@@ -3151,6 +3185,22 @@
                             deposit.flattenedBody.position.z + item.offsetZ - visualOffsetZ
                         );
                         item.mesh.quaternion.copy(deposit.flattenedBody.quaternion);
+                    }
+                });
+            });
+
+            // NOVO: Atualiza a posição e visibilidade dos objetos visuais de buracos
+            holeVisuals.forEach(holeArray => {
+                holeArray.forEach(item => {
+                    const distance = calculateWrappedDistance(playerBody.position, item.originalPosition);
+                    item.mesh.visible = distance <= renderDistance;
+
+                    if (item.mesh.visible) {
+                        item.mesh.position.set(
+                            item.originalPosition.x + item.offsetX - visualOffsetX,
+                            item.originalPosition.y,
+                            item.originalPosition.z + item.offsetZ - visualOffsetZ
+                        );
                     }
                 });
             });
