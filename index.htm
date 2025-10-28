@@ -500,10 +500,18 @@
 
         // Variáveis de estado do jogo
         let gamePaused = false; // Novo: Flag para pausar/retomar a lógica do jogo
+        let isWorldReady = false; // NOVO: Flag para controlar quando o mundo está pronto para interação
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
 
-        // Instância do carregador de textura
-        const textureLoader = new THREE.TextureLoader();
+        // NOVO: Gerenciador de Carregamento para rastrear o carregamento de recursos
+        const loadingManager = new THREE.LoadingManager();
+        loadingManager.onLoad = () => {
+            console.log("Todos os recursos carregados, o mundo está pronto.");
+            isWorldReady = true;
+        };
+
+        // Instância do carregador de textura (agora usa o gerenciador)
+        const textureLoader = new THREE.TextureLoader(loadingManager);
 
         // Referência ao botão de ícone do menu
         let menuIconButton;
@@ -1955,7 +1963,7 @@
                 }
 
                 // NOVO: Seleção de slots com Q e E
-                if (!gamePaused && !backpackModal.classList.contains('active')) {
+                if (isWorldReady && !gamePaused && !backpackModal.classList.contains('active')) {
                     if (event.key.toLowerCase() === 'q') {
                         selectedSlotIndex = 0;
                         updateBeltDisplay();
@@ -1989,8 +1997,8 @@
 
             // Adiciona um listener para bloquear o ponteiro do mouse no clique do canvas
             renderer.domElement.addEventListener('click', () => {
-                // Solicita o bloqueio do ponteiro apenas se o jogo não estiver pausado e a mochila não estiver aberta
-                if (!gamePaused && !backpackModal.classList.contains('active') && document.pointerLockElement !== renderer.domElement) { // Verifica se o ponteiro já está bloqueado
+                // Solicita o bloqueio do ponteiro apenas se o jogo não estiver pausado, A MOCHILA NÃO ESTIVER ABERTA E O MUNDO ESTIVER PRONTO
+                if (isWorldReady && !gamePaused && !backpackModal.classList.contains('active') && document.pointerLockElement !== renderer.domElement) { // Verifica se o ponteiro já está bloqueado
                     if (renderer && renderer.domElement) { // Adicionado verificação para renderer.domElement
                         renderer.domElement.requestPointerLock().catch(error => { // Adicionado .catch()
                             if (error.name === 'SecurityError' && error.message.includes('exited the lock')) {
@@ -2087,7 +2095,7 @@
 
             // NOVO: Listener de mousedown consolidado
             renderer.domElement.addEventListener('mousedown', (event) => {
-                if (document.pointerLockElement !== renderer.domElement || gamePaused) return;
+                if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) return;
 
                 mouseDownTime = performance.now();
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
@@ -2113,7 +2121,7 @@
 
             // NOVO: Listener de mouseup consolidado
             renderer.domElement.addEventListener('mouseup', (event) => {
-                if (document.pointerLockElement !== renderer.domElement || gamePaused) return;
+                if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) return;
 
                 stopDestruction(); // Para sempre a destruição em qualquer mouseup
 
