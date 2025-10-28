@@ -760,9 +760,10 @@
 
                 // Adiciona os dados do novo buraco ao array
                 holes.push({
-                    x: hitPoint.x,
-                    z: hitPoint.z,
-                    radius: cobSize * 1.5, // Raio do buraco
+                    x: hitPoint.x + visualOffsetX,
+                    z: hitPoint.z + visualOffsetZ,
+                    width: cobSize,
+                    length: cobSize,
                     depth: cobSize,       // Profundidade do buraco
                 });
 
@@ -1352,20 +1353,30 @@
 
             // Em seguida, aplica as depressões dos buracos
             for (const hole of holes) {
+                 const halfWidth = hole.width / 2;
+                const halfLength = hole.length / 2;
+
                 for (let i = 0; i < hfGridSize; i++) {
                     for (let j = 0; j < hfGridSize; j++) {
                         const index = (i * hfGridSize + j) * 3;
-                        const x = vertices[index];
-                        const z = vertices[index + 2];
+                        // Coordenadas absolutas do vértice
+                        const vertexAbsX = vertices[index] + visualOffsetX;
+                        const vertexAbsZ = vertices[index + 2] + visualOffsetZ;
 
-                        const dx = x - (hole.x - visualOffsetX); // Ajusta a posição do buraco ao "tile" local
-                        const dz = z - (hole.z - visualOffsetZ);
-                        const dist = Math.sqrt(dx * dx + dz * dz);
+                        const dx = Math.abs(vertexAbsX - hole.x);
+                        const dz = Math.abs(vertexAbsZ - hole.z);
 
-                        if (dist < hole.radius) {
-                            // Usa uma função de cosseno para uma depressão suave
-                            const depression = (Math.cos(dist / hole.radius * Math.PI) + 1) / 2;
-                            vertices[index + 1] -= depression * hole.depth;
+                        if (dx < halfWidth && dz < halfLength) {
+                            // Calcula a distância do centro do buraco para o ponto atual (normalizado)
+                            const distX = dx / halfWidth;
+                            const distZ = dz / halfLength;
+                            const dist = Math.sqrt(distX * distX + distZ * distZ);
+
+                             if (dist < 1) { // Garante que estamos dentro de uma elipse inscrita no retângulo
+                                // Usa uma função de cosseno para uma depressão suave
+                                const depression = (Math.cos(dist * Math.PI) + 1) / 2;
+                                vertices[index + 1] -= depression * hole.depth;
+                            }
                         }
                     }
                 }
