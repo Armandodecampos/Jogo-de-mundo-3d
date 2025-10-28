@@ -386,7 +386,7 @@
         let collectibleBoxes = [];
 
         // NOVO: Variáveis para o sistema de escavação de buracos
-        let visualHoles = []; // Array para armazenar as malhas dos buracos visuais
+        let holes = []; // Array para armazenar os dados dos buracos (posição, profundidade)
         const maxHoles = 20; // Número máximo de buracos
 
         // Variáveis para blocos de construção colocáveis pelo jogador (tijolos e pisos)
@@ -757,39 +757,22 @@
             if (intersects.length > 0) {
                 const intersect = intersects[0];
                 const hitPoint = intersect.point;
-                const hitNormal = intersect.face.normal.clone().transformDirection(intersect.object.matrixWorld).normalize();
 
-                // Cria um decalque circular para o buraco
-                const holeGeometry = new THREE.CircleGeometry(cobSize * 1.5, 16); // Círculo com raio 1.5x o tamanho do cob
-                const holeMaterial = new THREE.MeshBasicMaterial({
-                    color: 0x3b2a1a, // Cor de terra escura
-                    transparent: true,
-                    opacity: 0.8,
-                    side: THREE.DoubleSide
+                // Adiciona os dados do novo buraco ao array
+                holes.push({
+                    x: hitPoint.x,
+                    z: hitPoint.z,
+                    radius: cobSize * 1.5, // Raio do buraco
+                    depth: cobSize,       // Profundidade do buraco
                 });
-                const holeDecal = new THREE.Mesh(holeGeometry, holeMaterial);
 
-                // Posiciona o decalque ligeiramente abaixo da superfície para evitar z-fighting
-                holeDecal.position.copy(hitPoint).add(hitNormal.multiplyScalar(0.01));
-
-                // Orienta o decalque para se alinhar com a superfície
-                const up = new THREE.Vector3(0, 1, 0);
-                const quaternion = new THREE.Quaternion().setFromUnitVectors(up, hitNormal);
-                holeDecal.quaternion.copy(quaternion);
-
-                // Gira o círculo para ficar deitado (ele é criado na vertical por defeito)
-                holeDecal.rotateX(-Math.PI / 2);
-
-                scene.add(holeDecal);
-                visualHoles.push(holeDecal);
-
-                // Se exceder o limite, remove a malha mais antiga da cena e do array
-                if (visualHoles.length > maxHoles) {
-                    const oldestHole = visualHoles.shift();
-                    scene.remove(oldestHole);
-                    if (oldestHole.geometry) oldestHole.geometry.dispose();
-                    if (oldestHole.material) oldestHole.material.dispose();
+                // Se exceder o limite, remove o mais antigo
+                if (holes.length > maxHoles) {
+                    holes.shift();
                 }
+
+                // Chama a atualização da geometria para aplicar a mudança visual
+                updateIslandGeometry();
             }
         }
 
@@ -1339,10 +1322,57 @@
         }
 
 
-        // A função updateIslandGeometry foi esvaziada, pois os buracos são agora apenas visuais
-        // e não modificam mais a geometria ou a física do terreno.
         function updateIslandGeometry() {
-            // Esta função foi intencionalmente deixada vazia.
+            if (islandMeshes.length === 0) return;
+
+            const mainIslandMesh = islandMeshes[0].mesh;
+            const vertices = mainIslandMesh.geometry.attributes.position.array;
+            const hfGridSize = Math.sqrt(vertices.length / 3);
+
+            // Primeiro, redefine a geometria para o seu estado original (sem buracos)
+            for (let i = 0; i < hfGridSize; i++) {
+                for (let j = 0; j < hfGridSize; j++) {
+                    const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
+                    const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
+                    const distance = Math.sqrt(x * x + z * z);
+                    let height;
+
+                    if (distance <= islandRadiusTop) {
+                        height = islandSurfaceHeight;
+                    } else if (distance <= islandRadiusBottom) {
+                        const t = (distance - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
+                        height = islandSurfaceHeight * (1 - t) + seabedLevel * t;
+                    } else {
+                        height = seabedLevel;
+                    }
+                    const index = (i * hfGridSize + j) * 3;
+                    vertices[index + 1] = height;
+                }
+            }
+
+            // Em seguida, aplica as depressões dos buracos
+            for (const hole of holes) {
+                for (let i = 0; i < hfGridSize; i++) {
+                    for (let j = 0; j < hfGridSize; j++) {
+                        const index = (i * hfGridSize + j) * 3;
+                        const x = vertices[index];
+                        const z = vertices[index + 2];
+
+                        const dx = x - (hole.x - visualOffsetX); // Ajusta a posição do buraco ao "tile" local
+                        const dz = z - (hole.z - visualOffsetZ);
+                        const dist = Math.sqrt(dx * dx + dz * dz);
+
+                        if (dist < hole.radius) {
+                            // Usa uma função de cosseno para uma depressão suave
+                            const depression = (Math.cos(dist / hole.radius * Math.PI) + 1) / 2;
+                            vertices[index + 1] -= depression * hole.depth;
+                        }
+                    }
+                }
+            }
+
+            mainIslandMesh.geometry.attributes.position.needsUpdate = true;
+            mainIslandMesh.geometry.computeVertexNormals();
         }
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
