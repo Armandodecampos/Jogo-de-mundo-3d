@@ -386,8 +386,7 @@
         let collectibleBoxes = [];
 
         // NOVO: Variáveis para o sistema de escavação de buracos
-        let holeVisuals = []; // Array para armazenar as malhas visuais dos buracos
-        let holeMaterial; // Material para as paredes do buraco
+        let holes = []; // Contém os dados de cada buraco (malhas visuais e posições para o shader)
         const maxHoles = 20; // Número máximo de buracos
 
 
@@ -754,54 +753,41 @@
                     const normal = intersect.face.normal.clone().transformDirection(intersect.object.matrixWorld);
 
                     const holeRadius = 0.5; // 1m de diâmetro
-                    const holeDepth = 0.1; // Profundidade rasa do decalque
 
-                    // --- Cria o Grupo do Buraco ---
-                    const holeGroup = new THREE.Group();
+                    // Cria a geometria do domo invertido (meia esfera)
+                    // Parâmetros: raio, segmentos de largura, segmentos de altura, ângulo inicial phi, comprimento phi, ângulo inicial theta, comprimento theta
+                    const domeGeometry = new THREE.SphereGeometry(holeRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+                    const domeMesh = new THREE.Mesh(domeGeometry, dirtDepositMaterial); // Usa o material de terra
+                    domeMesh.receiveShadow = true;
 
-                    // --- Fundo do Buraco ---
-                    const bottomGeometry = new THREE.CircleGeometry(holeRadius, 16);
-                    const bottomMesh = new THREE.Mesh(bottomGeometry, holeMaterial); // holeMaterial agora é a textura de terra
-                    bottomMesh.receiveShadow = true;
-                    holeGroup.add(bottomMesh);
-
-                    // --- Parede do Buraco (Anel) ---
-                    const wallGeometry = new THREE.RingGeometry(holeRadius, holeRadius + 0.02, 16); // Anel muito fino
-                    const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x332211 }); // Cor de terra escura
-                    const wallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
-                    wallMesh.position.y = 0.001; // Levemente acima do fundo para evitar z-fighting
-                    wallMesh.receiveShadow = true;
-                    holeGroup.add(wallMesh);
-
-                    // Orienta o grupo inteiro para alinhar com a normal do terreno
+                    // Orienta o domo para alinhar com a normal do terreno
                     const up = new THREE.Vector3(0, 1, 0);
-                    holeGroup.quaternion.setFromUnitVectors(up, normal);
-                    holeGroup.position.copy(point).add(normal.multiplyScalar(0.01)); // Leve offset para fora do chão
+                    domeMesh.quaternion.setFromUnitVectors(up, normal);
+                    // Rotaciona o domo 180 graus em torno de seu eixo X local para que aponte para "dentro" do chão
+                    domeMesh.rotateX(Math.PI);
+
+                    // Posiciona o domo no ponto de intersecção, com um ligeiro offset para dentro para evitar z-fighting
+                    domeMesh.position.copy(point).add(normal.multiplyScalar(-0.01));
 
                     // Cria as malhas espelhadas para o efeito de mundo contínuo
                     const holeMeshes = [];
                     for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                         for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                            const groupClone = holeGroup.clone();
-                            scene.add(groupClone);
-                            holeMeshes.push({ mesh: groupClone, offsetX: i * worldSize, offsetZ: j * worldSize, originalPosition: holeGroup.position.clone(), originalQuaternion: holeGroup.quaternion.clone() });
+                            const meshClone = domeMesh.clone();
+                            scene.add(meshClone);
+                            holeMeshes.push({ mesh: meshClone, offsetX: i * worldSize, offsetZ: j * worldSize, originalPosition: domeMesh.position.clone(), originalQuaternion: domeMesh.quaternion.clone() });
                         }
                     }
-                    holeVisuals.push(holeMeshes);
+                    holes.push(holeMeshes);
 
                     // Se exceder o limite, remove o mais antigo
-                    if (holeVisuals.length > maxHoles) {
-                        const oldestVisuals = holeVisuals.shift();
+                    if (holes.length > maxHoles) {
+                        const oldestVisuals = holes.shift();
                         if (oldestVisuals) {
                             oldestVisuals.forEach(item => {
                                 scene.remove(item.mesh);
-                                // Descarta geometrias e materiais do grupo
-                                item.mesh.traverse(child => {
-                                    if (child.isMesh) {
-                                        if (child.geometry) child.geometry.dispose();
-                                        if (child.material) child.material.dispose();
-                                    }
-                                });
+                                if (item.mesh.geometry) item.mesh.geometry.dispose();
+                                // O material é compartilhado, então não o descartamos
                             });
                         }
                     }
@@ -1639,10 +1625,17 @@
                         });
 
                         islandMeshMaterial.onBeforeCompile = (shader) => {
+                            // Uniforms for texture blending
                             shader.uniforms.uSeabedTexture = { value: seabedTexture };
                             shader.uniforms.uSandTexture = { value: sandTexture };
                             shader.uniforms.uWaterLevel = { value: waterLevel };
 
+                            // NEW: Uniforms for hole clipping
+                            shader.uniforms.uHolePositions = { value: new Array(maxHoles).fill(new THREE.Vector3(0, -1000, 0)) }; // Initialize off-screen
+                            shader.uniforms.uHoleCount = { value: 0 };
+                            shader.uniforms.uHoleRadiusSq = { value: 0.5 * 0.5 }; // Use squared radius for efficiency
+
+                            // Pass world position from vertex to fragment shader
                             shader.vertexShader = `
                                 varying vec3 vWorldPosition;
                                 ${shader.vertexShader}
@@ -1654,30 +1647,49 @@
                                 `
                             );
 
+                            // Add uniform declarations to the fragment shader
                             shader.fragmentShader = `
                                 uniform sampler2D uSeabedTexture;
                                 uniform sampler2D uSandTexture;
                                 uniform float uWaterLevel;
                                 varying vec3 vWorldPosition;
+
+                                // NEW: Hole clipping uniforms
+                                uniform vec3 uHolePositions[${maxHoles}];
+                                uniform int uHoleCount;
+                                uniform float uHoleRadiusSq;
+
                                 ${shader.fragmentShader}
-                            `.replace(
+                            `;
+
+                            // Replace the texture blending logic (existing modification)
+                            shader.fragmentShader = shader.fragmentShader.replace(
                                 `#include <map_fragment>`,
                                 `
                                 #ifdef USE_MAP
                                     vec4 groundColor = texture2D(map, vUv);
                                     vec4 seabedColor = texture2D(uSeabedTexture, vUv);
                                     vec4 sandColor = texture2D(uSandTexture, vUv);
-
-                                    // Primeiro, mistura o fundo do mar com a areia
                                     float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
                                     vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
-
-                                    // Depois, mistura o resultado com a grama para criar a praia
                                     float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
                                     vec3 finalMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
-
                                     diffuseColor *= vec4(finalMix, 1.0);
                                 #endif
+                                `
+                            );
+
+                            // NEW: Inject the hole clipping logic before dithering
+                            shader.fragmentShader = shader.fragmentShader.replace(
+                                `#include <dithering_fragment>`,
+                                `
+                                for (int i = 0; i < uHoleCount; i++) {
+                                    vec2 distVec = vWorldPosition.xz - uHolePositions[i].xz;
+                                    if (dot(distVec, distVec) < uHoleRadiusSq) {
+                                        discard;
+                                    }
+                                }
+                                #include <dithering_fragment>
                                 `
                             );
                         };
@@ -3143,7 +3155,11 @@
             });
 
             // NOVO: Atualiza a posição e visibilidade dos objetos visuais de buracos
-            holeVisuals.forEach(holeArray => {
+            const holePositions = [];
+            holes.forEach(holeArray => {
+                // A posição original é a mesma para todos os clones, então pegamos a do primeiro
+                holePositions.push(holeArray[0].originalPosition);
+
                 holeArray.forEach(item => {
                     const distance = calculateWrappedDistance(playerBody.position, item.originalPosition);
                     item.mesh.visible = distance <= renderDistance;
@@ -3154,10 +3170,24 @@
                             item.originalPosition.y,
                             item.originalPosition.z + item.offsetZ - visualOffsetZ
                         );
-                        item.mesh.quaternion.copy(item.originalQuaternion); // Aplica a rotação original
+                        item.mesh.quaternion.copy(item.originalQuaternion);
                     }
                 });
             });
+
+            // NOVO: Atualiza os uniforms do shader do terreno com as posições dos buracos
+            if (islandMeshes.length > 0) {
+                const material = islandMeshes[0].mesh.material;
+                material.uniforms.uHoleCount.value = holePositions.length;
+                for (let i = 0; i < maxHoles; i++) {
+                    if (i < holePositions.length) {
+                        material.uniforms.uHolePositions.value[i].copy(holePositions[i]);
+                    } else {
+                        // Move os buracos não utilizados para fora da tela para garantir que não sejam renderizados
+                        material.uniforms.uHolePositions.value[i].set(0, -1000, 0);
+                    }
+                }
+            }
 
             // NOVO: Atualiza a posição e visibilidade dos depósitos de pedra
             stoneDeposits.forEach(deposit => {
