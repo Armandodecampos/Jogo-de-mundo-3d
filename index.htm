@@ -385,6 +385,10 @@
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
         let collectibleBoxes = [];
 
+        // NOVO: Variáveis para o sistema de escavação de buracos
+        let holes = []; // Array para armazenar os dados dos buracos
+        const maxHoles = 20; // Número máximo de buracos
+
         // Variáveis para blocos de construção colocáveis pelo jogador (tijolos e pisos)
         let placedConstructionBodies = []; // Corpos de blocos colocados pelo jogador
         let placedConstructionMeshesArrays = []; // Malhas de blocos colocados pelo jogador
@@ -533,6 +537,7 @@
         const stoneItemName = 'pedra'; // NOVO: Nome do item de pedra no inventário
         const dirtItemName = 'terra'; // NOVO: Nome do item de terra no inventário
         const textureApplicatorItemName = 'pincel'; // FERRAMENTA RENOMEADA
+        const shovelItemName = 'pá'; // NOVO: Nome do item de pá no inventário
 
         // NOVO: Variáveis para o sistema de colocação de blocos (Cob, Piso, Muda de Árvore, Tronco de Árvore, Tábuas)
         const cobItemName = 'cob'; // Nome do item de cob no inventário
@@ -600,6 +605,7 @@
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
         const textureApplicatorImageURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Ícone para o pincel
         const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Textura de pedra para aplicar
+        const shovelImageURL = 'https://images.rawpixel.com/image_png_social_square/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIzLTAyL3YyMTEtYmItMzItaWNvbnMtam9iMTcyMi1wLnBuZw.png'; // NOVO: Ícone para a pá
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -734,6 +740,35 @@
         // Global array to hold active smoke particles
         let smokeParticles = [];
 
+        function digHole() {
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const groundMeshes = islandMeshes.map(item => item.mesh);
+            const intersects = raycaster.intersectObjects(groundMeshes);
+
+            if (intersects.length > 0) {
+                const intersect = intersects[0];
+                if (intersect.distance < destroyDistance) { // Só pode cavar perto
+                    const point = intersect.point;
+
+                    // Adiciona o novo buraco
+                    holes.push({
+                        x: point.x,
+                        z: point.z,
+                        radius: 3 + Math.random() * 2, // Raio aleatório entre 3 e 5
+                        depth: 2 + Math.random() * 1.5 // Profundidade aleatória entre 2 e 3.5
+                    });
+
+                    // Se exceder o limite, remove o mais antigo
+                    if (holes.length > maxHoles) {
+                        holes.shift();
+                    }
+
+                    // Atualiza a geometria da ilha para mostrar o novo buraco
+                    updateIslandGeometry();
+                }
+            }
+        }
+
         // Função para mostrar a tela de opções e pausar o jogo
         function showOptionsScreen() {
             gamePaused = true;
@@ -853,6 +888,8 @@
                     img.src = stoneImageURL;
                 } else if (item.name === dirtItemName) { // NOVO
                     img.src = dirtImageURL;
+                } else if (item.name === shovelItemName) { // NOVO
+                    img.src = shovelImageURL;
                 } else if (item.name === textureApplicatorItemName) {
                     img.src = textureApplicatorImageURL;
                 } else if (item.name === cobItemName) {
@@ -1298,6 +1335,21 @@
                     } else {
                         height = seabedLevel;
                     }
+
+                    // NOVO: Modifica a altura com base nos buracos
+                    for (const hole of holes) {
+                        const dx = x - hole.x;
+                        const dz = z - hole.z;
+                        const distSq = dx * dx + dz * dz;
+                        const radiusSq = hole.radius * hole.radius;
+
+                        if (distSq < radiusSq) {
+                            // Calcula a profundidade do buraco naquele ponto usando a fórmula de um domo invertido
+                            const holeDepth = Math.sqrt(radiusSq - distSq);
+                            height -= (holeDepth / hole.radius) * hole.depth;
+                        }
+                    }
+
                     hfMatrix[i][j] = height;
                 }
             }
@@ -1330,15 +1382,12 @@
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function init() {
-            window.THREE = THREE;
-            window.CANNON = CANNON;
             // Define o offset inicial do nível dos olhos da câmera como o raio da esfera
             cameraEyeLevelOffset = playerRadius;
             originalCameraEyeLevelOffset = cameraEyeLevelOffset; // Para armazenar o valor inicial
 
             // Configuração da Cena Three.js
             scene = new THREE.Scene();
-            window.scene = scene;
             skyColor = new THREE.Color(0x87CEEB);
             underwaterColor = new THREE.Color(0x001e3d);
             scene.background = skyColor; // Começa com a cor do céu
@@ -1851,6 +1900,7 @@
 
             // Adiciona outros itens diretamente na mochila
             addItemToInventory(backpackItems, { name: hammerItemName, quantity: 1 });
+            addItemToInventory(backpackItems, { name: shovelItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: textureApplicatorItemName, quantity: 1 });
@@ -2079,6 +2129,8 @@
                         placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
                     } else if (primaryActionType === 'apply_texture') {
                         applyTexture();
+                    } else if (primaryActionType === 'dig') { // NOVO
+                        digHole();
                     }
                 } else if (event.button === 2) { // Botão direito do mouse para cima
                     if (secondaryActionType === 'place') {
@@ -2093,6 +2145,7 @@
                 if (item === null) return 'grab';
                 if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName) return 'destroy';
                 if (item.name === textureApplicatorItemName) return 'apply_texture';
+                if (item.name === shovelItemName) return 'dig'; // NOVO
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
                 return null;
             }
@@ -3854,10 +3907,6 @@
         function startGame() {
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
-            window.stoneDeposits = stoneDeposits;
-            window.beltItems = beltItems;
-            window.updateBeltDisplay = updateBeltDisplay;
-            window.selectedSlotIndex = selectedSlotIndex;
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
             if (menuIconButton) {
