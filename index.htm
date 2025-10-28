@@ -741,31 +741,36 @@
         let smokeParticles = [];
 
         function digHole() {
+            // Usa o raycaster para encontrar onde o jogador está a olhar
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const groundMeshes = islandMeshes.map(item => item.mesh);
             const intersects = raycaster.intersectObjects(groundMeshes);
 
             if (intersects.length > 0) {
                 const intersect = intersects[0];
-                if (intersect.distance < destroyDistance) { // Só pode cavar perto
-                    const point = intersect.point;
+                const hitPoint = intersect.point;
 
-                    // Adiciona o novo buraco
-                    holes.push({
-                        x: point.x,
-                        z: point.z,
-                        radius: 3 + Math.random() * 2, // Raio aleatório entre 3 e 5
-                        depth: 2 + Math.random() * 1.5 // Profundidade aleatória entre 2 e 3.5
-                    });
+                // Calcula a posição "desenrolada" (absoluta) e alinhada à grade
+                const unwrappedHitPointX = hitPoint.x + visualOffsetX;
+                const unwrappedHitPointZ = hitPoint.z + visualOffsetZ;
+                const snappedX = Math.round(unwrappedHitPointX / cobSize) * cobSize;
+                const snappedZ = Math.round(unwrappedHitPointZ / cobSize) * cobSize;
 
-                    // Se exceder o limite, remove o mais antigo
-                    if (holes.length > maxHoles) {
-                        holes.shift();
-                    }
+                // Adiciona o novo buraco
+                holes.push({
+                    x: snappedX,
+                    z: snappedZ,
+                    size: cobSize,
+                    depth: cobSize // A profundidade é a mesma que o tamanho
+                });
 
-                    // Atualiza a geometria da ilha para mostrar o novo buraco
-                    updateIslandGeometry();
+                // Se exceder o limite, remove o mais antigo
+                if (holes.length > maxHoles) {
+                    holes.shift();
                 }
+
+                // Atualiza a geometria da ilha para mostrar o novo buraco
+                updateIslandGeometry();
             }
         }
 
@@ -1338,15 +1343,19 @@
 
                     // NOVO: Modifica a altura com base nos buracos
                     for (const hole of holes) {
-                        const dx = x - hole.x;
-                        const dz = z - hole.z;
-                        const distSq = dx * dx + dz * dz;
-                        const radiusSq = hole.radius * hole.radius;
+                        // Calcula a distância toroidal entre o vértice (x, z) e o centro do buraco (hole.x, hole.z)
+                        let dx = Math.abs(x - hole.x);
+                        let dz = Math.abs(z - hole.z);
 
-                        if (distSq < radiusSq) {
-                            // Calcula a profundidade do buraco naquele ponto usando a fórmula de um domo invertido
-                            const holeDepth = Math.sqrt(radiusSq - distSq);
-                            height -= (holeDepth / hole.radius) * hole.depth;
+                        // Considera o "enrolamento" do mundo
+                        if (dx > worldSize / 2) dx = worldSize - dx;
+                        if (dz > worldSize / 2) dz = worldSize - dz;
+
+                        const halfSize = hole.size / 2;
+
+                        // Se o vértice estiver dentro do quadrado do buraco, rebaixa a altura
+                        if (dx <= halfSize && dz <= halfSize) {
+                            height -= hole.depth;
                         }
                     }
 
