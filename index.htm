@@ -390,6 +390,9 @@
         let holeVisuals = []; // Array para armazenar as malhas visuais dos buracos
         let holeMaterial; // Material para as paredes do buraco
         const maxHoles = 20; // Número máximo de buracos
+        let alphaMapCanvas, alphaMapContext, alphaMapTexture; // NOVO: Para o buraco transparente no terreno
+        const alphaMapSize = 1024; // NOVO: Resolução da textura do mapa alfa
+
 
         // Variáveis para blocos de construção colocáveis pelo jogador (tijolos e pisos)
         let placedConstructionBodies = []; // Corpos de blocos colocados pelo jogador
@@ -794,11 +797,24 @@
                         }
                     }
 
+                    // NOVO: Desenha o buraco transparente no mapa alfa
+                    const uv = intersect.uv;
+                    const x = uv.x * alphaMapSize;
+                    const y = (1 - uv.y) * alphaMapSize;
+                    const radius = (holeRadius / worldSize) * alphaMapSize * 100; // Ajusta o raio visual do buraco no mapa alfa
+
+                    alphaMapContext.fillStyle = 'black'; // Preto = transparente
+                    alphaMapContext.beginPath();
+                    alphaMapContext.arc(x, y, radius, 0, Math.PI * 2);
+                    alphaMapContext.fill();
+                    alphaMapTexture.needsUpdate = true; // Crucial para atualizar a textura
+
                     // Atualiza a geometria da ilha para mostrar o novo buraco (apenas física)
                     updateIslandGeometry();
                 }
             }
         }
+        window.digHole = digHole;
 
         // Função para mostrar a tela de opções e pausar o jogo
         function showOptionsScreen() {
@@ -1671,6 +1687,16 @@
             const sandTextureURL = "https://dl.dropbox.com/scl/fi/2ediqx91o54kqrua9l4jk/Textura-de-areia.png?rlkey=pale1g1zkjqlrkjhpz4kr3ypw&st=fbuzn6iu&dl=0";
             const seabedTextureURL = sandTextureURL;
 
+            // NOVO: Inicializa o canvas do mapa alfa para os buracos
+            alphaMapCanvas = document.createElement('canvas');
+            alphaMapCanvas.width = alphaMapSize;
+            alphaMapCanvas.height = alphaMapSize;
+            alphaMapContext = alphaMapCanvas.getContext('2d');
+            alphaMapContext.fillStyle = 'white'; // Branco = totalmente opaco
+            alphaMapContext.fillRect(0, 0, alphaMapSize, alphaMapSize);
+            alphaMapTexture = new THREE.CanvasTexture(alphaMapCanvas);
+
+
             textureLoader.load(groundTextureURL, (groundTexture) => {
                 textureLoader.load(seabedTextureURL, (seabedTexture) => {
                     textureLoader.load(sandTextureURL, (sandTexture) => {
@@ -1683,6 +1709,8 @@
 
                         const islandMeshMaterial = new THREE.MeshStandardMaterial({
                             map: groundTexture,
+                            alphaMap: alphaMapTexture, // NOVO: Aplica o mapa alfa
+                            transparent: true // NOVO: Habilita a transparência
                         });
 
                         islandMeshMaterial.onBeforeCompile = (shader) => {
@@ -2537,7 +2565,7 @@
         }
 
         // NOVO: Função separada para configurar os depósitos de pedra e terra
-        const minDepositDistance = 180; // NOVO: Distância mínima entre os depósitos
+        const minDepositDistance = 20; // NOVO: Distância mínima entre os depósitos (Reduzido de 180)
         function setupDirtDeposits() {
             textureLoader.load(dirtDepositTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
