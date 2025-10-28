@@ -386,7 +386,6 @@
         let collectibleBoxes = [];
 
         // NOVO: Variáveis para o sistema de escavação de buracos
-        let holes = []; // Array para armazenar os dados dos buracos
         let holeVisuals = []; // Array para armazenar as malhas visuais dos buracos
         let holeMaterial; // Material para as paredes do buraco
         const maxHoles = 20; // Número máximo de buracos
@@ -755,16 +754,29 @@
                 if (intersect.distance < destroyDistance) { // Só pode cavar perto
                     const point = intersect.point;
 
-                    // Adiciona o buraco físico para deformar o Heightfield
-                    holes.push({
-                        x: point.x,
-                        z: point.z,
-                        radius: 5, // Raio físico de 5 metros para afetar a física do terreno
-                        depth: 2   // Profundidade física de 2 metros
-                    });
+                    // --- Lógica de Transparência do Terreno ---
+                    // Converte o ponto de intersecção do mundo para coordenadas UV do alphaMap, lidando com o "envolvimento" do mundo.
+                    const localX = ((point.x + worldSize / 2) % worldSize + worldSize) % worldSize - worldSize / 2;
+                    const localZ = ((point.z + worldSize / 2) % worldSize + worldSize) % worldSize - worldSize / 2;
 
-                    // Cria o objeto visual do buraco (cilindro)
+                    // Converte as coordenadas locais do plano para UVs (0 a 1)
+                    const u = (localX + worldSize / 2) / worldSize;
+                    const v = (-localZ + worldSize / 2) / worldSize; // O Z está invertido por causa da rotação inicial da geometria
+
+                    // Converte UVs para coordenadas do canvas
+                    const canvasX = u * alphaMapSize;
+                    const canvasY = (1 - v) * alphaMapSize; // Inverte o Y para o sistema de coordenadas do canvas
                     const holeRadius = 0.5; // Raio visual de 0.5m (1m diâmetro)
+                    const canvasRadius = (holeRadius / worldSize) * alphaMapSize; // Raio do buraco em pixels no canvas
+
+                    // Desenha o círculo transparente
+                    alphaMapContext.fillStyle = 'black'; // Preto = transparente
+                    alphaMapContext.beginPath();
+                    alphaMapContext.arc(canvasX, canvasY, canvasRadius, 0, Math.PI * 2);
+                    alphaMapContext.fill();
+                    alphaMapTexture.needsUpdate = true; // Crucial para atualizar a textura
+
+                    // --- Lógica Visual do Buraco ---
                     const holeHeight = 2.1; // Altura visual ligeiramente maior que a profundidade física
                     const holeGeometry = new THREE.CylinderGeometry(holeRadius, holeRadius, holeHeight, 16, 1, true); // Cilindro oco
                     const holeMesh = new THREE.Mesh(holeGeometry, holeMaterial);
@@ -778,39 +790,29 @@
                         for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                             const mesh = holeMesh.clone();
                             scene.add(mesh);
-                            // Armazena a posição original para o cálculo do envolvimento no loop de animação
                             holeMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize, originalPosition: holeMesh.position.clone() });
                         }
                     }
-                    holeVisuals.push(holeMeshes);
+                    // Armazena tanto as malhas visuais quanto os dados do canvas para poder restaurar a opacidade
+                    holeVisuals.push({ meshes: holeMeshes, canvasX: canvasX, canvasY: canvasY, canvasRadius: canvasRadius });
 
-
-                    // Se exceder o limite, remove o mais antigo (físico e visual)
-                    if (holes.length > maxHoles) {
-                        holes.shift();
-                        const oldestVisual = holeVisuals.shift();
-                        if (oldestVisual) {
-                            oldestVisual.forEach(item => {
+                    // Se exceder o limite, remove o mais antigo (visual e do alphaMap)
+                    if (holeVisuals.length > maxHoles) {
+                        const oldestHole = holeVisuals.shift();
+                        if (oldestHole) {
+                            // Remove as malhas visuais da cena
+                            oldestHole.meshes.forEach(item => {
                                 scene.remove(item.mesh);
                                 if (item.mesh.geometry) item.mesh.geometry.dispose();
                             });
+                            // "Apaga" o buraco no alphaMap, restaurando a opacidade
+                            alphaMapContext.fillStyle = 'white'; // Branco = opaco
+                            alphaMapContext.beginPath();
+                            alphaMapContext.arc(oldestHole.canvasX, oldestHole.canvasY, oldestHole.canvasRadius, 0, Math.PI * 2);
+                            alphaMapContext.fill();
+                            alphaMapTexture.needsUpdate = true;
                         }
                     }
-
-                    // NOVO: Desenha o buraco transparente no mapa alfa
-                    const uv = intersect.uv;
-                    const x = uv.x * alphaMapSize;
-                    const y = (1 - uv.y) * alphaMapSize;
-                    const radius = (holeRadius / worldSize) * alphaMapSize * 100; // Ajusta o raio visual do buraco no mapa alfa
-
-                    alphaMapContext.fillStyle = 'black'; // Preto = transparente
-                    alphaMapContext.beginPath();
-                    alphaMapContext.arc(x, y, radius, 0, Math.PI * 2);
-                    alphaMapContext.fill();
-                    alphaMapTexture.needsUpdate = true; // Crucial para atualizar a textura
-
-                    // Atualiza a geometria da ilha para mostrar o novo buraco (apenas física)
-                    updateIslandGeometry();
                 }
             }
         }
@@ -1362,64 +1364,7 @@
         }
 
 
-        // NOVO: Função para atualizar a geometria e física da ilha (movida para o escopo global)
-        function updateIslandGeometry() {
-            const hfGridSize = 128; // Manter consistente com a inicialização
-            const hfMatrix = [];
-            for (let i = 0; i < hfGridSize; i++) {
-                hfMatrix.push([]);
-                for (let j = 0; j < hfGridSize; j++) {
-                    const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
-                    const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
-                    const distance = Math.sqrt(x * x + z * z);
-                    let height;
-
-                    if (distance <= islandRadiusTop) {
-                        height = islandSurfaceHeight;
-                    } else if (distance <= islandRadiusBottom) {
-                        const t = (distance - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
-                        height = islandSurfaceHeight * (1 - t) + seabedLevel * t;
-                    } else {
-                        height = seabedLevel;
-                    }
-
-                    // NOVO: Modifica a altura com base nos buracos
-                    for (const hole of holes) {
-                        const dx = x - hole.x;
-                        const dz = z - hole.z;
-                        const distSq = dx * dx + dz * dz;
-                        const radiusSq = hole.radius * hole.radius;
-
-                        if (distSq < radiusSq) {
-                            // Calcula a profundidade do buraco naquele ponto usando a fórmula de um domo invertido
-                            const holeDepth = Math.sqrt(radiusSq - distSq);
-                            height -= (holeDepth / hole.radius) * hole.depth;
-                        }
-                    }
-
-                    hfMatrix[i][j] = height;
-                }
-            }
-
-            // Atualiza a forma de física
-            // Verifica se o corpo da ilha já tem uma forma antes de tentar removê-la
-            if (islandBody && islandBody.shapes.length > 0) {
-                const newHfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
-                islandBody.removeShape(islandBody.shapes[0]); // Remove a forma antiga
-                islandBody.addShape(newHfShape); // Adiciona a nova forma
-                islandBody.wakeUp();
-            }
-
-
-            // Atualiza a geometria visual (apenas a primeira malha, as outras são clones)
-            if (islandMeshes.length > 0) {
-                const mainIslandMesh = islandMeshes[0].mesh;
-                // A atualização dos vértices visuais para os buracos foi removida.
-                // A malha visual já não será deformada.
-                mainIslandMesh.geometry.attributes.position.needsUpdate = true;
-                mainIslandMesh.geometry.computeVertexNormals();
-            }
-        }
+        // A função updateIslandGeometry foi removida pois os buracos são agora puramente visuais.
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function init() {
@@ -3218,8 +3163,8 @@
             });
 
             // NOVO: Atualiza a posição e visibilidade dos objetos visuais de buracos
-            holeVisuals.forEach(holeArray => {
-                holeArray.forEach(item => {
+            holeVisuals.forEach(hole => { // 'hole' agora é um objeto { meshes: [], ... }
+                hole.meshes.forEach(item => {
                     const distance = calculateWrappedDistance(playerBody.position, item.originalPosition);
                     item.mesh.visible = distance <= renderDistance;
 
