@@ -385,11 +385,6 @@
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
         let collectibleBoxes = [];
 
-        // NOVO: Variáveis para o sistema de escavação de buracos
-        let holes = []; // Contém os dados de cada buraco (malhas visuais e posições para o shader)
-        const maxHoles = 20; // Número máximo de buracos
-
-
         // Variáveis para blocos de construção colocáveis pelo jogador (tijolos e pisos)
         let placedConstructionBodies = []; // Corpos de blocos colocados pelo jogador
         let placedConstructionMeshesArrays = []; // Malhas de blocos colocados pelo jogador
@@ -503,8 +498,16 @@
         let gamePaused = false; // Novo: Flag para pausar/retomar a lógica do jogo
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
 
-        // Instância do carregador de textura
-        const textureLoader = new THREE.TextureLoader();
+        // NOVO: Gerenciador de carregamento para rastrear quando todos os recursos são carregados
+        let isWorldReady = false;
+        const loadingManager = new THREE.LoadingManager();
+        loadingManager.onLoad = () => {
+            console.log("Todos os recursos carregados, o mundo está pronto.");
+            isWorldReady = true;
+        };
+
+        // Instância do carregador de textura, agora usando o gerenciador de carregamento
+        const textureLoader = new THREE.TextureLoader(loadingManager);
 
         // Referência ao botão de ícone do menu
         let menuIconButton;
@@ -537,8 +540,8 @@
         const hammerItemName = 'martelo'; // Nome do item de martelo no inventário
         const stoneItemName = 'pedra'; // NOVO: Nome do item de pedra no inventário
         const dirtItemName = 'terra'; // NOVO: Nome do item de terra no inventário
-        const textureApplicatorItemName = 'pincel'; // FERRAMENTA RENOMEADA
         const shovelItemName = 'pá'; // NOVO: Nome do item de pá no inventário
+        const textureApplicatorItemName = 'pincel'; // FERRAMENTA RENOMEADA
 
         // NOVO: Variáveis para o sistema de colocação de blocos (Cob, Piso, Muda de Árvore, Tronco de Árvore, Tábuas)
         const cobItemName = 'cob'; // Nome do item de cob no inventário
@@ -599,6 +602,7 @@
         const hammerImageURL = 'https://dl.dropbox.com/scl/fi/vadd8ztbnmzfqi18ml1cl/icone-de-martelo.png?rlkey=45l4k78t728fh4w4fkd4tvlef&st=cbi6paz9&dl=0'; // Placeholder for hammer image
         const stoneImageURL = 'https://placehold.co/100x100/964B00/FFFFFF?text=Pedra'; // NOVO: Imagem para a pedra
         const dirtImageURL = 'https://placehold.co/100x100/A0522D/FFFFFF?text=Terra'; // NOVO: Imagem para a terra
+        const shovelImageURL = 'https://placehold.co/100x100/808080/FFFFFF?text=Pá'; // NOVO: Imagem para a pá
         const treeBarkTextureURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // Corrected URL
         const treeLeavesTextureURL = 'https://dl.dropbox.com/s/scl/fi/gdz8f8qzmrdza0t0nntzs/textura-folhas-arvore.jpg?rlkey=efabv8qthg0fpxg1ugf7fpd3k&dl=0'; // Corrected URL
         const handImageURL = 'https://dl.dropbox.com/scl/fi/adirqfks81emnagkoljcw/m-o-direita.png?rlkey=pj17lswbeg8lene1n5ypdbmob&st=i2qtxssr&dl=0';
@@ -606,7 +610,7 @@
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
         const textureApplicatorImageURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Ícone para o pincel
         const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Textura de pedra para aplicar
-        const shovelImageURL = 'https://images.rawpixel.com/image_png_social_square/cHJpdmF0ZS9sci9pbWFnZXMvd2Vic2l0ZS8yMDIzLTAyL3YyMTEtYmItMzItaWNvbnMtam9iMTcyMi1wLnBuZw.png'; // NOVO: Ícone para a pá
+        const holeTextureURL = 'https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=tz27qsg6&dl=0'; // NOVO: Textura do buraco
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -617,8 +621,10 @@
         let treeLeavesMaterialMesh; // Material for tree leaves (3D model)
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
         let stoneMaterial; // NOVO: Material para chão com a nova textura
+        let holeMaterial; // NOVO: Material para o buraco cavado
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
+        const holePatches = []; // NOVO: Para rastrear os buracos cavados
 
         // Declare physics materials globally
         let playerMaterial;
@@ -740,61 +746,6 @@
 
         // Global array to hold active smoke particles
         let smokeParticles = [];
-
-        function digHole() {
-            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-            const groundMeshes = islandMeshes.map(item => item.mesh);
-            const intersects = raycaster.intersectObjects(groundMeshes);
-
-            if (intersects.length > 0) {
-                const intersect = intersects[0];
-                if (intersect.distance < destroyDistance) {
-                    const point = intersect.point;
-                    const normal = intersect.face.normal.clone().transformDirection(intersect.object.matrixWorld);
-
-                    const holeRadius = 0.5; // 1m de diâmetro
-
-                    // Cria a geometria do domo invertido (meia esfera)
-                    // Parâmetros: raio, segmentos de largura, segmentos de altura, ângulo inicial phi, comprimento phi, ângulo inicial theta, comprimento theta
-                    const domeGeometry = new THREE.SphereGeometry(holeRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-                    const domeMesh = new THREE.Mesh(domeGeometry, dirtDepositMaterial); // Usa o material de terra
-                    domeMesh.receiveShadow = true;
-
-                    // Orienta o domo para alinhar com a normal do terreno
-                    const up = new THREE.Vector3(0, 1, 0);
-                    domeMesh.quaternion.setFromUnitVectors(up, normal);
-                    // Rotaciona o domo 180 graus em torno de seu eixo X local para que aponte para "dentro" do chão
-                    domeMesh.rotateX(Math.PI);
-
-                    // Posiciona o domo no ponto de intersecção, com um ligeiro offset para dentro para evitar z-fighting
-                    domeMesh.position.copy(point).add(normal.multiplyScalar(-0.01));
-
-                    // Cria as malhas espelhadas para o efeito de mundo contínuo
-                    const holeMeshes = [];
-                    for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                        for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                            const meshClone = domeMesh.clone();
-                            scene.add(meshClone);
-                            holeMeshes.push({ mesh: meshClone, offsetX: i * worldSize, offsetZ: j * worldSize, originalPosition: domeMesh.position.clone(), originalQuaternion: domeMesh.quaternion.clone() });
-                        }
-                    }
-                    holes.push(holeMeshes);
-
-                    // Se exceder o limite, remove o mais antigo
-                    if (holes.length > maxHoles) {
-                        const oldestVisuals = holes.shift();
-                        if (oldestVisuals) {
-                            oldestVisuals.forEach(item => {
-                                scene.remove(item.mesh);
-                                if (item.mesh.geometry) item.mesh.geometry.dispose();
-                                // O material é compartilhado, então não o descartamos
-                            });
-                        }
-                    }
-                }
-            }
-        }
-        window.digHole = digHole;
 
         // Função para mostrar a tela de opções e pausar o jogo
         function showOptionsScreen() {
@@ -1147,6 +1098,59 @@
             updateBackpackDisplay();
         }
 
+        function digHole() {
+            if (!holeMaterial) return;
+
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const groundMeshes = islandMeshes.map(item => item.mesh);
+            const intersects = raycaster.intersectObjects(groundMeshes);
+
+            if (intersects.length > 0) {
+                const intersect = intersects[0];
+                if (intersect.distance > destroyDistance) return; // Limita o alcance da escavação
+
+                const hitPoint = intersect.point;
+                const patchSize = cobSize * 2; // O buraco é um pouco maior que um bloco
+
+                // Impede a escavação debaixo d'água
+                if (hitPoint.y < waterLevel) {
+                    return;
+                }
+
+                const hitNormal = intersect.face.normal.clone().transformDirection(intersect.object.matrixWorld).normalize();
+                const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), hitNormal);
+
+                const holeGeometry = new THREE.PlaneGeometry(patchSize, patchSize);
+                const holeMesh = new THREE.Mesh(holeGeometry, holeMaterial);
+                holeMesh.position.copy(hitPoint).add(hitNormal.multiplyScalar(0.01)); // Leve deslocamento para evitar z-fighting
+                holeMesh.quaternion.copy(quaternion);
+                holeMesh.rotateX(-Math.PI / 2); // Alinha a geometria do plano com a normal
+                holeMesh.receiveShadow = true;
+
+                // Adiciona múltiplas malhas para o efeito de envolvimento
+                const holeMeshes = [];
+                 for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                        const mesh = holeMesh.clone();
+                        scene.add(mesh);
+                        holeMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                    }
+                }
+
+                holePatches.push({
+                    position: holeMesh.position.clone(),
+                    quaternion: holeMesh.quaternion.clone(),
+                    meshes: holeMeshes,
+                    createdAt: world.time,
+                    userData: { type: 'hole' }
+                });
+
+                // Adiciona o item de terra ao inventário
+                addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
+                updateBackpackDisplay();
+            }
+        }
+
 
         // NOVO: Função para criar uma nova caixa dinâmica
         function createBox(position, quaternion) {
@@ -1342,16 +1346,67 @@
         }
 
 
-        // A função updateIslandGeometry foi removida pois os buracos são agora puramente visuais.
+        // NOVO: Função para atualizar a geometria e física da ilha (movida para o escopo global)
+        function updateIslandGeometry() {
+            const hfGridSize = 128; // Manter consistente com a inicialização
+            const hfMatrix = [];
+            for (let i = 0; i < hfGridSize; i++) {
+                hfMatrix.push([]);
+                for (let j = 0; j < hfGridSize; j++) {
+                    const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
+                    const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
+                    const distance = Math.sqrt(x * x + z * z);
+                    let height;
+
+                    if (distance <= islandRadiusTop) {
+                        height = islandSurfaceHeight;
+                    } else if (distance <= islandRadiusBottom) {
+                        const t = (distance - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
+                        height = islandSurfaceHeight * (1 - t) + seabedLevel * t;
+                    } else {
+                        height = seabedLevel;
+                    }
+                    hfMatrix[i][j] = height;
+                }
+            }
+
+            // Atualiza a forma de física
+            // Verifica se o corpo da ilha já tem uma forma antes de tentar removê-la
+            if (islandBody && islandBody.shapes.length > 0) {
+                const newHfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
+                islandBody.removeShape(islandBody.shapes[0]); // Remove a forma antiga
+                islandBody.addShape(newHfShape); // Adiciona a nova forma
+                islandBody.wakeUp();
+            }
+
+
+            // Atualiza a geometria visual (apenas a primeira malha, as outras são clones)
+            if (islandMeshes.length > 0) {
+                const mainIslandMesh = islandMeshes[0].mesh;
+                const vertices = mainIslandMesh.geometry.attributes.position.array;
+                for (let i = 0; i < hfGridSize; i++) {
+                    for (let j = 0; j < hfGridSize; j++) {
+                        const height = hfMatrix[i][j];
+                        const index = (i * hfGridSize + j) * 3;
+                        vertices[index + 1] = height; // Atualiza a coordenada Y
+                    }
+                }
+                mainIslandMesh.geometry.attributes.position.needsUpdate = true;
+                mainIslandMesh.geometry.computeVertexNormals();
+            }
+        }
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function init() {
+            window.THREE = THREE;
+            window.CANNON = CANNON;
             // Define o offset inicial do nível dos olhos da câmera como o raio da esfera
             cameraEyeLevelOffset = playerRadius;
             originalCameraEyeLevelOffset = cameraEyeLevelOffset; // Para armazenar o valor inicial
 
             // Configuração da Cena Three.js
             scene = new THREE.Scene();
+            window.scene = scene;
             skyColor = new THREE.Color(0x87CEEB);
             underwaterColor = new THREE.Color(0x001e3d);
             scene.background = skyColor; // Começa com a cor do céu
@@ -1621,21 +1676,14 @@
                         });
 
                         const islandMeshMaterial = new THREE.MeshStandardMaterial({
-                            map: groundTexture
+                            map: groundTexture,
                         });
 
                         islandMeshMaterial.onBeforeCompile = (shader) => {
-                            // Uniforms for texture blending
                             shader.uniforms.uSeabedTexture = { value: seabedTexture };
                             shader.uniforms.uSandTexture = { value: sandTexture };
                             shader.uniforms.uWaterLevel = { value: waterLevel };
 
-                            // NEW: Uniforms for hole clipping
-                            shader.uniforms.uHolePositions = { value: new Array(maxHoles).fill(new THREE.Vector3(0, -1000, 0)) }; // Initialize off-screen
-                            shader.uniforms.uHoleCount = { value: 0 };
-                            shader.uniforms.uHoleRadiusSq = { value: 0.5 * 0.5 }; // Use squared radius for efficiency
-
-                            // Pass world position from vertex to fragment shader
                             shader.vertexShader = `
                                 varying vec3 vWorldPosition;
                                 ${shader.vertexShader}
@@ -1647,49 +1695,30 @@
                                 `
                             );
 
-                            // Add uniform declarations to the fragment shader
                             shader.fragmentShader = `
                                 uniform sampler2D uSeabedTexture;
                                 uniform sampler2D uSandTexture;
                                 uniform float uWaterLevel;
                                 varying vec3 vWorldPosition;
-
-                                // NEW: Hole clipping uniforms
-                                uniform vec3 uHolePositions[${maxHoles}];
-                                uniform int uHoleCount;
-                                uniform float uHoleRadiusSq;
-
                                 ${shader.fragmentShader}
-                            `;
-
-                            // Replace the texture blending logic (existing modification)
-                            shader.fragmentShader = shader.fragmentShader.replace(
+                            `.replace(
                                 `#include <map_fragment>`,
                                 `
                                 #ifdef USE_MAP
                                     vec4 groundColor = texture2D(map, vUv);
                                     vec4 seabedColor = texture2D(uSeabedTexture, vUv);
                                     vec4 sandColor = texture2D(uSandTexture, vUv);
+
+                                    // Primeiro, mistura o fundo do mar com a areia
                                     float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
                                     vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
+
+                                    // Depois, mistura o resultado com a grama para criar a praia
                                     float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
                                     vec3 finalMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
+
                                     diffuseColor *= vec4(finalMix, 1.0);
                                 #endif
-                                `
-                            );
-
-                            // NEW: Inject the hole clipping logic before dithering
-                            shader.fragmentShader = shader.fragmentShader.replace(
-                                `#include <dithering_fragment>`,
-                                `
-                                for (int i = 0; i < uHoleCount; i++) {
-                                    vec2 distVec = vWorldPosition.xz - uHolePositions[i].xz;
-                                    if (dot(distVec, distVec) < uHoleRadiusSq) {
-                                        discard;
-                                    }
-                                }
-                                #include <dithering_fragment>
                                 `
                             );
                         };
@@ -1791,6 +1820,17 @@
                 stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 }); // Fallback cinza
             });
 
+            // NOVO: Carrega a textura do buraco para a ferramenta pá
+            textureLoader.load(holeTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                holeMaterial = new THREE.MeshStandardMaterial({ map: texture, transparent: true }); // Transparente para misturar com o terreno
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura do buraco:', error);
+                holeMaterial = new THREE.MeshStandardMaterial({ color: 0x3b2712 }); // Fallback marrom escuro
+            });
+
             // Load the cob texture and create the material once
             textureLoader.load(cobTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
@@ -1890,9 +1930,9 @@
 
             // Adiciona outros itens diretamente na mochila
             addItemToInventory(backpackItems, { name: hammerItemName, quantity: 1 });
-            addItemToInventory(backpackItems, { name: shovelItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 }); // NOVO
+            addItemToInventory(backpackItems, { name: shovelItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: textureApplicatorItemName, quantity: 1 });
             addItemToInventory(backpackItems, { name: cobItemName, quantity: 100 });
             addItemToInventory(backpackItems, { name: floorItemName, quantity: 50 });
@@ -1907,7 +1947,7 @@
 
             // Configura os Listeners de Eventos para teclado e mouse
             window.addEventListener('keydown', (event) => {
-                // Verifica se a tecla 'Escape' foi pressionada
+                // A lógica de Escape/Menu deve funcionar mesmo que o mundo não esteja pronto
                 if (event.key === 'Escape') {
                     event.preventDefault(); // IMPEDE O COMPORTAMENTO PADRÃO DO NAVEGADOR (sair do pointer lock)
 
@@ -1971,7 +2011,7 @@
             // Adiciona um listener para bloquear o ponteiro do mouse no clique do canvas
             renderer.domElement.addEventListener('click', () => {
                 // Solicita o bloqueio do ponteiro apenas se o jogo não estiver pausado e a mochila não estiver aberta
-                if (!gamePaused && !backpackModal.classList.contains('active') && document.pointerLockElement !== renderer.domElement) { // Verifica se o ponteiro já está bloqueado
+                if (isWorldReady && !gamePaused && !backpackModal.classList.contains('active') && document.pointerLockElement !== renderer.domElement) { // Verifica se o ponteiro já está bloqueado
                     if (renderer && renderer.domElement) { // Adicionado verificação para renderer.domElement
                         renderer.domElement.requestPointerLock().catch(error => { // Adicionado .catch()
                             if (error.name === 'SecurityError' && error.message.includes('exited the lock')) {
@@ -2068,7 +2108,7 @@
 
             // NOVO: Listener de mousedown consolidado
             renderer.domElement.addEventListener('mousedown', (event) => {
-                if (document.pointerLockElement !== renderer.domElement || gamePaused) return;
+                if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) return;
 
                 mouseDownTime = performance.now();
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
@@ -2076,12 +2116,13 @@
                 if (event.button === 0) { // Clique esquerdo
                     if (primaryActionType === 'destroy') {
                         startDestruction();
-                    } else if (primaryActionType === 'grab') {
+                    } else if (primaryActionType === 'grab' || primaryActionType === 'dig') {
                         // Inicia o temporizador. Se for mantido, irá AGARRAR o objeto.
                         clickHoldTimer = setTimeout(() => {
-                            if (!pickedObjectBody) { // O clique longo só funciona para AGARRAR
+                            if (primaryActionType === 'grab' && !pickedObjectBody) { // O clique longo só funciona para AGARRAR
                                 grabObject();
                             }
+                            // A escavação não tem ação de espera
                             clickHoldTimer = null; // O temporizador disparou
                         }, CLICK_HOLD_DURATION);
                     }
@@ -2094,7 +2135,7 @@
 
             // NOVO: Listener de mouseup consolidado
             renderer.domElement.addEventListener('mouseup', (event) => {
-                if (document.pointerLockElement !== renderer.domElement || gamePaused) return;
+                if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) return;
 
                 stopDestruction(); // Para sempre a destruição em qualquer mouseup
 
@@ -2111,6 +2152,8 @@
                             } else {
                                 collectObject(); // Clique curto enquanto não segura -> recolher
                             }
+                        } else if (primaryActionType === 'dig') {
+                            digHole(); // Ação de escavação no clique curto
                         }
                     }
                     // Se foi um clique longo, o temporizador é nulo e a função grabObject() já foi chamada.
@@ -2119,8 +2162,6 @@
                         placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
                     } else if (primaryActionType === 'apply_texture') {
                         applyTexture();
-                    } else if (primaryActionType === 'dig') { // NOVO
-                        digHole();
                     }
                 } else if (event.button === 2) { // Botão direito do mouse para cima
                     if (secondaryActionType === 'place') {
@@ -2134,8 +2175,8 @@
             function getActionType(item) {
                 if (item === null) return 'grab';
                 if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName) return 'destroy';
+                if (item.name === shovelItemName) return 'dig';
                 if (item.name === textureApplicatorItemName) return 'apply_texture';
-                if (item.name === shovelItemName) return 'dig'; // NOVO
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
                 return null;
             }
@@ -2487,22 +2528,13 @@
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
 
-            // NOVO: Carrega a textura para o material do buraco
-            textureLoader.load(dirtDepositTextureURL, (texture) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(2, 1); // Repete a textura nas paredes do cilindro
-                holeMaterial = new THREE.MeshStandardMaterial({ map: texture, side: THREE.DoubleSide });
-            });
-
             // NOVO: Chama a função para configurar os depósitos de pedra de forma assíncrona
             setupStoneDeposits();
             setupDirtDeposits(); // NOVO: Chama a função para configurar os depósitos de terra
-
         }
 
         // NOVO: Função separada para configurar os depósitos de pedra e terra
-        const minDepositDistance = 20; // NOVO: Distância mínima entre os depósitos (Reduzido de 180)
+        const minDepositDistance = 180; // NOVO: Distância mínima entre os depósitos
         function setupDirtDeposits() {
             textureLoader.load(dirtDepositTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
@@ -3103,6 +3135,36 @@
             });
 
             // NOVO: Atualiza a visibilidade e posição dos patches de textura
+            for (let i = holePatches.length - 1; i >= 0; i--) {
+                const patch = holePatches[i];
+                const age = world.time - patch.createdAt;
+
+                if (age > 30) { // O buraco desaparece após 30 segundos
+                    patch.meshes.forEach(m => {
+                        scene.remove(m.mesh);
+                        if (m.mesh.geometry) m.mesh.geometry.dispose();
+                    });
+                    holePatches.splice(i, 1);
+                    continue; // Pula para a próxima iteração
+                }
+
+                const distance = calculateWrappedDistance(playerBody.position, patch.position);
+                const isVisible = distance <= renderDistance;
+
+                patch.meshes.forEach(item => {
+                    item.mesh.visible = isVisible;
+                    if (isVisible) {
+                        item.mesh.position.copy(patch.position);
+                        item.mesh.quaternion.copy(patch.quaternion);
+
+                        // Aplica o deslocamento do mundo de envolvimento
+                        item.mesh.position.x += item.offsetX - visualOffsetX;
+                        item.mesh.position.z += item.offsetZ - visualOffsetZ;
+                    }
+                });
+            }
+
+
             texturePatches.forEach(patch => {
                 const distance = calculateWrappedDistance(playerBody.position, patch.position);
                 const isVisible = distance <= renderDistance;
@@ -3153,41 +3215,6 @@
                     }
                 });
             });
-
-            // NOVO: Atualiza a posição e visibilidade dos objetos visuais de buracos
-            const holePositions = [];
-            holes.forEach(holeArray => {
-                // A posição original é a mesma para todos os clones, então pegamos a do primeiro
-                holePositions.push(holeArray[0].originalPosition);
-
-                holeArray.forEach(item => {
-                    const distance = calculateWrappedDistance(playerBody.position, item.originalPosition);
-                    item.mesh.visible = distance <= renderDistance;
-
-                    if (item.mesh.visible) {
-                        item.mesh.position.set(
-                            item.originalPosition.x + item.offsetX - visualOffsetX,
-                            item.originalPosition.y,
-                            item.originalPosition.z + item.offsetZ - visualOffsetZ
-                        );
-                        item.mesh.quaternion.copy(item.originalQuaternion);
-                    }
-                });
-            });
-
-            // NOVO: Atualiza os uniforms do shader do terreno com as posições dos buracos
-            if (islandMeshes.length > 0) {
-                const material = islandMeshes[0].mesh.material;
-                material.uniforms.uHoleCount.value = holePositions.length;
-                for (let i = 0; i < maxHoles; i++) {
-                    if (i < holePositions.length) {
-                        material.uniforms.uHolePositions.value[i].copy(holePositions[i]);
-                    } else {
-                        // Move os buracos não utilizados para fora da tela para garantir que não sejam renderizados
-                        material.uniforms.uHolePositions.value[i].set(0, -1000, 0);
-                    }
-                }
-            }
 
             // NOVO: Atualiza a posição e visibilidade dos depósitos de pedra
             stoneDeposits.forEach(deposit => {
@@ -3941,6 +3968,12 @@
         function startGame() {
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
+            window.stoneDeposits = stoneDeposits;
+            window.beltItems = beltItems;
+            window.backpackItems = backpackItems; // Expor para teste
+            window.updateBeltDisplay = updateBeltDisplay;
+            window.updateBackpackDisplay = updateBackpackDisplay; // Expor para teste
+            window.selectedSlotIndex = selectedSlotIndex;
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
             if (menuIconButton) {
