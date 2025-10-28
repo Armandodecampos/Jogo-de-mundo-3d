@@ -506,7 +506,6 @@
         // NOVO: Gerenciador de Carregamento para rastrear o carregamento de recursos
         const loadingManager = new THREE.LoadingManager();
         loadingManager.onLoad = () => {
-            console.log("Todos os recursos carregados, o mundo está pronto.");
             isWorldReady = true;
         };
 
@@ -1330,6 +1329,7 @@
 
         // NOVO: Função para atualizar a geometria e física da ilha (movida para o escopo global)
         function updateIslandGeometry() {
+            let verticesModified = 0;
             const hfGridSize = 128; // Manter consistente com a inicialização
             const hfMatrix = [];
             for (let i = 0; i < hfGridSize; i++) {
@@ -1364,6 +1364,7 @@
                         // Se o vértice estiver dentro do quadrado do buraco, rebaixa a altura
                         if (dx <= halfSize && dz <= halfSize) {
                             height -= hole.depth;
+                            verticesModified++;
                         }
                     }
 
@@ -1913,11 +1914,11 @@
 
             // Itens padrão para os dois slots do cinto
             // beltItems[0] agora começa como null para representar a mão quando vazio
-            beltItems[1] = { name: axeItemName, quantity: 1 }; // Machado no slot direito (secundário)
+            beltItems[1] = { name: shovelItemName, quantity: 1 }; // PÁ no slot direito (para teste)
 
             // Adiciona outros itens diretamente na mochila
             addItemToInventory(backpackItems, { name: hammerItemName, quantity: 1 });
-            addItemToInventory(backpackItems, { name: shovelItemName, quantity: 1 }); // NOVO
+            addItemToInventory(backpackItems, { name: axeItemName, quantity: 1 }); // Machado movido para a mochila
             addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: textureApplicatorItemName, quantity: 1 });
@@ -2121,14 +2122,20 @@
 
             // NOVO: Listener de mouseup consolidado
             renderer.domElement.addEventListener('mouseup', (event) => {
-                if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) return;
+                console.log("Mouseup event triggered.");
+                if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) {
+                    console.log("Mouseup ignorado. Condições: isWorldReady=", isWorldReady, "pointerLock=", (document.pointerLockElement === renderer.domElement), "gamePaused=", gamePaused);
+                    return;
+                }
 
                 stopDestruction(); // Para sempre a destruição em qualquer mouseup
 
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
                 const secondaryActionType = getActionType(beltItems[1]);
+                console.log(`Slot selecionado: ${selectedSlotIndex}, Tipo de Ação Primária: ${primaryActionType}`);
 
                 if (event.button === 0) { // Botão esquerdo do mouse para cima
+                    console.log("Botão esquerdo do mouse liberado.");
                     if (clickHoldTimer) { // Se o temporizador ainda existir, foi um clique curto
                         clearTimeout(clickHoldTimer);
                         clickHoldTimer = null;
@@ -2143,13 +2150,17 @@
                     // Se foi um clique longo, o temporizador é nulo e a função grabObject() já foi chamada.
 
                     if (primaryActionType === 'place') {
+                        console.log("Tentando placeBlock...");
                         placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
                     } else if (primaryActionType === 'apply_texture') {
+                        console.log("Tentando applyTexture...");
                         applyTexture();
                     } else if (primaryActionType === 'dig') { // NOVO
+                        console.log("Tentando digHole...");
                         digHole();
                     }
                 } else if (event.button === 2) { // Botão direito do mouse para cima
+                    console.log("Botão direito do mouse liberado.");
                     if (secondaryActionType === 'place') {
                         placeBlock(beltItems[1], 1);
                     }
@@ -2159,11 +2170,20 @@
             // --- Funções Auxiliares para Ações do Jogador ---
 
             function getActionType(item) {
-                if (item === null) return 'grab';
+                if (item === null) {
+                    console.log("getActionType: item é nulo, retornando 'grab'");
+                    return 'grab';
+                }
+                console.log(`getActionType: Verificando item: ${item.name}`);
                 if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName) return 'destroy';
                 if (item.name === textureApplicatorItemName) return 'apply_texture';
-                if (item.name === shovelItemName) return 'dig'; // NOVO
+                if (item.name === shovelItemName) {
+                    console.log("getActionType: item é pá, retornando 'dig'");
+                    return 'dig';
+                }
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
+
+                console.log(`getActionType: Nenhuma ação correspondente encontrada para ${item.name}`);
                 return null;
             }
 
