@@ -1418,53 +1418,6 @@
                 mainIslandMesh.geometry.computeVertexNormals();
             }
         }
-            const hfGridSize = 128; // Manter consistente com a inicialização
-            const hfMatrix = [];
-            for (let i = 0; i < hfGridSize; i++) {
-                hfMatrix.push([]);
-                for (let j = 0; j < hfGridSize; j++) {
-                    const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
-                    const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
-                    const distance = Math.sqrt(x * x + z * z);
-                    let height;
-
-                    if (distance <= islandRadiusTop) {
-                        height = islandSurfaceHeight;
-                    } else if (distance <= islandRadiusBottom) {
-                        const t = (distance - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
-                        height = islandSurfaceHeight * (1 - t) + seabedLevel * t;
-                    } else {
-                        height = seabedLevel;
-                    }
-                    hfMatrix[i][j] = height;
-                }
-            }
-
-            // Atualiza a forma de física
-            // Verifica se o corpo da ilha já tem uma forma antes de tentar removê-la
-            if (islandBody && islandBody.shapes.length > 0) {
-                const newHfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
-                islandBody.removeShape(islandBody.shapes[0]); // Remove a forma antiga
-                islandBody.addShape(newHfShape); // Adiciona a nova forma
-                islandBody.wakeUp();
-            }
-
-
-            // Atualiza a geometria visual (apenas a primeira malha, as outras são clones)
-            if (islandMeshes.length > 0) {
-                const mainIslandMesh = islandMeshes[0].mesh;
-                const vertices = mainIslandMesh.geometry.attributes.position.array;
-                for (let i = 0; i < hfGridSize; i++) {
-                    for (let j = 0; j < hfGridSize; j++) {
-                        const height = hfMatrix[i][j];
-                        const index = (i * hfGridSize + j) * 3;
-                        vertices[index + 1] = height; // Atualiza a coordenada Y
-                    }
-                }
-                mainIslandMesh.geometry.attributes.position.needsUpdate = true;
-                mainIslandMesh.geometry.computeVertexNormals();
-            }
-        }
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function init() {
