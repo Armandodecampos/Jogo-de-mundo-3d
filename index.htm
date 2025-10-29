@@ -1120,11 +1120,12 @@
                 const hitNormal = intersect.face.normal.clone().transformDirection(intersect.object.matrixWorld).normalize();
                 const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), hitNormal);
 
-                const holeGeometry = new THREE.PlaneGeometry(patchSize, patchSize);
+                // Gera a metade inferior de uma esfera para criar um domo invertido (um buraco)
+                const holeGeometry = new THREE.SphereGeometry(patchSize / 2, 16, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
                 const holeMesh = new THREE.Mesh(holeGeometry, holeMaterial);
-                holeMesh.position.copy(hitPoint).add(hitNormal.multiplyScalar(0.01)); // Leve deslocamento para evitar z-fighting
+                // Posiciona a borda superior do domo no ponto de impacto, com um pequeno deslocamento para dentro para evitar z-fighting
+                holeMesh.position.copy(hitPoint).add(hitNormal.multiplyScalar(0.01));
                 holeMesh.quaternion.copy(quaternion);
-                holeMesh.rotateX(-Math.PI / 2); // Alinha a geometria do plano com a normal
                 holeMesh.receiveShadow = true;
 
                 // Adiciona múltiplas malhas para o efeito de envolvimento
@@ -1825,10 +1826,10 @@
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                holeMaterial = new THREE.MeshStandardMaterial({ map: texture, transparent: true }); // Transparente para misturar com o terreno
+                holeMaterial = new THREE.MeshStandardMaterial({ map: texture, transparent: true, side: THREE.DoubleSide }); // Transparente para misturar com o terreno
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura do buraco:', error);
-                holeMaterial = new THREE.MeshStandardMaterial({ color: 0x3b2712 }); // Fallback marrom escuro
+                holeMaterial = new THREE.MeshStandardMaterial({ color: 0x3b2712, side: THREE.DoubleSide }); // Fallback marrom escuro
             });
 
             // Load the cob texture and create the material once
