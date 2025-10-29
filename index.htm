@@ -504,7 +504,6 @@
         loadingManager.onLoad = () => {
             console.log("Todos os recursos carregados, o mundo está pronto.");
             isWorldReady = true;
-            window.isWorldReady = true;
         };
 
         // Instância do carregador de textura, agora usando o gerenciador de carregamento
@@ -1126,8 +1125,8 @@
                     holes.push({
                         x: gridX,
                         z: gridZ,
-                        radius: 5, // Raio do buraco em unidades da grade
-                        depth: 2, // Profundidade do buraco em unidades do mundo
+                        radius: 1, // Raio do buraco em unidades da grade (reduzido)
+                        depth: 0.4, // Profundidade do buraco em unidades do mundo (reduzido)
                         createdAt: world.time
                     });
 
@@ -1676,14 +1675,12 @@
                                         float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
                                         vec3 terrainMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
 
-                                        // Aplica o "splatting" para criar buracos transparentes
+                                        // Aplica o "splatting" para pintar a textura do buraco
                                         float splatValue = texture2D(uSplatMap, vUv).r;
-                                        if (splatValue > 0.5) {
-                                            discard; // Descarta o fragmento, criando um buraco transparente
-                                        }
+                                        vec3 finalColor = mix(terrainMix, holeColor.rgb, splatValue);
 
-                                        // A cor final é apenas a mistura do terreno, já que os buracos são descartados
-                                        diffuseColor *= vec4(terrainMix, 1.0);
+                                        // A cor final é a mistura entre o terreno e a textura do buraco
+                                        diffuseColor *= vec4(finalColor, 1.0);
                                     #endif
                                     `
                                 );
@@ -3910,7 +3907,6 @@
             window.backpackItems = backpackItems; // Expor para teste
             window.updateBeltDisplay = updateBeltDisplay;
             window.updateBackpackDisplay = updateBackpackDisplay; // Expor para teste
-            window.holes = holes; // Expor para verificação programática
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
             if (menuIconButton) {
