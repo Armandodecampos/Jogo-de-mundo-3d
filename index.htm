@@ -625,6 +625,7 @@
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
         let holes = []; // NOVO: Para rastrear os buracos cavados no terreno
+let holeDomes = []; // NOVO: Para rastrear os domos visuais dos buracos
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
         let splatMap; // NOVO: Máscara de textura para pintar os buracos
         let splatMapData; // NOVO: Dados brutos para a máscara de textura
@@ -1119,16 +1120,43 @@
                 const gridX = Math.floor(((hitPoint.x + visualOffsetX + worldSize / 2) / worldSize) * (hfGridSize - 1));
                 const gridZ = Math.floor(((-hitPoint.z - visualOffsetZ + worldSize / 2) / worldSize) * (hfGridSize - 1));
 
+                // Define as dimensões do buraco e do domo
+                const holeRadius = cobSize * 1.5; // Um pouco maior que uma caixa
+                const holeDepth = cobSize;
+                const holeGridRadius = Math.round(holeRadius / (worldSize / hfGridSize));
+
 
                 // Adiciona o buraco ao array se estiver dentro dos limites
                 if (gridX >= 0 && gridX < hfGridSize && gridZ >= 0 && gridZ < hfGridSize) {
                     holes.push({
                         x: gridX,
                         z: gridZ,
-                        radius: 1, // Raio do buraco em unidades da grade (reduzido)
-                        depth: 0.4, // Profundidade do buraco em unidades do mundo (reduzido)
+                        radius: holeGridRadius,
+                        depth: holeDepth,
                         createdAt: world.time
                     });
+
+                    // Cria e posiciona o domo visual
+                    const domeGeometry = new THREE.SphereGeometry(holeRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+                    domeGeometry.scale(1, 1, -1); // Inverte a geometria para o interior ser visível
+                    const domeMesh = new THREE.Mesh(domeGeometry, holeMaterial);
+                    domeMesh.receiveShadow = true;
+
+                    const domeMeshes = [];
+                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                        for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
+                            const mesh = domeMesh.clone();
+                            scene.add(mesh);
+                            domeMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                        }
+                    }
+
+                    holeDomes.push({
+                        position: hitPoint.clone().sub(new THREE.Vector3(0, 0.05, 0)), // Posição logo abaixo da superfície
+                        meshes: domeMeshes,
+                        createdAt: world.time
+                    });
+
 
                     updateIslandGeometry(); // Atualiza a geometria do terreno
 
@@ -1675,12 +1703,14 @@
                                         float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
                                         vec3 terrainMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
 
-                                        // Aplica o "splatting" para pintar a textura do buraco
+                                        // Aplica o "splatting" para criar buracos transparentes
                                         float splatValue = texture2D(uSplatMap, vUv).r;
-                                        vec3 finalColor = mix(terrainMix, holeColor.rgb, splatValue);
+                                        if (splatValue > 0.5) {
+                                            discard; // Descarta o fragmento, criando um buraco transparente
+                                        }
 
-                                        // A cor final é a mistura entre o terreno e a textura do buraco
-                                        diffuseColor *= vec4(finalColor, 1.0);
+                                        // A cor final é apenas a mistura do terreno, já que os buracos são descartados
+                                        diffuseColor *= vec4(terrainMix, 1.0);
                                     #endif
                                     `
                                 );
@@ -3065,6 +3095,22 @@
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
                 // A posição Y é estática, por isso não precisa de ser atualizada no loop.
+            });
+
+            // NOVO: Atualiza a posição e visibilidade dos domos dos buracos
+            holeDomes.forEach(dome => {
+                const distance = calculateWrappedDistance(playerBody.position, dome.position);
+                const isVisible = distance <= renderDistance;
+
+                dome.meshes.forEach(item => {
+                    item.mesh.visible = isVisible;
+                    if (isVisible) {
+                        const visualObject = item.mesh;
+                        visualObject.position.x = dome.position.x + item.offsetX - visualOffsetX;
+                        visualObject.position.y = dome.position.y;
+                        visualObject.position.z = dome.position.z + item.offsetZ - visualOffsetZ;
+                    }
+                });
             });
 
             // Atualiza as posições de todas as malhas visuais dos cubos/caixas
