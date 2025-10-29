@@ -624,7 +624,11 @@
         let holeMaterial; // NOVO: Material para o buraco cavado
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
-        const holePatches = []; // NOVO: Para rastrear os buracos cavados
+        let holes = []; // NOVO: Para rastrear os buracos cavados no terreno
+        let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
+        let alphaMap; // NOVO: Textura de dados para a transparência do buraco
+        let alphaMapData; // NOVO: Dados brutos para a textura de dados
+
 
         // Declare physics materials globally
         let playerMaterial;
@@ -1099,55 +1103,38 @@
         }
 
         function digHole() {
-            if (!holeMaterial) return;
-
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const groundMeshes = islandMeshes.map(item => item.mesh);
             const intersects = raycaster.intersectObjects(groundMeshes);
 
             if (intersects.length > 0) {
                 const intersect = intersects[0];
-                if (intersect.distance > destroyDistance) return; // Limita o alcance da escavação
+                if (intersect.distance > destroyDistance) return;
 
                 const hitPoint = intersect.point;
-                const patchSize = cobSize * 2; // O buraco é um pouco maior que um bloco
+                if (hitPoint.y < waterLevel) return;
 
-                // Impede a escavação debaixo d'água
-                if (hitPoint.y < waterLevel) {
-                    return;
+                // Converte a posição do mundo para as coordenadas da grade do heightfield
+                const hfGridSize = 128;
+                const gridX = Math.floor(((hitPoint.x + visualOffsetX + worldSize / 2) / worldSize) * (hfGridSize - 1));
+                const gridZ = Math.floor(((-hitPoint.z - visualOffsetZ + worldSize / 2) / worldSize) * (hfGridSize - 1));
+
+
+                // Adiciona o buraco ao array se estiver dentro dos limites
+                if (gridX >= 0 && gridX < hfGridSize && gridZ >= 0 && gridZ < hfGridSize) {
+                    holes.push({
+                        x: gridX,
+                        z: gridZ,
+                        radius: 5, // Raio do buraco em unidades da grade
+                        depth: 2, // Profundidade do buraco em unidades do mundo
+                        createdAt: world.time
+                    });
+
+                    updateIslandGeometry(); // Atualiza a geometria do terreno
+
+                    addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
+                    updateBackpackDisplay();
                 }
-
-                const hitNormal = intersect.face.normal.clone().transformDirection(intersect.object.matrixWorld).normalize();
-                const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), hitNormal);
-
-                const holeGeometry = new THREE.PlaneGeometry(patchSize, patchSize);
-                const holeMesh = new THREE.Mesh(holeGeometry, holeMaterial);
-                holeMesh.position.copy(hitPoint).add(hitNormal.multiplyScalar(0.01)); // Leve deslocamento para evitar z-fighting
-                holeMesh.quaternion.copy(quaternion);
-                holeMesh.rotateX(-Math.PI / 2); // Alinha a geometria do plano com a normal
-                holeMesh.receiveShadow = true;
-
-                // Adiciona múltiplas malhas para o efeito de envolvimento
-                const holeMeshes = [];
-                 for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        const mesh = holeMesh.clone();
-                        scene.add(mesh);
-                        holeMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                    }
-                }
-
-                holePatches.push({
-                    position: holeMesh.position.clone(),
-                    quaternion: holeMesh.quaternion.clone(),
-                    meshes: holeMeshes,
-                    createdAt: world.time,
-                    userData: { type: 'hole' }
-                });
-
-                // Adiciona o item de terra ao inventário
-                addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
-                updateBackpackDisplay();
             }
         }
 
@@ -1348,39 +1335,49 @@
 
         // NOVO: Função para atualizar a geometria e física da ilha (movida para o escopo global)
         function updateIslandGeometry() {
-            const hfGridSize = 128; // Manter consistente com a inicialização
-            const hfMatrix = [];
-            for (let i = 0; i < hfGridSize; i++) {
-                hfMatrix.push([]);
-                for (let j = 0; j < hfGridSize; j++) {
-                    const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
-                    const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
-                    const distance = Math.sqrt(x * x + z * z);
-                    let height;
+            const hfGridSize = 128;
+            const hfMatrix = JSON.parse(JSON.stringify(baseMatrix)); // Começa com a geometria base
 
-                    if (distance <= islandRadiusTop) {
-                        height = islandSurfaceHeight;
-                    } else if (distance <= islandRadiusBottom) {
-                        const t = (distance - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
-                        height = islandSurfaceHeight * (1 - t) + seabedLevel * t;
-                    } else {
-                        height = seabedLevel;
+            // Redefine o alphaMap para totalmente opaco
+            for (let i = 0; i < alphaMapData.length; i++) {
+                alphaMapData[i] = 255; // Totalmente opaco
+            }
+
+
+            // Itera sobre cada buraco e aplica a deformação e a transparência
+            for (const hole of holes) {
+                for (let i = 0; i < hfGridSize; i++) {
+                    for (let j = 0; j < hfGridSize; j++) {
+                        const dx = j - hole.x;
+                        const dz = i - hole.z;
+                        const distSq = dx * dx + dz * dz;
+                        const radiusSq = hole.radius * hole.radius;
+
+                        if (distSq < radiusSq) {
+                            // Deformação da geometria (domo invertido)
+                            const heightOffset = Math.sqrt(radiusSq - distSq) * (hole.depth / hole.radius);
+                            hfMatrix[i][j] = baseMatrix[i][j] - heightOffset;
+
+                            // Transparência (define o canal alfa como 0)
+                            const alphaIndex = (i * hfGridSize + j);
+                            alphaMapData[alphaIndex] = 0; // Totalmente transparente
+                        }
                     }
-                    hfMatrix[i][j] = height;
                 }
             }
 
+            // Atualiza o alphaMap
+            alphaMap.needsUpdate = true;
+
             // Atualiza a forma de física
-            // Verifica se o corpo da ilha já tem uma forma antes de tentar removê-la
             if (islandBody && islandBody.shapes.length > 0) {
                 const newHfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
-                islandBody.removeShape(islandBody.shapes[0]); // Remove a forma antiga
-                islandBody.addShape(newHfShape); // Adiciona a nova forma
+                islandBody.removeShape(islandBody.shapes[0]);
+                islandBody.addShape(newHfShape);
                 islandBody.wakeUp();
             }
 
-
-            // Atualiza a geometria visual (apenas a primeira malha, as outras são clones)
+            // Atualiza a geometria visual
             if (islandMeshes.length > 0) {
                 const mainIslandMesh = islandMeshes[0].mesh;
                 const vertices = mainIslandMesh.geometry.attributes.position.array;
@@ -1388,7 +1385,7 @@
                     for (let j = 0; j < hfGridSize; j++) {
                         const height = hfMatrix[i][j];
                         const index = (i * hfGridSize + j) * 3;
-                        vertices[index + 1] = height; // Atualiza a coordenada Y
+                        vertices[index + 1] = height;
                     }
                 }
                 mainIslandMesh.geometry.attributes.position.needsUpdate = true;
@@ -1583,42 +1580,58 @@
                     hfMatrix[i][j] = height;
                 }
             }
+            baseMatrix = JSON.parse(JSON.stringify(hfMatrix)); // Armazena a geometria inicial
+
+            // Inicializa o alphaMap para os buracos
+            alphaMapData = new Uint8Array(hfGridSize * hfGridSize).fill(255);
+            alphaMap = new THREE.DataTexture(alphaMapData, hfGridSize, hfGridSize, THREE.LuminanceFormat);
+            alphaMap.needsUpdate = true;
 
             // NOVO: Função para atualizar a geometria e física da ilha
             function updateIslandGeometry() {
-                const hfGridSize = 128; // Manter consistente com a inicialização
-                const hfMatrix = [];
-                for (let i = 0; i < hfGridSize; i++) {
-                    hfMatrix.push([]);
-                    for (let j = 0; j < hfGridSize; j++) {
-                        const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
-                        const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
-                        const distance = Math.sqrt(x * x + z * z);
-                        let height;
+                const hfGridSize = 128;
+                const hfMatrix = JSON.parse(JSON.stringify(baseMatrix)); // Começa com a geometria base
 
-                        if (distance <= islandRadiusTop) {
-                            height = islandSurfaceHeight;
-                        } else if (distance <= islandRadiusBottom) {
-                            const t = (distance - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
-                            height = islandSurfaceHeight * (1 - t) + seabedLevel * t;
-                        } else {
-                            height = seabedLevel;
+                // Redefine o alphaMap para totalmente opaco
+                for (let i = 0; i < alphaMapData.length; i++) {
+                    alphaMapData[i] = 255; // Totalmente opaco
+                }
+
+
+                // Itera sobre cada buraco e aplica a deformação e a transparência
+                for (const hole of holes) {
+                    for (let i = 0; i < hfGridSize; i++) {
+                        for (let j = 0; j < hfGridSize; j++) {
+                            const dx = j - hole.x;
+                            const dz = i - hole.z;
+                            const distSq = dx * dx + dz * dz;
+                            const radiusSq = hole.radius * hole.radius;
+
+                            if (distSq < radiusSq) {
+                                // Deformação da geometria (domo invertido)
+                                const heightOffset = Math.sqrt(radiusSq - distSq) * (hole.depth / hole.radius);
+                                hfMatrix[i][j] = baseMatrix[i][j] - heightOffset;
+
+                                // Transparência (define o canal alfa como 0)
+                                const alphaIndex = (i * hfGridSize + j);
+                                alphaMapData[alphaIndex] = 0; // Totalmente transparente
+                            }
                         }
-                        hfMatrix[i][j] = height;
                     }
                 }
 
+                // Atualiza o alphaMap
+                alphaMap.needsUpdate = true;
+
                 // Atualiza a forma de física
-                // Verifica se o corpo da ilha já tem uma forma antes de tentar removê-la
                 if (islandBody && islandBody.shapes.length > 0) {
                     const newHfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
-                    islandBody.removeShape(islandBody.shapes[0]); // Remove a forma antiga
-                    islandBody.addShape(newHfShape); // Adiciona a nova forma
+                    islandBody.removeShape(islandBody.shapes[0]);
+                    islandBody.addShape(newHfShape);
                     islandBody.wakeUp();
                 }
 
-
-                // Atualiza a geometria visual (apenas a primeira malha, as outras são clones)
+                // Atualiza a geometria visual
                 if (islandMeshes.length > 0) {
                     const mainIslandMesh = islandMeshes[0].mesh;
                     const vertices = mainIslandMesh.geometry.attributes.position.array;
@@ -1626,7 +1639,7 @@
                         for (let j = 0; j < hfGridSize; j++) {
                             const height = hfMatrix[i][j];
                             const index = (i * hfGridSize + j) * 3;
-                            vertices[index + 1] = height; // Atualiza a coordenada Y
+                            vertices[index + 1] = height;
                         }
                     }
                     mainIslandMesh.geometry.attributes.position.needsUpdate = true;
@@ -1677,6 +1690,8 @@
 
                         const islandMeshMaterial = new THREE.MeshStandardMaterial({
                             map: groundTexture,
+                            transparent: true, // Habilita a transparência para os buracos
+                            alphaMap: alphaMap, // Aplica o mapa de alfa para os buracos
                         });
 
                         islandMeshMaterial.onBeforeCompile = (shader) => {
@@ -3135,36 +3150,6 @@
             });
 
             // NOVO: Atualiza a visibilidade e posição dos patches de textura
-            for (let i = holePatches.length - 1; i >= 0; i--) {
-                const patch = holePatches[i];
-                const age = world.time - patch.createdAt;
-
-                if (age > 30) { // O buraco desaparece após 30 segundos
-                    patch.meshes.forEach(m => {
-                        scene.remove(m.mesh);
-                        if (m.mesh.geometry) m.mesh.geometry.dispose();
-                    });
-                    holePatches.splice(i, 1);
-                    continue; // Pula para a próxima iteração
-                }
-
-                const distance = calculateWrappedDistance(playerBody.position, patch.position);
-                const isVisible = distance <= renderDistance;
-
-                patch.meshes.forEach(item => {
-                    item.mesh.visible = isVisible;
-                    if (isVisible) {
-                        item.mesh.position.copy(patch.position);
-                        item.mesh.quaternion.copy(patch.quaternion);
-
-                        // Aplica o deslocamento do mundo de envolvimento
-                        item.mesh.position.x += item.offsetX - visualOffsetX;
-                        item.mesh.position.z += item.offsetZ - visualOffsetZ;
-                    }
-                });
-            }
-
-
             texturePatches.forEach(patch => {
                 const distance = calculateWrappedDistance(playerBody.position, patch.position);
                 const isVisible = distance <= renderDistance;
