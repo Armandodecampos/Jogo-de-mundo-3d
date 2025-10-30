@@ -2569,8 +2569,11 @@
                             const depositRadius = dirtDepositRadius * sizeFactor;
                             const depositHeight = dirtDepositHeight * sizeFactor;
 
-                            const domeGeometry = new THREE.SphereGeometry(depositRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-                            const domeMesh = new THREE.Mesh(domeGeometry, dirtDepositMaterial); // Usa o material de terra
+                            // A geometria visual é um cone.
+                            const domeGeometry = new THREE.ConeGeometry(depositRadius, depositHeight, 16);
+                            // Translada a geometria para que a sua origem corresponda ao centro de massa (como em Cannon-es)
+                            domeGeometry.translate(0, -depositHeight / 2, 0);
+                            const domeMesh = new THREE.Mesh(domeGeometry, dirtDepositMaterial);
                             domeMesh.castShadow = true;
                             domeMesh.receiveShadow = true;
 
@@ -2583,14 +2586,22 @@
                                 }
                             }
 
-                            const domeShape = new CANNON.Sphere(depositRadius);
+                            // A forma de física é um cilindro com raio superior 0 para simular um cone.
+                            const domeShape = new CANNON.Cylinder(0, depositRadius, depositHeight, 16);
                             const domeBody = new CANNON.Body({
                                 mass: 0,
                                 type: CANNON.Body.STATIC,
                                 shape: domeShape,
                                 material: islandMaterial
                             });
-                            domeBody.position.copy(hitPoint);
+
+                            // O ponto de impacto (hitPoint) está na base do cone.
+                            // Como as origens da geometria e da física estão no centro, precisamos
+                            // deslocar a posição para cima pela metade da altura, ao longo da normal da superfície.
+                            const positionOffset = new CANNON.Vec3(0, depositHeight / 2, 0);
+                            const rotatedOffset = quaternion.vmult(positionOffset);
+                            domeBody.position.copy(hitPoint.vadd(rotatedOffset));
+
                             domeBody.quaternion.copy(quaternion);
                             world.addBody(domeBody);
 
