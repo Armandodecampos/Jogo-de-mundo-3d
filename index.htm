@@ -1350,61 +1350,6 @@
             }
         }
 
-        function createDebris(position, type) {
-            const debrisCount = 15;
-            let debrisGeometry, debrisMaterial;
-
-            if (type === 'stone') {
-                debrisGeometry = new THREE.IcosahedronGeometry(0.1, 0);
-                debrisMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
-            } else { // dirt
-                debrisGeometry = new THREE.BoxGeometry(0.1, 0.1, 0.1);
-                debrisMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
-            }
-
-            for (let i = 0; i < debrisCount; i++) {
-                const mesh = new THREE.Mesh(debrisGeometry, debrisMaterial);
-                mesh.castShadow = true;
-
-                const body = new CANNON.Body({
-                    mass: 0.1,
-                    shape: new CANNON.Sphere(0.1),
-                    material: constructionMaterial,
-                    linearDamping: 0.5,
-                    angularDamping: 0.5,
-                });
-
-                const offset = new THREE.Vector3(
-                    (Math.random() - 0.5) * 1.5,
-                    Math.random() * 1.5,
-                    (Math.random() - 0.5) * 1.5
-                );
-                body.position.copy(position).vadd(offset);
-                body.velocity.set(
-                    (Math.random() - 0.5) * 5,
-                    Math.random() * 5,
-                    (Math.random() - 0.5) * 5
-                );
-
-                world.addBody(body);
-                scene.add(mesh);
-
-                const animateDebris = () => {
-                    if (world.bodies.includes(body)) {
-                        mesh.position.copy(body.position);
-                        mesh.quaternion.copy(body.quaternion);
-                        requestAnimationFrame(animateDebris);
-                    }
-                };
-                animateDebris();
-
-                setTimeout(() => {
-                    world.removeBody(body);
-                    scene.remove(mesh);
-                }, 2000 + Math.random() * 2000);
-            }
-        }
-
 
         // NOVO: Função para atualizar a geometria e física da ilha (movida para o escopo global)
         function updateIslandGeometry() {
@@ -2888,7 +2833,7 @@
                         }
 
                         if (position) {
-                            createDebris(position, destroyTargetDeposit.type);
+                            createSmokeEffect(position);
                         }
                         destructionComplete = true; // A destruição está completa!
                         isDestroying = false; // Para a barra de progresso
