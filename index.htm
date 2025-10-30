@@ -2073,6 +2073,11 @@
                 }
             });
 
+            window.addEventListener('keyup', (event) => {
+                // Sempre permite que os eventos de soltar tecla desregistrem as teclas, mesmo se pausado
+                keysPressed[event.key.toLowerCase()] = false;
+            });
+
             // NOVO: Atualiza e remove detritos antigos
             for (let i = debris.length - 1; i >= 0; i--) {
                 const piece = debris[i];
@@ -2684,9 +2689,7 @@
 
         // NOVO: Função para configurar os depósitos de pedra
         function setupStoneDeposits() {
-            console.log("Setting up stone deposits...");
             textureLoader.load(stoneDepositTextureURL, (texture) => {
-                console.log("Stone deposit texture loaded.");
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(4, 2);
@@ -2842,6 +2845,22 @@
         // Loop principal de animação do jogo
         function animate() {
             requestAnimationFrame(animate);
+
+            // NOVO: Atualiza e remove detritos antigos
+            for (let i = debris.length - 1; i >= 0; i--) {
+                const piece = debris[i];
+                updateObjectVisuals(piece.body, piece.meshes, visualOffsetX, visualOffsetZ);
+                wrapObject(piece.body, worldSize);
+
+                if (world.time - piece.createdAt > 15) { // Remove detritos após 15 segundos
+                    world.removeBody(piece.body);
+                    piece.meshes.forEach(m => {
+                        scene.remove(m.mesh);
+                        if (m.mesh.geometry) m.mesh.geometry.dispose();
+                    });
+                    debris.splice(i, 1);
+                }
+            }
 
             if (gamePaused) {
                 // Se o jogo estiver pausado, apenas renderiza a cena, não atualiza a física ou o movimento do jogador
@@ -3904,9 +3923,6 @@
         function startGame() {
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
-            window.dirtDeposits = dirtDeposits; // Expose for debug
-            window.stoneDeposits = stoneDeposits; // NOVO: Expor para depuração
-            window.debris = debris; // NOVO: Expor para depuração
             window.beltItems = beltItems;
             window.backpackItems = backpackItems; // Expor para teste
             window.updateBeltDisplay = updateBeltDisplay;

@@ -7,27 +7,31 @@ async def main():
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
 
-        # Listen for all console events and print them
-        page.on("console", lambda msg: print(f"Browser Console: {msg.text}"))
-
+        # Set a longer timeout for the page
         page.set_default_timeout(60000)
 
         await page.goto("http://localhost:8000")
 
+        # Start the game
         await page.click("#startButton")
 
+        # Wait for the stone deposits to be created, which is more reliable than isWorldReady
         await page.wait_for_function("() => window.stoneDeposits && window.stoneDeposits.length > 0")
 
+        # Add a small delay for the game to settle
         await asyncio.sleep(2)
 
+        # Function to select a tool from the inventory belt
         async def select_tool(tool_name):
             await page.evaluate(f"""
                 const beltItems = window.beltItems;
+                // Find the hammer in the belt or backpack
                 let toolIndex = beltItems.findIndex(item => item && item.name === '{tool_name}');
                 if (toolIndex !== -1) {{
                     window.selectedSlotIndex = toolIndex;
                     window.updateBeltDisplay();
                 }} else {{
+                    // If not in belt, find in backpack and move to an empty belt slot
                     const backpackItems = window.backpackItems;
                     const backpackIndex = backpackItems.findIndex(item => item && item.name === '{tool_name}');
                     if (backpackIndex !== -1) {{
@@ -43,10 +47,13 @@ async def main():
                 }}
             """)
 
+        # Select the hammer (or move it from backpack to belt)
         await select_tool('martelo')
 
+        # Give it a moment to ensure the tool is selected
         await asyncio.sleep(1)
 
+        # Find a stone deposit and move the camera to it
         await page.evaluate("""() => {
             const stoneDeposit = window.stoneDeposits[0];
             if (stoneDeposit) {
@@ -56,16 +63,20 @@ async def main():
             }
         }""")
 
+        # Lock the pointer
         await page.locator('canvas').click()
 
+        # Hold the mouse down long enough to destroy the deposit
         await page.mouse.down()
-        await asyncio.sleep(3)
+        await asyncio.sleep(3) # Hold for 3 seconds to be safe
         await page.mouse.up()
 
-        await asyncio.sleep(1)
+        await asyncio.sleep(1) # Wait for debris to settle
 
+        # Take a screenshot
         await page.screenshot(path="jules-scratch/verification/debris_verification.png")
 
+        # Verify that debris objects have been created
         debris_count = await page.evaluate("() => window.debris.length")
         if debris_count > 0:
             print(f"Verification successful: {debris_count} debris pieces created.")
