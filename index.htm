@@ -2752,10 +2752,19 @@
                                 shape: flattenedShape,
                                 material: islandMaterial
                             });
-                            const normal = new CANNON.Vec3(0, 1, 0);
-                            const worldNormal = destroyTargetDeposit.body.quaternion.vmult(normal);
-                            const offset = worldNormal.scale(0.01); // 1cm offset
-                            flattenedBody.position.copy(destroyTargetDeposit.body.position.vadd(offset));
+
+                            // Get the surface normal from the original body's orientation
+                            const up = new CANNON.Vec3(0, 1, 0);
+                            const worldNormal = destroyTargetDeposit.body.quaternion.vmult(up);
+
+                            // Calculate the new body's position from the ground up
+                            const basePosition = new CANNON.Vec3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
+                            // The center of the new body should be at the base + half its height along the normal.
+                            const offsetDistance = (flattenedHeight / 2) + 0.01; // Add a small epsilon to prevent z-fighting
+                            const positionOffset = worldNormal.scale(offsetDistance);
+                            const finalPosition = basePosition.vadd(positionOffset);
+
+                            flattenedBody.position.copy(finalPosition);
                             flattenedBody.quaternion.copy(destroyTargetDeposit.body.quaternion);
                             world.addBody(flattenedBody);
                             destroyTargetDeposit.flattenedBody = flattenedBody;
