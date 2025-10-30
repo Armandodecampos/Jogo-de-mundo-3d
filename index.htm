@@ -2497,6 +2497,7 @@
             // NOVO: Chama a função para configurar os depósitos de pedra de forma assíncrona
             setupStoneDeposits();
             setupDirtDeposits(); // NOVO: Chama a função para configurar os depósitos de terra
+
         }
 
         // NOVO: Função separada para configurar os depósitos de pedra e terra
@@ -2859,10 +2860,15 @@
                                 shape: flattenedShape,
                                 material: islandMaterial
                             });
-                            const normal = new CANNON.Vec3(0, 1, 0);
-                            const worldNormal = destroyTargetDeposit.body.quaternion.vmult(normal);
-                            const offset = worldNormal.scale(0.01); // 1cm offset
-                            flattenedBody.position.copy(destroyTargetDeposit.body.position.vadd(offset));
+                            const originalHeight = destroyTargetDeposit.height;
+                            const worldNormal = destroyTargetDeposit.body.quaternion.vmult(new CANNON.Vec3(0, 1, 0));
+
+                            // Calcula a diferença de altura e o desvio necessário para baixo.
+                            const heightDifference = originalHeight - flattenedHeight;
+                            const positionAdjustment = worldNormal.scale(heightDifference / 2);
+
+                            // Define a nova posição subtraindo o ajuste da posição original para garantir que a base permaneça no chão.
+                            flattenedBody.position.copy(destroyTargetDeposit.body.position).vsub(positionAdjustment, flattenedBody.position);
                             flattenedBody.quaternion.copy(destroyTargetDeposit.body.quaternion);
                             world.addBody(flattenedBody);
                             destroyTargetDeposit.flattenedBody = flattenedBody;
@@ -3931,12 +3937,6 @@
         function startGame() {
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
-            window.stoneDeposits = stoneDeposits;
-            window.beltItems = beltItems;
-            window.backpackItems = backpackItems; // Expor para teste
-            window.updateBeltDisplay = updateBeltDisplay;
-            window.updateBackpackDisplay = updateBackpackDisplay; // Expor para teste
-            window.selectedSlotIndex = selectedSlotIndex;
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
             if (menuIconButton) {
