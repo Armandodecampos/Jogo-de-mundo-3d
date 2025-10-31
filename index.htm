@@ -455,7 +455,7 @@
         const islandSurfaceHeight = 0.8; // A altura da superfície visível da ilha
 
         // NOVO: Constantes e variáveis para depósitos de pedra
-        const stoneDepositTextureURL = "https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0";
+        const stoneDepositTextureURL = "https://www.dropbox.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1";
         let stoneDepositMaterial;
         let flattenedStoneDepositMaterial;
         const numStoneDeposits = 30;
@@ -610,7 +610,7 @@
         const treeTrunkImageURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // NOVO: Ícone para o tronco de árvore (placeholder)
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
         const textureApplicatorImageURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Ícone para o pincel
-        const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Textura de pedra para aplicar
+        const stoneTextureURL = "https://www.dropbox.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1";
         const holeTextureURL = 'https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=tz27qsg6&dl=0'; // NOVO: Textura do buraco
 
         // Global variables for materials
@@ -626,7 +626,6 @@
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
         let holes = []; // NOVO: Para rastrear os buracos cavados no terreno
-        let holeDomes = []; // NOVO: Para rastrear os domos visuais dos buracos
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
         let splatMap; // NOVO: Máscara de textura para pintar os buracos
         let splatMapData; // NOVO: Dados brutos para a máscara de textura
@@ -1177,28 +1176,6 @@
                         createdAt: world.time
                     });
 
-                    // Cria e posiciona o domo visual
-                    const domeGeometry = new THREE.SphereGeometry(holeRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-                    domeGeometry.scale(1, 1, -1); // Inverte a geometria para o interior ser visível
-                    const domeMesh = new THREE.Mesh(domeGeometry, holeMaterial);
-                    domeMesh.receiveShadow = true;
-
-                    const domeMeshes = [];
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                            const mesh = domeMesh.clone();
-                            scene.add(mesh);
-                            domeMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
-                        }
-                    }
-
-                    holeDomes.push({
-                        position: hitPoint.clone().sub(new THREE.Vector3(0, 0.05, 0)), // Posição logo abaixo da superfície
-                        meshes: domeMeshes,
-                        createdAt: world.time
-                    });
-
-
                     updateIslandGeometry(); // Atualiza a geometria do terreno
 
                     addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
@@ -1424,7 +1401,7 @@
                         if (distSq < radiusSq) {
                             // Deformação da geometria (domo invertido)
                             const heightOffset = Math.sqrt(radiusSq - distSq) * (hole.depth / hole.radius);
-                            hfMatrix[i][j] = baseMatrix[i][j] - heightOffset;
+                            hfMatrix[i][j] = baseMatrix[i][j] + heightOffset;
 
                             // "Pinta" a área do buraco no splatMap (branco)
                             const splatIndex = (i * hfGridSize + j);
@@ -1748,12 +1725,13 @@
 
                                         // Aplica o "splatting" para criar buracos transparentes
                                         float splatValue = texture2D(uSplatMap, vUv).r;
+                                        vec3 finalColor = terrainMix;
                                         if (splatValue > 0.5) {
-                                            discard; // Descarta o fragmento, criando um buraco transparente
+                                            finalColor = mix(terrainMix, holeColor.rgb, splatValue);
                                         }
 
                                         // A cor final é apenas a mistura do terreno, já que os buracos são descartados
-                                        diffuseColor *= vec4(terrainMix, 1.0);
+                                        diffuseColor *= vec4(finalColor, 1.0);
                                     #endif
                                     `
                                 );
@@ -2819,6 +2797,7 @@
 
         // Loop principal de animação do jogo
         function animate() {
+            window.isWorldReady = isWorldReady;
             requestAnimationFrame(animate);
 
             if (gamePaused) {
@@ -3130,22 +3109,6 @@
                 meshesArray.forEach(m => {
                     const distance = camera.position.distanceTo(m.mesh.position);
                     m.mesh.visible = distance <= renderDistance;
-                });
-            });
-
-            // NOVO: Atualiza a posição e visibilidade dos domos dos buracos
-            holeDomes.forEach(dome => {
-                const distance = calculateWrappedDistance(playerBody.position, dome.position);
-                const isVisible = distance <= renderDistance;
-
-                dome.meshes.forEach(item => {
-                    item.mesh.visible = isVisible;
-                    if (isVisible) {
-                        const visualObject = item.mesh;
-                        visualObject.position.x = dome.position.x + item.offsetX - visualOffsetX;
-                        visualObject.position.y = dome.position.y;
-                        visualObject.position.z = dome.position.z + item.offsetZ - visualOffsetZ;
-                    }
                 });
             });
 
