@@ -455,7 +455,7 @@
         const islandSurfaceHeight = 0.8; // A altura da superfície visível da ilha
 
         // NOVO: Constantes e variáveis para depósitos de pedra
-        const stoneDepositTextureURL = "https://www.dropbox.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1";
+        const stoneDepositTextureURL = "https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1";
         let stoneDepositMaterial;
         let flattenedStoneDepositMaterial;
         const numStoneDeposits = 30;
@@ -503,8 +503,9 @@
         let isWorldReady = false;
         const loadingManager = new THREE.LoadingManager();
         loadingManager.onLoad = () => {
-            console.log("Todos os recursos carregados, o mundo está pronto.");
+            console.log("All resources loaded, world is ready.");
             isWorldReady = true;
+            window.isWorldReady = true; // Expose for verification
         };
 
         // Instância do carregador de textura, agora usando o gerenciador de carregamento
@@ -609,8 +610,8 @@
         const handImageURL = 'https://dl.dropbox.com/scl/fi/adirqfks81emnagkoljcw/m-o-direita.png?rlkey=pj17lswbeg8lene1n5ypdbmob&st=i2qtxssr&dl=0';
         const treeTrunkImageURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // NOVO: Ícone para o tronco de árvore (placeholder)
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
-        const textureApplicatorImageURL = 'https://dl.dropbox.com/scl/fi/6uyk1vu9ttzb6jdvawhds/chao-de-pedra.png?rlkey=uqyvy2ciuk52vkhuc2davo0o9&st=c4pyo36n&dl=0'; // NOVO: Ícone para o pincel
-        const stoneTextureURL = "https://www.dropbox.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1";
+        const textureApplicatorImageURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Ícone para o pincel
+        const stoneTextureURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Textura de pedra para aplicar
         const holeTextureURL = 'https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=tz27qsg6&dl=0'; // NOVO: Textura do buraco
 
         // Global variables for materials
@@ -625,7 +626,8 @@
         let holeMaterial; // NOVO: Material para o buraco cavado
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
-        let holes = []; // NOVO: Para rastrear os buracos cavados no terreno
+        let mounds = [];
+        let moundDomes = [];
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
         let splatMap; // NOVO: Máscara de textura para pintar os buracos
         let splatMapData; // NOVO: Dados brutos para a máscara de textura
@@ -1143,7 +1145,7 @@
             updateBackpackDisplay();
         }
 
-        function digHole() {
+        function createMound() {
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const groundMeshes = islandMeshes.map(item => item.mesh);
             const intersects = raycaster.intersectObjects(groundMeshes);
@@ -1155,28 +1157,45 @@
                 const hitPoint = intersect.point;
                 if (hitPoint.y < waterLevel) return;
 
-                // Converte a posição do mundo para as coordenadas da grade do heightfield
                 const hfGridSize = 128;
                 const gridX = Math.floor(((hitPoint.x + visualOffsetX + worldSize / 2) / worldSize) * (hfGridSize - 1));
                 const gridZ = Math.floor(((-hitPoint.z - visualOffsetZ + worldSize / 2) / worldSize) * (hfGridSize - 1));
 
-                // Define as dimensões do buraco e do domo
-                const holeRadius = cobSize * 1.5; // Um pouco maior que uma caixa
-                const holeDepth = cobSize;
-                const holeGridRadius = Math.round(holeRadius / (worldSize / hfGridSize));
+                const moundRadius = cobSize * 1.5;
+                const moundHeight = cobSize;
+                const moundGridRadius = Math.round(moundRadius / (worldSize / hfGridSize));
 
-
-                // Adiciona o buraco ao array se estiver dentro dos limites
                 if (gridX >= 0 && gridX < hfGridSize && gridZ >= 0 && gridZ < hfGridSize) {
-                    holes.push({
+                    mounds.push({
                         x: gridX,
                         z: gridZ,
-                        radius: holeGridRadius,
-                        depth: holeDepth,
+                        radius: moundGridRadius,
+                        height: moundHeight,
+                        createdAt: world.time,
+                        flattened: false
+                    });
+
+                    const domeGeometry = new THREE.SphereGeometry(moundRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+                    const domeMesh = new THREE.Mesh(domeGeometry, dirtDepositMaterial);
+                    domeMesh.castShadow = true;
+                    domeMesh.receiveShadow = true;
+
+                    const domeMeshes = [];
+                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                        for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
+                            const mesh = domeMesh.clone();
+                            scene.add(mesh);
+                            domeMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                        }
+                    }
+
+                    moundDomes.push({
+                        position: hitPoint.clone(),
+                        meshes: domeMeshes,
                         createdAt: world.time
                     });
 
-                    updateIslandGeometry(); // Atualiza a geometria do terreno
+                    updateIslandGeometry();
 
                     addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
                     updateBackpackDisplay();
@@ -1379,58 +1398,39 @@
         }
 
 
-        // NOVO: Função para atualizar a geometria e física da ilha (movida para o escopo global)
         function updateIslandGeometry() {
             const hfGridSize = 128;
-            const hfMatrix = JSON.parse(JSON.stringify(baseMatrix)); // Começa com a geometria base
+            const hfMatrix = JSON.parse(JSON.stringify(baseMatrix));
 
-            // Zera o splatMap
-            for (let i = 0; i < splatMapData.length; i++) {
-                splatMapData[i] = 0;
-            }
-
-            // Itera sobre cada buraco para aplicar a deformação e pintar a máscara de textura
-            for (const hole of holes) {
+            for (const mound of mounds) {
+                if (mound.flattened) continue;
                 for (let i = 0; i < hfGridSize; i++) {
                     for (let j = 0; j < hfGridSize; j++) {
-                        const dx = j - hole.x;
-                        const dz = i - hole.z;
+                        const dx = j - mound.x;
+                        const dz = i - mound.z;
                         const distSq = dx * dx + dz * dz;
-                        const radiusSq = hole.radius * hole.radius;
+                        const radiusSq = mound.radius * mound.radius;
 
                         if (distSq < radiusSq) {
-                            // Deformação da geometria (domo invertido)
-                            const heightOffset = Math.sqrt(radiusSq - distSq) * (hole.depth / hole.radius);
-                            hfMatrix[i][j] = baseMatrix[i][j] + heightOffset;
-
-                            // "Pinta" a área do buraco no splatMap (branco)
-                            const splatIndex = (i * hfGridSize + j);
-                            splatMapData[splatIndex] = 255;
+                            const heightOffset = Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
+                            hfMatrix[i][j] += heightOffset;
                         }
                     }
                 }
             }
 
-            // Atualiza o splatMap
-            splatMap.needsUpdate = true;
-
-            // Atualiza a forma de física
             if (islandBody && islandBody.shapes.length > 0) {
                 const newHfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
                 islandBody.removeShape(islandBody.shapes[0]);
                 islandBody.addShape(newHfShape);
-                islandBody.wakeUp();
             }
 
-            // Atualiza a geometria visual
             if (islandMeshes.length > 0) {
                 const mainIslandMesh = islandMeshes[0].mesh;
                 const vertices = mainIslandMesh.geometry.attributes.position.array;
                 for (let i = 0; i < hfGridSize; i++) {
                     for (let j = 0; j < hfGridSize; j++) {
-                        const height = hfMatrix[i][j];
-                        const index = (i * hfGridSize + j) * 3;
-                        vertices[index + 1] = height;
+                        vertices[(i * hfGridSize + j) * 3 + 1] = hfMatrix[i][j];
                     }
                 }
                 mainIslandMesh.geometry.attributes.position.needsUpdate = true;
@@ -1440,6 +1440,7 @@
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function init() {
+            console.log("init called");
             window.THREE = THREE;
             window.CANNON = CANNON;
             // Define o offset inicial do nível dos olhos da câmera como o raio da esfera
@@ -1628,12 +1629,6 @@
             }
             baseMatrix = JSON.parse(JSON.stringify(hfMatrix)); // Armazena a geometria inicial
 
-            // Inicializa o splatMap para os buracos
-            splatMapData = new Uint8Array(hfGridSize * hfGridSize).fill(0);
-            splatMap = new THREE.DataTexture(splatMapData, hfGridSize, hfGridSize, THREE.LuminanceFormat);
-            splatMap.needsUpdate = true;
-
-
             // Gira a geometria para ficar no plano XZ.
             islandGeometry.rotateX(-Math.PI / 2);
 
@@ -1686,8 +1681,6 @@
                                 shader.uniforms.uSeabedTexture = { value: seabedTexture };
                                 shader.uniforms.uSandTexture = { value: sandTexture };
                                 shader.uniforms.uWaterLevel = { value: waterLevel };
-                                shader.uniforms.uSplatMap = { value: splatMap }; // NOVO: Uniform para o splat map
-                                shader.uniforms.uHoleTexture = { value: holeTexture }; // NOVO: Uniform para a textura do buraco
 
                                 shader.vertexShader = `
                                     varying vec3 vWorldPosition;
@@ -1704,8 +1697,6 @@
                                     uniform sampler2D uSeabedTexture;
                                     uniform sampler2D uSandTexture;
                                     uniform float uWaterLevel;
-                                    uniform sampler2D uSplatMap;
-                                    uniform sampler2D uHoleTexture;
                                     varying vec3 vWorldPosition;
                                     ${shader.fragmentShader}
                                 `.replace(
@@ -1715,23 +1706,13 @@
                                         vec4 groundColor = texture2D(map, vUv);
                                         vec4 seabedColor = texture2D(uSeabedTexture, vUv);
                                         vec4 sandColor = texture2D(uSandTexture, vUv);
-                                        vec4 holeColor = texture2D(uHoleTexture, vUv);
 
-                                        // Mistura de texturas do terreno (areia, fundo do mar, grama)
                                         float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
                                         vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
                                         float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
                                         vec3 terrainMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
 
-                                        // Aplica o "splatting" para criar buracos transparentes
-                                        float splatValue = texture2D(uSplatMap, vUv).r;
-                                        vec3 finalColor = terrainMix;
-                                        if (splatValue > 0.5) {
-                                            finalColor = mix(terrainMix, holeColor.rgb, splatValue);
-                                        }
-
-                                        // A cor final é apenas a mistura do terreno, já que os buracos são descartados
-                                        diffuseColor *= vec4(finalColor, 1.0);
+                                        diffuseColor *= vec4(terrainMix, 1.0);
                                     #endif
                                     `
                                 );
@@ -2131,7 +2112,7 @@
                 if (event.button === 0) { // Clique esquerdo
                     if (primaryActionType === 'destroy') {
                         startDestruction();
-                    } else if (primaryActionType === 'grab' || primaryActionType === 'dig') {
+                    } else if (primaryActionType === 'grab' || primaryActionType === 'create_mound') {
                         // Inicia o temporizador. Se for mantido, irá AGARRAR o objeto.
                         clickHoldTimer = setTimeout(() => {
                             if (primaryActionType === 'grab' && !pickedObjectBody) { // O clique longo só funciona para AGARRAR
@@ -2167,8 +2148,8 @@
                             } else {
                                 collectObject(); // Clique curto enquanto não segura -> recolher
                             }
-                        } else if (primaryActionType === 'dig') {
-                            digHole(); // Ação de escavação no clique curto
+                        } else if (primaryActionType === 'create_mound') {
+                            createMound(); // Ação de escavação no clique curto
                         }
                     }
                     // Se foi um clique longo, o temporizador é nulo e a função grabObject() já foi chamada.
@@ -2190,7 +2171,7 @@
             function getActionType(item) {
                 if (item === null) return 'grab';
                 if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName) return 'destroy';
-                if (item.name === shovelItemName) return 'dig';
+                if (item.name === shovelItemName) return 'create_mound';
                 if (item.name === textureApplicatorItemName) return 'apply_texture';
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
                 return null;
@@ -2797,7 +2778,6 @@
 
         // Loop principal de animação do jogo
         function animate() {
-            window.isWorldReady = isWorldReady;
             requestAnimationFrame(animate);
 
             if (gamePaused) {
@@ -3109,6 +3089,26 @@
                 meshesArray.forEach(m => {
                     const distance = camera.position.distanceTo(m.mesh.position);
                     m.mesh.visible = distance <= renderDistance;
+                });
+            });
+
+            moundDomes.forEach((dome, index) => {
+                const mound = mounds[index];
+                if (!mound || mound.flattened) {
+                    dome.meshes.forEach(item => item.mesh.visible = false);
+                    return;
+                }
+
+                const distance = calculateWrappedDistance(playerBody.position, dome.position);
+                const isVisible = distance <= renderDistance;
+
+                dome.meshes.forEach(item => {
+                    item.mesh.visible = isVisible;
+                    if (isVisible) {
+                        item.mesh.position.copy(dome.position);
+                        item.mesh.position.x += item.offsetX - visualOffsetX;
+                        item.mesh.position.z += item.offsetZ - visualOffsetZ;
+                    }
                 });
             });
 
@@ -3897,6 +3897,7 @@
 
         // Função para iniciar o jogo
         function startGame() {
+            console.log("startGame called");
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
             window.dirtDeposits = dirtDeposits; // Expose for debug
