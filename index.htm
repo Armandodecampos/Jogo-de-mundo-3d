@@ -1174,30 +1174,6 @@
                         createdAt: world.time
                     });
 
-                    const holeRadius = moundRadius * 0.8; // Make the visual hole slightly smaller than the physical one
-                    const holeDepth = moundHeight;
-                    const holeGeometry = new THREE.SphereGeometry(holeRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-                    const holeMesh = new THREE.Mesh(holeGeometry, holeMaterial); // Use the new hole material
-                    holeMesh.castShadow = false; // The inside of the hole shouldn't cast a shadow
-                    holeMesh.receiveShadow = true;
-
-                    const holeMeshes = [];
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                            const mesh = holeMesh.clone();
-                            scene.add(mesh);
-                            holeMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
-                        }
-                    }
-
-                    const holePosition = hitPoint.clone();
-                    holePosition.y -= holeDepth * 0.25; // Lower the visual mesh into the hole
-
-                    holeDomes.push({
-                        position: holePosition,
-                        meshes: holeMeshes,
-                        createdAt: world.time
-                    });
 
                     updateIslandGeometry();
 
@@ -1419,22 +1395,30 @@
                             const radius = hole.radius;
                             const depth = hole.height; // Using 'height' as depth
 
-                            // Volcano shape logic
-                            const rimWidth = radius * 0.8; // The width of the raised part
-                            const pitRadius = radius - rimWidth;
-                            const rimHeight = depth * 0.5; // Rim is half as high as the pit is deep
+                            // Volcano mound logic
+                            const craterRadius = radius * 0.4; // The radius of the central crater
+                            const rimRadius = radius * 0.8;   // The radius of the outer rim
+                            const maxMoundHeight = depth * 1.5;   // The peak height of the rim
 
                             let heightOffset = 0;
-                            if (dist < pitRadius) {
-                                // Pit area: smooth depression using a cosine curve
-                                const t = dist / pitRadius; // 0 at center, 1 at pit edge
-                                heightOffset = -depth * (Math.cos(t * Math.PI) + 1) / 2; // Goes from -depth to 0
+                            if (dist < craterRadius) {
+                                // Inside the crater: a shallow bowl shape
+                                const t = dist / craterRadius; // 0 at center, 1 at crater edge
+                                heightOffset = maxMoundHeight * 0.5 * (1 + Math.cos(t * Math.PI)); // Goes from full height at center to half height at edge
+                            } else if (dist < rimRadius) {
+                                // The rim itself
+                                const t = (dist - craterRadius) / (rimRadius - craterRadius); // 0 at crater edge, 1 at rim peak
+                                heightOffset = maxMoundHeight * (0.5 + 0.5 * Math.sin(t * Math.PI / 2)); // Goes from half height to full height
                             } else {
-                                // Rim area: raised part using a sine curve
-                                const t = (dist - pitRadius) / rimWidth; // 0 at pit edge, 1 at outer edge
-                                heightOffset = rimHeight * Math.sin(t * Math.PI);
+                                // Outer slope of the volcano
+                                const t = (dist - rimRadius) / (radius - rimRadius); // 0 at rim peak, 1 at outer edge
+                                heightOffset = maxMoundHeight * Math.cos(t * Math.PI / 2); // Goes from full height down to 0
                             }
-                            hfMatrix[i][j] += heightOffset;
+
+                            // Ensure the final height is always an addition
+                            if (heightOffset > 0) {
+                                hfMatrix[i][j] += heightOffset;
+                            }
                         }
                     }
                 }
@@ -3113,25 +3097,6 @@
                 });
             });
 
-            holeDomes.forEach((dome, index) => {
-                const hole = holes[index];
-                if (!hole) {
-                    dome.meshes.forEach(item => item.mesh.visible = false);
-                    return;
-                }
-
-                const distance = calculateWrappedDistance(playerBody.position, dome.position);
-                const isVisible = distance <= renderDistance;
-
-                dome.meshes.forEach(item => {
-                    item.mesh.visible = isVisible;
-                    if (isVisible) {
-                        item.mesh.position.copy(dome.position);
-                        item.mesh.position.x += item.offsetX - visualOffsetX;
-                        item.mesh.position.z += item.offsetZ - visualOffsetZ;
-                    }
-                });
-            });
 
             texturePatches.forEach(patch => {
                 const distance = calculateWrappedDistance(playerBody.position, patch.position);
