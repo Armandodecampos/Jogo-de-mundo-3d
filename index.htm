@@ -505,6 +505,7 @@
         loadingManager.onLoad = () => {
             console.log("All resources loaded, world is ready.");
             isWorldReady = true;
+            window.isWorldReady = true; // Expose for verification
         };
 
         // Instância do carregador de textura, agora usando o gerenciador de carregamento
@@ -625,8 +626,8 @@
         let holeMaterial; // NOVO: Material para o buraco cavado
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
-        let holes = [];
-        let holeDomes = [];
+        let mounds = [];
+        let moundDomes = [];
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
         let splatMap; // NOVO: Máscara de textura para pintar os buracos
         let splatMapData; // NOVO: Dados brutos para a máscara de textura
@@ -1144,7 +1145,7 @@
             updateBackpackDisplay();
         }
 
-        function digHole() {
+        function createMound() {
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const groundMeshes = islandMeshes.map(item => item.mesh);
             const intersects = raycaster.intersectObjects(groundMeshes);
@@ -1165,14 +1166,34 @@
                 const moundGridRadius = Math.round(moundRadius / (worldSize / hfGridSize));
 
                 if (gridX >= 0 && gridX < hfGridSize && gridZ >= 0 && gridZ < hfGridSize) {
-                    holes.push({
+                    mounds.push({
                         x: gridX,
                         z: gridZ,
                         radius: moundGridRadius,
                         height: moundHeight,
-                        createdAt: world.time
+                        createdAt: world.time,
+                        flattened: false
                     });
 
+                    const domeGeometry = new THREE.SphereGeometry(moundRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+                    const domeMesh = new THREE.Mesh(domeGeometry, dirtDepositMaterial);
+                    domeMesh.castShadow = true;
+                    domeMesh.receiveShadow = true;
+
+                    const domeMeshes = [];
+                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                        for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
+                            const mesh = domeMesh.clone();
+                            scene.add(mesh);
+                            domeMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                        }
+                    }
+
+                    moundDomes.push({
+                        position: hitPoint.clone(),
+                        meshes: domeMeshes,
+                        createdAt: world.time
+                    });
 
                     updateIslandGeometry();
 
@@ -1381,43 +1402,18 @@
             const hfGridSize = 128;
             const hfMatrix = JSON.parse(JSON.stringify(baseMatrix));
 
-            for (const hole of holes) {
+            for (const mound of mounds) {
+                if (mound.flattened) continue;
                 for (let i = 0; i < hfGridSize; i++) {
                     for (let j = 0; j < hfGridSize; j++) {
-                        const dx = j - hole.x;
-                        const dz = i - hole.z;
+                        const dx = j - mound.x;
+                        const dz = i - mound.z;
                         const distSq = dx * dx + dz * dz;
-                        const radiusSq = hole.radius * hole.radius;
+                        const radiusSq = mound.radius * mound.radius;
 
                         if (distSq < radiusSq) {
-                            const dist = Math.sqrt(distSq);
-                            const radius = hole.radius;
-                            const depth = hole.height; // Using 'height' as depth
-
-                            // Volcano mound logic
-                            const craterRadius = radius * 0.4; // The radius of the central crater
-                            const rimRadius = radius * 0.8;   // The radius of the outer rim
-                            const maxMoundHeight = depth * 1.5;   // The peak height of the rim
-
-                            let heightOffset = 0;
-                            if (dist < craterRadius) {
-                                // Inside the crater: a shallow bowl shape
-                                const t = dist / craterRadius; // 0 at center, 1 at crater edge
-                                heightOffset = maxMoundHeight * 0.5 * (1 + Math.cos(t * Math.PI)); // Goes from full height at center to half height at edge
-                            } else if (dist < rimRadius) {
-                                // The rim itself
-                                const t = (dist - craterRadius) / (rimRadius - craterRadius); // 0 at crater edge, 1 at rim peak
-                                heightOffset = maxMoundHeight * (0.5 + 0.5 * Math.sin(t * Math.PI / 2)); // Goes from half height to full height
-                            } else {
-                                // Outer slope of the volcano
-                                const t = (dist - rimRadius) / (radius - rimRadius); // 0 at rim peak, 1 at outer edge
-                                heightOffset = maxMoundHeight * Math.cos(t * Math.PI / 2); // Goes from full height down to 0
-                            }
-
-                            // Ensure the final height is always an addition
-                            if (heightOffset > 0) {
-                                hfMatrix[i][j] += heightOffset;
-                            }
+                            const heightOffset = Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
+                            hfMatrix[i][j] += heightOffset;
                         }
                     }
                 }
@@ -1444,12 +1440,16 @@
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function init() {
+            console.log("init called");
+            window.THREE = THREE;
+            window.CANNON = CANNON;
             // Define o offset inicial do nível dos olhos da câmera como o raio da esfera
             cameraEyeLevelOffset = playerRadius;
             originalCameraEyeLevelOffset = cameraEyeLevelOffset; // Para armazenar o valor inicial
 
             // Configuração da Cena Three.js
             scene = new THREE.Scene();
+            window.scene = scene;
             skyColor = new THREE.Color(0x87CEEB);
             underwaterColor = new THREE.Color(0x001e3d);
             scene.background = skyColor; // Começa com a cor do céu
@@ -1462,6 +1462,7 @@
 
             // Configuração da Câmera Three.js
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
+            window.camera = camera; // Expose for debug
             camera.rotation.order = 'YXZ'; // Define a ordem de rotação para guinada (Y), inclinação (X), rolagem (Z)
 
             // Configuração do Renderizador Three.js
@@ -2103,10 +2104,7 @@
 
             // NOVO: Listener de mousedown consolidado
             renderer.domElement.addEventListener('mousedown', (event) => {
-                if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) {
-                    console.log(`Mousedown guard failed: isWorldReady=${isWorldReady}, pointerLock=${document.pointerLockElement === renderer.domElement}, gamePaused=${gamePaused}`);
-                    return;
-                }
+                if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) return;
 
                 mouseDownTime = performance.now();
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
@@ -2114,7 +2112,7 @@
                 if (event.button === 0) { // Clique esquerdo
                     if (primaryActionType === 'destroy') {
                         startDestruction();
-                } else if (primaryActionType === 'grab' || primaryActionType === 'dig_hole') {
+                    } else if (primaryActionType === 'grab' || primaryActionType === 'create_mound') {
                         // Inicia o temporizador. Se for mantido, irá AGARRAR o objeto.
                         clickHoldTimer = setTimeout(() => {
                             if (primaryActionType === 'grab' && !pickedObjectBody) { // O clique longo só funciona para AGARRAR
@@ -2133,7 +2131,6 @@
 
             // NOVO: Listener de mouseup consolidado
             renderer.domElement.addEventListener('mouseup', (event) => {
-                console.log("Mouse up event fired."); // Log de depuração
                 if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) return;
 
                 stopDestruction(); // Para sempre a destruição em qualquer mouseup
@@ -2151,9 +2148,8 @@
                             } else {
                                 collectObject(); // Clique curto enquanto não segura -> recolher
                             }
-                        } else if (primaryActionType === 'dig_hole') {
-                            console.log("Mouse up, calling digHole()");
-                            digHole(); // Ação de escavação no clique curto
+                        } else if (primaryActionType === 'create_mound') {
+                            createMound(); // Ação de escavação no clique curto
                         }
                     }
                     // Se foi um clique longo, o temporizador é nulo e a função grabObject() já foi chamada.
@@ -2175,7 +2171,7 @@
             function getActionType(item) {
                 if (item === null) return 'grab';
                 if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName) return 'destroy';
-                if (item.name === shovelItemName) return 'dig_hole';
+                if (item.name === shovelItemName) return 'create_mound';
                 if (item.name === textureApplicatorItemName) return 'apply_texture';
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
                 return null;
@@ -3096,6 +3092,25 @@
                 });
             });
 
+            moundDomes.forEach((dome, index) => {
+                const mound = mounds[index];
+                if (!mound || mound.flattened) {
+                    dome.meshes.forEach(item => item.mesh.visible = false);
+                    return;
+                }
+
+                const distance = calculateWrappedDistance(playerBody.position, dome.position);
+                const isVisible = distance <= renderDistance;
+
+                dome.meshes.forEach(item => {
+                    item.mesh.visible = isVisible;
+                    if (isVisible) {
+                        item.mesh.position.copy(dome.position);
+                        item.mesh.position.x += item.offsetX - visualOffsetX;
+                        item.mesh.position.z += item.offsetZ - visualOffsetZ;
+                    }
+                });
+            });
 
             texturePatches.forEach(patch => {
                 const distance = calculateWrappedDistance(playerBody.position, patch.position);
@@ -3882,8 +3897,15 @@
 
         // Função para iniciar o jogo
         function startGame() {
+            console.log("startGame called");
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
+            window.dirtDeposits = dirtDeposits; // Expose for debug
+            window.beltItems = beltItems;
+            window.backpackItems = backpackItems; // Expor para teste
+            window.updateBeltDisplay = updateBeltDisplay;
+            window.updateBackpackDisplay = updateBackpackDisplay; // Expor para teste
+            window.selectedSlotIndex = selectedSlotIndex;
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
             if (menuIconButton) {
