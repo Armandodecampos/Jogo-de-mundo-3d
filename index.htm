@@ -627,6 +627,8 @@
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
         let mounds = [];
+        let visualMounds = []; // NOVO: Para os montes de terra visuais
+        let moundDomes = [];
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
         let splatMap; // NOVO: Máscara de textura para pintar os buracos
         let splatMapData; // NOVO: Dados brutos para a máscara de textura
@@ -1165,17 +1167,34 @@
                 const moundGridRadius = Math.round(moundRadius / (worldSize / hfGridSize));
 
                 if (gridX >= 0 && gridX < hfGridSize && gridZ >= 0 && gridZ < hfGridSize) {
-                    mounds.push({
-                        x: gridX,
-                        z: gridZ,
-                        radius: moundGridRadius,
-                        height: moundHeight,
-                        createdAt: world.time,
-                        flattened: false
+                    // NOVO: Cria a geometria do anel (vulcão)
+                    const volcanoRadius = cobSize * 1.5;
+                    const tubeRadius = cobSize / 4;
+                    const volcanoGeometry = new THREE.TorusGeometry(volcanoRadius, tubeRadius, 8, 24);
+                    // Rotaciona a geometria para ficar deitada no chão
+                    volcanoGeometry.rotateX(Math.PI / 2);
+
+                    const volcanoMesh = new THREE.Mesh(volcanoGeometry, dirtDepositMaterial);
+                    volcanoMesh.castShadow = true;
+                    volcanoMesh.receiveShadow = true;
+
+                    const visualMoundMeshes = [];
+                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                        for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
+                            const mesh = volcanoMesh.clone();
+                            scene.add(mesh);
+                            visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                        }
+                    }
+
+                    // Armazena a posição e as malhas para atualização no loop de animação
+                    visualMounds.push({
+                        position: hitPoint.clone().add(new THREE.Vector3(0, tubeRadius, 0)), // Eleva ligeiramente para evitar z-fighting
+                        meshes: visualMoundMeshes,
+                        createdAt: world.time
                     });
 
-                    const domeGeometry = new THREE.SphereGeometry(moundRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-                    updateIslandGeometry();
+                    // A chamada para updateIslandGeometry() foi removida, pois não deformamos mais o terreno.
 
                     addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
                     updateBackpackDisplay();
@@ -1392,11 +1411,7 @@
                         const radiusSq = mound.radius * mound.radius;
 
                         if (distSq < radiusSq) {
-                            // Transforma a distância em um valor normalizado (0 no centro, 1 na borda)
-                            const normalizedDist = Math.sqrt(distSq) / mound.radius;
-                            // Usa uma onda senoidal para criar a forma do anel do vulcão.
-                            // sin(0) = 0, sin(PI/2) = 1, sin(PI) = 0.
-                            const heightOffset = Math.sin(normalizedDist * Math.PI) * mound.height;
+                            const heightOffset = Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
                             hfMatrix[i][j] += heightOffset;
                         }
                     }
@@ -3073,6 +3088,40 @@
                 meshesArray.forEach(m => {
                     const distance = camera.position.distanceTo(m.mesh.position);
                     m.mesh.visible = distance <= renderDistance;
+                });
+            });
+
+            moundDomes.forEach((dome, index) => {
+                const mound = mounds[index];
+                if (!mound || mound.flattened) {
+                    dome.meshes.forEach(item => item.mesh.visible = false);
+                    return;
+                }
+
+                const distance = calculateWrappedDistance(playerBody.position, dome.position);
+                const isVisible = distance <= renderDistance;
+
+                dome.meshes.forEach(item => {
+                    item.mesh.visible = isVisible;
+                    if (isVisible) {
+                        item.mesh.position.copy(dome.position);
+                        item.mesh.position.x += item.offsetX - visualOffsetX;
+                        item.mesh.position.z += item.offsetZ - visualOffsetZ;
+                    }
+                });
+            });
+
+            visualMounds.forEach(mound => {
+                const distance = calculateWrappedDistance(playerBody.position, mound.position);
+                const isVisible = distance <= renderDistance;
+
+                mound.meshes.forEach(item => {
+                    item.mesh.visible = isVisible;
+                    if (isVisible) {
+                        item.mesh.position.copy(mound.position);
+                        item.mesh.position.x += item.offsetX - visualOffsetX;
+                        item.mesh.position.z += item.offsetZ - visualOffsetZ;
+                    }
                 });
             });
 
