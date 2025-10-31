@@ -505,7 +505,6 @@
         loadingManager.onLoad = () => {
             console.log("All resources loaded, world is ready.");
             isWorldReady = true;
-            window.isWorldReady = true; // Expose for verification
         };
 
         // Instância do carregador de textura, agora usando o gerenciador de carregamento
@@ -1445,16 +1444,12 @@
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function init() {
-            console.log("init called");
-            window.THREE = THREE;
-            window.CANNON = CANNON;
             // Define o offset inicial do nível dos olhos da câmera como o raio da esfera
             cameraEyeLevelOffset = playerRadius;
             originalCameraEyeLevelOffset = cameraEyeLevelOffset; // Para armazenar o valor inicial
 
             // Configuração da Cena Three.js
             scene = new THREE.Scene();
-            window.scene = scene;
             skyColor = new THREE.Color(0x87CEEB);
             underwaterColor = new THREE.Color(0x001e3d);
             scene.background = skyColor; // Começa com a cor do céu
@@ -1467,7 +1462,6 @@
 
             // Configuração da Câmera Three.js
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
-            window.camera = camera; // Expose for debug
             camera.rotation.order = 'YXZ'; // Define a ordem de rotação para guinada (Y), inclinação (X), rolagem (Z)
 
             // Configuração do Renderizador Three.js
@@ -2109,7 +2103,10 @@
 
             // NOVO: Listener de mousedown consolidado
             renderer.domElement.addEventListener('mousedown', (event) => {
-                if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) return;
+                if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) {
+                    console.log(`Mousedown guard failed: isWorldReady=${isWorldReady}, pointerLock=${document.pointerLockElement === renderer.domElement}, gamePaused=${gamePaused}`);
+                    return;
+                }
 
                 mouseDownTime = performance.now();
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
@@ -2117,7 +2114,7 @@
                 if (event.button === 0) { // Clique esquerdo
                     if (primaryActionType === 'destroy') {
                         startDestruction();
-                    } else if (primaryActionType === 'grab' || primaryActionType === 'create_mound') {
+                } else if (primaryActionType === 'grab' || primaryActionType === 'dig_hole') {
                         // Inicia o temporizador. Se for mantido, irá AGARRAR o objeto.
                         clickHoldTimer = setTimeout(() => {
                             if (primaryActionType === 'grab' && !pickedObjectBody) { // O clique longo só funciona para AGARRAR
@@ -2136,6 +2133,7 @@
 
             // NOVO: Listener de mouseup consolidado
             renderer.domElement.addEventListener('mouseup', (event) => {
+                console.log("Mouse up event fired."); // Log de depuração
                 if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) return;
 
                 stopDestruction(); // Para sempre a destruição em qualquer mouseup
@@ -2154,6 +2152,7 @@
                                 collectObject(); // Clique curto enquanto não segura -> recolher
                             }
                         } else if (primaryActionType === 'dig_hole') {
+                            console.log("Mouse up, calling digHole()");
                             digHole(); // Ação de escavação no clique curto
                         }
                     }
@@ -3883,15 +3882,8 @@
 
         // Função para iniciar o jogo
         function startGame() {
-            console.log("startGame called");
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
-            window.dirtDeposits = dirtDeposits; // Expose for debug
-            window.beltItems = beltItems;
-            window.backpackItems = backpackItems; // Expor para teste
-            window.updateBeltDisplay = updateBeltDisplay;
-            window.updateBackpackDisplay = updateBackpackDisplay; // Expor para teste
-            window.selectedSlotIndex = selectedSlotIndex;
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
             if (menuIconButton) {
