@@ -627,7 +627,6 @@
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
         let mounds = [];
-        let moundDomes = [];
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
         let splatMap; // NOVO: Máscara de textura para pintar os buracos
         let splatMapData; // NOVO: Dados brutos para a máscara de textura
@@ -1176,25 +1175,6 @@
                     });
 
                     const domeGeometry = new THREE.SphereGeometry(moundRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-                    const domeMesh = new THREE.Mesh(domeGeometry, dirtDepositMaterial);
-                    domeMesh.castShadow = true;
-                    domeMesh.receiveShadow = true;
-
-                    const domeMeshes = [];
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                            const mesh = domeMesh.clone();
-                            scene.add(mesh);
-                            domeMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
-                        }
-                    }
-
-                    moundDomes.push({
-                        position: hitPoint.clone(),
-                        meshes: domeMeshes,
-                        createdAt: world.time
-                    });
-
                     updateIslandGeometry();
 
                     addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
@@ -1412,7 +1392,11 @@
                         const radiusSq = mound.radius * mound.radius;
 
                         if (distSq < radiusSq) {
-                            const heightOffset = Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
+                            // Transforma a distância em um valor normalizado (0 no centro, 1 na borda)
+                            const normalizedDist = Math.sqrt(distSq) / mound.radius;
+                            // Usa uma onda senoidal para criar a forma do anel do vulcão.
+                            // sin(0) = 0, sin(PI/2) = 1, sin(PI) = 0.
+                            const heightOffset = Math.sin(normalizedDist * Math.PI) * mound.height;
                             hfMatrix[i][j] += heightOffset;
                         }
                     }
@@ -3089,26 +3073,6 @@
                 meshesArray.forEach(m => {
                     const distance = camera.position.distanceTo(m.mesh.position);
                     m.mesh.visible = distance <= renderDistance;
-                });
-            });
-
-            moundDomes.forEach((dome, index) => {
-                const mound = mounds[index];
-                if (!mound || mound.flattened) {
-                    dome.meshes.forEach(item => item.mesh.visible = false);
-                    return;
-                }
-
-                const distance = calculateWrappedDistance(playerBody.position, dome.position);
-                const isVisible = distance <= renderDistance;
-
-                dome.meshes.forEach(item => {
-                    item.mesh.visible = isVisible;
-                    if (isVisible) {
-                        item.mesh.position.copy(dome.position);
-                        item.mesh.position.x += item.offsetX - visualOffsetX;
-                        item.mesh.position.z += item.offsetZ - visualOffsetZ;
-                    }
                 });
             });
 
