@@ -1167,13 +1167,20 @@
                 const moundGridRadius = Math.round(moundRadius / (worldSize / hfGridSize));
 
                 if (gridX >= 0 && gridX < hfGridSize && gridZ >= 0 && gridZ < hfGridSize) {
-                    // NOVO: Cria a geometria do anel (vulcão)
-                    const volcanoRadius = cobSize * 1.5;
-                    const tubeRadius = cobSize / 4;
-                    const volcanoGeometry = new THREE.TorusGeometry(volcanoRadius, tubeRadius, 8, 24);
-                    // Rotaciona a geometria para ficar deitada no chão
-                    volcanoGeometry.rotateX(Math.PI / 2);
+                    const points = [];
+                    points.push(new THREE.Vector2(0, 0));
+                    points.push(new THREE.Vector2(0.5, 0));
+                    points.push(new THREE.Vector2(1, 0.4));
+                    points.push(new THREE.Vector2(0.7, 0.2));
+                    points.push(new THREE.Vector2(0.5, 0.3));
+                    points.push(new THREE.Vector2(0, 0.1));
+                    points.push(new THREE.Vector2(-0.5, 0.3));
+                    points.push(new THREE.Vector2(-0.7, 0.2));
+                    points.push(new THREE.Vector2(-1, 0.4));
+                    points.push(new THREE.Vector2(-0.5, 0));
+                    points.push(new THREE.Vector2(0, 0));
 
+                    const volcanoGeometry = new THREE.LatheGeometry(points, 24);
                     const volcanoMesh = new THREE.Mesh(volcanoGeometry, dirtDepositMaterial);
                     volcanoMesh.castShadow = true;
                     volcanoMesh.receiveShadow = true;
@@ -1187,9 +1194,8 @@
                         }
                     }
 
-                    // Armazena a posição e as malhas para atualização no loop de animação
                     visualMounds.push({
-                        position: hitPoint.clone().add(new THREE.Vector3(0, tubeRadius, 0)), // Eleva ligeiramente para evitar z-fighting
+                        position: hitPoint.clone(),
                         meshes: visualMoundMeshes,
                         createdAt: world.time
                     });
