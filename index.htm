@@ -626,8 +626,8 @@
         let holeMaterial; // NOVO: Material para o buraco cavado
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
-        let mounds = [];
-        let moundDomes = [];
+        let holes = [];
+        let holeDomes = [];
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
         let splatMap; // NOVO: Máscara de textura para pintar os buracos
         let splatMapData; // NOVO: Dados brutos para a máscara de textura
@@ -1145,7 +1145,7 @@
             updateBackpackDisplay();
         }
 
-        function createMound() {
+        function digHole() {
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const groundMeshes = islandMeshes.map(item => item.mesh);
             const intersects = raycaster.intersectObjects(groundMeshes);
@@ -1166,32 +1166,36 @@
                 const moundGridRadius = Math.round(moundRadius / (worldSize / hfGridSize));
 
                 if (gridX >= 0 && gridX < hfGridSize && gridZ >= 0 && gridZ < hfGridSize) {
-                    mounds.push({
+                    holes.push({
                         x: gridX,
                         z: gridZ,
                         radius: moundGridRadius,
                         height: moundHeight,
-                        createdAt: world.time,
-                        flattened: false
+                        createdAt: world.time
                     });
 
-                    const domeGeometry = new THREE.SphereGeometry(moundRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-                    const domeMesh = new THREE.Mesh(domeGeometry, dirtDepositMaterial);
-                    domeMesh.castShadow = true;
-                    domeMesh.receiveShadow = true;
+                    const holeRadius = moundRadius * 0.8; // Make the visual hole slightly smaller than the physical one
+                    const holeDepth = moundHeight;
+                    const holeGeometry = new THREE.SphereGeometry(holeRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+                    const holeMesh = new THREE.Mesh(holeGeometry, holeMaterial); // Use the new hole material
+                    holeMesh.castShadow = false; // The inside of the hole shouldn't cast a shadow
+                    holeMesh.receiveShadow = true;
 
-                    const domeMeshes = [];
+                    const holeMeshes = [];
                     for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                         for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                            const mesh = domeMesh.clone();
+                            const mesh = holeMesh.clone();
                             scene.add(mesh);
-                            domeMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                            holeMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
                         }
                     }
 
-                    moundDomes.push({
-                        position: hitPoint.clone(),
-                        meshes: domeMeshes,
+                    const holePosition = hitPoint.clone();
+                    holePosition.y -= holeDepth * 0.25; // Lower the visual mesh into the hole
+
+                    holeDomes.push({
+                        position: holePosition,
+                        meshes: holeMeshes,
                         createdAt: world.time
                     });
 
@@ -1402,17 +1406,34 @@
             const hfGridSize = 128;
             const hfMatrix = JSON.parse(JSON.stringify(baseMatrix));
 
-            for (const mound of mounds) {
-                if (mound.flattened) continue;
+            for (const hole of holes) {
                 for (let i = 0; i < hfGridSize; i++) {
                     for (let j = 0; j < hfGridSize; j++) {
-                        const dx = j - mound.x;
-                        const dz = i - mound.z;
+                        const dx = j - hole.x;
+                        const dz = i - hole.z;
                         const distSq = dx * dx + dz * dz;
-                        const radiusSq = mound.radius * mound.radius;
+                        const radiusSq = hole.radius * hole.radius;
 
                         if (distSq < radiusSq) {
-                            const heightOffset = Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
+                            const dist = Math.sqrt(distSq);
+                            const radius = hole.radius;
+                            const depth = hole.height; // Using 'height' as depth
+
+                            // Volcano shape logic
+                            const rimWidth = radius * 0.8; // The width of the raised part
+                            const pitRadius = radius - rimWidth;
+                            const rimHeight = depth * 0.5; // Rim is half as high as the pit is deep
+
+                            let heightOffset = 0;
+                            if (dist < pitRadius) {
+                                // Pit area: smooth depression using a cosine curve
+                                const t = dist / pitRadius; // 0 at center, 1 at pit edge
+                                heightOffset = -depth * (Math.cos(t * Math.PI) + 1) / 2; // Goes from -depth to 0
+                            } else {
+                                // Rim area: raised part using a sine curve
+                                const t = (dist - pitRadius) / rimWidth; // 0 at pit edge, 1 at outer edge
+                                heightOffset = rimHeight * Math.sin(t * Math.PI);
+                            }
                             hfMatrix[i][j] += heightOffset;
                         }
                     }
@@ -2148,8 +2169,8 @@
                             } else {
                                 collectObject(); // Clique curto enquanto não segura -> recolher
                             }
-                        } else if (primaryActionType === 'create_mound') {
-                            createMound(); // Ação de escavação no clique curto
+                        } else if (primaryActionType === 'dig_hole') {
+                            digHole(); // Ação de escavação no clique curto
                         }
                     }
                     // Se foi um clique longo, o temporizador é nulo e a função grabObject() já foi chamada.
@@ -2171,7 +2192,7 @@
             function getActionType(item) {
                 if (item === null) return 'grab';
                 if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName) return 'destroy';
-                if (item.name === shovelItemName) return 'create_mound';
+                if (item.name === shovelItemName) return 'dig_hole';
                 if (item.name === textureApplicatorItemName) return 'apply_texture';
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
                 return null;
@@ -3092,9 +3113,9 @@
                 });
             });
 
-            moundDomes.forEach((dome, index) => {
-                const mound = mounds[index];
-                if (!mound || mound.flattened) {
+            holeDomes.forEach((dome, index) => {
+                const hole = holes[index];
+                if (!hole) {
                     dome.meshes.forEach(item => item.mesh.visible = false);
                     return;
                 }
