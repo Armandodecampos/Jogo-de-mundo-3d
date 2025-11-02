@@ -650,6 +650,8 @@
         let mounds = [];
         let hfMatrix = []; // NOVO: Matriz de dados do Heightfield, agora em escopo mais amplo
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
+        let splatMap; // NOVO: DataTexture para misturar texturas do terreno
+        let splatMapData; // NOVO: Dados brutos para o splatMap
 
         // Declare physics materials globally
         let playerMaterial;
@@ -1427,6 +1429,7 @@
 
                 const radius = 1; // Raio do buraco em unidades da grade
                 const depth = 0.5; // Profundidade do buraco
+                const textureRadius = 3; // Raio para pintar a textura
 
                 for (let row = -radius; row <= radius; row++) {
                     for (let col = -radius; col <= radius; col++) {
@@ -1442,6 +1445,25 @@
                         }
                     }
                 }
+
+                // Pinta a textura de terra no splat map
+                for (let row = -textureRadius; row <= textureRadius; row++) {
+                    for (let col = -textureRadius; col <= textureRadius; col++) {
+                        const currentI = i + row;
+                        const currentJ = j + col;
+
+                        if (currentI >= 0 && currentI < hfGridSize && currentJ >= 0 && currentJ < hfGridSize) {
+                            const distance = Math.sqrt(row * row + col * col);
+                            if (distance < textureRadius) {
+                                const splatValue = Math.max(0, 1.0 - (distance / textureRadius));
+                                const index = (currentI * hfGridSize + currentJ) * 4;
+                                // Pinta no canal vermelho
+                                splatMapData[index] = Math.max(splatMapData[index], splatValue * 255);
+                            }
+                        }
+                    }
+                }
+                splatMap.needsUpdate = true;
 
                 updateTerrain();
 
@@ -1669,74 +1691,93 @@
             const groundTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=0";
             const sandTextureURL = "https://dl.dropbox.com/scl/fi/2ediqx91o54kqrua9l4jk/Textura-de-areia.png?rlkey=pale1g1zkjqlrkjhpz4kr3ypw&st=fbuzn6iu&dl=0";
             const seabedTextureURL = sandTextureURL;
+            const dirtTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=tz27qsg6&dl=0"; // URL CORRIGIDA
+
+            // Inicializa o splatMap
+            const splatMapWidth = hfGridSize;
+            const splatMapHeight = hfGridSize;
+            splatMapData = new Uint8Array(splatMapWidth * splatMapHeight * 4);
+            splatMap = new THREE.DataTexture(splatMapData, splatMapWidth, splatMapHeight, THREE.RGBAFormat);
+            splatMap.needsUpdate = true;
 
             textureLoader.load(groundTextureURL, (groundTexture) => {
                 textureLoader.load(seabedTextureURL, (seabedTexture) => {
                     textureLoader.load(sandTextureURL, (sandTexture) => {
-                        // A textura do buraco não é mais necessária
-                        [groundTexture, seabedTexture, sandTexture].forEach(texture => {
-                            texture.wrapS = THREE.RepeatWrapping;
-                            texture.wrapT = THREE.RepeatWrapping;
-                        });
-                        groundTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                        seabedTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                        sandTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                        textureLoader.load(dirtTextureURL, (dirtTexture) => {
+                            [groundTexture, seabedTexture, sandTexture, dirtTexture].forEach(texture => {
+                                texture.wrapS = THREE.RepeatWrapping;
+                                texture.wrapT = THREE.RepeatWrapping;
+                            });
+                            groundTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                            seabedTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                            sandTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                            dirtTexture.repeat.set(2, 2); // Repete a textura de terra
 
-                        const islandMeshMaterial = new THREE.MeshStandardMaterial({
-                            map: groundTexture
-                        });
+                            const islandMeshMaterial = new THREE.MeshStandardMaterial({
+                                map: groundTexture
+                            });
 
-                        islandMeshMaterial.onBeforeCompile = (shader) => {
-                            shader.uniforms.uSeabedTexture = { value: seabedTexture };
-                            shader.uniforms.uSandTexture = { value: sandTexture };
-                            shader.uniforms.uWaterLevel = { value: waterLevel };
+                            islandMeshMaterial.onBeforeCompile = (shader) => {
+                                shader.uniforms.uSeabedTexture = { value: seabedTexture };
+                                shader.uniforms.uSandTexture = { value: sandTexture };
+                                shader.uniforms.uDirtTexture = { value: dirtTexture }; // NOVO
+                                shader.uniforms.uSplatMap = { value: splatMap }; // NOVO
+                                shader.uniforms.uWaterLevel = { value: waterLevel };
 
-                            shader.vertexShader = `
+                                shader.vertexShader = `
                                 varying vec3 vWorldPosition;
                                 ${shader.vertexShader}
                             `.replace(
-                                `#include <worldpos_vertex>`,
-                                `
+                                    `#include <worldpos_vertex>`,
+                                    `
                                 #include <worldpos_vertex>
                                 vWorldPosition = worldPosition.xyz;
                                 `
-                            );
+                                );
 
-                            shader.fragmentShader = `
+                                shader.fragmentShader = `
                                 uniform sampler2D uSeabedTexture;
                                 uniform sampler2D uSandTexture;
+                                uniform sampler2D uDirtTexture; // NOVO
+                                uniform sampler2D uSplatMap; // NOVO
                                 uniform float uWaterLevel;
                                 varying vec3 vWorldPosition;
                                 ${shader.fragmentShader}
                             `.replace(
-                                `#include <map_fragment>`,
-                                `
+                                    `#include <map_fragment>`,
+                                    `
                                 #ifdef USE_MAP
                                     vec4 groundColor = texture2D(map, vUv);
                                     vec4 seabedColor = texture2D(uSeabedTexture, vUv);
                                     vec4 sandColor = texture2D(uSandTexture, vUv);
+                                    vec4 dirtColor = texture2D(uDirtTexture, vUv * 8.0); // NOVO
+                                    float splatValue = texture2D(uSplatMap, vUv).r; // NOVO
 
                                     float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
                                     vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
                                     float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
                                     vec3 terrainMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
 
+                                    // Mistura a textura de terra com base no splat map
+                                    terrainMix = mix(terrainMix, dirtColor.rgb, splatValue);
+
                                     diffuseColor *= vec4(terrainMix, 1.0);
                                 #endif
                                 `
-                            );
-                        };
+                                );
+                            };
 
-                        for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                                const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
-                                islandMesh.receiveShadow = true;
-                                islandMesh.userData.physicsBody = islandBody;
-                                scene.add(islandMesh);
-                                islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                                    const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
+                                    islandMesh.receiveShadow = true;
+                                    islandMesh.userData.physicsBody = islandBody;
+                                    scene.add(islandMesh);
+                                    islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                                }
                             }
-                        }
-                        islandMeshMaterial.needsUpdate = true;
+                            islandMeshMaterial.needsUpdate = true;
+                        }, undefined, (error) => console.error('Falha ao carregar a textura de terra:', error)); // MENSAGEM DE ERRO CORRIGIDA
                     }, undefined, (error) => console.error('Falha ao carregar a textura de areia:', error));
                 }, undefined, (error) => console.error('Falha ao carregar a textura do fundo do mar:', error));
             }, undefined, (error) => console.error('Falha ao carregar a textura do solo:', error));
