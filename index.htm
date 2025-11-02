@@ -396,6 +396,8 @@
         let keysPressed = {};
         // Variáveis para controle do mouse (rotação da câmera)
         let isDragging = false;
+        let lastTouchX = null;
+        let lastTouchY = null;
 
         // Variáveis para funcionalidade de seleção e movimentação de objetos
         let raycaster;
@@ -505,7 +507,26 @@
         loadingManager.onLoad = () => {
             console.log("All resources loaded, world is ready.");
             isWorldReady = true;
-            window.isWorldReady = true; // Expose for verification
+            window.isWorldReady = true; // Expor para verificação
+
+            // Agora que tudo está carregado, inicia o loop de animação e mostra a UI
+            animate();
+
+            if (menuIconButton) {
+                menuIconButton.style.display = 'flex';
+            }
+            if (inventoryBeltElement) {
+                inventoryBeltElement.style.visibility = 'visible';
+                inventoryBeltElement.style.opacity = '1';
+            }
+
+            // Expõe variáveis para depuração após a inicialização
+            window.dirtDeposits = dirtDeposits;
+            window.beltItems = beltItems;
+            window.backpackItems = backpackItems;
+            window.updateBeltDisplay = updateBeltDisplay;
+            window.updateBackpackDisplay = updateBackpackDisplay;
+            window.selectedSlotIndex = selectedSlotIndex;
         };
 
         // Instância do carregador de textura, agora usando o gerenciador de carregamento
@@ -627,9 +648,8 @@
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
         let mounds = [];
+        let hfMatrix = []; // NOVO: Matriz de dados do Heightfield, agora em escopo mais amplo
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
-        let splatMap; // NOVO: Máscara de textura para pintar os buracos
-        let splatMapData; // NOVO: Dados brutos para a máscara de textura
 
         // Declare physics materials globally
         let playerMaterial;
@@ -1145,45 +1165,6 @@
         }
 
 
-        // NOVO: Função para cavar um buraco
-        function digHole() {
-            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-            const groundMeshes = islandMeshes.map(item => item.mesh);
-            const intersects = raycaster.intersectObjects(groundMeshes);
-
-            if (intersects.length > 0) {
-                const intersect = intersects[0];
-                if (intersect.distance > destroyDistance) return;
-
-                const hitPoint = intersect.point;
-                if (hitPoint.y < waterLevel) return;
-
-                // Converte o ponto de impacto nas coordenadas UV do terreno
-                const uv = intersect.uv;
-                const splatX = Math.floor(uv.x * splatMap.image.width);
-                const splatY = Math.floor((1 - uv.y) * splatMap.image.height); // UV.y é invertido
-
-                const radius = 8; // Raio do buraco no splatMap
-                for (let i = -radius; i <= radius; i++) {
-                    for (let j = -radius; j <= radius; j++) {
-                        if (i * i + j * j < radius * radius) {
-                            const x = splatX + j;
-                            const y = splatY + i;
-                            if (x >= 0 && x < splatMap.image.width && y >= 0 && y < splatMap.image.height) {
-                                const index = (y * splatMap.image.width + x) * 4;
-                                splatMapData[index + 3] = 0; // Define o alfa como 0 (transparente)
-                            }
-                        }
-                    }
-                }
-                splatMap.needsUpdate = true; // Mark the splatMap for update
-
-                addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
-                updateBackpackDisplay();
-            }
-        }
-
-
         // NOVO: Função para criar uma nova caixa dinâmica
         function createBox(position, quaternion) {
             const cubeSize = 1;
@@ -1378,43 +1359,88 @@
         }
 
 
-        function updateIslandGeometry() {
-            const hfGridSize = 128;
-            const hfMatrix = JSON.parse(JSON.stringify(baseMatrix));
+        // NOVO: Função para atualizar a física E a geometria visual do terreno
+        function updateTerrain() {
+            const hfGridSize = 128; // Garante que este valor seja consistente
 
-            for (const mound of mounds) {
-                if (mound.flattened) continue;
-                for (let i = 0; i < hfGridSize; i++) {
-                    for (let j = 0; j < hfGridSize; j++) {
-                        const dx = j - mound.x;
-                        const dz = i - mound.z;
-                        const distSq = dx * dx + dz * dz;
-                        const radiusSq = mound.radius * mound.radius;
-
-                        if (distSq < radiusSq) {
-                            const heightOffset = Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
-                            hfMatrix[i][j] += heightOffset;
-                        }
-                    }
-                }
-            }
-
+            // Atualiza o corpo de física (CANNON.Heightfield)
             if (islandBody && islandBody.shapes.length > 0) {
+                // Cria uma nova forma de Heightfield com a matriz de dados atualizada
                 const newHfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
+                // Remove a forma antiga do corpo da ilha
                 islandBody.removeShape(islandBody.shapes[0]);
+                // Adiciona a nova forma atualizada
                 islandBody.addShape(newHfShape);
             }
 
+            // Atualiza a geometria visual (THREE.PlaneGeometry)
             if (islandMeshes.length > 0) {
-                const mainIslandMesh = islandMeshes[0].mesh;
-                const vertices = mainIslandMesh.geometry.attributes.position.array;
+                // Pega a geometria da primeira malha da ilha (todas compartilham a mesma geometria)
+                const islandGeometry = islandMeshes[0].mesh.geometry;
+                const vertices = islandGeometry.attributes.position.array;
+
+                // Itera sobre a matriz de altura e atualiza a coordenada Y de cada vértice
                 for (let i = 0; i < hfGridSize; i++) {
                     for (let j = 0; j < hfGridSize; j++) {
+                        // O índice no array de vértices é calculado com base na linha e coluna
                         vertices[(i * hfGridSize + j) * 3 + 1] = hfMatrix[i][j];
                     }
                 }
-                mainIslandMesh.geometry.attributes.position.needsUpdate = true;
-                mainIslandMesh.geometry.computeVertexNormals();
+                // Informa ao Three.js que os vértices foram atualizados
+                islandGeometry.attributes.position.needsUpdate = true;
+                // Recalcula as normais dos vértices para garantir que a iluminação seja correta
+                islandGeometry.computeVertexNormals();
+            }
+        }
+
+        // NOVO: Função para cavar um buraco modificando a geometria
+        function digHole() {
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const groundMeshes = islandMeshes.map(item => item.mesh);
+            const intersects = raycaster.intersectObjects(groundMeshes);
+
+            if (intersects.length > 0) {
+                const intersect = intersects[0];
+                if (intersect.distance > destroyDistance) return;
+
+                const hitPoint = intersect.point;
+                if (hitPoint.y < waterLevel) return;
+
+                const hfGridSize = 128;
+                // CORREÇÃO: "Desenrola" as coordenadas do ponto de impacto para o espaço do mundo absoluto
+                // antes de aplicar o módulo, para encontrar a posição correta no terreno estático.
+                const unwrappedX = (hitPoint.x + visualOffsetX) % worldSize;
+                const unwrappedZ = (hitPoint.z + visualOffsetZ) % worldSize;
+
+                // Converte as coordenadas do mundo para as coordenadas da matriz do Heightfield
+                const localX = (unwrappedX + worldSize / 2) % worldSize;
+                const localZ = (worldSize / 2 - unwrappedZ + worldSize) % worldSize;
+
+                const j = Math.floor(localX / (worldSize / (hfGridSize - 1)));
+                const i = Math.floor(localZ / (worldSize / (hfGridSize - 1)));
+
+                const radius = 5; // Raio do buraco em unidades da grade
+                const depth = 2.0; // Profundidade do buraco
+
+                for (let row = -radius; row <= radius; row++) {
+                    for (let col = -radius; col <= radius; col++) {
+                        const currentI = i + row;
+                        const currentJ = j + col;
+
+                        if (currentI >= 0 && currentI < hfGridSize && currentJ >= 0 && currentJ < hfGridSize) {
+                            const distance = Math.sqrt(row * row + col * col);
+                            if (distance < radius) {
+                                const digAmount = depth * (Math.cos(distance / radius * Math.PI / 2));
+                                hfMatrix[currentI][currentJ] -= digAmount;
+                            }
+                        }
+                    }
+                }
+
+                updateTerrain();
+
+                addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
+                updateBackpackDisplay();
             }
         }
 
@@ -1585,7 +1611,6 @@
             const islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
 
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
-            const hfMatrix = [];
             for (let i = 0; i < hfGridSize; i++) {
                 hfMatrix.push([]);
                 for (let j = 0; j < hfGridSize; j++) {
@@ -1642,92 +1667,70 @@
             textureLoader.load(groundTextureURL, (groundTexture) => {
                 textureLoader.load(seabedTextureURL, (seabedTexture) => {
                     textureLoader.load(sandTextureURL, (sandTexture) => {
-                        textureLoader.load(holeTextureURL, (holeTexture) => { // NOVO: Carrega a textura do buraco
-                            // Todas as quatro texturas estão carregadas
-                            [groundTexture, seabedTexture, sandTexture, holeTexture].forEach(texture => {
-                                texture.wrapS = THREE.RepeatWrapping;
-                                texture.wrapT = THREE.RepeatWrapping;
-                            });
-                            groundTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                            seabedTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                            sandTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                            holeTexture.repeat.set(islandRadiusTop / 16, islandRadiusTop / 16); // Repetição diferente para a textura do buraco
+                        // A textura do buraco não é mais necessária
+                        [groundTexture, seabedTexture, sandTexture].forEach(texture => {
+                            texture.wrapS = THREE.RepeatWrapping;
+                            texture.wrapT = THREE.RepeatWrapping;
+                        });
+                        groundTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                        seabedTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                        sandTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
 
-                            // NOVO: Inicializa o splatMap
-                            const splatMapSize = hfGridSize;
-                            splatMapData = new Uint8Array(splatMapSize * splatMapSize * 4);
-                            splatMap = new THREE.DataTexture(splatMapData, splatMapSize, splatMapSize, THREE.RGBAFormat);
-                            splatMap.needsUpdate = true;
+                        const islandMeshMaterial = new THREE.MeshStandardMaterial({
+                            map: groundTexture
+                        });
 
-                            // Inicializa todos os pixels como opacos
-                            for (let i = 0; i < splatMapData.length; i += 4) {
-                                splatMapData[i + 3] = 255; // Alpha
+                        islandMeshMaterial.onBeforeCompile = (shader) => {
+                            shader.uniforms.uSeabedTexture = { value: seabedTexture };
+                            shader.uniforms.uSandTexture = { value: sandTexture };
+                            shader.uniforms.uWaterLevel = { value: waterLevel };
+
+                            shader.vertexShader = `
+                                varying vec3 vWorldPosition;
+                                ${shader.vertexShader}
+                            `.replace(
+                                `#include <worldpos_vertex>`,
+                                `
+                                #include <worldpos_vertex>
+                                vWorldPosition = worldPosition.xyz;
+                                `
+                            );
+
+                            shader.fragmentShader = `
+                                uniform sampler2D uSeabedTexture;
+                                uniform sampler2D uSandTexture;
+                                uniform float uWaterLevel;
+                                varying vec3 vWorldPosition;
+                                ${shader.fragmentShader}
+                            `.replace(
+                                `#include <map_fragment>`,
+                                `
+                                #ifdef USE_MAP
+                                    vec4 groundColor = texture2D(map, vUv);
+                                    vec4 seabedColor = texture2D(uSeabedTexture, vUv);
+                                    vec4 sandColor = texture2D(uSandTexture, vUv);
+
+                                    float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
+                                    vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
+                                    float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
+                                    vec3 terrainMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
+
+                                    diffuseColor *= vec4(terrainMix, 1.0);
+                                #endif
+                                `
+                            );
+                        };
+
+                        for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                                const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
+                                islandMesh.receiveShadow = true;
+                                islandMesh.userData.physicsBody = islandBody;
+                                scene.add(islandMesh);
+                                islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                             }
-
-                            const islandMeshMaterial = new THREE.MeshStandardMaterial({
-                                map: groundTexture,
-                                transparent: true // Habilita a transparência
-                            });
-
-                            islandMeshMaterial.onBeforeCompile = (shader) => {
-                                shader.uniforms.uSeabedTexture = { value: seabedTexture };
-                                shader.uniforms.uSandTexture = { value: sandTexture };
-                                shader.uniforms.uWaterLevel = { value: waterLevel };
-                                shader.uniforms.uSplatMap = { value: splatMap }; // Passa o splatMap para o shader
-
-                                shader.vertexShader = `
-                                    varying vec3 vWorldPosition;
-                                    ${shader.vertexShader}
-                                `.replace(
-                                    `#include <worldpos_vertex>`,
-                                    `
-                                    #include <worldpos_vertex>
-                                    vWorldPosition = worldPosition.xyz;
-                                    `
-                                );
-
-                                shader.fragmentShader = `
-                                    uniform sampler2D uSeabedTexture;
-                                    uniform sampler2D uSandTexture;
-                                    uniform float uWaterLevel;
-                                    uniform sampler2D uSplatMap; // NOVO: Uniforme para o splatMap
-                                    varying vec3 vWorldPosition;
-                                    ${shader.fragmentShader}
-                                `.replace(
-                                    `#include <map_fragment>`,
-                                    `
-                                    #ifdef USE_MAP
-                                        vec4 splatColor = texture2D(uSplatMap, vUv);
-                                        if (splatColor.a < 0.5) {
-                                            discard; // Cria o buraco
-                                        }
-
-                                        vec4 groundColor = texture2D(map, vUv);
-                                        vec4 seabedColor = texture2D(uSeabedTexture, vUv);
-                                        vec4 sandColor = texture2D(uSandTexture, vUv);
-
-                                        float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
-                                        vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
-                                        float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
-                                        vec3 terrainMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
-
-                                        diffuseColor *= vec4(terrainMix, 1.0);
-                                    #endif
-                                    `
-                                );
-                            };
-
-                            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                                    const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
-                                    islandMesh.receiveShadow = true;
-                                    islandMesh.userData.physicsBody = islandBody;
-                                    scene.add(islandMesh);
-                                    islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                                }
-                            }
-                            islandMeshMaterial.needsUpdate = true;
-                        }, undefined, (error) => console.error('Falha ao carregar a textura do buraco:', error));
+                        }
+                        islandMeshMaterial.needsUpdate = true;
                     }, undefined, (error) => console.error('Falha ao carregar a textura de areia:', error));
                 }, undefined, (error) => console.error('Falha ao carregar a textura do fundo do mar:', error));
             }, undefined, (error) => console.error('Falha ao carregar a textura do solo:', error));
@@ -2435,6 +2438,31 @@
             }
 
             // Evento mousemove para rotação da câmera e rotação de objetos
+            renderer.domElement.addEventListener('touchstart', (event) => {
+                isDragging = true;
+                const touch = event.touches[0];
+                lastTouchX = touch.clientX;
+                lastTouchY = touch.clientY;
+            });
+
+            renderer.domElement.addEventListener('touchmove', (event) => {
+                if (!isDragging || gamePaused) return;
+
+                const touch = event.touches[0];
+                const deltaX = touch.clientX - lastTouchX;
+                const deltaY = touch.clientY - lastTouchY;
+                lastTouchX = touch.clientX;
+                lastTouchY = touch.clientY;
+
+                camera.rotation.y -= deltaX * 0.005;
+                camera.rotation.x -= deltaY * 0.005;
+                camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+            });
+
+            renderer.domElement.addEventListener('touchend', () => {
+                isDragging = false;
+            });
+
             document.addEventListener('mousemove', (event) => {
                 // Determine the primary tool for visual feedback
                 const primaryToolForVisuals = beltItems[selectedSlotIndex]; // Usa o slot selecionado
@@ -3878,22 +3906,7 @@
         function startGame() {
             console.log("startGame called");
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
-            init(); // Inicializa os componentes do jogo
-            window.dirtDeposits = dirtDeposits; // Expose for debug
-            window.beltItems = beltItems;
-            window.backpackItems = backpackItems; // Expor para teste
-            window.updateBeltDisplay = updateBeltDisplay;
-            window.updateBackpackDisplay = updateBackpackDisplay; // Expor para teste
-            window.selectedSlotIndex = selectedSlotIndex;
-            animate(); // Inicia o loop de animação
-            // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
-            if (menuIconButton) {
-                menuIconButton.style.display = 'flex'; // Mostra o botão do menu ao iniciar o jogo
-            }
-            if (inventoryBeltElement) {
-                inventoryBeltElement.style.visibility = 'visible'; // Mostra o cinto de inventário ao iniciar o jogo
-                inventoryBeltElement.style.opacity = '1';
-            }
+            init(); // Inicializa os componentes do jogo, que agora chamarão animate() quando estiverem prontos
         }
 
         // Listener de evento para o botão "Jogar"
