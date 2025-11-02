@@ -396,6 +396,8 @@
         let keysPressed = {};
         // Variáveis para controle do mouse (rotação da câmera)
         let isDragging = false;
+        let lastTouchX = null;
+        let lastTouchY = null;
 
         // Variáveis para funcionalidade de seleção e movimentação de objetos
         let raycaster;
@@ -2498,6 +2500,43 @@
                         }
                     }
                 }
+            });
+
+            // NOVO: Listeners de eventos de toque para rotação da câmera em dispositivos móveis
+            renderer.domElement.addEventListener('touchstart', (event) => {
+                if (event.touches.length === 1) {
+                    // Impede o comportamento padrão do navegador (como zoom ou rolagem)
+                    event.preventDefault();
+                    isDragging = true;
+                    lastTouchX = event.touches[0].clientX;
+                    lastTouchY = event.touches[0].clientY;
+                }
+            }, { passive: false }); // { passive: false } é necessário para preventDefault
+
+            renderer.domElement.addEventListener('touchmove', (event) => {
+                if (isDragging && event.touches.length === 1) {
+                    // Impede o comportamento padrão do navegador
+                    event.preventDefault();
+                    const touchX = event.touches[0].clientX;
+                    const touchY = event.touches[0].clientY;
+
+                    const deltaX = touchX - lastTouchX;
+                    const deltaY = touchY - lastTouchY;
+
+                    lastTouchX = touchX;
+                    lastTouchY = touchY;
+
+                    // Apenas gira a câmera, sem lógica de botão direito
+                    camera.rotation.y -= deltaX * 0.005;
+                    camera.rotation.x -= deltaY * 0.005;
+                    camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+                }
+            }, { passive: false }); // { passive: false } é necessário para preventDefault
+
+            renderer.domElement.addEventListener('touchend', (event) => {
+                isDragging = false;
+                lastTouchX = null;
+                lastTouchY = null;
             });
 
             // Listener de evento para redimensionamento da janela
