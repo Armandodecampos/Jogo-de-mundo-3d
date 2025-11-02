@@ -627,7 +627,6 @@
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
         let mounds = [];
-        let holeVisuals = [];
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
         let splatMap; // NOVO: Máscara de textura para pintar os buracos
         let splatMapData; // NOVO: Dados brutos para a máscara de textura
@@ -1178,34 +1177,6 @@
                     }
                 }
                 splatMap.needsUpdate = true; // Mark the splatMap for update
-
-                // Create a visual torus for the hole rim
-                const holeRadius = 2.0; // Outer radius of the volcano ring
-                const tubeRadius = 0.5; // Thickness of the ring
-                const radialSegments = 16;
-                const tubularSegments = 24;
-                const holeGeometry = new THREE.TorusGeometry(holeRadius, tubeRadius, radialSegments, tubularSegments);
-                const holeMesh = new THREE.Mesh(holeGeometry, holeMaterial);
-
-                // Rotate the torus to lie flat on the ground
-                holeMesh.rotation.x = -Math.PI / 2;
-                // Position it at the hit point, slightly raised to avoid z-fighting
-                holeMesh.position.copy(hitPoint).y += 0.1;
-
-
-                const holeMeshes = [];
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                        const mesh = holeMesh.clone();
-                        scene.add(mesh);
-                        holeMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
-                    }
-                }
-                holeVisuals.push({
-                    position: holeMesh.position.clone(),
-                    meshes: holeMeshes
-                });
-
 
                 addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
                 updateBackpackDisplay();
@@ -3117,23 +3088,6 @@
                 meshesArray.forEach(m => {
                     const distance = camera.position.distanceTo(m.mesh.position);
                     m.mesh.visible = distance <= renderDistance;
-                });
-            });
-
-            holeVisuals.forEach((hole) => {
-                const distance = calculateWrappedDistance(playerBody.position, hole.position);
-                const isVisible = distance <= renderDistance;
-
-                hole.meshes.forEach(item => {
-                    item.mesh.visible = isVisible;
-                    if (isVisible) {
-                        // The mesh's base position and rotation are set in digHole
-                        // Here, we just apply the wrapping offset
-                        item.mesh.position.x = hole.position.x + item.offsetX - visualOffsetX;
-                        item.mesh.position.y = hole.position.y; // Y is already set
-                        item.mesh.position.z = hole.position.z + item.offsetZ - visualOffsetZ;
-                        // Rotation is static, so no update needed here
-                    }
                 });
             });
 
