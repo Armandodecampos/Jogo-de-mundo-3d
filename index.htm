@@ -4,16 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Small World</title>
-    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js",
-            "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js",
-            "three/examples/jsm/loaders/GLTFLoader.js": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js"
-        }
-    }
-    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Incluir Font Awesome para o ícone de engrenagem e mão (machado e martelo serão imagens) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
@@ -378,9 +368,8 @@
 
     <script type="module">
         // Importa as bibliotecas Three.js e Cannon-es de CDNs
-        import * as THREE from 'three';
-        import * as CANNON from 'cannon-es';
-        import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
+        import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js';
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -516,6 +505,7 @@
         loadingManager.onLoad = () => {
             console.log("All resources loaded, world is ready.");
             isWorldReady = true;
+            window.isWorldReady = true; // Expose for verification
         };
 
         // Instância do carregador de textura, agora usando o gerenciador de carregamento
@@ -634,7 +624,6 @@
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
         let stoneMaterial; // NOVO: Material para chão com a nova textura
         let holeMaterial; // NOVO: Material para o buraco cavado
-        let holeModel = null; // NOVO: Modelo para o buraco cavado
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
         let mounds = [];
@@ -1178,25 +1167,27 @@
                 const moundGridRadius = Math.round(moundRadius / (worldSize / hfGridSize));
 
                 if (gridX >= 0 && gridX < hfGridSize && gridZ >= 0 && gridZ < hfGridSize) {
-                    let visualMoundMeshes = []; // Declara a variável aqui para que ela tenha o escopo correto
-                    if (holeModel) {
-                        // Cria a instância principal do buraco primeiro
-                        const holeInstance = holeModel.clone();
-                        holeInstance.position.copy(hitPoint);
-                        holeInstance.castShadow = true;
-                        holeInstance.receiveShadow = true;
+                    const points = [];
+                    points.push(new THREE.Vector2(1.2, 0)); // Outer base, touching the ground
+                    points.push(new THREE.Vector2(1.0, 0.4)); // First peak
+                    points.push(new THREE.Vector2(0.7, 0.2)); // Valley
+                    points.push(new THREE.Vector2(0.5, 0.3)); // Second peak
+                    points.push(new THREE.Vector2(0, 0.1));   // Center point above ground
 
-                        // Clona a instância principal para cada tile visual
-                        for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                            for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                                const mesh = holeInstance.clone(); // Clona a instância já posicionada
-                                scene.add(mesh);
-                                visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
-                            }
+                    const volcanoGeometry = new THREE.LatheGeometry(points, 24);
+                    const volcanoMesh = new THREE.Mesh(volcanoGeometry, dirtDepositMaterial);
+                    volcanoMesh.castShadow = true;
+                    volcanoMesh.receiveShadow = true;
+
+                    const visualMoundMeshes = [];
+                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                        for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
+                            const mesh = volcanoMesh.clone();
+                            scene.add(mesh);
+                            visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
                         }
                     }
 
-                    // Agora visualMoundMeshes está acessível aqui
                     visualMounds.push({
                         position: hitPoint.clone(),
                         meshes: visualMoundMeshes,
@@ -1948,38 +1939,6 @@
             // Pega o elemento do cinto de inventário e seus slots
             inventoryBeltElement = document.getElementById('inventoryBelt');
             updateBeltDisplay(); // Preenche os slots inicialmente
-
-            const loader = new GLTFLoader(loadingManager);
-            loader.load(
-                'Tremendous Rottis (2).glb', // URL do seu modelo .glb
-                function (gltf) {
-                    let loadedMesh = null;
-                    gltf.scene.traverse(function (child) {
-                        if (child.isMesh && loadedMesh === null) { // Pega apenas a primeira malha
-                            loadedMesh = child;
-                        }
-                    });
-
-                    if (loadedMesh) {
-                        // Centraliza a geometria da malha para que a rotação seja a partir do centro
-                        loadedMesh.geometry.center();
-
-                        // Rotaciona a malha 90 graus no eixo X para que fique deitada
-                        loadedMesh.rotation.x = Math.PI / 2;
-
-                        // Envolve a malha em um Grupo para que as transformações sejam aplicadas corretamente
-                        holeModel = new THREE.Group();
-                        holeModel.add(loadedMesh);
-                    } else {
-                        console.error("Nenhuma malha encontrada no arquivo GLB.");
-                        holeModel = gltf.scene; // Usa a cena como fallback se nenhuma malha for encontrada
-                    }
-                },
-                undefined, // Função de progresso (opcional)
-                function (error) {
-                    console.error('Um erro ocorreu ao carregar o modelo', error);
-                }
-            );
 
             // Configura os Listeners de Eventos para teclado e mouse
             window.addEventListener('keydown', (event) => {
