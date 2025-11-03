@@ -1178,22 +1178,25 @@
                 const moundGridRadius = Math.round(moundRadius / (worldSize / hfGridSize));
 
                 if (gridX >= 0 && gridX < hfGridSize && gridZ >= 0 && gridZ < hfGridSize) {
+                    let visualMoundMeshes = []; // Declara a variável aqui para que ela tenha o escopo correto
                     if (holeModel) {
+                        // Cria a instância principal do buraco primeiro
                         const holeInstance = holeModel.clone();
                         holeInstance.position.copy(hitPoint);
                         holeInstance.castShadow = true;
                         holeInstance.receiveShadow = true;
 
-                        const visualMoundMeshes = [];
+                        // Clona a instância principal para cada tile visual
                         for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                             for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                                const mesh = holeInstance.clone();
+                                const mesh = holeInstance.clone(); // Clona a instância já posicionada
                                 scene.add(mesh);
                                 visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
                             }
                         }
                     }
 
+                    // Agora visualMoundMeshes está acessível aqui
                     visualMounds.push({
                         position: hitPoint.clone(),
                         meshes: visualMoundMeshes,
@@ -1950,9 +1953,27 @@
             loader.load(
                 'Tremendous Rottis (2).glb', // URL do seu modelo .glb
                 function (gltf) {
-                    holeModel = gltf.scene;
-                    // Opcional: Ajuste a escala, posição ou rotação do modelo se necessário
-                    holeModel.scale.set(0.5, 0.5, 0.5);
+                    let loadedMesh = null;
+                    gltf.scene.traverse(function (child) {
+                        if (child.isMesh && loadedMesh === null) { // Pega apenas a primeira malha
+                            loadedMesh = child;
+                        }
+                    });
+
+                    if (loadedMesh) {
+                        // Centraliza a geometria da malha para que a rotação seja a partir do centro
+                        loadedMesh.geometry.center();
+
+                        // Rotaciona a malha 90 graus no eixo X para que fique deitada
+                        loadedMesh.rotation.x = Math.PI / 2;
+
+                        // Envolve a malha em um Grupo para que as transformações sejam aplicadas corretamente
+                        holeModel = new THREE.Group();
+                        holeModel.add(loadedMesh);
+                    } else {
+                        console.error("Nenhuma malha encontrada no arquivo GLB.");
+                        holeModel = gltf.scene; // Usa a cena como fallback se nenhuma malha for encontrada
+                    }
                 },
                 undefined, // Função de progresso (opcional)
                 function (error) {
