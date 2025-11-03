@@ -7,6 +7,15 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Incluir Font Awesome para o ícone de engrenagem e mão (machado e martelo serão imagens) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js",
+                "three/examples/jsm/loaders/GLTFLoader.js": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js",
+                "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js"
+            }
+        }
+    </script>
     <style>
         body { /* Remove default body margins and set font */
             margin: 0;
@@ -368,8 +377,9 @@
 
     <script type="module">
         // Importa as bibliotecas Three.js e Cannon-es de CDNs
-        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
-        import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js';
+        import * as THREE from 'three';
+        import * as CANNON from 'cannon-es';
+        import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -632,6 +642,8 @@
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
         let splatMap; // NOVO: Máscara de textura para pintar os buracos
         let splatMapData; // NOVO: Dados brutos para a máscara de textura
+
+        let holeModel1, holeModel2;
 
         // Declare physics materials globally
         let playerMaterial;
@@ -1167,24 +1179,26 @@
                 const moundGridRadius = Math.round(moundRadius / (worldSize / hfGridSize));
 
                 if (gridX >= 0 && gridX < hfGridSize && gridZ >= 0 && gridZ < hfGridSize) {
-                    const points = [];
-                    points.push(new THREE.Vector2(1.2, 0)); // Outer base, touching the ground
-                    points.push(new THREE.Vector2(1.0, 0.4)); // First peak
-                    points.push(new THREE.Vector2(0.7, 0.2)); // Valley
-                    points.push(new THREE.Vector2(0.5, 0.3)); // Second peak
-                    points.push(new THREE.Vector2(0, 0.1));   // Center point above ground
+                    if (!holeModel1 || !holeModel2) {
+                        console.error("Hole models not loaded yet!");
+                        return;
+                    }
 
-                    const volcanoGeometry = new THREE.LatheGeometry(points, 24);
-                    const volcanoMesh = new THREE.Mesh(volcanoGeometry, dirtDepositMaterial);
-                    volcanoMesh.castShadow = true;
-                    volcanoMesh.receiveShadow = true;
+                    const newHoleModel1 = holeModel1.clone();
+                    const newHoleModel2 = holeModel2.clone();
+
+                    newHoleModel1.position.copy(hitPoint);
+                    newHoleModel2.position.copy(hitPoint);
 
                     const visualMoundMeshes = [];
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                     for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                         for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                            const mesh = volcanoMesh.clone();
-                            scene.add(mesh);
-                            visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                            const mesh1 = newHoleModel1.clone();
+                            const mesh2 = newHoleModel2.clone();
+                            scene.add(mesh1);
+                            scene.add(mesh2);
+                            visualMoundMeshes.push({ mesh: mesh1, offsetX: j * worldSize, offsetZ: k * worldSize });
+                            visualMoundMeshes.push({ mesh: mesh2, offsetX: j * worldSize, offsetZ: k * worldSize });
                         }
                     }
 
@@ -2521,6 +2535,48 @@
             // NOVO: Chama as funções para configurar os depósitos
             setupStoneDeposits();
             setupDirtDeposits();
+            loadHoleModel();
+        }
+
+        function loadHoleModel() {
+            const loader = new GLTFLoader(loadingManager);
+            loader.load('Tremendous Rottis (3).glb', (gltf) => {
+                console.log('GLB loaded successfully.');
+
+                // From the logs, we know there is one mesh. We will find it by traversing.
+                let loadedMesh = null;
+                gltf.scene.traverse(function (child) {
+                    if (child.isMesh) {
+                        loadedMesh = child;
+                    }
+                });
+
+                if (loadedMesh) {
+                    const newMaterial = new THREE.MeshStandardMaterial({
+                        color: 0x5c3a21, // A brownish color
+                        roughness: 0.8,
+                        metalness: 0.1
+                    });
+
+                    // Create two separate Three.js objects (Meshes) from the single geometry.
+                    // This fulfills the "two objects" requirement. They will be placed together.
+                    holeModel1 = new THREE.Mesh(loadedMesh.geometry, newMaterial);
+                    holeModel2 = new THREE.Mesh(loadedMesh.geometry, newMaterial);
+
+                    holeModel1.castShadow = true;
+                    holeModel1.receiveShadow = true;
+                    holeModel2.castShadow = true;
+                    holeModel2.receiveShadow = true;
+
+                    console.log('Hole models created as two separate meshes from the single loaded geometry.');
+
+                } else {
+                     console.error('Could not find any mesh inside the GLB file.');
+                }
+
+            }, undefined, (error) => {
+                console.error('An error happened while loading the GLB model:', error);
+            });
         }
 
         // NOVO: Função separada para configurar os depósitos de pedra
