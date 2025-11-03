@@ -1189,13 +1189,16 @@
 
                     // Adjust scale and rotation
                     const scale = 9;
-                    newHoleModel1.scale.set(scale, scale, scale);
-                    newHoleModel2.scale.set(scale, scale, scale);
+                    const borderScale = scale * 1.1; // Make the border slightly larger
+                    newHoleModel1.scale.set(borderScale, borderScale, borderScale); // Border model
+                    newHoleModel2.scale.set(scale, scale, scale); // Center model
+
                     newHoleModel1.rotation.x = -Math.PI / 2; // Rotate 90 degrees to be upright
                     newHoleModel2.rotation.x = -Math.PI / 2;
 
                     newHoleModel1.position.copy(hitPoint);
-                    newHoleModel2.position.copy(hitPoint);
+                    // Add a tiny vertical offset to the center model to prevent z-fighting
+                    newHoleModel2.position.copy(hitPoint).y += 0.01;
 
                     const visualMoundMeshes = [];
                      for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
@@ -2546,43 +2549,58 @@
         }
 
         function loadHoleModel() {
-            const loader = new GLTFLoader(loadingManager);
-            loader.load('Tremendous Rottis (3).glb', (gltf) => {
-                console.log('GLB loaded successfully.');
+            const dirtTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=k1tcv6g5&dl=0";
+            textureLoader.load(dirtTextureURL, (dirtTexture) => {
+                dirtTexture.wrapS = THREE.RepeatWrapping;
+                dirtTexture.wrapT = THREE.RepeatWrapping;
+                dirtTexture.repeat.set(2, 2); // Adjust texture repeat as needed
 
-                // From the logs, we know there is one mesh. We will find it by traversing.
-                let loadedMesh = null;
-                gltf.scene.traverse(function (child) {
-                    if (child.isMesh) {
-                        loadedMesh = child;
-                    }
-                });
+                const loader = new GLTFLoader(loadingManager);
+                loader.load('Tremendous Rottis (3).glb', (gltf) => {
+                    console.log('GLB loaded successfully.');
 
-                if (loadedMesh) {
-                    const newMaterial = new THREE.MeshStandardMaterial({
-                        color: 0x5c3a21, // A brownish color
-                        roughness: 0.8,
-                        metalness: 0.1
+                    let loadedMesh = null;
+                    gltf.scene.traverse(function (child) {
+                        if (child.isMesh) {
+                            loadedMesh = child;
+                        }
                     });
 
-                    // Create two separate Three.js objects (Meshes) from the single geometry.
-                    // This fulfills the "two objects" requirement. They will be placed together.
-                    holeModel1 = new THREE.Mesh(loadedMesh.geometry, newMaterial);
-                    holeModel2 = new THREE.Mesh(loadedMesh.geometry, newMaterial);
+                    if (loadedMesh) {
+                        // Material for the border object (with dirt texture)
+                        const borderMaterial = new THREE.MeshStandardMaterial({
+                            map: dirtTexture,
+                            roughness: 0.9,
+                            metalness: 0.1
+                        });
 
-                    holeModel1.castShadow = true;
-                    holeModel1.receiveShadow = true;
-                    holeModel2.castShadow = true;
-                    holeModel2.receiveShadow = true;
+                        // Material for the center object (plain color)
+                        const centerMaterial = new THREE.MeshStandardMaterial({
+                            color: 0x5c3a21, // A brownish color
+                            roughness: 0.8,
+                            metalness: 0.1
+                        });
 
-                    console.log('Hole models created as two separate meshes from the single loaded geometry.');
+                        // holeModel1 is the border, holeModel2 is the center
+                        holeModel1 = new THREE.Mesh(loadedMesh.geometry, borderMaterial);
+                        holeModel2 = new THREE.Mesh(loadedMesh.geometry, centerMaterial);
 
-                } else {
-                     console.error('Could not find any mesh inside the GLB file.');
-                }
+                        holeModel1.castShadow = true;
+                        holeModel1.receiveShadow = true;
+                        holeModel2.castShadow = true;
+                        holeModel2.receiveShadow = true;
 
+                        console.log('Hole models created with distinct materials.');
+
+                    } else {
+                         console.error('Could not find any mesh inside the GLB file.');
+                    }
+
+                }, undefined, (error) => {
+                    console.error('An error happened while loading the GLB model:', error);
+                });
             }, undefined, (error) => {
-                console.error('An error happened while loading the GLB model:', error);
+                console.error('An error happened while loading the dirt texture for the hole:', error);
             });
         }
 
