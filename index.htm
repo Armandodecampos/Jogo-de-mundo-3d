@@ -648,6 +648,8 @@
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
         let mounds = [];
+        let holes = []; // NOVO: Para rastrear os dados do buraco para a física
+        let holeDomes = []; // NOVO: Para rastrear os domos visuais do buraco
         let hfMatrix = []; // NOVO: Matriz de dados do Heightfield, agora em escopo mais amplo
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
         let splatMap; // NOVO: DataTexture para misturar texturas do terreno
@@ -1361,42 +1363,44 @@
         }
 
 
-        // NOVO: Função para atualizar a física E a geometria visual do terreno
         function updateTerrain() {
-            const hfGridSize = 128; // Garante que este valor seja consistente
+            const hfGridSize = 128;
+            hfMatrix = JSON.parse(JSON.stringify(baseMatrix)); // Começa com o terreno base
 
-            // Atualiza o corpo de física (CANNON.Heightfield)
+            // Recria os buracos na matriz de física
+            for (const hole of holes) {
+                for (let row = -Math.ceil(hole.radius); row <= Math.ceil(hole.radius); row++) {
+                    for (let col = -Math.ceil(hole.radius); col <= Math.ceil(hole.radius); col++) {
+                        const currentI = hole.i + row;
+                        const currentJ = hole.j + col;
+
+                        if (currentI >= 0 && currentI < hfGridSize && currentJ >= 0 && currentJ < hfGridSize) {
+                            const distance = Math.sqrt(row * row + col * col);
+                            if (distance < hole.radius) {
+                                // Cria um poço fundo e íngreme para a física
+                                hfMatrix[currentI][currentJ] = seabedLevel - 10;
+                            }
+                        }
+                    }
+                }
+            }
+
             if (islandBody && islandBody.shapes.length > 0) {
-                // Cria uma nova forma de Heightfield com a matriz de dados atualizada
                 const newHfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
-                // Remove a forma antiga do corpo da ilha
                 islandBody.removeShape(islandBody.shapes[0]);
-                // Adiciona a nova forma atualizada
                 islandBody.addShape(newHfShape);
             }
 
-            // Atualiza a geometria visual (THREE.PlaneGeometry)
-            if (islandMeshes.length > 0) {
-                // Pega a geometria da primeira malha da ilha (todas compartilham a mesma geometria)
-                const islandGeometry = islandMeshes[0].mesh.geometry;
-                const vertices = islandGeometry.attributes.position.array;
-
-                // Itera sobre a matriz de altura e atualiza a coordenada Y de cada vértice
-                for (let i = 0; i < hfGridSize; i++) {
-                    for (let j = 0; j < hfGridSize; j++) {
-                        // O índice no array de vértices é calculado com base na linha e coluna
-                        vertices[(i * hfGridSize + j) * 3 + 1] = hfMatrix[i][j];
-                    }
-                }
-                // Informa ao Three.js que os vértices foram atualizados
-                islandGeometry.attributes.position.needsUpdate = true;
-                // Recalcula as normais dos vértices para garantir que a iluminação seja correta
-                islandGeometry.computeVertexNormals();
-            }
+            // A geometria visual não precisa mais ser atualizada, pois a transparência cuida disso
         }
 
-        // NOVO: Função para cavar um buraco modificando a geometria
+        // NOVO: Função para cavar um buraco (agora cria um buraco visual)
         function digHole() {
+            if (!holeMaterial) {
+                console.warn("O material do buraco ainda não foi carregado.");
+                return;
+            }
+
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const groundMeshes = islandMeshes.map(item => item.mesh);
             const intersects = raycaster.intersectObjects(groundMeshes);
@@ -1408,59 +1412,71 @@
                 const hitPoint = intersect.point;
                 if (hitPoint.y < waterLevel) return;
 
-                const hfGridSize = 128;
-                // CORREÇÃO: "Desenrola" as coordenadas do ponto de impacto para o espaço do mundo absoluto
-                // antes de aplicar o módulo, para encontrar a posição correta no terreno estático.
-                const unwrappedX = (hitPoint.x + visualOffsetX) % worldSize;
-                const unwrappedZ = (hitPoint.z + visualOffsetZ) % worldSize;
-
-                // Converte as coordenadas do mundo para as coordenadas da matriz do Heightfield
-                const localX = (unwrappedX + worldSize / 2) % worldSize;
-                const localZ = (worldSize / 2 - unwrappedZ + worldSize) % worldSize;
-
-                const j = Math.floor(localX / (worldSize / (hfGridSize - 1)));
-                const i = Math.floor(localZ / (worldSize / (hfGridSize - 1)));
-
-                const radius = 1; // Raio do buraco em unidades da grade
-                const depth = 0.5; // Profundidade do buraco
-                const textureRadius = 3; // Raio para pintar a textura
-
-                if (hfMatrix[i][j] < baseMatrix[i][j]) return; // Impede cavar mais fundo
-
-                for (let row = -radius; row <= radius; row++) {
-                    for (let col = -radius; col <= radius; col++) {
-                        const currentI = i + row;
-                        const currentJ = j + col;
-
-                        if (currentI >= 0 && currentI < hfGridSize && currentJ >= 0 && currentJ < hfGridSize) {
-                            const distance = Math.sqrt(row * row + col * col);
-                            if (distance < radius) {
-                                const digAmount = depth * (Math.cos(distance / radius * Math.PI / 2));
-                                hfMatrix[currentI][currentJ] -= digAmount;
-                            }
-                        }
+                // Verifica se já existe um buraco muito próximo
+                for (const hole of holeDomes) {
+                    if (hole.position.distanceTo(hitPoint) < 2.0) { // 2.0 é o raio do buraco
+                        return; // Impede a criação de buracos sobrepostos
                     }
                 }
 
-                // Pinta a textura de terra no splat map
-                for (let row = -textureRadius; row <= textureRadius; row++) {
-                    for (let col = -textureRadius; col <= textureRadius; col++) {
+                const hfGridSize = 128;
+                const unwrappedX = (hitPoint.x + visualOffsetX) % worldSize;
+                const unwrappedZ = (hitPoint.z + visualOffsetZ) % worldSize;
+                const localX = (unwrappedX + worldSize / 2) % worldSize;
+                const localZ = (worldSize / 2 - unwrappedZ + worldSize) % worldSize;
+                const j = Math.floor(localX / (worldSize / (hfGridSize - 1)));
+                const i = Math.floor(localZ / (worldSize / (hfGridSize - 1)));
+
+                // Adiciona um registro do buraco para a física e a transparência
+                holes.push({ i, j, radius: 2.5 }); // O raio é para a transparência do splat map
+
+                // Cria o domo visual para o buraco
+                const holeRadius = 2.0; // Raio visual do domo
+                const holeDepth = 1.5;  // Profundidade visual do domo
+                const domeGeometry = new THREE.SphereGeometry(holeRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+                domeGeometry.scale(1, holeDepth / holeRadius, 1); // Achata a esfera para parecer um domo
+
+                const domeMeshes = [];
+                const domeObject = {
+                    position: hitPoint.clone(),
+                    meshes: domeMeshes
+                };
+
+                domeObject.position.y -= 0.1;
+
+                for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                        const domeMesh = new THREE.Mesh(domeGeometry, holeMaterial);
+                        domeMesh.rotation.x = -Math.PI / 2; // Gira para ficar virado para cima
+                        domeMesh.renderOrder = -1; // Renderiza antes do terreno
+                        scene.add(domeMesh);
+                        domeMeshes.push({ mesh: domeMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                    }
+                }
+
+                // Adiciona o domo ao array para que possa ser movido com o mundo
+                holeDomes.push(domeObject);
+
+                // Pinta a transparência no splat map
+                const transparencyRadius = 2.5; // Raio em unidades de grade para a transparência
+                for (let row = -Math.ceil(transparencyRadius); row <= Math.ceil(transparencyRadius); row++) {
+                    for (let col = -Math.ceil(transparencyRadius); col <= Math.ceil(transparencyRadius); col++) {
                         const currentI = i + row;
                         const currentJ = j + col;
 
                         if (currentI >= 0 && currentI < hfGridSize && currentJ >= 0 && currentJ < hfGridSize) {
                             const distance = Math.sqrt(row * row + col * col);
-                            if (distance < textureRadius) {
-                                const splatValue = Math.max(0, 1.0 - (distance / textureRadius));
+                            if (distance < transparencyRadius) {
                                 const index = (currentI * hfGridSize + currentJ) * 4;
-                                // Pinta no canal vermelho
-                                splatMapData[index] = Math.max(splatMapData[index], splatValue * 255);
+                                // Define o canal alfa como 0 (totalmente transparente)
+                                splatMapData[index + 3] = 0;
                             }
                         }
                     }
                 }
                 splatMap.needsUpdate = true;
 
+                // Atualiza a física do terreno para refletir o novo buraco
                 updateTerrain();
 
                 addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
@@ -1693,6 +1709,10 @@
             const splatMapWidth = hfGridSize;
             const splatMapHeight = hfGridSize;
             splatMapData = new Uint8Array(splatMapWidth * splatMapHeight * 4);
+            // Preenche o canal alfa com 255 (totalmente opaco) inicialmente
+            for (let i = 0; i < splatMapData.length; i += 4) {
+                splatMapData[i + 3] = 255;
+            }
             splatMap = new THREE.DataTexture(splatMapData, splatMapWidth, splatMapHeight, THREE.RGBAFormat);
             splatMap.needsUpdate = true;
 
@@ -1710,7 +1730,8 @@
                             dirtTexture.repeat.set(2, 2); // Repete a textura de terra
 
                             const islandMeshMaterial = new THREE.MeshStandardMaterial({
-                                map: groundTexture
+                                map: groundTexture,
+                                transparent: true // Habilita a transparência
                             });
 
                             islandMeshMaterial.onBeforeCompile = (shader) => {
@@ -1756,6 +1777,14 @@
 
                                     // Mistura a textura de terra com base no splat map
                                     terrainMix = mix(terrainMix, dirtColor.rgb, splatValue);
+
+                                    // Pega o valor alfa do splat map para a transparência do buraco
+                                    float holeAlpha = texture2D(uSplatMap, vUv).a;
+
+                                    // Descarta o fragmento se estiver dentro de um buraco
+                                    if (holeAlpha < 0.5) {
+                                        discard;
+                                    }
 
                                     diffuseColor *= vec4(terrainMix, 1.0);
                                 #endif
@@ -1866,10 +1895,18 @@
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                holeMaterial = new THREE.MeshStandardMaterial({ map: texture, transparent: true }); // Transparente para misturar com o terreno
+                holeMaterial = new THREE.MeshStandardMaterial({
+                    map: texture,
+                    metalness: 0, // Garante que não seja metálico
+                    roughness: 1  // Garante que não seja brilhante
+                });
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura do buraco:', error);
-                holeMaterial = new THREE.MeshStandardMaterial({ color: 0x3b2712 }); // Fallback marrom escuro
+                holeMaterial = new THREE.MeshStandardMaterial({
+                    color: 0x3b2712,
+                    metalness: 0, // Garante que não seja metálico
+                    roughness: 1  // Garante que não seja brilhante
+                }); // Fallback marrom escuro
             });
 
             // Load the cob texture and create the material once
@@ -3118,6 +3155,22 @@
             // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
             // NOVO: Atualiza as posições das malhas de água para o efeito de envolvimento
+            holeDomes.forEach(dome => {
+                const distance = calculateWrappedDistance(playerBody.position, dome.position);
+                const isVisible = distance <= renderDistance;
+
+                dome.meshes.forEach(item => {
+                    item.mesh.visible = isVisible;
+                    if (isVisible) {
+                        const visualObject = item.mesh;
+                        visualObject.position.x = dome.position.x + item.offsetX - visualOffsetX;
+                        visualObject.position.y = dome.position.y;
+                        visualObject.position.z = dome.position.z + item.offsetZ - visualOffsetZ;
+                        // A rotação é definida na criação e não precisa ser atualizada
+                    }
+                });
+            });
+
             waterMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
