@@ -370,6 +370,7 @@
         // Importa as bibliotecas Three.js e Cannon-es de CDNs
         import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
         import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js';
+        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js';
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -624,6 +625,7 @@
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
         let stoneMaterial; // NOVO: Material para chão com a nova textura
         let holeMaterial; // NOVO: Material para o buraco cavado
+        let holeModel = null; // NOVO: Modelo para o buraco cavado
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
         let mounds = [];
@@ -1167,24 +1169,19 @@
                 const moundGridRadius = Math.round(moundRadius / (worldSize / hfGridSize));
 
                 if (gridX >= 0 && gridX < hfGridSize && gridZ >= 0 && gridZ < hfGridSize) {
-                    const points = [];
-                    points.push(new THREE.Vector2(1.2, 0)); // Outer base, touching the ground
-                    points.push(new THREE.Vector2(1.0, 0.4)); // First peak
-                    points.push(new THREE.Vector2(0.7, 0.2)); // Valley
-                    points.push(new THREE.Vector2(0.5, 0.3)); // Second peak
-                    points.push(new THREE.Vector2(0, 0.1));   // Center point above ground
+                    if (holeModel) {
+                        const holeInstance = holeModel.clone();
+                        holeInstance.position.copy(hitPoint);
+                        holeInstance.castShadow = true;
+                        holeInstance.receiveShadow = true;
 
-                    const volcanoGeometry = new THREE.LatheGeometry(points, 24);
-                    const volcanoMesh = new THREE.Mesh(volcanoGeometry, dirtDepositMaterial);
-                    volcanoMesh.castShadow = true;
-                    volcanoMesh.receiveShadow = true;
-
-                    const visualMoundMeshes = [];
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                            const mesh = volcanoMesh.clone();
-                            scene.add(mesh);
-                            visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                        const visualMoundMeshes = [];
+                        for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                            for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
+                                const mesh = holeInstance.clone();
+                                scene.add(mesh);
+                                visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                            }
                         }
                     }
 
@@ -1939,6 +1936,20 @@
             // Pega o elemento do cinto de inventário e seus slots
             inventoryBeltElement = document.getElementById('inventoryBelt');
             updateBeltDisplay(); // Preenche os slots inicialmente
+
+            const loader = new GLTFLoader(loadingManager);
+            loader.load(
+                'Tremendous Rottis (2).glb', // URL do seu modelo .glb
+                function (gltf) {
+                    holeModel = gltf.scene;
+                    // Opcional: Ajuste a escala, posição ou rotação do modelo se necessário
+                    holeModel.scale.set(0.5, 0.5, 0.5);
+                },
+                undefined, // Função de progresso (opcional)
+                function (error) {
+                    console.error('Um erro ocorreu ao carregar o modelo', error);
+                }
+            );
 
             // Configura os Listeners de Eventos para teclado e mouse
             window.addEventListener('keydown', (event) => {
