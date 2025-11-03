@@ -377,8 +377,9 @@
         let skyColor, underwaterColor; // NOVO: Para as cores do ambiente
         // Variáveis para corpos e malhas de jogador, terreno (rua), estrada e cubo
         let playerBody;
-        let islandBody; // Corpo de física para o terreno (agora uma ilha)
-        let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
+        // NOVO: Variáveis para o terreno voxel
+        const terrainBlocks = {}; // Objeto para armazenar blocos por coordenadas
+        let grassMaterial, dirtMaterial; // Materiais para os blocos do terreno
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
@@ -648,12 +649,6 @@
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
         let mounds = [];
-        let holes = []; // NOVO: Para rastrear os dados do buraco para a física
-        let holeDomes = []; // NOVO: Para rastrear os domos visuais do buraco
-        let hfMatrix = []; // NOVO: Matriz de dados do Heightfield, agora em escopo mais amplo
-        let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
-        let splatMap; // NOVO: DataTexture para misturar texturas do terreno
-        let splatMapData; // NOVO: Dados brutos para o splatMap
 
         // Declare physics materials globally
         let playerMaterial;
@@ -1353,7 +1348,7 @@
                 // Give particles a slight random initial velocity
                 particle.userData.velocity = new THREE.Vector3(
                     (Math.random() - 0.5) * 0.5, // X velocity
-                    Math.random() * 0.5 + 0.1,   // Y velocity (mostly upwards)
+                    (Math.random() - 0.5) * 0.5, // Y velocity (mostly upwards)
                     (Math.random() - 0.5) * 0.5  // Z velocity
                 );
                 particle.userData.lifetime = 1.0; // Lifetime in seconds
@@ -1362,125 +1357,85 @@
             }
         }
 
+        // NOVO: Função para gerar o terreno voxel
+        function createVoxelTerrain() {
+            const blockSize = 1; // Tamanho de cada bloco
+            const terrainSize = Math.floor(islandRadiusTop / blockSize);
 
-        function updateTerrain() {
-            const hfGridSize = 128;
-            hfMatrix = JSON.parse(JSON.stringify(baseMatrix)); // Começa com o terreno base
+            const blockGeometry = new THREE.BoxGeometry(blockSize, blockSize, blockSize);
+            const blockShape = new CANNON.Box(new CANNON.Vec3(blockSize / 2, blockSize / 2, blockSize / 2));
 
-            // Recria os buracos na matriz de física
-            for (const hole of holes) {
-                for (let row = -Math.ceil(hole.radius); row <= Math.ceil(hole.radius); row++) {
-                    for (let col = -Math.ceil(hole.radius); col <= Math.ceil(hole.radius); col++) {
-                        const currentI = hole.i + row;
-                        const currentJ = hole.j + col;
+            for (let i = -terrainSize; i <= terrainSize; i++) {
+                for (let j = -terrainSize; j <= terrainSize; j++) {
+                    const x = i * blockSize;
+                    const z = j * blockSize;
 
-                        if (currentI >= 0 && currentI < hfGridSize && currentJ >= 0 && currentJ < hfGridSize) {
-                            const distance = Math.sqrt(row * row + col * col);
-                            if (distance < hole.radius) {
-                                // Cria um poço fundo e íngreme para a física
-                                hfMatrix[currentI][currentJ] = seabedLevel - 10;
-                            }
-                        }
-                    }
+                    const distance = Math.sqrt(x * x + z * z);
+                    if (distance > islandRadiusTop) continue;
+
+                    // Camada superior (relva)
+                    const yTop = 0;
+                    const topKey = `${x},${yTop},${z}`;
+                    const topBody = new CANNON.Body({ mass: 0, shape: blockShape, material: islandMaterial });
+                    topBody.position.set(x, yTop, z);
+                    world.addBody(topBody);
+                    const topMesh = new THREE.Mesh(blockGeometry, grassMaterial);
+                    topMesh.position.copy(topBody.position);
+                    topMesh.castShadow = true;
+                    topMesh.receiveShadow = true;
+                    scene.add(topMesh);
+                    terrainBlocks[topKey] = { body: topBody, mesh: topMesh, type: 'grass' };
+
+                    // Camada inferior (terra)
+                    const yBottom = -blockSize;
+                    const bottomKey = `${x},${yBottom},${z}`;
+                    const bottomBody = new CANNON.Body({ mass: 0, shape: blockShape, material: islandMaterial });
+                    bottomBody.position.set(x, yBottom, z);
+                    world.addBody(bottomBody);
+                    const bottomMesh = new THREE.Mesh(blockGeometry, dirtMaterial);
+                    bottomMesh.position.copy(bottomBody.position);
+                    bottomMesh.castShadow = true;
+                    bottomMesh.receiveShadow = true;
+                    scene.add(bottomMesh);
+                    terrainBlocks[bottomKey] = { body: bottomBody, mesh: bottomMesh, type: 'dirt' };
                 }
             }
-
-            if (islandBody && islandBody.shapes.length > 0) {
-                const newHfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
-                islandBody.removeShape(islandBody.shapes[0]);
-                islandBody.addShape(newHfShape);
-            }
-
-            // A geometria visual não precisa mais ser atualizada, pois a transparência cuida disso
         }
 
-        // NOVO: Função para cavar um buraco (agora cria um buraco visual)
-        function digHole() {
-            if (!holeMaterial) {
-                console.warn("O material do buraco ainda não foi carregado.");
-                return;
-            }
-
+        // NOVO: Função para cavar um bloco de terreno
+        function digBlock() {
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-            const groundMeshes = islandMeshes.map(item => item.mesh);
-            const intersects = raycaster.intersectObjects(groundMeshes);
+            const intersects = raycaster.intersectObjects(scene.children, true);
 
-            if (intersects.length > 0) {
-                const intersect = intersects[0];
-                if (intersect.distance > destroyDistance) return;
+            for (const intersect of intersects) {
+                if (intersect.distance > destroyDistance) continue; // Usa a mesma distância de destruição
 
-                const hitPoint = intersect.point;
-                if (hitPoint.y < waterLevel) return;
+                const intersectedMesh = intersect.object;
+                const key = Object.keys(terrainBlocks).find(k => terrainBlocks[k].mesh === intersectedMesh);
 
-                // Verifica se já existe um buraco muito próximo
-                for (const hole of holeDomes) {
-                    if (hole.position.distanceTo(hitPoint) < 2.0) { // 2.0 é o raio do buraco
-                        return; // Impede a criação de buracos sobrepostos
+                if (key) {
+                    const block = terrainBlocks[key];
+                    if (block.type === 'grass') {
+                        // Remove o bloco de grama
+                        world.removeBody(block.body);
+                        scene.remove(block.mesh);
+                        delete terrainBlocks[key];
+
+                        // Adiciona terra ao inventário
+                        addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
+                        updateBackpackDisplay();
+                        console.log("Bloco de grama cavado e terra adicionada ao inventário.");
                     }
-                }
-
-                const hfGridSize = 128;
-                const unwrappedX = (hitPoint.x + visualOffsetX) % worldSize;
-                const unwrappedZ = (hitPoint.z + visualOffsetZ) % worldSize;
-                const localX = (unwrappedX + worldSize / 2) % worldSize;
-                const localZ = (worldSize / 2 - unwrappedZ + worldSize) % worldSize;
-                const j = Math.floor(localX / (worldSize / (hfGridSize - 1)));
-                const i = Math.floor(localZ / (worldSize / (hfGridSize - 1)));
-
-                // Adiciona um registro do buraco para a física e a transparência
-                holes.push({ i, j, radius: 2.5 }); // O raio é para a transparência do splat map
-
-                // Cria o domo visual para o buraco
-                const holeRadius = 2.0; // Raio visual do domo
-                const holeDepth = 1.5;  // Profundidade visual do domo
-                const domeGeometry = new THREE.SphereGeometry(holeRadius, 16, 8, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2);
-
-                const domeMeshes = [];
-                const domeObject = {
-                    position: hitPoint.clone(),
-                    meshes: domeMeshes
-                };
-
-                domeObject.position.y -= 0.1;
-
-                for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        const domeMesh = new THREE.Mesh(domeGeometry, holeMaterial);
-                        domeMesh.renderOrder = -1; // Renderiza antes do terreno
-                        scene.add(domeMesh);
-                        domeMeshes.push({ mesh: domeMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                    // Impede a escavação de blocos de terra por enquanto
+                    else if (block.type === 'dirt') {
+                        console.log("Você não pode cavar mais fundo aqui.");
                     }
+
+                    break; // Sai do loop após encontrar e processar um bloco de terreno
                 }
-
-                // Adiciona o domo ao array para que possa ser movido com o mundo
-                holeDomes.push(domeObject);
-
-                // Pinta a transparência no splat map
-                const transparencyRadius = 2.5; // Raio em unidades de grade para a transparência
-                for (let row = -Math.ceil(transparencyRadius); row <= Math.ceil(transparencyRadius); row++) {
-                    for (let col = -Math.ceil(transparencyRadius); col <= Math.ceil(transparencyRadius); col++) {
-                        const currentI = i + row;
-                        const currentJ = j + col;
-
-                        if (currentI >= 0 && currentI < hfGridSize && currentJ >= 0 && currentJ < hfGridSize) {
-                            const distance = Math.sqrt(row * row + col * col);
-                            if (distance < transparencyRadius) {
-                                const index = (currentI * hfGridSize + currentJ) * 4;
-                                // Define o canal alfa como 0 (totalmente transparente)
-                                splatMapData[index + 3] = 0;
-                            }
-                        }
-                    }
-                }
-                splatMap.needsUpdate = true;
-
-                // Atualiza a física do terreno para refletir o novo buraco
-                updateTerrain();
-
-                addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
-                updateBackpackDisplay();
             }
         }
+
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function init() {
@@ -1643,167 +1598,6 @@
             scene.add(directionalLight);
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
-            // Cria o Terreno (Ilha Redonda)
-            // A geometria visual é agora um plano segmentado cujos vértices correspondem ao Heightfield.
-            const hfGridSize = 128; // A resolução DEVE corresponder à do Heightfield
-            const islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
-
-            // --- Criação do Corpo de Física da Ilha com Heightfield ---
-            for (let i = 0; i < hfGridSize; i++) {
-                hfMatrix.push([]);
-                for (let j = 0; j < hfGridSize; j++) {
-                    // Mapeia os índices da grelha para coordenadas do mundo
-                    const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
-                    const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
-                    const distance = Math.sqrt(x * x + z * z);
-                    let height;
-
-                    if (distance <= islandRadiusTop) {
-                        height = islandSurfaceHeight;
-                    } else if (distance <= islandRadiusBottom) {
-                        // Interpola linearmente da superfície da ilha para o fundo do mar
-                        const t = (distance - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
-                        height = islandSurfaceHeight * (1 - t) + seabedLevel * t;
-                    } else {
-                        height = seabedLevel;
-                    }
-                    hfMatrix[i][j] = height;
-                }
-            }
-            baseMatrix = JSON.parse(JSON.stringify(hfMatrix)); // Armazena a geometria inicial
-
-            // Gira a geometria para ficar no plano XZ.
-            islandGeometry.rotateX(-Math.PI / 2);
-
-            // Define a altura de cada vértice na geometria para corresponder à matriz do Heightfield.
-            const vertices = islandGeometry.attributes.position.array;
-            for (let i = 0; i < hfGridSize; i++) {
-                for (let j = 0; j < hfGridSize; j++) {
-                    const height = hfMatrix[i][j];
-                    const index = (i * hfGridSize + j) * 3;
-                    vertices[index + 1] = height; // Atualiza a coordenada Y
-                }
-            }
-            islandGeometry.attributes.position.needsUpdate = true;
-            islandGeometry.computeVertexNormals(); // Recalcula as normais para uma iluminação correta
-
-            const hfShape = new CANNON.Heightfield(hfMatrix, {
-                elementSize: worldSize / (hfGridSize - 1)
-            });
-
-            islandBody = new CANNON.Body({ mass: 0, material: islandMaterial });
-            islandBody.addShape(hfShape);
-            // Os Heightfields são criados no plano XY, por isso rodamos para o plano XZ.
-            islandBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-            // Posiciona o corpo no canto do mundo para alinhar a grelha.
-            islandBody.position.set(-worldSize / 2, 0, worldSize / 2);
-            world.addBody(islandBody);
-            const groundTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=0";
-            const sandTextureURL = "https://dl.dropbox.com/scl/fi/2ediqx91o54kqrua9l4jk/Textura-de-areia.png?rlkey=pale1g1zkjqlrkjhpz4kr3ypw&st=fbuzn6iu&dl=0";
-            const seabedTextureURL = sandTextureURL;
-            const dirtTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=tz27qsg6&dl=0"; // URL CORRIGIDA
-
-            // Inicializa o splatMap
-            const splatMapWidth = hfGridSize;
-            const splatMapHeight = hfGridSize;
-            splatMapData = new Uint8Array(splatMapWidth * splatMapHeight * 4);
-            // Preenche o canal alfa com 255 (totalmente opaco) inicialmente
-            for (let i = 0; i < splatMapData.length; i += 4) {
-                splatMapData[i + 3] = 255;
-            }
-            splatMap = new THREE.DataTexture(splatMapData, splatMapWidth, splatMapHeight, THREE.RGBAFormat);
-            splatMap.needsUpdate = true;
-
-            textureLoader.load(groundTextureURL, (groundTexture) => {
-                textureLoader.load(seabedTextureURL, (seabedTexture) => {
-                    textureLoader.load(sandTextureURL, (sandTexture) => {
-                        textureLoader.load(dirtTextureURL, (dirtTexture) => {
-                            [groundTexture, seabedTexture, sandTexture, dirtTexture].forEach(texture => {
-                                texture.wrapS = THREE.RepeatWrapping;
-                                texture.wrapT = THREE.RepeatWrapping;
-                            });
-                            groundTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                            seabedTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                            sandTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                            dirtTexture.repeat.set(2, 2); // Repete a textura de terra
-
-                            const islandMeshMaterial = new THREE.MeshStandardMaterial({
-                                map: groundTexture,
-                                transparent: true // Habilita a transparência
-                            });
-
-                            islandMeshMaterial.onBeforeCompile = (shader) => {
-                                shader.uniforms.uSeabedTexture = { value: seabedTexture };
-                                shader.uniforms.uSandTexture = { value: sandTexture };
-                                shader.uniforms.uDirtTexture = { value: dirtTexture }; // NOVO
-                                shader.uniforms.uSplatMap = { value: splatMap }; // NOVO
-                                shader.uniforms.uWaterLevel = { value: waterLevel };
-
-                                shader.vertexShader = `
-                                varying vec3 vWorldPosition;
-                                ${shader.vertexShader}
-                            `.replace(
-                                    `#include <worldpos_vertex>`,
-                                    `
-                                #include <worldpos_vertex>
-                                vWorldPosition = worldPosition.xyz;
-                                `
-                                );
-
-                                shader.fragmentShader = `
-                                uniform sampler2D uSeabedTexture;
-                                uniform sampler2D uSandTexture;
-                                uniform sampler2D uDirtTexture; // NOVO
-                                uniform sampler2D uSplatMap; // NOVO
-                                uniform float uWaterLevel;
-                                varying vec3 vWorldPosition;
-                                ${shader.fragmentShader}
-                            `.replace(
-                                    `#include <map_fragment>`,
-                                    `
-                                #ifdef USE_MAP
-                                    vec4 groundColor = texture2D(map, vUv);
-                                    vec4 seabedColor = texture2D(uSeabedTexture, vUv);
-                                    vec4 sandColor = texture2D(uSandTexture, vUv);
-                                    vec4 dirtColor = texture2D(uDirtTexture, vUv * 8.0); // NOVO
-                                    float splatValue = texture2D(uSplatMap, vUv).r; // NOVO
-
-                                    float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
-                                    vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
-                                    float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
-                                    vec3 terrainMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
-
-                                    // Mistura a textura de terra com base no splat map
-                                    terrainMix = mix(terrainMix, dirtColor.rgb, splatValue);
-
-                                    // Pega o valor alfa do splat map para a transparência do buraco
-                                    float holeAlpha = texture2D(uSplatMap, vUv).a;
-
-                                    // Descarta o fragmento se estiver dentro de um buraco
-                                    if (holeAlpha < 0.5) {
-                                        discard;
-                                    }
-
-                                    diffuseColor *= vec4(terrainMix, 1.0);
-                                #endif
-                                `
-                                );
-                            };
-
-                            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                                    const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
-                                    islandMesh.receiveShadow = true;
-                                    islandMesh.userData.physicsBody = islandBody;
-                                    scene.add(islandMesh);
-                                    islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                                }
-                            }
-                            islandMeshMaterial.needsUpdate = true;
-                        }, undefined, (error) => console.error('Falha ao carregar a textura de terra:', error)); // MENSAGEM DE ERRO CORRIGIDA
-                    }, undefined, (error) => console.error('Falha ao carregar a textura de areia:', error));
-                }, undefined, (error) => console.error('Falha ao carregar a textura do fundo do mar:', error));
-            }, undefined, (error) => console.error('Falha ao carregar a textura do solo:', error));
 
             // Cria a Água (agora como uma grelha)
             const waterGeometry = new THREE.BoxGeometry(worldSize, 0.1, worldSize);
@@ -1845,7 +1639,7 @@
             playerBody.addEventListener('collide', (event) => {
                 // canJump é verdadeiro APENAS se o corpo colidido NÃO for o objeto que está sendo segurado
                 // A lista de corpos "chão" agora inclui apenas superfícies que podem ser pisadas
-                const allGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+                const allGroundBodies = [...Object.values(terrainBlocks).map(b => b.body), ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
                 if (event.body !== pickedObjectBody && allGroundBodies.includes(event.body)) {
                     canJump = true;
                 }
@@ -1887,25 +1681,21 @@
                 console.error('Erro ao carregar a textura de pedra:', error);
                 stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 }); // Fallback cinza
             });
+            // NOVO: Carrega as texturas do terreno e cria o terreno voxel
+            const groundTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=0";
+            const dirtTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=2hknz00t&dl=0";
 
-            // NOVO: Carrega a textura do buraco para a ferramenta pá
-            textureLoader.load(holeTextureURL, (texture) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(1, 1);
-                holeMaterial = new THREE.MeshStandardMaterial({
-                    map: texture,
-                    metalness: 0, // Garante que não seja metálico
-                    roughness: 1  // Garante que não seja brilhante
+            textureLoader.load(groundTextureURL, (grassTexture) => {
+                grassMaterial = new THREE.MeshStandardMaterial({ map: grassTexture });
+                textureLoader.load(dirtTextureURL, (dirtTexture) => {
+                    dirtMaterial = new THREE.MeshStandardMaterial({ map: dirtTexture });
+                    createVoxelTerrain(); // Cria o terreno DEPOIS de os materiais estarem prontos
+                    // NOVO: Chama as funções para configurar os depósitos DEPOIS de o terreno ser criado
+                    setupStoneDeposits();
+                    setupDirtDeposits();
                 });
-            }, undefined, (error) => {
-                console.error('Erro ao carregar a textura do buraco:', error);
-                holeMaterial = new THREE.MeshStandardMaterial({
-                    color: 0x3b2712,
-                    metalness: 0, // Garante que não seja metálico
-                    roughness: 1  // Garante que não seja brilhante
-                }); // Fallback marrom escuro
             });
+
 
             // Load the cob texture and create the material once
             textureLoader.load(cobTextureURL, (texture) => {
@@ -2201,8 +1991,8 @@
                             // A escavação não tem ação de espera
                             clickHoldTimer = null; // O temporizador disparou
                         }, CLICK_HOLD_DURATION);
-                    } else if (primaryActionType === 'dig_hole') {
-                        digHole(); // Ação de escavação imediata
+                    } else if (primaryActionType === 'dig_block') {
+                        digBlock(); // Ação de escavação imediata
                     }
                 } else if (event.button === 2) { // Clique direito
                     if (getActionType(beltItems[1]) === 'destroy') {
@@ -2251,7 +2041,7 @@
             function getActionType(item) {
                 if (item === null) return 'grab';
                 if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName) return 'destroy';
-                if (item.name === shovelItemName) return 'dig_hole';
+                if (item.name === shovelItemName) return 'dig_block';
                 if (item.name === textureApplicatorItemName) return 'apply_texture';
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
                 return null;
@@ -2623,10 +2413,6 @@
             // Listeners para o botão da mochila
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
-
-            // NOVO: Chama as funções para configurar os depósitos
-            setupStoneDeposits();
-            setupDirtDeposits();
         }
 
         // NOVO: Função separada para configurar os depósitos de pedra
@@ -2797,7 +2583,7 @@
                                 }
                             }
 
-                            const cylinderShape = new CANNON.Cylinder(0.01, depositRadius, depositHeight, 16);
+                            const cylinderShape = new CANNON.Cylinder(depositRadius, depositRadius, depositHeight, 16);
                             const cylinderBody = new CANNON.Body({
                                 mass: 0,
                                 type: CANNON.Body.STATIC,
@@ -3143,32 +2929,7 @@
                 }
             });
 
-            // Atualiza as posições das malhas do terreno com base na posição envolvida do jogador
-            islandMeshes.forEach(tile => {
-                tile.mesh.position.x = tile.offsetX - visualOffsetX;
-                tile.mesh.position.y = 0; // O plano está agora centrado em Y=0
-                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                // A rotação da malha é definida uma vez na inicialização e não precisa de ser atualizada.
-            });
-            // A rua foi removida, então não há necessidade de atualizar roadMeshes.
-
             // NOVO: Atualiza as posições das malhas de água para o efeito de envolvimento
-            holeDomes.forEach(dome => {
-                const distance = calculateWrappedDistance(playerBody.position, dome.position);
-                const isVisible = distance <= renderDistance;
-
-                dome.meshes.forEach(item => {
-                    item.mesh.visible = isVisible;
-                    if (isVisible) {
-                        const visualObject = item.mesh;
-                        visualObject.position.x = dome.position.x + item.offsetX - visualOffsetX;
-                        visualObject.position.y = dome.position.y;
-                        visualObject.position.z = dome.position.z + item.offsetZ - visualOffsetZ;
-                        // A rotação é definida na criação e não precisa ser atualizada
-                    }
-                });
-            });
-
             waterMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
@@ -3356,7 +3117,7 @@
 
 
                     // Lista de todos os corpos que podem ser base para colocação
-                    const allPlaceableSurfaces = [islandBody, ...placedConstructionBodies];
+                    const allPlaceableSurfaces = [...Object.values(terrainBlocks).map(b => b.body), ...placedConstructionBodies];
 
                     for (let i = 0; i < intersects.length; i++) {
                         const intersectedObject = intersects[i].object;
@@ -3633,7 +3394,7 @@
             // Verifica colisão com terreno (rua), estrada, cubos e blocos
             world.raycastAny(rayOriginLow, rayTargetLow, {}, rayResultStep);
             // A lista de corpos "chão" para subida de degraus
-            const stepClimbGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+            const stepClimbGroundBodies = [...Object.values(terrainBlocks).map(b => b.body), ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
             if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
                 hitLow = true;
             }
