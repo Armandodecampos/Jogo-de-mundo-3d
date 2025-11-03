@@ -376,9 +376,11 @@
         let skyFog, underwaterFog; // NOVO: Para o efeito subaquático
         let skyColor, underwaterColor; // NOVO: Para as cores do ambiente
         // Variáveis para corpos e malhas de jogador, terreno (rua), estrada e cubo
-        let playerBody;
+        let playerBody, islandBody;
         // NOVO: Variáveis para o terreno voxel
-        const terrainBlocks = {}; // Objeto para armazenar blocos por coordenadas
+        let terrainGroups = []; // NOVO: para os grupos de terreno clonados
+        const logicalTerrainBlocks = {}; // NOVO: Mapeia a chave de coordenadas para os dados lógicos do bloco
+        let grassMeshesForRaycasting = []; // NOVO: Array plano de malhas de relva para raycasting eficiente
         let grassMaterial, dirtMaterial; // Materiais para os blocos do terreno
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
@@ -1357,13 +1359,13 @@
             }
         }
 
-        // NOVO: Função para gerar o terreno voxel
+
+        // NOVO: Função para gerar o terreno voxel (apenas visual)
         function createVoxelTerrain() {
             const blockSize = 1; // Tamanho de cada bloco
             const terrainSize = Math.floor(islandRadiusTop / blockSize);
-
             const blockGeometry = new THREE.BoxGeometry(blockSize, blockSize, blockSize);
-            const blockShape = new CANNON.Box(new CANNON.Vec3(blockSize / 2, blockSize / 2, blockSize / 2));
+            const masterTerrainGroup = new THREE.Group();
 
             for (let i = -terrainSize; i <= terrainSize; i++) {
                 for (let j = -terrainSize; j <= terrainSize; j++) {
@@ -1376,62 +1378,93 @@
                     // Camada superior (relva)
                     const yTop = 0;
                     const topKey = `${x},${yTop},${z}`;
-                    const topBody = new CANNON.Body({ mass: 0, shape: blockShape, material: islandMaterial });
-                    topBody.position.set(x, yTop, z);
-                    world.addBody(topBody);
                     const topMesh = new THREE.Mesh(blockGeometry, grassMaterial);
-                    topMesh.position.copy(topBody.position);
+                    topMesh.position.set(x, yTop, z);
                     topMesh.castShadow = true;
                     topMesh.receiveShadow = true;
-                    scene.add(topMesh);
-                    terrainBlocks[topKey] = { body: topBody, mesh: topMesh, type: 'grass' };
+                    topMesh.userData.key = topKey; // Associar a malha à sua chave lógica
+                    masterTerrainGroup.add(topMesh);
 
                     // Camada inferior (terra)
                     const yBottom = -blockSize;
                     const bottomKey = `${x},${yBottom},${z}`;
-                    const bottomBody = new CANNON.Body({ mass: 0, shape: blockShape, material: islandMaterial });
-                    bottomBody.position.set(x, yBottom, z);
-                    world.addBody(bottomBody);
                     const bottomMesh = new THREE.Mesh(blockGeometry, dirtMaterial);
-                    bottomMesh.position.copy(bottomBody.position);
+                    bottomMesh.position.set(x, yBottom, z);
                     bottomMesh.castShadow = true;
                     bottomMesh.receiveShadow = true;
-                    scene.add(bottomMesh);
-                    terrainBlocks[bottomKey] = { body: bottomBody, mesh: bottomMesh, type: 'dirt' };
+                    bottomMesh.visible = false;
+                    bottomMesh.userData.key = bottomKey; // Associar a malha à sua chave lógica
+                    masterTerrainGroup.add(bottomMesh);
+
+                    // Armazenar o estado lógico, não a malha
+                    logicalTerrainBlocks[topKey] = { type: 'grass', visible: true };
+                    logicalTerrainBlocks[bottomKey] = { type: 'dirt', visible: false };
                 }
             }
+
+            // Clonar o grupo mestre para o efeito de mosaico
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const groupClone = masterTerrainGroup.clone();
+                    scene.add(groupClone);
+                    terrainGroups.push({ group: groupClone, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
+
+            // Preencher o array de raycasting com as malhas de relva de TODOS os grupos clonados
+            terrainGroups.forEach(tg => {
+                tg.group.children.forEach(child => {
+                    if (child.userData.key && logicalTerrainBlocks[child.userData.key].type === 'grass') {
+                        grassMeshesForRaycasting.push(child);
+                    }
+                });
+            });
         }
 
         // NOVO: Função para cavar um bloco de terreno
         function digBlock() {
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-            const intersects = raycaster.intersectObjects(scene.children, true);
+            // O raycast agora usa o array pré-preenchido de todas as malhas de relva visíveis
+            const intersects = raycaster.intersectObjects(grassMeshesForRaycasting, false);
 
-            for (const intersect of intersects) {
-                if (intersect.distance > destroyDistance) continue; // Usa a mesma distância de destruição
+            if (intersects.length > 0) {
+                const intersectedMesh = intersects[0].object;
+                if (intersects[0].distance > destroyDistance) return;
 
-                const intersectedMesh = intersect.object;
-                const key = Object.keys(terrainBlocks).find(k => terrainBlocks[k].mesh === intersectedMesh);
+                // Obter a chave lógica a partir dos userData da malha
+                const key = intersectedMesh.userData.key;
 
                 if (key) {
-                    const block = terrainBlocks[key];
-                    if (block.type === 'grass') {
-                        // Remove o bloco de grama
-                        world.removeBody(block.body);
-                        scene.remove(block.mesh);
-                        delete terrainBlocks[key];
+                    const block = logicalTerrainBlocks[key];
+                    if (block.type === 'grass' && block.visible) {
+                        block.visible = false; // Atualizar o estado lógico
 
-                        // Adiciona terra ao inventário
+                        // Encontrar e atualizar o estado lógico do bloco de terra
+                        const coords = key.split(',').map(Number);
+                        const dirtKey = `${coords[0]},${coords[1] - 1},${coords[2]}`;
+                        if (logicalTerrainBlocks[dirtKey]) {
+                            logicalTerrainBlocks[dirtKey].visible = true;
+                        }
+
+                        // Atualizar a visibilidade em TODAS as instâncias de mosaico
+                        terrainGroups.forEach(tg => {
+                            const grassMeshToHide = tg.group.children.find(c => c.userData.key === key);
+                            if (grassMeshToHide) grassMeshToHide.visible = false;
+
+                            if (logicalTerrainBlocks[dirtKey]) {
+                                const dirtMeshToShow = tg.group.children.find(c => c.userData.key === dirtKey);
+                                if (dirtMeshToShow) dirtMeshToShow.visible = true;
+                            }
+                        });
+
+                        // Remover as malhas de relva escondidas do array de raycasting para otimização
+                        grassMeshesForRaycasting = grassMeshesForRaycasting.filter(mesh => mesh.visible);
+
+                        // Adicionar terra ao inventário
                         addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
                         updateBackpackDisplay();
                         console.log("Bloco de grama cavado e terra adicionada ao inventário.");
                     }
-                    // Impede a escavação de blocos de terra por enquanto
-                    else if (block.type === 'dirt') {
-                        console.log("Você não pode cavar mais fundo aqui.");
-                    }
-
-                    break; // Sai do loop após encontrar e processar um bloco de terreno
                 }
             }
         }
@@ -1614,6 +1647,16 @@
 
             // O fundo do mar é agora renderizado pela própria ilha, pelo que esta secção foi removida.
 
+            // NOVO: Cria um único corpo de física para a ilha
+            const islandShape = new CANNON.Box(new CANNON.Vec3(islandRadiusTop, 1, islandRadiusTop));
+            islandBody = new CANNON.Body({
+                mass: 0, // Estático
+                shape: islandShape,
+                material: islandMaterial
+            });
+            islandBody.position.set(0, -1, 0); // Posiciona ligeiramente abaixo do nível do chão para os blocos visuais
+            world.addBody(islandBody);
+
             // A rua foi removida, então o código relacionado a ela foi excluído.
 
             // Cria o Corpo de Física do Jogador (esfera)
@@ -1639,7 +1682,7 @@
             playerBody.addEventListener('collide', (event) => {
                 // canJump é verdadeiro APENAS se o corpo colidido NÃO for o objeto que está sendo segurado
                 // A lista de corpos "chão" agora inclui apenas superfícies que podem ser pisadas
-                const allGroundBodies = [...Object.values(terrainBlocks).map(b => b.body), ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+                const allGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
                 if (event.body !== pickedObjectBody && allGroundBodies.includes(event.body)) {
                     canJump = true;
                 }
@@ -2943,6 +2986,12 @@
                 // A posição Y é estática, por isso não precisa de ser atualizada no loop.
             });
 
+            // NOVO: Atualiza as posições dos grupos de terreno para o efeito de envolvimento
+            terrainGroups.forEach(tile => {
+                tile.group.position.x = tile.offsetX - visualOffsetX;
+                tile.group.position.z = tile.offsetZ - visualOffsetZ;
+            });
+
             // Atualiza as posições de todas as malhas visuais dos cubos/caixas
             collectibleBoxes.forEach(box => {
                 // Primeiro, atualiza as posições de todas as malhas para lidar com o envolvimento do mundo,
@@ -3117,7 +3166,7 @@
 
 
                     // Lista de todos os corpos que podem ser base para colocação
-                    const allPlaceableSurfaces = [...Object.values(terrainBlocks).map(b => b.body), ...placedConstructionBodies];
+                    const allPlaceableSurfaces = [islandBody, ...placedConstructionBodies];
 
                     for (let i = 0; i < intersects.length; i++) {
                         const intersectedObject = intersects[i].object;
@@ -3394,7 +3443,7 @@
             // Verifica colisão com terreno (rua), estrada, cubos e blocos
             world.raycastAny(rayOriginLow, rayTargetLow, {}, rayResultStep);
             // A lista de corpos "chão" para subida de degraus
-            const stepClimbGroundBodies = [...Object.values(terrainBlocks).map(b => b.body), ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+            const stepClimbGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
             if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
                 hitLow = true;
             }
