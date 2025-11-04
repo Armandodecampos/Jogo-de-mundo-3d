@@ -623,7 +623,7 @@
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
         const textureApplicatorImageURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Ícone para o pincel
         const stoneTextureURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Textura de pedra para aplicar
-        const holeTextureURL = 'https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=tz27qsg6&dl=0'; // NOVO: Textura do buraco
+        const holeTextureURL = 'https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=k1tcv6g5&dl=0'; // NOVO: Textura do buraco
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -1204,7 +1204,8 @@
                     }
 
                     visualMounds.push({
-                        position: hitPoint.clone(),
+                        position: newHoleModel.position.clone(), // Store the exact position with offset
+                        rotation: newHoleModel.rotation.clone(), // Store the rotation
                         meshes: visualMoundMeshes,
                         createdAt: world.time
                     });
@@ -2540,8 +2541,7 @@
         }
 
         function loadHoleModel() {
-            const dirtTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=k1tcv6g5&dl=0";
-            textureLoader.load(dirtTextureURL, (dirtTexture) => {
+            textureLoader.load(holeTextureURL, (dirtTexture) => {
                 dirtTexture.wrapS = THREE.RepeatWrapping;
                 dirtTexture.wrapT = THREE.RepeatWrapping;
                 dirtTexture.repeat.set(1, 1);
@@ -2573,19 +2573,15 @@
                             centerMesh = meshes[0];
                         }
 
-                        // Create and apply the material for the border
-                        const borderMaterial = new THREE.MeshBasicMaterial({
+                        // Create a single material for both parts of the hole
+                        const holePartMaterial = new THREE.MeshBasicMaterial({
                             map: dirtTexture,
                             transparent: true
                         });
-                        borderMesh.material = borderMaterial;
 
-                        // Create and apply the material for the center
-                        const centerMaterial = new THREE.MeshBasicMaterial({
-                            color: 0x000000, // Black
-                            transparent: true
-                        });
-                        centerMesh.material = centerMaterial;
+                        // Apply the same material to both meshes
+                        borderMesh.material = holePartMaterial;
+                        centerMesh.material = holePartMaterial;
 
                         // Create a group to hold both meshes
                         holeModel = new THREE.Group();
@@ -3208,6 +3204,7 @@
                         item.mesh.position.copy(mound.position);
                         item.mesh.position.x += item.offsetX - visualOffsetX;
                         item.mesh.position.z += item.offsetZ - visualOffsetZ;
+                        item.mesh.rotation.copy(mound.rotation); // Apply stored rotation
                     }
                 });
             });
