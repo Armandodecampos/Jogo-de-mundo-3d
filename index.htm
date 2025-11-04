@@ -2540,7 +2540,7 @@
         }
 
         function loadHoleModel() {
-            const dirtTextureURL = "textura-de-terra-2.png";
+            const dirtTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=k1tcv6g5&dl=0";
             textureLoader.load(dirtTextureURL, (dirtTexture) => {
                 dirtTexture.wrapS = THREE.RepeatWrapping;
                 dirtTexture.wrapT = THREE.RepeatWrapping;
@@ -2548,34 +2548,58 @@
 
                 const loader = new GLTFLoader(loadingManager);
                 loader.load('Tremendous Rottis (3).glb', (gltf) => {
-                    console.log('GLB loaded for geometry extraction.');
+                    console.log('GLB loaded, identifying meshes...');
 
-                    let modelGeometry = null;
+                    let borderMesh = null;
+                    let centerMesh = null;
+
+                    // Find the two meshes. We'll assume the larger one is the border.
+                    const meshes = [];
                     gltf.scene.traverse(function (child) {
                         if (child.isMesh) {
-                            // Extract the geometry from the first mesh found
-                            modelGeometry = child.geometry;
+                            meshes.push(child);
                         }
                     });
 
-                    if (modelGeometry) {
-                        // Create a new, simple material that is not affected by light
-                        const holeMaterial = new THREE.MeshBasicMaterial({
-                            map: dirtTexture,
-                            transparent: true,
-                            side: THREE.DoubleSide
-                        });
+                    if (meshes.length === 2) {
+                        const size0 = new THREE.Box3().setFromObject(meshes[0]).getSize(new THREE.Vector3());
+                        const size1 = new THREE.Box3().setFromObject(meshes[1]).getSize(new THREE.Vector3());
 
-                        // Create a new mesh using the extracted geometry and the new material
-                        holeModel = new THREE.Mesh(modelGeometry, holeMaterial);
+                        if (size0.x > size1.x) {
+                            borderMesh = meshes[0];
+                            centerMesh = meshes[1];
+                        } else {
+                            borderMesh = meshes[1];
+                            centerMesh = meshes[0];
+                        }
+
+                        // Create and apply the material for the border
+                        const borderMaterial = new THREE.MeshBasicMaterial({
+                            map: dirtTexture,
+                            transparent: true
+                        });
+                        borderMesh.material = borderMaterial;
+
+                        // Create and apply the material for the center
+                        const centerMaterial = new THREE.MeshBasicMaterial({
+                            color: 0x000000, // Black
+                            transparent: true
+                        });
+                        centerMesh.material = centerMaterial;
+
+                        // Create a group to hold both meshes
+                        holeModel = new THREE.Group();
+                        holeModel.add(borderMesh);
+                        holeModel.add(centerMesh);
 
                         holeModel.scale.set(9, 9, 9);
                         holeModel.castShadow = false;
                         holeModel.receiveShadow = true;
 
-                        console.log('Hole model created from GLB geometry with new MeshBasicMaterial.');
+                        console.log('Successfully grouped meshes into a single holeModel.');
+
                     } else {
-                         console.error('Could not find any mesh inside the GLB file to extract geometry from.');
+                         console.error('Expected to find 2 meshes in the GLB file, but found', meshes.length);
                     }
 
                 }, undefined, (error) => {
