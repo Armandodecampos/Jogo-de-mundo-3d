@@ -644,7 +644,7 @@
         let splatMap; // NOVO: Máscara de textura para pintar os buracos
         let splatMapData; // NOVO: Dados brutos para a máscara de textura
 
-        let holeModel1, holeModel2;
+        let holeModel;
 
         // Declare physics materials globally
         let playerMaterial;
@@ -1180,36 +1180,26 @@
                 const moundGridRadius = Math.round(moundRadius / (worldSize / hfGridSize));
 
                 if (gridX >= 0 && gridX < hfGridSize && gridZ >= 0 && gridZ < hfGridSize) {
-                    if (!holeModel1 || !holeModel2) {
-                        console.error("Hole models not loaded yet!");
+                    if (!holeModel) { // Check for the single model
+                        console.error("Hole model not loaded yet!");
                         return;
                     }
 
-                    const newHoleModel1 = holeModel1.clone();
-                    const newHoleModel2 = holeModel2.clone();
+                    const newHoleModel = holeModel.clone();
 
-                    // Adjust scale and rotation
-                    const scale = 9;
-                    const borderScale = scale * 1.1; // Make the border slightly larger
-                    newHoleModel1.scale.set(borderScale, borderScale, borderScale); // Border model
-                    newHoleModel2.scale.set(scale, scale, scale); // Center model
+                    // Position the new hole at the hit point with a vertical offset
+                    newHoleModel.position.copy(hitPoint);
+                    newHoleModel.position.y += 0.02; // Prevents z-fighting with the ground
 
-                    newHoleModel1.rotation.x = -Math.PI / 2; // Rotate 90 degrees to be upright
-                    newHoleModel2.rotation.x = -Math.PI / 2;
-
-                    newHoleModel1.position.copy(hitPoint);
-                    // Add a tiny vertical offset to the center model to prevent z-fighting
-                    newHoleModel2.position.copy(hitPoint).y += 0.01;
+                    // The model is a flat circle, so it needs to be rotated to lie on the ground
+                    newHoleModel.rotation.x = -Math.PI / 2;
 
                     const visualMoundMeshes = [];
                      for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                         for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                            const mesh1 = newHoleModel1.clone();
-                            const mesh2 = newHoleModel2.clone();
-                            scene.add(mesh1);
-                            scene.add(mesh2);
-                            visualMoundMeshes.push({ mesh: mesh1, offsetX: j * worldSize, offsetZ: k * worldSize });
-                            visualMoundMeshes.push({ mesh: mesh2, offsetX: j * worldSize, offsetZ: k * worldSize });
+                            const mesh = newHoleModel.clone();
+                            scene.add(mesh);
+                            visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
                         }
                     }
 
@@ -2554,54 +2544,22 @@
             textureLoader.load(dirtTextureURL, (dirtTexture) => {
                 dirtTexture.wrapS = THREE.RepeatWrapping;
                 dirtTexture.wrapT = THREE.RepeatWrapping;
-                dirtTexture.repeat.set(2, 2); // Adjust texture repeat as needed
+                dirtTexture.repeat.set(4, 4);
 
-                const loader = new GLTFLoader(loadingManager);
-                loader.load('Tremendous Rottis (3).glb', (gltf) => {
-                    console.log('GLB loaded successfully.');
+                const holeGeometry = new THREE.CircleGeometry(cobSize * 1.5, 32);
 
-                    let loadedMesh = null;
-                    gltf.scene.traverse(function (child) {
-                        if (child.isMesh) {
-                            loadedMesh = child;
-                        }
-                    });
-
-                    if (loadedMesh) {
-                        // Material for the border object (with dirt texture)
-                        const borderMaterial = new THREE.MeshStandardMaterial({
-                            map: dirtTexture,
-                            roughness: 0.9,
-                            metalness: 0.1,
-                            side: THREE.DoubleSide // Make material visible from both sides
-                        });
-
-                        // Material for the center object (also with dirt texture, but a separate instance)
-                        const centerMaterial = new THREE.MeshStandardMaterial({
-                            map: dirtTexture.clone(), // Clone the texture
-                            roughness: 0.9,
-                            metalness: 0.1,
-                            side: THREE.DoubleSide // Make material visible from both sides
-                        });
-
-                        // holeModel1 is the border, holeModel2 is the center
-                        holeModel1 = new THREE.Mesh(loadedMesh.geometry, borderMaterial);
-                        holeModel2 = new THREE.Mesh(loadedMesh.geometry, centerMaterial);
-
-                        holeModel1.castShadow = true;
-                        holeModel1.receiveShadow = true;
-                        holeModel2.castShadow = true;
-                        holeModel2.receiveShadow = true;
-
-                        console.log('Hole models created with double-sided, textured materials.');
-
-                    } else {
-                         console.error('Could not find any mesh inside the GLB file.');
-                    }
-
-                }, undefined, (error) => {
-                    console.error('An error happened while loading the GLB model:', error);
+                const holeMaterial = new THREE.MeshBasicMaterial({
+                    map: dirtTexture,
+                    side: THREE.DoubleSide,
+                    transparent: true // Ensure transparency is handled correctly
                 });
+
+                holeModel = new THREE.Mesh(holeGeometry, holeMaterial);
+                holeModel.castShadow = false;
+                holeModel.receiveShadow = true;
+
+                console.log('Hole model created with CircleGeometry and MeshBasicMaterial.');
+
             }, undefined, (error) => {
                 console.error('An error happened while loading the dirt texture for the hole:', error);
             });
