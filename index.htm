@@ -2548,58 +2548,60 @@
 
                 const loader = new GLTFLoader(loadingManager);
                 loader.load('Tremendous Rottis (3).glb', (gltf) => {
-                    console.log('GLB loaded, identifying meshes...');
+                    console.log("GLTF Scene Loaded:", JSON.stringify(gltf.scene, null, 2)); // Log the entire scene object
+                    const borderMaterial = new THREE.MeshStandardMaterial({
+                        map: dirtTexture,
+                        side: THREE.DoubleSide,
+                        transparent: false
+                    });
+                    const centerMaterial = new THREE.MeshStandardMaterial({
+                        color: 0x000000,
+                        side: THREE.DoubleSide
+                    });
+
                     const meshes = [];
-                    gltf.scene.traverse(function(child) {
+                    gltf.scene.traverse(function (child) {
                         if (child.isMesh) {
                             meshes.push(child);
                         }
                     });
 
                     if (meshes.length === 2) {
-                        // Create two separate, clean materials.
-                        const borderMaterial = new THREE.MeshStandardMaterial({
-                            map: dirtTexture,
-                            transparent: true,
-                            roughness: 1,
-                            metalness: 0
-                        });
-                        const centerMaterial = new THREE.MeshStandardMaterial({
-                            color: 0x000000, // Black
-                            transparent: true,
-                            roughness: 1,
-                            metalness: 0
+                        let borderMesh, centerMesh;
+
+                        // Ensure bounding boxes are computed
+                        meshes.forEach(mesh => {
+                            if (!mesh.geometry.boundingBox) {
+                                mesh.geometry.computeBoundingBox();
+                            }
                         });
 
-                        // Differentiate meshes by the size of their geometry's bounding box.
-                        meshes[0].geometry.computeBoundingBox();
-                        meshes[1].geometry.computeBoundingBox();
                         const size0 = new THREE.Vector3();
-                        const size1 = new THREE.Vector3();
                         meshes[0].geometry.boundingBox.getSize(size0);
+                        const size1 = new THREE.Vector3();
                         meshes[1].geometry.boundingBox.getSize(size1);
 
-                        // The larger mesh is the border, the smaller one is the center.
-                        const borderMesh = size0.lengthSq() > size1.lengthSq() ? meshes[0] : meshes[1];
-                        const centerMesh = size0.lengthSq() > size1.lengthSq() ? meshes[1] : meshes[0];
+                        // The larger mesh is the border
+                        if (size0.x > size1.x) {
+                            borderMesh = meshes[0];
+                            centerMesh = meshes[1];
+                        } else {
+                            borderMesh = meshes[1];
+                            centerMesh = meshes[0];
+                        }
 
-                        // Apply the correct materials.
                         borderMesh.material = borderMaterial;
                         centerMesh.material = centerMaterial;
 
-                        // Rebuild the holeModel group with the correctly textured meshes.
                         holeModel = new THREE.Group();
-                        holeModel.add(borderMesh.clone()); // Clone to avoid modifying the original GLTF scene
-                        holeModel.add(centerMesh.clone());
+                        holeModel.add(borderMesh);
+                        holeModel.add(centerMesh);
 
                         holeModel.scale.set(9, 9, 9);
                         holeModel.castShadow = false;
                         holeModel.receiveShadow = true;
-
-                        console.log('Successfully rebuilt holeModel with differentiated materials.');
-
                     } else {
-                        console.error('Expected to find 2 meshes in the GLB file, but found', meshes.length);
+                        console.error(`Expected 2 meshes in GLB, but found ${meshes.length}.`);
                     }
 
                 }, undefined, (error) => {
