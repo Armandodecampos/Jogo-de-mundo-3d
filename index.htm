@@ -622,7 +622,7 @@
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
         const textureApplicatorImageURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Ícone para o pincel
         const stoneTextureURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Textura de pedra para aplicar
-        const holeTextureURL = 'https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=tz27qsg6&dl=0'; // NOVO: Textura do buraco
+        const holeTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=0"; // NOVO: Textura do buraco
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -636,9 +636,7 @@
         let holeMaterial; // NOVO: Material para o buraco cavado
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
-        let mounds = [];
         let visualMounds = []; // NOVO: Para os montes de terra visuais
-        let moundDomes = [];
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
         let splatMap; // NOVO: Máscara de textura para pintar os buracos
         let splatMapData; // NOVO: Dados brutos para a máscara de textura
@@ -1421,45 +1419,6 @@
         }
 
 
-        function updateIslandGeometry() {
-            const hfGridSize = 128;
-            const hfMatrix = JSON.parse(JSON.stringify(baseMatrix));
-
-            for (const mound of mounds) {
-                if (mound.flattened) continue;
-                for (let i = 0; i < hfGridSize; i++) {
-                    for (let j = 0; j < hfGridSize; j++) {
-                        const dx = j - mound.x;
-                        const dz = i - mound.z;
-                        const distSq = dx * dx + dz * dz;
-                        const radiusSq = mound.radius * mound.radius;
-
-                        if (distSq < radiusSq) {
-                            const heightOffset = Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
-                            hfMatrix[i][j] += heightOffset;
-                        }
-                    }
-                }
-            }
-
-            if (islandBody && islandBody.shapes.length > 0) {
-                const newHfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
-                islandBody.removeShape(islandBody.shapes[0]);
-                islandBody.addShape(newHfShape);
-            }
-
-            if (islandMeshes.length > 0) {
-                const mainIslandMesh = islandMeshes[0].mesh;
-                const vertices = mainIslandMesh.geometry.attributes.position.array;
-                for (let i = 0; i < hfGridSize; i++) {
-                    for (let j = 0; j < hfGridSize; j++) {
-                        vertices[(i * hfGridSize + j) * 3 + 1] = hfMatrix[i][j];
-                    }
-                }
-                mainIslandMesh.geometry.attributes.position.needsUpdate = true;
-                mainIslandMesh.geometry.computeVertexNormals();
-            }
-        }
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function init() {
@@ -1473,6 +1432,7 @@
             // Configuração da Cena Three.js
             scene = new THREE.Scene();
             window.scene = scene;
+            window.visualMounds = visualMounds; // Expose for verification
             skyColor = new THREE.Color(0x87CEEB);
             underwaterColor = new THREE.Color(0x001e3d);
             scene.background = skyColor; // Começa com a cor do céu
@@ -1791,6 +1751,7 @@
             // Posição inicial: centro da esfera em playerRadius + islandSurfaceHeight
             playerBody.position.set(0, playerRadius + islandSurfaceHeight, 0); // Posição inicial ajustada do jogador
             world.addBody(playerBody);
+            window.islandBody = islandBody; // Expose for verification
 
             // Reintroduz o listener de colisão para canJump, mas com uma verificação adicional
             playerBody.addEventListener('collide', (event) => {
@@ -2549,8 +2510,7 @@
         }
 
         function loadHoleModel() {
-            const dirtTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=k1tcv6g5&dl=0";
-            textureLoader.load(dirtTextureURL, (dirtTexture) => {
+            textureLoader.load(holeTextureURL, (dirtTexture) => {
                 dirtTexture.wrapS = THREE.RepeatWrapping;
                 dirtTexture.wrapT = THREE.RepeatWrapping;
                 dirtTexture.repeat.set(2, 2); // Adjust texture repeat as needed
@@ -2559,15 +2519,15 @@
                 loader.load('Tremendous Rottis (3).glb', (gltf) => {
                     console.log('GLB loaded successfully.');
 
-                    let loadedMesh = null;
+                    const meshes = [];
                     gltf.scene.traverse(function (child) {
                         if (child.isMesh) {
-                            loadedMesh = child;
+                            meshes.push(child);
                         }
                     });
 
-                    if (loadedMesh) {
-                        // Material for the border object (with dirt texture)
+                    if (meshes.length > 0) {
+                         // Material for the border object (with dirt texture)
                         const borderMaterial = new THREE.MeshStandardMaterial({
                             map: dirtTexture,
                             roughness: 0.9,
@@ -2581,17 +2541,20 @@
                             metalness: 0.1
                         });
 
-                        // holeModel1 is the border, holeModel2 is the center
-                        holeModel1 = new THREE.Mesh(loadedMesh.geometry, borderMaterial);
-                        holeModel2 = new THREE.Mesh(loadedMesh.geometry, centerMaterial);
+                        // If there are 2+ meshes, use the first for the border and the second for the center.
+                        // If there is only 1, use it for both.
+                        const borderGeometry = meshes[0].geometry;
+                        const centerGeometry = meshes.length > 1 ? meshes[1].geometry : meshes[0].geometry;
+
+                        holeModel1 = new THREE.Mesh(borderGeometry, borderMaterial);
+                        holeModel2 = new THREE.Mesh(centerGeometry, centerMaterial);
 
                         holeModel1.castShadow = true;
                         holeModel1.receiveShadow = true;
                         holeModel2.castShadow = true;
                         holeModel2.receiveShadow = true;
 
-                        console.log('Hole models created with distinct materials.');
-
+                        console.log(`Hole models created from ${meshes.length} mesh(es).`);
                     } else {
                          console.error('Could not find any mesh inside the GLB file.');
                     }
@@ -3169,26 +3132,6 @@
                 meshesArray.forEach(m => {
                     const distance = camera.position.distanceTo(m.mesh.position);
                     m.mesh.visible = distance <= renderDistance;
-                });
-            });
-
-            moundDomes.forEach((dome, index) => {
-                const mound = mounds[index];
-                if (!mound || mound.flattened) {
-                    dome.meshes.forEach(item => item.mesh.visible = false);
-                    return;
-                }
-
-                const distance = calculateWrappedDistance(playerBody.position, dome.position);
-                const isVisible = distance <= renderDistance;
-
-                dome.meshes.forEach(item => {
-                    item.mesh.visible = isVisible;
-                    if (isVisible) {
-                        item.mesh.position.copy(dome.position);
-                        item.mesh.position.x += item.offsetX - visualOffsetX;
-                        item.mesh.position.z += item.offsetZ - visualOffsetZ;
-                    }
                 });
             });
 
@@ -4000,6 +3943,11 @@
             window.updateBeltDisplay = updateBeltDisplay;
             window.updateBackpackDisplay = updateBackpackDisplay; // Expor para teste
             window.selectedSlotIndex = selectedSlotIndex;
+            window.setSelectedSlotIndex = (index) => {
+                selectedSlotIndex = index;
+                updateBeltDisplay();
+            };
+            window.createMound = createMound; // Expose for verification
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
             if (menuIconButton) {
