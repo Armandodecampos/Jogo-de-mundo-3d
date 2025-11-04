@@ -475,7 +475,7 @@
         let stoneDeposits = [];
 
         // NOVO: Constantes e variáveis para depósitos de terra
-        const dirtDepositTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=2hknz00t&dl=0";
+        const dirtDepositTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&dl=1";
         let dirtDepositMaterial;
         let flattenedDirtDepositMaterial; // Material para o estado achatado
         const numDirtDeposits = 40;
@@ -623,7 +623,7 @@
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
         const textureApplicatorImageURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Ícone para o pincel
         const stoneTextureURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Textura de pedra para aplicar
-        const holeTextureURL = 'https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=k1tcv6g5&dl=0'; // NOVO: Textura do buraco
+        const holeTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=8jmd1xmw&dl=1"; // NOVO: Textura do buraco
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -1783,6 +1783,12 @@
             // Posição inicial: centro da esfera em playerRadius + islandSurfaceHeight
             playerBody.position.set(0, playerRadius + islandSurfaceHeight, 0); // Posição inicial ajustada do jogador
             world.addBody(playerBody);
+            window.playerBody = playerBody; // Expose for verification
+
+            window.setSelectedSlotIndex = (newIndex) => {
+                selectedSlotIndex = newIndex;
+                updateBeltDisplay();
+            };
 
             // Reintroduz o listener de colisão para canJump, mas com uma verificação adicional
             playerBody.addEventListener('collide', (event) => {
@@ -2549,38 +2555,57 @@
                 const loader = new GLTFLoader(loadingManager);
                 loader.load('Tremendous Rottis (3).glb', (gltf) => {
                     console.log('GLB loaded, identifying meshes...');
-
-                    // Create a single, clean material that will be shared by both parts of the hole.
-                    // Using MeshStandardMaterial ensures it interacts with scene lighting.
-                    const cleanHoleMaterial = new THREE.MeshStandardMaterial({
-                        map: dirtTexture,
-                        transparent: true,
-                        roughness: 1, // Make it non-shiny
-                        metalness: 0  // Make it non-metallic
-                    });
-
-                    holeModel = new THREE.Group(); // Initialize the group to hold the new meshes.
-
-                    // Traverse the loaded scene to find the geometries.
-                    gltf.scene.traverse(function (child) {
+                    const meshes = [];
+                    gltf.scene.traverse(function(child) {
                         if (child.isMesh) {
-                            // For each mesh found in the GLB, create a NEW mesh.
-                            // This new mesh uses the geometry from the original but applies our clean material.
-                            // This avoids inheriting any problematic material properties from the GLB file.
-                            const newMesh = new THREE.Mesh(child.geometry, cleanHoleMaterial);
-                            holeModel.add(newMesh); // Add the brand new mesh to our group.
+                            meshes.push(child);
                         }
                     });
 
-                    if (holeModel.children.length === 2) {
+                    if (meshes.length === 2) {
+                        // Create two separate, clean materials.
+                        const borderMaterial = new THREE.MeshStandardMaterial({
+                            map: dirtTexture,
+                            transparent: true,
+                            roughness: 1,
+                            metalness: 0
+                        });
+                        const centerMaterial = new THREE.MeshStandardMaterial({
+                            color: 0x000000, // Black
+                            transparent: true,
+                            roughness: 1,
+                            metalness: 0
+                        });
+
+                        // Differentiate meshes by the size of their geometry's bounding box.
+                        meshes[0].geometry.computeBoundingBox();
+                        meshes[1].geometry.computeBoundingBox();
+                        const size0 = new THREE.Vector3();
+                        const size1 = new THREE.Vector3();
+                        meshes[0].geometry.boundingBox.getSize(size0);
+                        meshes[1].geometry.boundingBox.getSize(size1);
+
+                        // The larger mesh is the border, the smaller one is the center.
+                        const borderMesh = size0.lengthSq() > size1.lengthSq() ? meshes[0] : meshes[1];
+                        const centerMesh = size0.lengthSq() > size1.lengthSq() ? meshes[1] : meshes[0];
+
+                        // Apply the correct materials.
+                        borderMesh.material = borderMaterial;
+                        centerMesh.material = centerMaterial;
+
+                        // Rebuild the holeModel group with the correctly textured meshes.
+                        holeModel = new THREE.Group();
+                        holeModel.add(borderMesh.clone()); // Clone to avoid modifying the original GLTF scene
+                        holeModel.add(centerMesh.clone());
+
                         holeModel.scale.set(9, 9, 9);
                         holeModel.castShadow = false;
                         holeModel.receiveShadow = true;
 
-                        console.log('Successfully rebuilt holeModel with clean materials and original geometries.');
+                        console.log('Successfully rebuilt holeModel with differentiated materials.');
 
                     } else {
-                         console.error('Expected to find 2 meshes in the GLB file, but found', holeModel.children.length);
+                        console.error('Expected to find 2 meshes in the GLB file, but found', meshes.length);
                     }
 
                 }, undefined, (error) => {
