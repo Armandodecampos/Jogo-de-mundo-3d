@@ -2544,22 +2544,43 @@
             textureLoader.load(dirtTextureURL, (dirtTexture) => {
                 dirtTexture.wrapS = THREE.RepeatWrapping;
                 dirtTexture.wrapT = THREE.RepeatWrapping;
-                dirtTexture.repeat.set(4, 4);
+                dirtTexture.repeat.set(1, 1);
 
-                const holeGeometry = new THREE.CircleGeometry(cobSize * 1.5, 32);
+                const loader = new GLTFLoader(loadingManager);
+                loader.load('Tremendous Rottis (3).glb', (gltf) => {
+                    console.log('GLB loaded for geometry extraction.');
 
-                const holeMaterial = new THREE.MeshBasicMaterial({
-                    map: dirtTexture,
-                    side: THREE.DoubleSide,
-                    transparent: true // Ensure transparency is handled correctly
+                    let modelGeometry = null;
+                    gltf.scene.traverse(function (child) {
+                        if (child.isMesh) {
+                            // Extract the geometry from the first mesh found
+                            modelGeometry = child.geometry;
+                        }
+                    });
+
+                    if (modelGeometry) {
+                        // Create a new, simple material that is not affected by light
+                        const holeMaterial = new THREE.MeshBasicMaterial({
+                            map: dirtTexture,
+                            transparent: true,
+                            side: THREE.DoubleSide
+                        });
+
+                        // Create a new mesh using the extracted geometry and the new material
+                        holeModel = new THREE.Mesh(modelGeometry, holeMaterial);
+
+                        holeModel.scale.set(9, 9, 9);
+                        holeModel.castShadow = false;
+                        holeModel.receiveShadow = true;
+
+                        console.log('Hole model created from GLB geometry with new MeshBasicMaterial.');
+                    } else {
+                         console.error('Could not find any mesh inside the GLB file to extract geometry from.');
+                    }
+
+                }, undefined, (error) => {
+                    console.error('An error happened while loading the GLB model:', error);
                 });
-
-                holeModel = new THREE.Mesh(holeGeometry, holeMaterial);
-                holeModel.castShadow = false;
-                holeModel.receiveShadow = true;
-
-                console.log('Hole model created with CircleGeometry and MeshBasicMaterial.');
-
             }, undefined, (error) => {
                 console.error('An error happened while loading the dirt texture for the hole:', error);
             });
