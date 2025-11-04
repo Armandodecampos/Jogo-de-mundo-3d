@@ -2550,52 +2550,37 @@
                 loader.load('Tremendous Rottis (3).glb', (gltf) => {
                     console.log('GLB loaded, identifying meshes...');
 
-                    let borderMesh = null;
-                    let centerMesh = null;
+                    // Create a single, clean material that will be shared by both parts of the hole.
+                    // Using MeshStandardMaterial ensures it interacts with scene lighting.
+                    const cleanHoleMaterial = new THREE.MeshStandardMaterial({
+                        map: dirtTexture,
+                        transparent: true,
+                        roughness: 1, // Make it non-shiny
+                        metalness: 0  // Make it non-metallic
+                    });
 
-                    // Find the two meshes. We'll assume the larger one is the border.
-                    const meshes = [];
+                    holeModel = new THREE.Group(); // Initialize the group to hold the new meshes.
+
+                    // Traverse the loaded scene to find the geometries.
                     gltf.scene.traverse(function (child) {
                         if (child.isMesh) {
-                            meshes.push(child);
+                            // For each mesh found in the GLB, create a NEW mesh.
+                            // This new mesh uses the geometry from the original but applies our clean material.
+                            // This avoids inheriting any problematic material properties from the GLB file.
+                            const newMesh = new THREE.Mesh(child.geometry, cleanHoleMaterial);
+                            holeModel.add(newMesh); // Add the brand new mesh to our group.
                         }
                     });
 
-                    if (meshes.length === 2) {
-                        const size0 = new THREE.Box3().setFromObject(meshes[0]).getSize(new THREE.Vector3());
-                        const size1 = new THREE.Box3().setFromObject(meshes[1]).getSize(new THREE.Vector3());
-
-                        if (size0.x > size1.x) {
-                            borderMesh = meshes[0];
-                            centerMesh = meshes[1];
-                        } else {
-                            borderMesh = meshes[1];
-                            centerMesh = meshes[0];
-                        }
-
-                        // Create a single material for both parts of the hole
-                        const holePartMaterial = new THREE.MeshBasicMaterial({
-                            map: dirtTexture,
-                            transparent: true
-                        });
-
-                        // Apply the same material to both meshes
-                        borderMesh.material = holePartMaterial;
-                        centerMesh.material = holePartMaterial;
-
-                        // Create a group to hold both meshes
-                        holeModel = new THREE.Group();
-                        holeModel.add(borderMesh);
-                        holeModel.add(centerMesh);
-
+                    if (holeModel.children.length === 2) {
                         holeModel.scale.set(9, 9, 9);
                         holeModel.castShadow = false;
                         holeModel.receiveShadow = true;
 
-                        console.log('Successfully grouped meshes into a single holeModel.');
+                        console.log('Successfully rebuilt holeModel with clean materials and original geometries.');
 
                     } else {
-                         console.error('Expected to find 2 meshes in the GLB file, but found', meshes.length);
+                         console.error('Expected to find 2 meshes in the GLB file, but found', holeModel.children.length);
                     }
 
                 }, undefined, (error) => {
