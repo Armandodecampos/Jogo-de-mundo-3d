@@ -368,9 +368,9 @@
 
     <script type="module">
         // Importa as bibliotecas Three.js e Cannon-es de CDNs
+        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js';
         import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
         import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js';
-        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js';
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -625,13 +625,10 @@
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
         let stoneMaterial; // NOVO: Material para chão com a nova textura
         let holeMaterial; // NOVO: Material para o buraco cavado
-        let holeModelTemplate; // NOVO: Para armazenar o modelo de buraco carregado
-        let holeDug = false; // NOVO: Para rastrear se o buraco já foi cavado
+        let holeModelTemplate; // NOVO: Para armazenar o modelo do buraco do GLB
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
-        let mounds = [];
         let visualMounds = []; // NOVO: Para os montes de terra visuais
-        let moundDomes = [];
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
         let splatMap; // NOVO: Máscara de textura para pintar os buracos
         let splatMapData; // NOVO: Dados brutos para a máscara de textura
@@ -1150,9 +1147,9 @@
         }
 
         function createMound() {
-            // Verifica se o modelo está pronto e se o buraco ainda não foi cavado
-            if (!holeModelTemplate || holeDug) {
-                console.log("Não é possível cavar o buraco. Modelo não pronto ou buraco já cavado.");
+            // Verifica se tanto o modelo quanto o material necessário estão prontos
+            if (!holeModelTemplate || !dirtDepositMaterial) {
+                console.warn("Modelo do buraco ou material de terra ainda não carregado.");
                 return;
             }
 
@@ -1165,36 +1162,62 @@
                 if (intersect.distance > destroyDistance) return;
 
                 const hitPoint = intersect.point;
-                if (hitPoint.y < waterLevel) return; // Não cava debaixo d'água
+                if (hitPoint.y < waterLevel) return;
 
-                // Cria o buraco
-                const holeInstance = holeModelTemplate.clone();
-                holeInstance.position.copy(hitPoint);
+                // Clona o modelo preparado
+                const newHole = holeModelTemplate.clone();
+                const blackMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
 
-                // Adiciona um pequeno deslocamento para cima para garantir que a borda fique acima do chão
-                holeInstance.position.y += 0.01;
+                // Aplica os materiais dinamicamente
+                newHole.traverse((child) => {
+                    if (child.isMesh) {
+                        child.geometry.computeBoundingBox();
+                        const size = new THREE.Vector3();
+                        child.geometry.boundingBox.getSize(size);
+                        const area = size.x * size.z;
 
-                // Adiciona todas as malhas clonadas à cena
-                const holeMeshes = [];
-                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                        if (area > 1.0) { // Malha da borda
+                            child.material = dirtDepositMaterial;
+                        } else { // Malha do centro
+                            child.material = blackMaterial;
+                        }
+                        child.castShadow = false;
+                        child.receiveShadow = true;
+                    }
+                });
+
+                newHole.scale.set(0.2, 0.2, 0.2); // Reduz a escala do modelo
+
+                // Get the normal of the surface at the intersection point
+                const hitNormal = intersect.face.normal.clone().transformDirection(intersect.object.matrixWorld).normalize();
+
+                // Create a quaternion to align the hole with the surface normal
+                const up = new THREE.Vector3(0, 1, 0);
+                const quaternion = new THREE.Quaternion().setFromRotationMatrix(
+                    new THREE.Matrix4().lookAt(new THREE.Vector3(0,0,0), hitNormal, up)
+                );
+                newHole.quaternion.copy(quaternion);
+
+                // Add a small offset to prevent z-fighting
+                newHole.position.copy(hitPoint).add(hitNormal.multiplyScalar(0.01));
+
+                // Create mirrored visual meshes for the wrapping effect
+                const visualHoleMeshes = [];
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                     for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                        const mesh = holeInstance.clone();
+                        const mesh = newHole.clone(); // Clone the entire group
                         scene.add(mesh);
-                        holeMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                        visualHoleMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
                     }
                 }
 
-                // Adiciona o buraco a um array para ser atualizado no loop de animação
                 visualMounds.push({
-                    position: hitPoint.clone(),
-                    meshes: holeMeshes,
+                    position: newHole.position.clone(),
+                    meshes: visualHoleMeshes,
                     createdAt: world.time
                 });
 
-                holeDug = true; // Marca que o buraco foi cavado
-                console.log("Buraco cavado em:", hitPoint);
-
-                // Adiciona terra ao inventário
+                // Add dirt to inventory
                 addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
                 updateBackpackDisplay();
             }
@@ -1395,45 +1418,6 @@
         }
 
 
-        function updateIslandGeometry() {
-            const hfGridSize = 128;
-            const hfMatrix = JSON.parse(JSON.stringify(baseMatrix));
-
-            for (const mound of mounds) {
-                if (mound.flattened) continue;
-                for (let i = 0; i < hfGridSize; i++) {
-                    for (let j = 0; j < hfGridSize; j++) {
-                        const dx = j - mound.x;
-                        const dz = i - mound.z;
-                        const distSq = dx * dx + dz * dz;
-                        const radiusSq = mound.radius * mound.radius;
-
-                        if (distSq < radiusSq) {
-                            const heightOffset = Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
-                            hfMatrix[i][j] += heightOffset;
-                        }
-                    }
-                }
-            }
-
-            if (islandBody && islandBody.shapes.length > 0) {
-                const newHfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
-                islandBody.removeShape(islandBody.shapes[0]);
-                islandBody.addShape(newHfShape);
-            }
-
-            if (islandMeshes.length > 0) {
-                const mainIslandMesh = islandMeshes[0].mesh;
-                const vertices = mainIslandMesh.geometry.attributes.position.array;
-                for (let i = 0; i < hfGridSize; i++) {
-                    for (let j = 0; j < hfGridSize; j++) {
-                        vertices[(i * hfGridSize + j) * 3 + 1] = hfMatrix[i][j];
-                    }
-                }
-                mainIslandMesh.geometry.attributes.position.needsUpdate = true;
-                mainIslandMesh.geometry.computeVertexNormals();
-            }
-        }
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function init() {
@@ -2520,65 +2504,18 @@
             setupStoneDeposits();
             setupDirtDeposits();
 
-            // NOVO: Carrega o modelo do buraco
+            // NOVO: Carrega o modelo GLB para o buraco (sem aplicar materiais ainda)
             const loader = new GLTFLoader(loadingManager);
-            loader.load(
-                'Tremendous Rottis (3).glb',
-                (gltf) => {
-                    console.log('Modelo de buraco carregado com sucesso:', gltf.scene);
-
-                    let borderMesh, centerMesh;
-                    const meshes = [];
-
-                    gltf.scene.traverse((object) => {
-                        if (object.isMesh) {
-                            meshes.push(object);
-                        }
-                    });
-
-                    if (meshes.length === 2) {
-                        const size0 = new THREE.Vector3();
-                        meshes[0].geometry.computeBoundingBox();
-                        meshes[0].geometry.boundingBox.getSize(size0);
-
-                        const size1 = new THREE.Vector3();
-                        meshes[1].geometry.computeBoundingBox();
-                        meshes[1].geometry.boundingBox.getSize(size1);
-
-                        if (size0.x > size1.x) {
-                            borderMesh = meshes[0];
-                            centerMesh = meshes[1];
-                        } else {
-                            borderMesh = meshes[1];
-                            centerMesh = meshes[0];
-                        }
-
-                        const centerMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
-                        centerMesh.material = centerMaterial;
-
-                        if (dirtDepositMaterial) {
-                            borderMesh.material = dirtDepositMaterial;
-                        } else {
-                            borderMesh.material = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
-                        }
-
-                        holeModelTemplate = new THREE.Group();
-                        holeModelTemplate.add(borderMesh);
-                        holeModelTemplate.add(centerMesh);
-
-                        holeModelTemplate.scale.set(0.5, 0.5, 0.5);
-                        holeModelTemplate.position.y = -0.1;
-
-                        console.log("Modelo de buraco criado e pronto para uso.");
-                    } else {
-                        console.error('O modelo de buraco não contém exatamente duas malhas.');
-                    }
-                },
-                undefined,
-                (error) => {
-                    console.error('Um erro aconteceu ao carregar o modelo de buraco', error);
-                }
-            );
+            loader.load('Tremendous Rottis (3).glb', (gltf) => {
+                console.log("GLB do buraco carregado com sucesso");
+                holeModelTemplate = gltf.scene; // Armazena a cena inteira
+            },
+            (xhr) => {
+                console.log(`(Buraco GLB): ${(xhr.loaded / xhr.total * 100).toFixed(2)}% carregado`);
+            },
+            (error) => {
+                console.error('Um erro aconteceu ao carregar o GLB do buraco', error);
+            });
         }
 
         // NOVO: Função separada para configurar os depósitos de pedra
@@ -2749,8 +2686,7 @@
                                 }
                             }
 
-                            // CORREÇÃO: Usa um cilindro estável em vez de um cone com raio próximo de zero para evitar o travamento do motor de física.
-                            const cylinderShape = new CANNON.Cylinder(depositRadius, depositRadius, depositHeight, 16);
+                            const cylinderShape = new CANNON.Cylinder(0.01, depositRadius, depositHeight, 16);
                             const cylinderBody = new CANNON.Body({
                                 mass: 0,
                                 type: CANNON.Body.STATIC,
@@ -3147,26 +3083,6 @@
                 meshesArray.forEach(m => {
                     const distance = camera.position.distanceTo(m.mesh.position);
                     m.mesh.visible = distance <= renderDistance;
-                });
-            });
-
-            moundDomes.forEach((dome, index) => {
-                const mound = mounds[index];
-                if (!mound || mound.flattened) {
-                    dome.meshes.forEach(item => item.mesh.visible = false);
-                    return;
-                }
-
-                const distance = calculateWrappedDistance(playerBody.position, dome.position);
-                const isVisible = distance <= renderDistance;
-
-                dome.meshes.forEach(item => {
-                    item.mesh.visible = isVisible;
-                    if (isVisible) {
-                        item.mesh.position.copy(dome.position);
-                        item.mesh.position.x += item.offsetX - visualOffsetX;
-                        item.mesh.position.z += item.offsetZ - visualOffsetZ;
-                    }
                 });
             });
 
@@ -3978,6 +3894,7 @@
             window.updateBeltDisplay = updateBeltDisplay;
             window.updateBackpackDisplay = updateBackpackDisplay; // Expor para teste
             window.selectedSlotIndex = selectedSlotIndex;
+
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
             if (menuIconButton) {
