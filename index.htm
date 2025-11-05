@@ -1179,13 +1179,19 @@
                 const hitNormal = intersect.face.normal.clone().transformDirection(intersect.object.matrixWorld).normalize();
 
                 const holeInstance = holeModelTemplate.clone();
-                holeInstance.position.copy(hitPoint).add(hitNormal.multiplyScalar(0.01));
+                holeInstance.position.copy(hitPoint).add(new THREE.Vector3(0, 0.01, 0)); // Place it slightly above the hit point to avoid z-fighting, ensuring it's flat
 
-                const up = new THREE.Vector3(0, 1, 0);
-                const quaternion = new THREE.Quaternion().setFromUnitVectors(up, hitNormal);
+                // Scale the hole to be much larger and flatter
+                holeInstance.scale.set(30, 0.1, 30);
+
+                // Only apply a random horizontal rotation, keeping the hole flat
+                const quaternion = new THREE.Quaternion().setFromAxisAngle(
+                    new THREE.Vector3(0, 1, 0), // Y-axis for horizontal rotation
+                    Math.random() * Math.PI * 2 // Random angle
+                );
                 holeInstance.quaternion.copy(quaternion);
 
-                const visualMoundMeshes = [];
+                const visualMundMeshes = [];
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                     for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
                         const mesh = holeInstance.clone();
