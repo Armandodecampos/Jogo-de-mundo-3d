@@ -369,8 +369,8 @@
     <script type="module">
         // Importa as bibliotecas Three.js e Cannon-es de CDNs
         import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
-        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js';
         import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js';
+        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js';
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -1149,10 +1149,7 @@
         }
 
         function createMound() {
-            if (!holeModelTemplate) {
-                console.warn("O modelo do buraco ainda não foi carregado.");
-                return;
-            }
+            if (!holeModelTemplate) return; // Garante que o modelo tenha sido carregado
 
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const groundMeshes = islandMeshes.map(item => item.mesh);
@@ -1165,23 +1162,27 @@
                 const hitPoint = intersect.point;
                 if (hitPoint.y < waterLevel) return;
 
-                // Calcula a rotação para alinhar com a normal do solo
+                // Usa a normal da face para alinhar o buraco com o terreno
+                const hitNormal = intersect.face.normal.clone().transformDirection(intersect.object.matrixWorld).normalize();
                 const up = new THREE.Vector3(0, 1, 0);
-                const normal = intersect.face.normal.clone().transformDirection(intersect.object.matrixWorld).normalize();
-                const quaternion = new THREE.Quaternion().setFromUnitVectors(up, normal);
+                const quaternion = new THREE.Quaternion().setFromUnitVectors(up, hitNormal);
+
+                const newHole = holeModelTemplate.clone();
+                newHole.position.copy(hitPoint).add(hitNormal.multiplyScalar(0.01)); // Adiciona um ligeiro deslocamento para evitar z-fighting
+                newHole.quaternion.copy(quaternion);
 
                 const visualMoundMeshes = [];
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                     for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                        const mesh = holeModelTemplate.clone();
+                        const mesh = newHole.clone(); // Clona a instância principal para cada tile
                         scene.add(mesh);
                         visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
                     }
                 }
 
                 visualMounds.push({
-                    position: hitPoint.clone().add(normal.multiplyScalar(0.01)), // Adiciona um pequeno deslocamento ao longo da normal para evitar z-fighting
-                    quaternion: quaternion, // Armazena a rotação
+                    position: newHole.position.clone(),
+                    quaternion: newHole.quaternion.clone(), // NOVO: Armazena o quaternião
                     meshes: visualMoundMeshes,
                     createdAt: world.time
                 });
@@ -1882,6 +1883,63 @@
                 console.error('Erro ao carregar a textura das folhas da árvore:', error);
                 treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 }); // Fallback dark green
             });
+
+            // NOVO: Carrega o modelo do buraco com uma lógica robusta de tratamento de erros
+            const loader = new GLTFLoader(loadingManager);
+            try {
+                loader.load('Tremendous Rottis (3).glb',
+                    (gltf) => {
+                        try {
+                            const brownMaterial = new THREE.MeshStandardMaterial({ color: 0x4B3A2E, metalness: 0.0, roughness: 1.0 });
+                            const blackMaterial = new THREE.MeshStandardMaterial({ color: 0x000000, metalness: 0.0, roughness: 1.0 });
+
+                            const meshes = [];
+                            gltf.scene.traverse((node) => {
+                                if (node.isMesh) {
+                                    meshes.push(node);
+                                }
+                            });
+
+                            if (meshes.length === 2) {
+                                meshes[0].geometry.computeBoundingBox();
+                                meshes[1].geometry.computeBoundingBox();
+
+                                const size0 = meshes[0].geometry.boundingBox.getSize(new THREE.Vector3());
+                                const volume0 = size0.x * size0.y * size0.z;
+                                const size1 = meshes[1].geometry.boundingBox.getSize(new THREE.Vector3());
+                                const volume1 = size1.x * size1.y * size1.z;
+
+                                const borderMesh = volume0 > volume1 ? meshes[0] : meshes[1];
+                                const centerMesh = volume0 > volume1 ? meshes[1] : meshes[0];
+
+                                borderMesh.material = brownMaterial;
+                                centerMesh.material = blackMaterial;
+
+                                holeModelTemplate = new THREE.Group();
+                                holeModelTemplate.add(borderMesh.clone());
+                                holeModelTemplate.add(centerMesh.clone());
+                                holeModelTemplate.scale.set(0.5, 0.5, 0.5);
+                            } else {
+                                console.error(`Modelo de buraco carregado, mas encontrou ${meshes.length} malhas em vez das 2 esperadas.`);
+                                // Cria um fallback para que o jogo possa continuar
+                                holeModelTemplate = new THREE.Group();
+                            }
+                        } catch (e) {
+                            console.error("Erro ao processar o modelo de buraco GLTF carregado:", e);
+                            holeModelTemplate = new THREE.Group(); // Cria um fallback
+                        }
+                    },
+                    undefined, // onProgress (não utilizado)
+                    (error) => {
+                        console.error('Erro fatal ao carregar o modelo do buraco:', error);
+                        holeModelTemplate = new THREE.Group(); // Cria um fallback
+                    }
+                );
+            } catch (e) {
+                console.error("Erro inesperado ao iniciar o carregamento do modelo do buraco:", e);
+                holeModelTemplate = new THREE.Group(); // Cria um fallback
+            }
+
 
             // Cria um corpo "grabber" invisível para segurar objetos
             grabberBody = new CANNON.Body({ mass: 0, type: CANNON.Body.KINEMATIC });
@@ -2618,41 +2676,6 @@
                 flatTexture.needsUpdate = true; // Importante ao clonar
                 flatTexture.repeat.set(1, 1);
                 flattenedDirtDepositMaterial = new THREE.MeshStandardMaterial({ map: flatTexture });
-
-                // Carrega o modelo do buraco AQUI, garantindo que dirtDepositMaterial exista
-                const loader = new GLTFLoader(loadingManager);
-                loader.load(
-                    'Tremendous Rottis (3).glb',
-                    function (gltf) {
-                        holeModelTemplate = new THREE.Group();
-                        const blackMaterial = new THREE.MeshStandardMaterial({ color: 0x000000, metalness: 0, roughness: 1 });
-
-                        gltf.scene.traverse(function (child) {
-                            if (child.isMesh) {
-                                child.geometry.computeBoundingBox();
-                                const boundingBox = child.geometry.boundingBox;
-                                const size = new THREE.Vector3();
-                                boundingBox.getSize(size);
-
-                                const processedMesh = child.clone();
-                                processedMesh.castShadow = true;
-                                processedMesh.receiveShadow = true;
-
-                                if (size.x * size.z > 2.0) { // Borda
-                                    processedMesh.material = dirtDepositMaterial;
-                                } else { // Centro
-                                    processedMesh.material = blackMaterial;
-                                }
-                                holeModelTemplate.add(processedMesh);
-                            }
-                        });
-                        console.log("Modelo do buraco carregado e processado.");
-                    },
-                    undefined,
-                    function (error) {
-                        console.error('Erro ao carregar o modelo do buraco:', error);
-                    }
-                );
 
                 // Gera os dados dos depósitos de terra
                 let attempts = 0;
