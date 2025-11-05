@@ -4,16 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Small World</title>
-    <script async src="https://unpkg.com/es-module-shims@1.10.0/dist/es-module-shims.js"></script>
-    <script type="importmap">
-    {
-        "imports": {
-            "three": "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js",
-            "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js",
-            "three/examples/jsm/loaders/GLTFLoader.js": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js"
-        }
-    }
-    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Incluir Font Awesome para o ícone de engrenagem e mão (machado e martelo serão imagens) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
@@ -378,9 +368,9 @@
 
     <script type="module">
         // Importa as bibliotecas Three.js e Cannon-es de CDNs
-        import * as THREE from 'three';
-        import * as CANNON from 'cannon-es';
-        import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
+        import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js';
+        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js';
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -516,6 +506,7 @@
         loadingManager.onLoad = () => {
             console.log("All resources loaded, world is ready.");
             isWorldReady = true;
+            window.isWorldReady = true; // Expose for verification
         };
 
         // Instância do carregador de textura, agora usando o gerenciador de carregamento
@@ -634,7 +625,8 @@
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
         let stoneMaterial; // NOVO: Material para chão com a nova textura
         let holeMaterial; // NOVO: Material para o buraco cavado
-        let holeModel = null; // NOVO: Modelo para o buraco cavado
+        let holeModelTemplate; // NOVO: Para armazenar o modelo de buraco carregado
+        let holeDug = false; // NOVO: Para rastrear se o buraco já foi cavado
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
         let mounds = [];
@@ -1158,6 +1150,12 @@
         }
 
         function createMound() {
+            // Verifica se o modelo está pronto e se o buraco ainda não foi cavado
+            if (!holeModelTemplate || holeDug) {
+                console.log("Não é possível cavar o buraco. Modelo não pronto ou buraco já cavado.");
+                return;
+            }
+
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const groundMeshes = islandMeshes.map(item => item.mesh);
             const intersects = raycaster.intersectObjects(groundMeshes);
@@ -1167,47 +1165,38 @@
                 if (intersect.distance > destroyDistance) return;
 
                 const hitPoint = intersect.point;
-                if (hitPoint.y < waterLevel) return;
+                if (hitPoint.y < waterLevel) return; // Não cava debaixo d'água
 
-                const hfGridSize = 128;
-                const gridX = Math.floor(((hitPoint.x + visualOffsetX + worldSize / 2) / worldSize) * (hfGridSize - 1));
-                const gridZ = Math.floor(((-hitPoint.z - visualOffsetZ + worldSize / 2) / worldSize) * (hfGridSize - 1));
+                // Cria o buraco
+                const holeInstance = holeModelTemplate.clone();
+                holeInstance.position.copy(hitPoint);
 
-                const moundRadius = cobSize * 1.5;
-                const moundHeight = cobSize;
-                const moundGridRadius = Math.round(moundRadius / (worldSize / hfGridSize));
+                // Adiciona um pequeno deslocamento para cima para garantir que a borda fique acima do chão
+                holeInstance.position.y += 0.01;
 
-                if (gridX >= 0 && gridX < hfGridSize && gridZ >= 0 && gridZ < hfGridSize) {
-                    let visualMoundMeshes = []; // Declara a variável aqui para que ela tenha o escopo correto
-                    if (holeModel) {
-                        // Cria a instância principal do buraco primeiro
-                        const holeInstance = holeModel.clone();
-                        holeInstance.position.copy(hitPoint);
-                        holeInstance.castShadow = true;
-                        holeInstance.receiveShadow = true;
-
-                        // Clona a instância principal para cada tile visual
-                        for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                            for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                                const mesh = holeInstance.clone(); // Clona a instância já posicionada
-                                scene.add(mesh);
-                                visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
-                            }
-                        }
+                // Adiciona todas as malhas clonadas à cena
+                const holeMeshes = [];
+                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
+                        const mesh = holeInstance.clone();
+                        scene.add(mesh);
+                        holeMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
                     }
-
-                    // Agora visualMoundMeshes está acessível aqui
-                    visualMounds.push({
-                        position: hitPoint.clone(),
-                        meshes: visualMoundMeshes,
-                        createdAt: world.time
-                    });
-
-                    // A chamada para updateIslandGeometry() foi removida, pois não deformamos mais o terreno.
-
-                    addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
-                    updateBackpackDisplay();
                 }
+
+                // Adiciona o buraco a um array para ser atualizado no loop de animação
+                visualMounds.push({
+                    position: hitPoint.clone(),
+                    meshes: holeMeshes,
+                    createdAt: world.time
+                });
+
+                holeDug = true; // Marca que o buraco foi cavado
+                console.log("Buraco cavado em:", hitPoint);
+
+                // Adiciona terra ao inventário
+                addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
+                updateBackpackDisplay();
             }
         }
 
@@ -1949,38 +1938,6 @@
             inventoryBeltElement = document.getElementById('inventoryBelt');
             updateBeltDisplay(); // Preenche os slots inicialmente
 
-            const loader = new GLTFLoader(loadingManager);
-            loader.load(
-                'Tremendous Rottis (2).glb', // URL do seu modelo .glb
-                function (gltf) {
-                    let loadedMesh = null;
-                    gltf.scene.traverse(function (child) {
-                        if (child.isMesh && loadedMesh === null) { // Pega apenas a primeira malha
-                            loadedMesh = child;
-                        }
-                    });
-
-                    if (loadedMesh) {
-                        // Centraliza a geometria da malha para que a rotação seja a partir do centro
-                        loadedMesh.geometry.center();
-
-                        // Rotaciona a malha 90 graus no eixo X para que fique deitada
-                        loadedMesh.rotation.x = Math.PI / 2;
-
-                        // Envolve a malha em um Grupo para que as transformações sejam aplicadas corretamente
-                        holeModel = new THREE.Group();
-                        holeModel.add(loadedMesh);
-                    } else {
-                        console.error("Nenhuma malha encontrada no arquivo GLB.");
-                        holeModel = gltf.scene; // Usa a cena como fallback se nenhuma malha for encontrada
-                    }
-                },
-                undefined, // Função de progresso (opcional)
-                function (error) {
-                    console.error('Um erro ocorreu ao carregar o modelo', error);
-                }
-            );
-
             // Configura os Listeners de Eventos para teclado e mouse
             window.addEventListener('keydown', (event) => {
                 // A lógica de Escape/Menu deve funcionar mesmo que o mundo não esteja pronto
@@ -2562,6 +2519,66 @@
             // NOVO: Chama as funções para configurar os depósitos
             setupStoneDeposits();
             setupDirtDeposits();
+
+            // NOVO: Carrega o modelo do buraco
+            const loader = new GLTFLoader(loadingManager);
+            loader.load(
+                'Tremendous Rottis (3).glb',
+                (gltf) => {
+                    console.log('Modelo de buraco carregado com sucesso:', gltf.scene);
+
+                    let borderMesh, centerMesh;
+                    const meshes = [];
+
+                    gltf.scene.traverse((object) => {
+                        if (object.isMesh) {
+                            meshes.push(object);
+                        }
+                    });
+
+                    if (meshes.length === 2) {
+                        const size0 = new THREE.Vector3();
+                        meshes[0].geometry.computeBoundingBox();
+                        meshes[0].geometry.boundingBox.getSize(size0);
+
+                        const size1 = new THREE.Vector3();
+                        meshes[1].geometry.computeBoundingBox();
+                        meshes[1].geometry.boundingBox.getSize(size1);
+
+                        if (size0.x > size1.x) {
+                            borderMesh = meshes[0];
+                            centerMesh = meshes[1];
+                        } else {
+                            borderMesh = meshes[1];
+                            centerMesh = meshes[0];
+                        }
+
+                        const centerMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 });
+                        centerMesh.material = centerMaterial;
+
+                        if (dirtDepositMaterial) {
+                            borderMesh.material = dirtDepositMaterial;
+                        } else {
+                            borderMesh.material = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+                        }
+
+                        holeModelTemplate = new THREE.Group();
+                        holeModelTemplate.add(borderMesh);
+                        holeModelTemplate.add(centerMesh);
+
+                        holeModelTemplate.scale.set(0.5, 0.5, 0.5);
+                        holeModelTemplate.position.y = -0.1;
+
+                        console.log("Modelo de buraco criado e pronto para uso.");
+                    } else {
+                        console.error('O modelo de buraco não contém exatamente duas malhas.');
+                    }
+                },
+                undefined,
+                (error) => {
+                    console.error('Um erro aconteceu ao carregar o modelo de buraco', error);
+                }
+            );
         }
 
         // NOVO: Função separada para configurar os depósitos de pedra
@@ -2732,7 +2749,8 @@
                                 }
                             }
 
-                            const cylinderShape = new CANNON.Cylinder(0.01, depositRadius, depositHeight, 16);
+                            // CORREÇÃO: Usa um cilindro estável em vez de um cone com raio próximo de zero para evitar o travamento do motor de física.
+                            const cylinderShape = new CANNON.Cylinder(depositRadius, depositRadius, depositHeight, 16);
                             const cylinderBody = new CANNON.Body({
                                 mass: 0,
                                 type: CANNON.Body.STATIC,
