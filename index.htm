@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Small World</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Import Map for ES Modules -->
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js",
+            "three/examples/jsm/loaders/GLTFLoader.js": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js",
+            "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js"
+        }
+    }
+    </script>
     <!-- Incluir Font Awesome para o ícone de engrenagem e mão (machado e martelo serão imagens) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
     <style>
@@ -368,9 +378,9 @@
 
     <script type="module">
         // Importa as bibliotecas Three.js e Cannon-es de CDNs
-        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
-        import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js';
-        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js';
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+        import * as CANNON from 'cannon-es';
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -519,7 +529,7 @@
         let inventoryBeltElement;
         let slots = []; // Array para armazenar os elementos dos slots
         const numBeltSlots = 2; // Número total de slots do cinto (apenas 2 agora)
-        let selectedSlotIndex = 0; // NOVO: Índice do slot selecionado (0 para esquerdo, 1 para direito)
+            var selectedSlotIndex = 0; // NOVO: Índice do slot selecionado (0 para esquerdo, 1 para direito)
 
         // Variáveis para o sistema de mochila
         let backpackModal;
@@ -625,7 +635,8 @@
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
         let stoneMaterial; // NOVO: Material para chão com a nova textura
         let holeMaterial; // NOVO: Material para o buraco cavado
-        let holeModelTemplate; // NOVO: Para armazenar o modelo do buraco carregado
+        let holeModelTemplate = null; // NOVO: Para armazenar o modelo do buraco carregado
+        let dirtTextureForHole; // NOVO: Textura de terra para o buraco
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
         let mounds = [];
@@ -1149,7 +1160,10 @@
         }
 
         function createMound() {
-            if (!holeModelTemplate) return; // Garante que o modelo tenha sido carregado
+            if (!holeModelTemplate) {
+                console.warn("O modelo do buraco ainda não foi carregado.");
+                return;
+            }
 
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const groundMeshes = islandMeshes.map(item => item.mesh);
@@ -1162,29 +1176,29 @@
                 const hitPoint = intersect.point;
                 if (hitPoint.y < waterLevel) return;
 
-                // Usa a normal da face para alinhar o buraco com o terreno
                 const hitNormal = intersect.face.normal.clone().transformDirection(intersect.object.matrixWorld).normalize();
+
+                const holeInstance = holeModelTemplate.clone();
+                holeInstance.position.copy(hitPoint).add(hitNormal.multiplyScalar(0.01));
+
                 const up = new THREE.Vector3(0, 1, 0);
                 const quaternion = new THREE.Quaternion().setFromUnitVectors(up, hitNormal);
-
-                const newHole = holeModelTemplate.clone();
-                newHole.position.copy(hitPoint).add(hitNormal.multiplyScalar(0.01)); // Adiciona um ligeiro deslocamento para evitar z-fighting
-                newHole.quaternion.copy(quaternion);
+                holeInstance.quaternion.copy(quaternion);
 
                 const visualMoundMeshes = [];
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                     for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                        const mesh = newHole.clone(); // Clona a instância principal para cada tile
+                        const mesh = holeInstance.clone();
                         scene.add(mesh);
                         visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
                     }
                 }
 
                 visualMounds.push({
-                    position: newHole.position.clone(),
-                    quaternion: newHole.quaternion.clone(), // NOVO: Armazena o quaternião
+                    position: hitPoint.clone(),
                     meshes: visualMoundMeshes,
-                    createdAt: world.time
+                    createdAt: world.time,
+                    quaternion: quaternion // Armazena a orientação para atualização
                 });
 
                 addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
@@ -1884,63 +1898,6 @@
                 treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 }); // Fallback dark green
             });
 
-            // NOVO: Carrega o modelo do buraco com uma lógica robusta de tratamento de erros
-            const loader = new GLTFLoader(loadingManager);
-            try {
-                loader.load('Tremendous Rottis (3).glb',
-                    (gltf) => {
-                        try {
-                            const brownMaterial = new THREE.MeshStandardMaterial({ color: 0x4B3A2E, metalness: 0.0, roughness: 1.0 });
-                            const blackMaterial = new THREE.MeshStandardMaterial({ color: 0x000000, metalness: 0.0, roughness: 1.0 });
-
-                            const meshes = [];
-                            gltf.scene.traverse((node) => {
-                                if (node.isMesh) {
-                                    meshes.push(node);
-                                }
-                            });
-
-                            if (meshes.length === 2) {
-                                meshes[0].geometry.computeBoundingBox();
-                                meshes[1].geometry.computeBoundingBox();
-
-                                const size0 = meshes[0].geometry.boundingBox.getSize(new THREE.Vector3());
-                                const volume0 = size0.x * size0.y * size0.z;
-                                const size1 = meshes[1].geometry.boundingBox.getSize(new THREE.Vector3());
-                                const volume1 = size1.x * size1.y * size1.z;
-
-                                const borderMesh = volume0 > volume1 ? meshes[0] : meshes[1];
-                                const centerMesh = volume0 > volume1 ? meshes[1] : meshes[0];
-
-                                borderMesh.material = brownMaterial;
-                                centerMesh.material = blackMaterial;
-
-                                holeModelTemplate = new THREE.Group();
-                                holeModelTemplate.add(borderMesh.clone());
-                                holeModelTemplate.add(centerMesh.clone());
-                                holeModelTemplate.scale.set(0.5, 0.5, 0.5);
-                            } else {
-                                console.error(`Modelo de buraco carregado, mas encontrou ${meshes.length} malhas em vez das 2 esperadas.`);
-                                // Cria um fallback para que o jogo possa continuar
-                                holeModelTemplate = new THREE.Group();
-                            }
-                        } catch (e) {
-                            console.error("Erro ao processar o modelo de buraco GLTF carregado:", e);
-                            holeModelTemplate = new THREE.Group(); // Cria um fallback
-                        }
-                    },
-                    undefined, // onProgress (não utilizado)
-                    (error) => {
-                        console.error('Erro fatal ao carregar o modelo do buraco:', error);
-                        holeModelTemplate = new THREE.Group(); // Cria um fallback
-                    }
-                );
-            } catch (e) {
-                console.error("Erro inesperado ao iniciar o carregamento do modelo do buraco:", e);
-                holeModelTemplate = new THREE.Group(); // Cria um fallback
-            }
-
-
             // Cria um corpo "grabber" invisível para segurar objetos
             grabberBody = new CANNON.Body({ mass: 0, type: CANNON.Body.KINEMATIC });
             world.addBody(grabberBody);
@@ -1974,7 +1931,7 @@
             addItemToInventory(backpackItems, { name: hammerItemName, quantity: 1 });
             addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 }); // NOVO
-            addItemToInventory(backpackItems, { name: shovelItemName, quantity: 1 }); // NOVO
+            beltItems[0] = { name: shovelItemName, quantity: 1 }; // NOVO: PÁ NA MÃO ESQUERDA
             addItemToInventory(backpackItems, { name: textureApplicatorItemName, quantity: 1 });
             addItemToInventory(backpackItems, { name: cobItemName, quantity: 100 });
             addItemToInventory(backpackItems, { name: floorItemName, quantity: 50 });
@@ -1986,6 +1943,72 @@
             // Pega o elemento do cinto de inventário e seus slots
             inventoryBeltElement = document.getElementById('inventoryBelt');
             updateBeltDisplay(); // Preenche os slots inicialmente
+
+            // NOVO: Carrega o modelo do buraco
+            const loader = new GLTFLoader(loadingManager);
+            loader.load('Tremendous Rottis (3).glb', (gltf) => {
+                const scene = gltf.scene;
+                let border, center;
+
+                // Encontra as duas malhas no modelo carregado
+                const meshes = [];
+                scene.traverse((object) => {
+                    if (object.isMesh) {
+                        meshes.push(object);
+                    }
+                });
+
+                console.log(`Encontradas ${meshes.length} malhas no modelo do buraco.`);
+
+                if (meshes.length === 2) {
+                    // Identifica a borda e o centro com base no tamanho da geometria
+                    const size1 = new THREE.Vector3();
+                    meshes[0].geometry.computeBoundingBox();
+                    meshes[0].geometry.boundingBox.getSize(size1);
+
+                    const size2 = new THREE.Vector3();
+                    meshes[1].geometry.computeBoundingBox();
+                    meshes[1].geometry.boundingBox.getSize(size2);
+
+                    if (size1.length() > size2.length()) {
+                        border = meshes[0];
+                        center = meshes[1];
+                    } else {
+                        border = meshes[1];
+                        center = meshes[0];
+                    }
+
+                    // Carrega a textura de terra para a borda
+                    dirtTextureForHole = textureLoader.load(dirtDepositTextureURL, () => {
+                        // Aplica os materiais
+                        border.material = new THREE.MeshStandardMaterial({ map: dirtTextureForHole });
+                        center.material = new THREE.MeshStandardMaterial({ color: 0x000000 }); // Preto
+
+                        // Cria o modelo de template
+                        holeModelTemplate = new THREE.Group();
+                        holeModelTemplate.add(border);
+                        holeModelTemplate.add(center);
+                        console.log("Modelo do buraco carregado e processado com sucesso.");
+                    });
+                } else if (meshes.length === 1) {
+                    console.warn("Modelo do buraco contém apenas uma malha. Usando-a para a borda e o centro.");
+                    const singleMesh = meshes[0];
+
+                    dirtTextureForHole = textureLoader.load(dirtDepositTextureURL, () => {
+                        singleMesh.material = new THREE.MeshStandardMaterial({ map: dirtTextureForHole });
+
+                        holeModelTemplate = new THREE.Group();
+                        holeModelTemplate.add(singleMesh);
+                        console.log("Modelo do buraco carregado e processado com sucesso (modo de fallback de 1 malha).");
+                    });
+                } else {
+                    console.error(`O modelo GLB do buraco não contém 1 ou 2 malhas como esperado, mas sim ${meshes.length}.`);
+                }
+            }, undefined, (error) => {
+                console.error('Erro ao carregar o modelo do buraco:', error);
+            });
+
+            window.visualMounds = visualMounds; // Expor para verificação
 
             // Configura os Listeners de Eventos para teclado e mouse
             window.addEventListener('keydown', (event) => {
@@ -3168,9 +3191,7 @@
                         item.mesh.position.copy(mound.position);
                         item.mesh.position.x += item.offsetX - visualOffsetX;
                         item.mesh.position.z += item.offsetZ - visualOffsetZ;
-                        if (mound.quaternion) {
-                            item.mesh.quaternion.copy(mound.quaternion);
-                        }
+                        item.mesh.quaternion.copy(mound.quaternion); // Aplica a orientação
                     }
                 });
             });
