@@ -369,6 +369,7 @@
     <script type="module">
         // Importa as bibliotecas Three.js e Cannon-es de CDNs
         import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
+        import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js';
         import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js';
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
@@ -624,6 +625,7 @@
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
         let stoneMaterial; // NOVO: Material para chão com a nova textura
         let holeMaterial; // NOVO: Material para o buraco cavado
+        let holeModelTemplate; // NOVO: Para armazenar o modelo do buraco carregado
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
         let mounds = [];
@@ -1147,6 +1149,11 @@
         }
 
         function createMound() {
+            if (!holeModelTemplate) {
+                console.warn("O modelo do buraco ainda não foi carregado.");
+                return;
+            }
+
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const groundMeshes = islandMeshes.map(item => item.mesh);
             const intersects = raycaster.intersectObjects(groundMeshes);
@@ -1158,47 +1165,29 @@
                 const hitPoint = intersect.point;
                 if (hitPoint.y < waterLevel) return;
 
-                const hfGridSize = 128;
-                const gridX = Math.floor(((hitPoint.x + visualOffsetX + worldSize / 2) / worldSize) * (hfGridSize - 1));
-                const gridZ = Math.floor(((-hitPoint.z - visualOffsetZ + worldSize / 2) / worldSize) * (hfGridSize - 1));
+                // Calcula a rotação para alinhar com a normal do solo
+                const up = new THREE.Vector3(0, 1, 0);
+                const normal = intersect.face.normal.clone().transformDirection(intersect.object.matrixWorld).normalize();
+                const quaternion = new THREE.Quaternion().setFromUnitVectors(up, normal);
 
-                const moundRadius = cobSize * 1.5;
-                const moundHeight = cobSize;
-                const moundGridRadius = Math.round(moundRadius / (worldSize / hfGridSize));
-
-                if (gridX >= 0 && gridX < hfGridSize && gridZ >= 0 && gridZ < hfGridSize) {
-                    const points = [];
-                    points.push(new THREE.Vector2(1.2, 0)); // Outer base, touching the ground
-                    points.push(new THREE.Vector2(1.0, 0.4)); // First peak
-                    points.push(new THREE.Vector2(0.7, 0.2)); // Valley
-                    points.push(new THREE.Vector2(0.5, 0.3)); // Second peak
-                    points.push(new THREE.Vector2(0, 0.1));   // Center point above ground
-
-                    const volcanoGeometry = new THREE.LatheGeometry(points, 24);
-                    const volcanoMesh = new THREE.Mesh(volcanoGeometry, dirtDepositMaterial);
-                    volcanoMesh.castShadow = true;
-                    volcanoMesh.receiveShadow = true;
-
-                    const visualMoundMeshes = [];
-                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                        for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                            const mesh = volcanoMesh.clone();
-                            scene.add(mesh);
-                            visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
-                        }
+                const visualMoundMeshes = [];
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
+                        const mesh = holeModelTemplate.clone();
+                        scene.add(mesh);
+                        visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
                     }
-
-                    visualMounds.push({
-                        position: hitPoint.clone(),
-                        meshes: visualMoundMeshes,
-                        createdAt: world.time
-                    });
-
-                    // A chamada para updateIslandGeometry() foi removida, pois não deformamos mais o terreno.
-
-                    addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
-                    updateBackpackDisplay();
                 }
+
+                visualMounds.push({
+                    position: hitPoint.clone().add(normal.multiplyScalar(0.01)), // Adiciona um pequeno deslocamento ao longo da normal para evitar z-fighting
+                    quaternion: quaternion, // Armazena a rotação
+                    meshes: visualMoundMeshes,
+                    createdAt: world.time
+                });
+
+                addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
+                updateBackpackDisplay();
             }
         }
 
@@ -2630,6 +2619,41 @@
                 flatTexture.repeat.set(1, 1);
                 flattenedDirtDepositMaterial = new THREE.MeshStandardMaterial({ map: flatTexture });
 
+                // Carrega o modelo do buraco AQUI, garantindo que dirtDepositMaterial exista
+                const loader = new GLTFLoader(loadingManager);
+                loader.load(
+                    'Tremendous Rottis (3).glb',
+                    function (gltf) {
+                        holeModelTemplate = new THREE.Group();
+                        const blackMaterial = new THREE.MeshStandardMaterial({ color: 0x000000, metalness: 0, roughness: 1 });
+
+                        gltf.scene.traverse(function (child) {
+                            if (child.isMesh) {
+                                child.geometry.computeBoundingBox();
+                                const boundingBox = child.geometry.boundingBox;
+                                const size = new THREE.Vector3();
+                                boundingBox.getSize(size);
+
+                                const processedMesh = child.clone();
+                                processedMesh.castShadow = true;
+                                processedMesh.receiveShadow = true;
+
+                                if (size.x * size.z > 2.0) { // Borda
+                                    processedMesh.material = dirtDepositMaterial;
+                                } else { // Centro
+                                    processedMesh.material = blackMaterial;
+                                }
+                                holeModelTemplate.add(processedMesh);
+                            }
+                        });
+                        console.log("Modelo do buraco carregado e processado.");
+                    },
+                    undefined,
+                    function (error) {
+                        console.error('Erro ao carregar o modelo do buraco:', error);
+                    }
+                );
+
                 // Gera os dados dos depósitos de terra
                 let attempts = 0;
                 const maxAttempts = numDirtDeposits * 20; // Limite de tentativas para evitar loop infinito
@@ -3121,6 +3145,9 @@
                         item.mesh.position.copy(mound.position);
                         item.mesh.position.x += item.offsetX - visualOffsetX;
                         item.mesh.position.z += item.offsetZ - visualOffsetZ;
+                        if (mound.quaternion) {
+                            item.mesh.quaternion.copy(mound.quaternion);
+                        }
                     }
                 });
             });
