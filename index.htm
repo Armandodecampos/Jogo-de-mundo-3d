@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -8,15 +7,6 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Incluir Font Awesome para o ícone de engrenagem e mão (machado e martelo serão imagens) -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-    <script type="importmap">
-        {
-            "imports": {
-                "three": "https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js",
-                "three/examples/jsm/loaders/GLTFLoader.js": "https://cdn.jsdelivr.net/npm/three@0.128.0/examples/jsm/loaders/GLTFLoader.js",
-                "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js"
-            }
-        }
-    </script>
     <style>
         body { /* Remove default body margins and set font */
             margin: 0;
@@ -378,9 +368,8 @@
 
     <script type="module">
         // Importa as bibliotecas Three.js e Cannon-es de CDNs
-        import * as THREE from 'three';
-        import * as CANNON from 'cannon-es';
-        import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+        import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.module.js';
+        import * as CANNON from 'https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.min.js';
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -623,7 +612,7 @@
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
         const textureApplicatorImageURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Ícone para o pincel
         const stoneTextureURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Textura de pedra para aplicar
-        const holeTextureURL = 'https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=k1tcv6g5&dl=0'; // NOVO: Textura do buraco
+        const holeTextureURL = 'https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=tz27qsg6&dl=0'; // NOVO: Textura do buraco
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -643,8 +632,6 @@
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
         let splatMap; // NOVO: Máscara de textura para pintar os buracos
         let splatMapData; // NOVO: Dados brutos para a máscara de textura
-
-        let holeModel;
 
         // Declare physics materials globally
         let playerMaterial;
@@ -1180,32 +1167,29 @@
                 const moundGridRadius = Math.round(moundRadius / (worldSize / hfGridSize));
 
                 if (gridX >= 0 && gridX < hfGridSize && gridZ >= 0 && gridZ < hfGridSize) {
-                    if (!holeModel) { // Check for the single model
-                        console.error("Hole model not loaded yet!");
-                        return;
-                    }
+                    const points = [];
+                    points.push(new THREE.Vector2(1.2, 0)); // Outer base, touching the ground
+                    points.push(new THREE.Vector2(1.0, 0.4)); // First peak
+                    points.push(new THREE.Vector2(0.7, 0.2)); // Valley
+                    points.push(new THREE.Vector2(0.5, 0.3)); // Second peak
+                    points.push(new THREE.Vector2(0, 0.1));   // Center point above ground
 
-                    const newHoleModel = holeModel.clone();
-
-                    // Position the new hole at the hit point with a vertical offset
-                    newHoleModel.position.copy(hitPoint);
-                    newHoleModel.position.y += 0.02; // Prevents z-fighting with the ground
-
-                    // The model is a flat circle, so it needs to be rotated to lie on the ground
-                    newHoleModel.rotation.x = -Math.PI / 2;
+                    const volcanoGeometry = new THREE.LatheGeometry(points, 24);
+                    const volcanoMesh = new THREE.Mesh(volcanoGeometry, dirtDepositMaterial);
+                    volcanoMesh.castShadow = true;
+                    volcanoMesh.receiveShadow = true;
 
                     const visualMoundMeshes = [];
-                     for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                         for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                            const mesh = newHoleModel.clone();
+                            const mesh = volcanoMesh.clone();
                             scene.add(mesh);
                             visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
                         }
                     }
 
                     visualMounds.push({
-                        position: newHoleModel.position.clone(), // Store the exact position with offset
-                        rotation: newHoleModel.rotation.clone(), // Store the rotation
+                        position: hitPoint.clone(),
                         meshes: visualMoundMeshes,
                         createdAt: world.time
                     });
@@ -2537,79 +2521,6 @@
             // NOVO: Chama as funções para configurar os depósitos
             setupStoneDeposits();
             setupDirtDeposits();
-            loadHoleModel();
-        }
-
-        function loadHoleModel() {
-            textureLoader.load(holeTextureURL, (dirtTexture) => {
-                dirtTexture.wrapS = THREE.RepeatWrapping;
-                dirtTexture.wrapT = THREE.RepeatWrapping;
-                dirtTexture.repeat.set(1, 1);
-
-                const loader = new GLTFLoader(loadingManager);
-                loader.load('Tremendous Rottis (3).glb', (gltf) => {
-                    console.log("GLTF Scene Loaded:", JSON.stringify(gltf.scene, null, 2)); // Log the entire scene object
-                    const borderMaterial = new THREE.MeshStandardMaterial({
-                        map: dirtTexture,
-                        side: THREE.DoubleSide,
-                        transparent: false
-                    });
-                    const centerMaterial = new THREE.MeshStandardMaterial({
-                        color: 0x000000,
-                        side: THREE.DoubleSide
-                    });
-
-                    const meshes = [];
-                    gltf.scene.traverse(function (child) {
-                        if (child.isMesh) {
-                            meshes.push(child);
-                        }
-                    });
-
-                    if (meshes.length === 2) {
-                        let borderMesh, centerMesh;
-
-                        // Ensure bounding boxes are computed
-                        meshes.forEach(mesh => {
-                            if (!mesh.geometry.boundingBox) {
-                                mesh.geometry.computeBoundingBox();
-                            }
-                        });
-
-                        const size0 = new THREE.Vector3();
-                        meshes[0].geometry.boundingBox.getSize(size0);
-                        const size1 = new THREE.Vector3();
-                        meshes[1].geometry.boundingBox.getSize(size1);
-
-                        // The larger mesh is the border
-                        if (size0.x > size1.x) {
-                            borderMesh = meshes[0];
-                            centerMesh = meshes[1];
-                        } else {
-                            borderMesh = meshes[1];
-                            centerMesh = meshes[0];
-                        }
-
-                        borderMesh.material = borderMaterial;
-                        centerMesh.material = centerMaterial;
-
-                        holeModel = new THREE.Group();
-                        holeModel.add(borderMesh);
-                        holeModel.add(centerMesh);
-
-                        holeModel.scale.set(9, 9, 9);
-                        holeModel.castShadow = false;
-                        holeModel.receiveShadow = true;
-                    } else {
-                        console.error(`Expected 2 meshes in GLB, but found ${meshes.length}.`);
-                    }
-
-                }, undefined, (error) => {
-                    console.error('An error happened while loading the GLB model:', error);
-                });
-            }, undefined, (error) => {
-                console.error('An error happened while loading the dirt texture for the hole:', error);
-            });
         }
 
         // NOVO: Função separada para configurar os depósitos de pedra
@@ -3210,7 +3121,6 @@
                         item.mesh.position.copy(mound.position);
                         item.mesh.position.x += item.offsetX - visualOffsetX;
                         item.mesh.position.z += item.offsetZ - visualOffsetZ;
-                        item.mesh.rotation.copy(mound.rotation); // Apply stored rotation
                     }
                 });
             });
