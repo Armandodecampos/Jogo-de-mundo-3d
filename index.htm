@@ -1952,21 +1952,32 @@
 
             // NOVO: Carrega o modelo do buraco
             const loader = new GLTFLoader(loadingManager);
-            loader.load('Tremendous Rottis.glb', (gltf) => {
-                const scene = gltf.scene;
-                let border, center;
+            textureLoader.load(dirtDepositTextureURL, (dirtTexture) => {
+                // Certifica-se de que a textura repita se necessário (opcional para o buraco)
+                dirtTexture.wrapS = THREE.RepeatWrapping;
+                dirtTexture.wrapT = THREE.RepeatWrapping;
 
-                // Encontra as duas malhas no modelo carregado
-                const meshes = [];
-                scene.traverse((object) => {
-                    if (object.isMesh) {
-                        meshes.push(object);
+                // Cria os materiais aqui, UMA VEZ
+                const borderMaterial = new THREE.MeshStandardMaterial({ map: dirtTexture });
+                const centerMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 }); // Preto
+
+                // AGORA carrega o modelo, sabendo que o material está pronto
+                loader.load('Tremendous Rottis.glb', (gltf) => {
+                    const scene = gltf.scene;
+                    let border, center;
+
+                    const meshes = [];
+                    scene.traverse((object) => {
+                        if (object.isMesh) {
+                            meshes.push(object);
+                        }
+                    });
+
+                    if (meshes.length !== 2) {
+                        console.error(`O modelo GLB do buraco deveria ter 2 malhas, mas tem ${meshes.length}.`);
+                        return; // Aborta se o modelo não for como esperado
                     }
-                });
 
-                console.log(`Encontradas ${meshes.length} malhas no modelo do buraco.`);
-
-                if (meshes.length === 2) {
                     // Identifica a borda e o centro com base no tamanho da geometria
                     const size1 = new THREE.Vector3();
                     meshes[0].geometry.computeBoundingBox();
@@ -1984,34 +1995,24 @@
                         center = meshes[0];
                     }
 
-                    // Carrega a textura de terra para a borda
-                    dirtTextureForHole = textureLoader.load(dirtDepositTextureURL, () => {
-                        // Aplica os materiais
-                        border.material = new THREE.MeshStandardMaterial({ map: dirtTextureForHole });
-                        center.material = new THREE.MeshStandardMaterial({ color: 0x000000 }); // Preto
+                    // Aplica os materiais pré-carregados
+                    border.material = borderMaterial;
+                    center.material = centerMaterial;
+                    border.receiveShadow = true; // Permite que a borda receba sombras
+                    center.receiveShadow = true;
 
-                        // Cria o modelo de template
-                        holeModelTemplate = new THREE.Group();
-                        holeModelTemplate.add(border);
-                        holeModelTemplate.add(center);
-                        console.log("Modelo do buraco carregado e processado com sucesso.");
-                    });
-                } else if (meshes.length === 1) {
-                    console.warn("Modelo do buraco contém apenas uma malha. Usando-a para a borda e o centro.");
-                    const singleMesh = meshes[0];
+                    // Cria o modelo de template
+                    holeModelTemplate = new THREE.Group();
+                    holeModelTemplate.add(border);
+                    holeModelTemplate.add(center);
 
-                    dirtTextureForHole = textureLoader.load(dirtDepositTextureURL, () => {
-                        singleMesh.material = new THREE.MeshStandardMaterial({ map: dirtTextureForHole });
+                    console.log("Modelo de buraco 'Tremendous Rottis.glb' carregado e processado com sucesso.");
 
-                        holeModelTemplate = new THREE.Group();
-                        holeModelTemplate.add(singleMesh);
-                        console.log("Modelo do buraco carregado e processado com sucesso (modo de fallback de 1 malha).");
-                    });
-                } else {
-                    console.error(`O modelo GLB do buraco não contém 1 ou 2 malhas como esperado, mas sim ${meshes.length}.`);
-                }
+                }, undefined, (error) => {
+                    console.error('Erro ao carregar o modelo do buraco:', error);
+                });
             }, undefined, (error) => {
-                console.error('Erro ao carregar o modelo do buraco:', error);
+                console.error('Erro ao carregar a textura de terra para o buraco:', error);
             });
 
             window.visualMounds = visualMounds; // Expor para verificação
