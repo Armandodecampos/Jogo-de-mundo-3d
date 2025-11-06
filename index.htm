@@ -1176,8 +1176,6 @@
                 const hitPoint = intersect.point;
                 if (hitPoint.y < waterLevel) return;
 
-                const hitNormal = intersect.face.normal.clone().transformDirection(intersect.object.matrixWorld).normalize();
-
                 const holeInstance = holeModelTemplate.clone();
                 holeInstance.position.copy(hitPoint).add(new THREE.Vector3(0, 0.01, 0)); // Place it slightly above the hit point to avoid z-fighting, ensuring it's flat
 
@@ -1790,17 +1788,18 @@
 
             // --- Configuração dos Cubos Interativos ---
             const cubeSize = 1;
-            // Carrega a textura para os cubos e cria o material global
-            const cubeTexture = textureLoader.load(cubeTextureURL);
-            cubeTexture.wrapS = THREE.RepeatWrapping;
-            cubeTexture.wrapT = THREE.RepeatWrapping;
-            cubeTexture.repeat.set(1, 1);
-            cubeMaterialMesh = new THREE.MeshStandardMaterial({ map: cubeTexture });
+            // Carrega a textura para os cubos, CRIA o material e SÓ ENTÃO cria as caixas.
+            textureLoader.load(cubeTextureURL, (cubeTexture) => {
+                cubeTexture.wrapS = THREE.RepeatWrapping;
+                cubeTexture.wrapT = THREE.RepeatWrapping;
+                cubeTexture.repeat.set(1, 1);
+                cubeMaterialMesh = new THREE.MeshStandardMaterial({ map: cubeTexture });
 
-            // Cria as caixas iniciais usando a função createBox
-            createBox(new THREE.Vector3(0, cubeSize / 2 + islandSurfaceHeight, -10));
-            createBox(new THREE.Vector3(5, cubeSize / 2 + islandSurfaceHeight, -10));
-            createBox(new THREE.Vector3(-5, cubeSize / 2 + islandSurfaceHeight, -10));
+                // Cria as caixas iniciais DENTRO do callback, garantindo que o material exista.
+                createBox(new THREE.Vector3(0, cubeSize / 2 + islandSurfaceHeight, -10));
+                createBox(new THREE.Vector3(5, cubeSize / 2 + islandSurfaceHeight, -10));
+                createBox(new THREE.Vector3(-5, cubeSize / 2 + islandSurfaceHeight, -10));
+            });
 
             // Cria o ghost block (transparente)
             const ghostBlockMaterial = new THREE.MeshBasicMaterial({
@@ -1825,12 +1824,76 @@
                 stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 }); // Fallback cinza
             });
 
-            // NOVO: Carrega a textura do buraco para a ferramenta pá
+            // NOVO: Carrega a textura do buraco para a ferramenta pá e o modelo do buraco
             textureLoader.load(holeTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
                 holeMaterial = new THREE.MeshStandardMaterial({ map: texture, transparent: true }); // Transparente para misturar com o terreno
+
+                // Carrega o modelo do buraco AQUI, dentro do callback da textura
+                const loader = new GLTFLoader(loadingManager);
+                const borderMaterial = new THREE.MeshStandardMaterial({ map: texture }); // Usa a textura carregada
+                const centerMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 }); // Preto
+
+                loader.load('Tremendous Rottis.glb', (gltf) => {
+                    const scene = gltf.scene;
+                    const meshes = [];
+                    scene.traverse((object) => {
+                        if (object.isMesh) {
+                            meshes.push(object);
+                        }
+                    });
+
+                    if (meshes.length === 2) {
+                        // Lógica original para duas malhas
+                        let border, center;
+                        const size1 = new THREE.Vector3();
+                        meshes[0].geometry.computeBoundingBox();
+                        meshes[0].geometry.boundingBox.getSize(size1);
+
+                        const size2 = new THREE.Vector3();
+                        meshes[1].geometry.computeBoundingBox();
+                        meshes[1].geometry.boundingBox.getSize(size2);
+
+                        if (size1.length() > size2.length()) {
+                            border = meshes[0];
+                            center = meshes[1];
+                        } else {
+                            border = meshes[1];
+                            center = meshes[0];
+                        }
+
+                        border.material = borderMaterial;
+                        center.material = centerMaterial;
+                        border.receiveShadow = true;
+                        center.receiveShadow = true;
+
+                        holeModelTemplate = new THREE.Group();
+                        holeModelTemplate.add(border);
+                        holeModelTemplate.add(center);
+                        console.log("Modelo de buraco 'Tremendous Rottis.glb' (2 malhas) carregado e processado com sucesso.");
+
+                    } else if (meshes.length === 1) {
+                        // Lógica de fallback para uma única malha
+                        console.warn(`Encontrada apenas 1 malha no modelo do buraco. Aplicando textura de borda como fallback.`);
+                        const holeMesh = meshes[0];
+                        holeMesh.material = borderMaterial;
+                        holeMesh.receiveShadow = true;
+
+                        holeModelTemplate = new THREE.Group();
+                        holeModelTemplate.add(holeMesh);
+                        console.log("Modelo de buraco 'Tremendous Rottis.glb' (1 malha) carregado e processado com sucesso.");
+
+                    } else {
+                        // Erro se nenhuma malha ou um número inesperado de malhas for encontrado
+                        console.error(`O modelo GLB do buraco deveria ter 1 ou 2 malhas, mas tem ${meshes.length}. O modelo do buraco não será carregado.`);
+                        return; // Não atribui holeModelTemplate, a verificação falhará
+                    }
+
+                }, undefined, (error) => {
+                    console.error('Erro ao carregar o modelo do buraco:', error);
+                });
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura do buraco:', error);
                 holeMaterial = new THREE.MeshStandardMaterial({ color: 0x3b2712 }); // Fallback marrom escuro
@@ -1950,70 +2013,6 @@
             inventoryBeltElement = document.getElementById('inventoryBelt');
             updateBeltDisplay(); // Preenche os slots inicialmente
 
-            // NOVO: Carrega o modelo do buraco
-            const loader = new GLTFLoader(loadingManager);
-            textureLoader.load(dirtDepositTextureURL, (dirtTexture) => {
-                // Certifica-se de que a textura repita se necessário (opcional para o buraco)
-                dirtTexture.wrapS = THREE.RepeatWrapping;
-                dirtTexture.wrapT = THREE.RepeatWrapping;
-
-                // Cria os materiais aqui, UMA VEZ
-                const borderMaterial = new THREE.MeshStandardMaterial({ map: dirtTexture });
-                const centerMaterial = new THREE.MeshStandardMaterial({ color: 0x000000 }); // Preto
-
-                // AGORA carrega o modelo, sabendo que o material está pronto
-                loader.load('Tremendous Rottis.glb', (gltf) => {
-                    const scene = gltf.scene;
-                    let border, center;
-
-                    const meshes = [];
-                    scene.traverse((object) => {
-                        if (object.isMesh) {
-                            meshes.push(object);
-                        }
-                    });
-
-                    if (meshes.length !== 2) {
-                        console.error(`O modelo GLB do buraco deveria ter 2 malhas, mas tem ${meshes.length}.`);
-                        return; // Aborta se o modelo não for como esperado
-                    }
-
-                    // Identifica a borda e o centro com base no tamanho da geometria
-                    const size1 = new THREE.Vector3();
-                    meshes[0].geometry.computeBoundingBox();
-                    meshes[0].geometry.boundingBox.getSize(size1);
-
-                    const size2 = new THREE.Vector3();
-                    meshes[1].geometry.computeBoundingBox();
-                    meshes[1].geometry.boundingBox.getSize(size2);
-
-                    if (size1.length() > size2.length()) {
-                        border = meshes[0];
-                        center = meshes[1];
-                    } else {
-                        border = meshes[1];
-                        center = meshes[0];
-                    }
-
-                    // Aplica os materiais pré-carregados
-                    border.material = borderMaterial;
-                    center.material = centerMaterial;
-                    border.receiveShadow = true; // Permite que a borda receba sombras
-                    center.receiveShadow = true;
-
-                    // Cria o modelo de template
-                    holeModelTemplate = new THREE.Group();
-                    holeModelTemplate.add(border);
-                    holeModelTemplate.add(center);
-
-                    console.log("Modelo de buraco 'Tremendous Rottis.glb' carregado e processado com sucesso.");
-
-                }, undefined, (error) => {
-                    console.error('Erro ao carregar o modelo do buraco:', error);
-                });
-            }, undefined, (error) => {
-                console.error('Erro ao carregar a textura de terra para o buraco:', error);
-            });
 
             window.visualMounds = visualMounds; // Expor para verificação
 
