@@ -1165,39 +1165,49 @@
                 return;
             }
 
-            // Posição fixa para verificação, evitando o raycaster
-            const hitPoint = new THREE.Vector3(0, islandSurfaceHeight, -5);
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const groundMeshes = islandMeshes.map(item => item.mesh);
+            const intersects = raycaster.intersectObjects(groundMeshes);
 
-            const holeInstance = holeModelTemplate.clone();
-            holeInstance.position.copy(hitPoint).add(new THREE.Vector3(0, 0.01, 0)); // Place it slightly above the hit point to avoid z-fighting, ensuring it's flat
+            if (intersects.length > 0) {
+                const intersect = intersects[0];
+                const hitPoint = intersect.point;
 
-            // Scale the hole to be much larger
-            holeInstance.scale.set(20, 20, 20);
-
-            // Use an identity quaternion for a fixed, default rotation
-            const quaternion = new THREE.Quaternion();
-            holeInstance.quaternion.copy(quaternion);
-
-            const visualMoundMeshes = [];
-            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                    const mesh = holeInstance.clone();
-                    scene.add(mesh);
-                    visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                // Impede a escavação debaixo d'água ou muito longe
+                if (hitPoint.y < waterLevel || intersect.distance > destroyDistance) {
+                    return;
                 }
+
+                // Apenas uma instância principal do buraco é criada
+                const holeInstance = holeModelTemplate.clone();
+                holeInstance.position.copy(hitPoint).add(new THREE.Vector3(0, 0.01, 0)); // Coloca um pouco acima para evitar z-fighting
+
+                // NOVO: Rotação aleatória apenas em torno do eixo Y para que o buraco fique plano
+                const randomYRotation = Math.random() * Math.PI * 2;
+                const quaternion = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, randomYRotation, 0));
+                holeInstance.quaternion.copy(quaternion);
+
+                const visualMoundMeshes = [];
+                // O loop agora clona a instância principal para cada tile
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
+                        const mesh = holeInstance.clone();
+                        scene.add(mesh);
+                        visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                    }
+                }
+
+                visualMounds.push({
+                    position: hitPoint.clone(),
+                    meshes: visualMoundMeshes,
+                    createdAt: world.time,
+                    quaternion: quaternion // Armazena a orientação para atualização
+                });
+
+                addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
+                updateBackpackDisplay();
             }
-
-            visualMounds.push({
-                position: hitPoint.clone(),
-                meshes: visualMoundMeshes,
-                createdAt: world.time,
-                quaternion: quaternion // Armazena a orientação para atualização
-            });
-
-            addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
-            updateBackpackDisplay();
         }
-
 
         // NOVO: Função para criar uma nova caixa dinâmica
         function createBox(position, quaternion) {
