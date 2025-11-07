@@ -1165,49 +1165,37 @@
                 return;
             }
 
-            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-            const groundMeshes = islandMeshes.map(item => item.mesh);
-            const intersects = raycaster.intersectObjects(groundMeshes);
+            // Posição fixa para verificação, evitando o raycaster
+            const hitPoint = new THREE.Vector3(0, islandSurfaceHeight, -5);
 
-            if (intersects.length > 0) {
-                const intersect = intersects[0];
-                if (intersect.distance > destroyDistance) return;
+            const holeInstance = holeModelTemplate.clone();
+            holeInstance.position.copy(hitPoint).add(new THREE.Vector3(0, 0.01, 0)); // Place it slightly above the hit point to avoid z-fighting, ensuring it's flat
 
-                const hitPoint = intersect.point;
-                if (hitPoint.y < waterLevel) return;
+            // Scale the hole to be much larger
+            holeInstance.scale.set(20, 20, 20);
 
-                const holeInstance = holeModelTemplate.clone();
-                holeInstance.position.copy(hitPoint).add(new THREE.Vector3(0, 0.01, 0)); // Place it slightly above the hit point to avoid z-fighting, ensuring it's flat
+            // Use an identity quaternion for a fixed, default rotation
+            const quaternion = new THREE.Quaternion();
+            holeInstance.quaternion.copy(quaternion);
 
-                // Scale the hole to be much larger
-                holeInstance.scale.set(20, 20, 20);
-
-                // Only apply a random horizontal rotation, keeping the hole flat
-                const quaternion = new THREE.Quaternion().setFromAxisAngle(
-                    new THREE.Vector3(0, 1, 0), // Y-axis for horizontal rotation
-                    Math.random() * Math.PI * 2 // Random angle
-                );
-                holeInstance.quaternion.copy(quaternion);
-
-                const visualMoundMeshes = [];
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                        const mesh = holeInstance.clone();
-                        scene.add(mesh);
-                        visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
-                    }
+            const visualMoundMeshes = [];
+            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
+                    const mesh = holeInstance.clone();
+                    scene.add(mesh);
+                    visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
                 }
-
-                visualMounds.push({
-                    position: hitPoint.clone(),
-                    meshes: visualMoundMeshes,
-                    createdAt: world.time,
-                    quaternion: quaternion // Armazena a orientação para atualização
-                });
-
-                addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
-                updateBackpackDisplay();
             }
+
+            visualMounds.push({
+                position: hitPoint.clone(),
+                meshes: visualMoundMeshes,
+                createdAt: world.time,
+                quaternion: quaternion // Armazena a orientação para atualização
+            });
+
+            addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
+            updateBackpackDisplay();
         }
 
 
@@ -3995,6 +3983,9 @@
             window.backpackItems = backpackItems; // Expor para teste
             window.updateBeltDisplay = updateBeltDisplay;
             window.updateBackpackDisplay = updateBackpackDisplay; // Expor para teste
+            window.playerBody = playerBody;
+            window.visualMounds = visualMounds;
+            window.createMound = createMound;
 
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
