@@ -635,6 +635,7 @@
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
         let stoneMaterial; // NOVO: Material para chão com a nova textura
         let holeMaterial; // NOVO: Material para o buraco cavado
+        let holeBorderMaterial; // NOVO: Material para a borda do buraco
         let holeModelTemplate = null; // NOVO: Para armazenar o modelo do buraco carregado
         let dirtTextureForHole; // NOVO: Textura de terra para o buraco
 
@@ -1160,8 +1161,8 @@
         }
 
         function createMound() {
-            if (!holeModelTemplate) {
-                console.warn("O modelo do buraco ainda não foi carregado.");
+            if (!holeModelTemplate || !holeMaterial || !holeBorderMaterial) {
+                console.warn("Modelos ou materiais do buraco ainda não foram carregados.");
                 return;
             }
 
@@ -1173,27 +1174,41 @@
                 const intersect = intersects[0];
                 const hitPoint = intersect.point;
 
-                // Impede a escavação debaixo d'água ou muito longe
                 if (hitPoint.y < waterLevel || intersect.distance > destroyDistance) {
                     return;
                 }
 
-                // Apenas uma instância principal do buraco é criada
-                const holeInstance = holeModelTemplate.clone();
-                holeInstance.scale.set(3.0, 3.0, 3.0); // Aumenta a escala do buraco para 3.0
-                holeInstance.position.copy(hitPoint).add(new THREE.Vector3(0, 0.01, 0)); // Coloca um pouco acima para evitar z-fighting
+                // Cria um grupo para conter as duas partes do buraco
+                const holeGroup = new THREE.Group();
+                holeGroup.position.copy(hitPoint);
+                holeGroup.rotateY(Math.PI / 2); // Rotaciona o grupo inteiro
+                const quaternion = holeGroup.quaternion.clone();
 
-                // NOVO: Rotação de 90 graus em torno do eixo Y
-                holeInstance.rotateY(Math.PI / 2); // Rotaciona 90 graus
-                const quaternion = holeInstance.quaternion.clone(); // Captura o quaternion para usar nos clones
+                // Parte da Borda (maior, com textura de grama)
+                const borderInstance = holeModelTemplate.clone();
+                borderInstance.scale.set(3.5, 3.0, 3.5); // Ligeiramente maior que o centro
+                borderInstance.position.y = 0.01; // Ligeiramente acima do chão
+                borderInstance.traverse((node) => {
+                    if (node.isMesh) node.material = holeBorderMaterial;
+                });
+                holeGroup.add(borderInstance);
+
+                // Parte do Centro (menor, com textura de terra)
+                const centerInstance = holeModelTemplate.clone();
+                centerInstance.scale.set(3.0, 3.0, 3.0);
+                centerInstance.position.y = 0.02; // Um pouco acima da borda para evitar z-fighting
+                centerInstance.traverse((node) => {
+                    if (node.isMesh) node.material = holeMaterial;
+                });
+                holeGroup.add(centerInstance);
+
 
                 const visualMoundMeshes = [];
-                // O loop agora clona a instância principal para cada tile
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                     for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                        const mesh = holeInstance.clone();
-                        scene.add(mesh);
-                        visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                        const groupClone = holeGroup.clone();
+                        scene.add(groupClone);
+                        visualMoundMeshes.push({ mesh: groupClone, offsetX: j * worldSize, offsetZ: k * worldSize });
                     }
                 }
 
@@ -1201,7 +1216,7 @@
                     position: hitPoint.clone(),
                     meshes: visualMoundMeshes,
                     createdAt: world.time,
-                    quaternion: quaternion // Armazena a orientação para atualização
+                    quaternion: quaternion
                 });
 
                 addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
@@ -1665,6 +1680,7 @@
             const seabedTextureURL = sandTextureURL;
 
             textureLoader.load(groundTextureURL, (groundTexture) => {
+                holeBorderMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
                 textureLoader.load(seabedTextureURL, (seabedTexture) => {
                     textureLoader.load(sandTextureURL, (sandTexture) => {
                         textureLoader.load(holeTextureURL, (holeTexture) => { // NOVO: Carrega a textura do buraco
