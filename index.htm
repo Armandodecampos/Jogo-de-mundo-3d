@@ -1161,11 +1161,13 @@
         }
 
         function createMound() {
+            // Garante que os modelos e materiais necessários estejam carregados
             if (!holeModelTemplate || !holeMaterial || !holeBorderMaterial) {
                 console.warn("Modelos ou materiais do buraco ainda não foram carregados.");
                 return;
             }
 
+            // Usa um raycaster para encontrar o ponto de interseção no chão
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const groundMeshes = islandMeshes.map(item => item.mesh);
             const intersects = raycaster.intersectObjects(groundMeshes);
@@ -1174,51 +1176,94 @@
                 const intersect = intersects[0];
                 const hitPoint = intersect.point;
 
+                // Verifica se o ponto de impacto está acima do nível da água e dentro da distância de destruição
                 if (hitPoint.y < waterLevel || intersect.distance > destroyDistance) {
                     return;
                 }
 
-                // Cria um grupo para conter as duas partes do buraco
+                // Cria um grupo para conter todos os objetos do buraco
                 const holeGroup = new THREE.Group();
                 holeGroup.position.copy(hitPoint);
-                holeGroup.rotateY(Math.PI / 2); // Rotaciona o grupo inteiro
-                const quaternion = holeGroup.quaternion.clone();
 
-                // Parte da Borda (maior, com textura de grama)
-                const borderInstance = holeModelTemplate.clone();
-                borderInstance.scale.set(3.5, 3.0, 3.5); // Ligeiramente maior que o centro
-                borderInstance.position.y = 0.01; // Ligeiramente acima do chão
-                borderInstance.traverse((node) => {
-                    if (node.isMesh) node.material = holeBorderMaterial;
-                });
-                holeGroup.add(borderInstance);
+                // Define as dimensões e segmentos do vulcão
+                const volcanoInnerRadius = 1.5;
+                const volcanoOuterRadiusAtTop = 2.0;
+                const volcanoOuterRadiusAtBottom = 2.5;
+                const volcanoHeight = 0.4;
+                const volcanoRadialSegments = 32;
 
-                // Parte do Centro (menor, com textura de terra)
+                // Cria um grupo para o vulcão
+                const volcanoGroup = new THREE.Group();
+
+                // Cria a geometria do cone externo do vulcão
+                const outerConeGeometry = new THREE.CylinderGeometry(volcanoOuterRadiusAtTop, volcanoOuterRadiusAtBottom, volcanoHeight, volcanoRadialSegments, 1, true);
+                const outerConeMesh = new THREE.Mesh(outerConeGeometry, holeBorderMaterial);
+                outerConeMesh.position.y = volcanoHeight / 2;
+                outerConeMesh.receiveShadow = true;
+                volcanoGroup.add(outerConeMesh);
+
+                // Cria um material para o cilindro interno com renderização em ambos os lados
+                const innerCylinderMaterial = holeBorderMaterial.clone();
+                innerCylinderMaterial.side = THREE.DoubleSide;
+                // Cria a geometria do cilindro interno
+                const innerCylinderGeometry = new THREE.CylinderGeometry(volcanoInnerRadius, volcanoInnerRadius, volcanoHeight, volcanoRadialSegments, 1, true);
+                const innerCylinderMesh = new THREE.Mesh(innerCylinderGeometry, innerCylinderMaterial);
+                innerCylinderMesh.position.y = volcanoHeight / 2;
+                innerCylinderMesh.receiveShadow = true;
+                volcanoGroup.add(innerCylinderMesh);
+
+                // Cria a geometria do anel superior para fechar o vulcão
+                const topRingGeometry = new THREE.RingGeometry(volcanoInnerRadius, volcanoOuterRadiusAtTop, volcanoRadialSegments);
+                const topRingMesh = new THREE.Mesh(topRingGeometry, holeBorderMaterial);
+                topRingMesh.position.y = volcanoHeight;
+                topRingMesh.rotation.x = -Math.PI / 2;
+                topRingMesh.receiveShadow = true;
+                volcanoGroup.add(topRingMesh);
+
+                // Adiciona um pequeno deslocamento vertical ao vulcão e o adiciona ao grupo do buraco
+                volcanoGroup.position.y = 0.01;
+                holeGroup.add(volcanoGroup);
+
+                // Clona, dimensiona e posiciona o modelo do buraco central
                 const centerInstance = holeModelTemplate.clone();
                 centerInstance.scale.set(3.0, 3.0, 3.0);
-                centerInstance.position.y = 0.02; // Um pouco acima da borda para evitar z-fighting
+                centerInstance.rotation.y = Math.PI / 2;
+                centerInstance.position.y = 0.02; // Pequeno deslocamento para evitar z-fighting
                 centerInstance.traverse((node) => {
                     if (node.isMesh) node.material = holeMaterial;
                 });
                 holeGroup.add(centerInstance);
 
+                // Alinha o grupo do buraco com a normal da superfície
+                const up = new THREE.Vector3(0, 1, 0);
+                const normal = intersect.face.normal.clone();
+                const alignQuaternion = new THREE.Quaternion().setFromUnitVectors(up, normal);
+                holeGroup.quaternion.copy(alignQuaternion);
+                // Aplica uma rotação adicional para alinhar corretamente o modelo
+                holeGroup.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2));
 
+                // Salva o quaternion final para uso posterior
+                const finalQuaternion = holeGroup.quaternion.clone();
+
+                // Clona o grupo do buraco para criar o efeito de mundo infinito
                 const visualMoundMeshes = [];
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                     for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                        const groupClone = holeGroup.clone();
+                        const groupClone = holeGroup.clone(true);
                         scene.add(groupClone);
                         visualMoundMeshes.push({ mesh: groupClone, offsetX: j * worldSize, offsetZ: k * worldSize });
                     }
                 }
 
+                // Adiciona o novo monte à lista de montes visuais
                 visualMounds.push({
                     position: hitPoint.clone(),
                     meshes: visualMoundMeshes,
                     createdAt: world.time,
-                    quaternion: quaternion
+                    quaternion: finalQuaternion
                 });
 
+                // Adiciona terra ao inventário do jogador e atualiza a exibição
                 addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
                 updateBackpackDisplay();
             }
