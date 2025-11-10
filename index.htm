@@ -1171,24 +1171,20 @@
 
             if (intersects.length > 0) {
                 const intersect = intersects[0];
-                const hitPoint = intersect.point;
+                if (intersect.distance > destroyDistance) return;
 
-                // Impede a escavação debaixo d'água ou muito longe
-                if (hitPoint.y < waterLevel || intersect.distance > destroyDistance) {
-                    return;
-                }
+                const hitPoint = intersect.point;
 
                 // Apenas uma instância principal do buraco é criada
                 const holeInstance = holeModelTemplate.clone();
-                holeInstance.scale.set(3.0, 3.0, 3.0); // Aumenta a escala do buraco para 3.0
-                holeInstance.position.copy(hitPoint).add(new THREE.Vector3(0, 0.01, 0)); // Coloca um pouco acima para evitar z-fighting
+                holeInstance.scale.set(3.0, 3.0, 3.0);
+                holeInstance.position.copy(hitPoint).add(new THREE.Vector3(0, 0.01, 0));
 
-                // NOVO: Rotação de 90 graus em torno do eixo Y
-                holeInstance.rotateY(Math.PI / 2); // Rotaciona 90 graus
-                const quaternion = holeInstance.quaternion.clone(); // Captura o quaternion para usar nos clones
+                holeInstance.quaternion.copy(playerBody.quaternion);
+                holeInstance.rotateY(Math.PI / 2); // Rotação adicional de 90 graus
+                const quaternion = holeInstance.quaternion.clone();
 
                 const visualMoundMeshes = [];
-                // O loop agora clona a instância principal para cada tile
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                     for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
                         const mesh = holeInstance.clone();
@@ -1201,7 +1197,7 @@
                     position: hitPoint.clone(),
                     meshes: visualMoundMeshes,
                     createdAt: world.time,
-                    quaternion: quaternion // Armazena a orientação para atualização
+                    quaternion: quaternion
                 });
 
                 addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
@@ -1827,14 +1823,23 @@
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                holeMaterial = new THREE.MeshStandardMaterial({ map: texture, transparent: true }); // Transparente para misturar com o terreno
+                holeMaterial = new THREE.MeshStandardMaterial({ map: texture, transparent: true, side: THREE.DoubleSide }); // Transparente para misturar com o terreno
 
-                // WORKAROUND: Use a simple box as a placeholder for the hole model
-                const placeholderGeometry = new THREE.BoxGeometry(1, 0.1, 1);
-                const placeholderMaterial = new THREE.MeshStandardMaterial({ color: 0x3b2712 }); // Dark brown
-                holeModelTemplate = new THREE.Mesh(placeholderGeometry, placeholderMaterial);
-                holeModelTemplate.receiveShadow = true;
-                console.log("Workaround: Using a placeholder box for the hole model.");
+                // NOVO: Cria o modelo de buraco de duas partes
+                holeModelTemplate = new THREE.Group();
+
+                // Parte central (cilindro plano)
+                const holeCenterGeometry = new THREE.CylinderGeometry(0.7, 0.7, 0.02, 24);
+                const holeCenterMesh = new THREE.Mesh(holeCenterGeometry, holeMaterial);
+                holeModelTemplate.add(holeCenterMesh);
+
+                // Parte externa (anel)
+                const holeRingGeometry = new THREE.RingGeometry(0.7, 1.0, 24);
+                const holeRingMesh = new THREE.Mesh(holeRingGeometry, holeMaterial);
+                holeRingMesh.rotation.x = -Math.PI / 2;
+                holeRingMesh.position.y = 0.011; // Evita z-fighting
+                holeModelTemplate.add(holeRingMesh);
+
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura do buraco:', error);
                 holeMaterial = new THREE.MeshStandardMaterial({ color: 0x3b2712 }); // Fallback marrom escuro
