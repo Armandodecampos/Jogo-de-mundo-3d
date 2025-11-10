@@ -1173,35 +1173,44 @@
                 const intersect = intersects[0];
                 const hitPoint = intersect.point;
 
-                // Impede a escavação debaixo d'água ou muito longe
                 if (hitPoint.y < waterLevel || intersect.distance > destroyDistance) {
                     return;
                 }
 
-                // Apenas uma instância principal do buraco é criada
-                const holeInstance = holeModelTemplate.clone();
-                holeInstance.scale.set(3.0, 3.0, 3.0); // Aumenta a escala do buraco para 3.0
-                holeInstance.position.copy(hitPoint).add(new THREE.Vector3(0, 0.01, 0)); // Coloca um pouco acima para evitar z-fighting
+                // Cria a parte central
+                const centerInstance = holeModelTemplate.clone();
+                centerInstance.scale.set(3.0, 3.0, 3.0);
 
-                // NOVO: Rotação de 90 graus em torno do eixo Y
-                holeInstance.rotateY(Math.PI / 2); // Rotaciona 90 graus
-                const quaternion = holeInstance.quaternion.clone(); // Captura o quaternion para usar nos clones
+                // Cria a parte da borda clonando e escalando a parte central
+                const borderInstance = holeModelTemplate.clone();
+                borderInstance.scale.set(3.5, 3.0, 3.5); // Ligeiramente maior para criar uma borda
 
-                const visualMoundMeshes = [];
-                // O loop agora clona a instância principal para cada tile
+                const position = hitPoint.clone().add(new THREE.Vector3(0, 0.01, 0));
+                const quaternion = new THREE.Quaternion(); // Rotação padrão (sem rotação)
+
+                const visualCenterMeshes = [];
+                const visualBorderMeshes = [];
+
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                     for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                        const mesh = holeInstance.clone();
-                        scene.add(mesh);
-                        visualMoundMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                        // Clona e adiciona a malha central
+                        const centerMesh = centerInstance.clone();
+                        scene.add(centerMesh);
+                        visualCenterMeshes.push({ mesh: centerMesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+
+                        // Clona e adiciona a malha da borda
+                        const borderMesh = borderInstance.clone();
+                        scene.add(borderMesh);
+                        visualBorderMeshes.push({ mesh: borderMesh, offsetX: j * worldSize, offsetZ: k * worldSize });
                     }
                 }
 
                 visualMounds.push({
-                    position: hitPoint.clone(),
-                    meshes: visualMoundMeshes,
+                    position: position,
+                    centerMeshes: visualCenterMeshes,
+                    borderMeshes: visualBorderMeshes,
                     createdAt: world.time,
-                    quaternion: quaternion // Armazena a orientação para atualização
+                    quaternion: quaternion
                 });
 
                 addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
@@ -1827,14 +1836,33 @@
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                holeMaterial = new THREE.MeshStandardMaterial({ map: texture, transparent: true }); // Transparente para misturar com o terreno
+                holeMaterial = new THREE.MeshBasicMaterial({ map: texture, transparent: true, side: THREE.DoubleSide }); // DEBUG: Use BasicMaterial to ignore lighting, and DoubleSide to prevent culling issues
 
-                // WORKAROUND: Use a simple box as a placeholder for the hole model
-                const placeholderGeometry = new THREE.BoxGeometry(1, 0.1, 1);
-                const placeholderMaterial = new THREE.MeshStandardMaterial({ color: 0x3b2712 }); // Dark brown
-                holeModelTemplate = new THREE.Mesh(placeholderGeometry, placeholderMaterial);
-                holeModelTemplate.receiveShadow = true;
-                console.log("Workaround: Using a placeholder box for the hole model.");
+                const loader = new GLTFLoader(loadingManager);
+                loader.load('Tremendous Rottis.glb', (gltf) => {
+                    gltf.scene.traverse((child) => {
+                        if (child.isMesh) {
+                            // Encontra a única malha e a armazena como o modelo
+                            holeModelTemplate = child;
+                        }
+                    });
+
+                    if (holeModelTemplate) {
+                        holeModelTemplate.rotateY(Math.PI / 2);
+                        holeModelTemplate.material = holeMaterial;
+                        holeModelTemplate.receiveShadow = true;
+                        console.log("Modelo 'Tremendous Rottis.glb' carregado e processado com sucesso.");
+                    } else {
+                        console.error("Nenhuma malha encontrada no modelo 'Tremendous Rottis.glb'.");
+                    }
+
+                }, undefined, (error) => {
+                    console.error("Erro ao carregar 'Tremendous Rottis.glb':", error);
+                    // Fallback para uma caixa se o modelo falhar ao carregar
+                    const placeholderGeometry = new THREE.BoxGeometry(1, 0.1, 1);
+                    const placeholderMaterial = new THREE.MeshStandardMaterial({ color: 0x3b2712 });
+                    holeModelTemplate = new THREE.Mesh(placeholderGeometry, placeholderMaterial);
+                });
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura do buraco:', error);
                 holeMaterial = new THREE.MeshStandardMaterial({ color: 0x3b2712 }); // Fallback marrom escuro
@@ -3132,13 +3160,23 @@
                 const distance = calculateWrappedDistance(playerBody.position, mound.position);
                 const isVisible = distance <= renderDistance;
 
-                mound.meshes.forEach(item => {
+                mound.centerMeshes.forEach(item => {
                     item.mesh.visible = isVisible;
                     if (isVisible) {
                         item.mesh.position.copy(mound.position);
                         item.mesh.position.x += item.offsetX - visualOffsetX;
                         item.mesh.position.z += item.offsetZ - visualOffsetZ;
-                        item.mesh.quaternion.copy(mound.quaternion); // Aplica a orientação
+                        item.mesh.quaternion.copy(mound.quaternion);
+                    }
+                });
+
+                mound.borderMeshes.forEach(item => {
+                    item.mesh.visible = isVisible;
+                    if (isVisible) {
+                        item.mesh.position.copy(mound.position);
+                        item.mesh.position.x += item.offsetX - visualOffsetX;
+                        item.mesh.position.z += item.offsetZ - visualOffsetZ;
+                        item.mesh.quaternion.copy(mound.quaternion);
                     }
                 });
             });
