@@ -638,6 +638,7 @@
         let stoneMaterial; // NOVO: Material para chão com a nova textura
         let holeMaterial; // NOVO: Material para o buraco cavado
         let holeBorderMaterial; // NOVO: Material para a borda do buraco
+        let grassMaterialForHole;
         let holeModelTemplate = null; // NOVO: Para armazenar o modelo do buraco carregado
         let dirtTextureForHole; // NOVO: Textura de terra para o buraco
 
@@ -1164,7 +1165,7 @@
 
         function createMound() {
             // Garante que os modelos e materiais necessários estejam carregados
-            if (!holeModelTemplate || !holeMaterial || !holeBorderMaterial) {
+            if (!holeModelTemplate || !holeMaterial || !grassMaterialForHole) {
                 console.warn("Modelos ou materiais do buraco ainda não foram carregados.");
                 return;
             }
@@ -1199,13 +1200,13 @@
 
                 // Cria a geometria do cone externo do vulcão
                 const outerConeGeometry = new THREE.CylinderGeometry(volcanoOuterRadiusAtTop, volcanoOuterRadiusAtBottom, volcanoHeight, volcanoRadialSegments, 1, true);
-                const outerConeMesh = new THREE.Mesh(outerConeGeometry, holeBorderMaterial);
+                const outerConeMesh = new THREE.Mesh(outerConeGeometry, grassMaterialForHole);
                 outerConeMesh.position.y = volcanoHeight / 2;
                 outerConeMesh.receiveShadow = true;
                 volcanoGroup.add(outerConeMesh);
 
                 // Cria um material para o cilindro interno com renderização em ambos os lados
-                const innerCylinderMaterial = holeBorderMaterial.clone();
+                const innerCylinderMaterial = holeMaterial.clone();
                 innerCylinderMaterial.side = THREE.DoubleSide;
                 // Cria a geometria do cilindro interno
                 const innerCylinderGeometry = new THREE.CylinderGeometry(volcanoInnerRadius, volcanoInnerRadius, volcanoHeight, volcanoRadialSegments, 1, true);
@@ -1216,7 +1217,7 @@
 
                 // Cria a geometria do anel superior para fechar o vulcão
                 const topRingGeometry = new THREE.RingGeometry(volcanoInnerRadius, volcanoOuterRadiusAtTop, volcanoRadialSegments);
-                const topRingMesh = new THREE.Mesh(topRingGeometry, holeBorderMaterial);
+                const topRingMesh = new THREE.Mesh(topRingGeometry, grassMaterialForHole);
                 topRingMesh.position.y = volcanoHeight;
                 topRingMesh.rotation.x = -Math.PI / 2;
                 topRingMesh.receiveShadow = true;
@@ -1226,15 +1227,22 @@
                 volcanoGroup.position.y = 0.01;
                 holeGroup.add(volcanoGroup);
 
-                // Clona, dimensiona e posiciona o modelo do buraco central
-                const centerInstance = holeModelTemplate.clone();
-                centerInstance.scale.set(10.0, 1.0, 10.0);
-                centerInstance.rotation.y = Math.PI / 2;
-                centerInstance.position.y = 0.02; // Pequeno deslocamento para evitar z-fighting
-                centerInstance.traverse((node) => {
-                    if (node.isMesh) node.material = holeMaterial;
+                // Extrai a geometria do modelo do buraco e cria uma nova malha
+                let centerInstance;
+                holeModelTemplate.traverse((node) => {
+                    if (node.isMesh) {
+                        centerInstance = new THREE.Mesh(node.geometry, holeMaterial);
+                    }
                 });
-                holeGroup.add(centerInstance);
+
+                if (centerInstance) {
+                    centerInstance.scale.set(10.0, 1.0, 10.0);
+                    centerInstance.rotation.y = Math.PI / 2;
+                    centerInstance.position.y = 0.02; // Pequeno deslocamento para evitar z-fighting
+                    centerInstance.receiveShadow = true;
+                    holeGroup.add(centerInstance);
+                }
+
 
                 // Alinha o grupo do buraco com a normal da superfície
                 const up = new THREE.Vector3(0, 1, 0);
@@ -1729,6 +1737,7 @@
             textureLoader.load(groundTextureURL, (groundTexture) => {
                 textureLoader.load(holeBorderTextureURL, (holeBorderTexture) => {
                     holeBorderMaterial = new THREE.MeshStandardMaterial({ map: holeBorderTexture });
+                    grassMaterialForHole = new THREE.MeshStandardMaterial({ map: groundTexture });
                     textureLoader.load(seabedTextureURL, (seabedTexture) => {
                         textureLoader.load(sandTextureURL, (sandTexture) => {
                             // Todas as quatro texturas estão carregadas
