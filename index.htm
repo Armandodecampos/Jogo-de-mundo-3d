@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -624,8 +625,7 @@
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
         const textureApplicatorImageURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Ícone para o pincel
         const stoneTextureURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Textura de pedra para aplicar
-        const holeTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=ziskp31e&dl=0";
-        const holeBorderTextureURL = "https://dl.dropbox.com/scl/fi/79c7fk1vkpny11gpatwa0/textura-de-terra-com-grama.png?rlkey=j3gpxsyiq2hq28cpecctrszuk&st=yeyeppxk&dl=0";
+        const holeTextureURL = dirtDepositTextureURL;
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -638,7 +638,6 @@
         let stoneMaterial; // NOVO: Material para chão com a nova textura
         let holeMaterial; // NOVO: Material para o buraco cavado
         let holeBorderMaterial; // NOVO: Material para a borda do buraco
-        let grassMaterialForHole;
         let holeModelTemplate = null; // NOVO: Para armazenar o modelo do buraco carregado
         let dirtTextureForHole; // NOVO: Textura de terra para o buraco
 
@@ -1165,7 +1164,7 @@
 
         function createMound() {
             // Garante que os modelos e materiais necessários estejam carregados
-            if (!holeModelTemplate || !holeMaterial || !grassMaterialForHole) {
+            if (!holeModelTemplate || !holeMaterial || !holeBorderMaterial) {
                 console.warn("Modelos ou materiais do buraco ainda não foram carregados.");
                 return;
             }
@@ -1200,7 +1199,7 @@
 
                 // Cria a geometria do cone externo do vulcão
                 const outerConeGeometry = new THREE.CylinderGeometry(volcanoOuterRadiusAtTop, volcanoOuterRadiusAtBottom, volcanoHeight, volcanoRadialSegments, 1, true);
-                const outerConeMesh = new THREE.Mesh(outerConeGeometry, grassMaterialForHole);
+                const outerConeMesh = new THREE.Mesh(outerConeGeometry, holeBorderMaterial);
                 outerConeMesh.position.y = volcanoHeight / 2;
                 outerConeMesh.receiveShadow = true;
                 volcanoGroup.add(outerConeMesh);
@@ -1217,7 +1216,7 @@
 
                 // Cria a geometria do anel superior para fechar o vulcão
                 const topRingGeometry = new THREE.RingGeometry(volcanoInnerRadius, volcanoOuterRadiusAtTop, volcanoRadialSegments);
-                const topRingMesh = new THREE.Mesh(topRingGeometry, grassMaterialForHole);
+                const topRingMesh = new THREE.Mesh(topRingGeometry, holeBorderMaterial);
                 topRingMesh.position.y = volcanoHeight;
                 topRingMesh.rotation.x = -Math.PI / 2;
                 topRingMesh.receiveShadow = true;
@@ -1227,22 +1226,15 @@
                 volcanoGroup.position.y = 0.01;
                 holeGroup.add(volcanoGroup);
 
-                // Extrai a geometria do modelo do buraco e cria uma nova malha
-                let centerInstance;
-                holeModelTemplate.traverse((node) => {
-                    if (node.isMesh) {
-                        centerInstance = new THREE.Mesh(node.geometry, holeMaterial);
-                    }
+                // Clona, dimensiona e posiciona o modelo do buraco central
+                const centerInstance = holeModelTemplate.clone();
+                centerInstance.scale.set(10.0, 1.0, 10.0);
+                centerInstance.rotation.y = Math.PI / 2;
+                centerInstance.position.y = 0.02; // Pequeno deslocamento para evitar z-fighting
+                centerInstance.traverse((node) => {
+                    if (node.isMesh) node.material = holeMaterial;
                 });
-
-                if (centerInstance) {
-                    centerInstance.scale.set(10.0, 1.0, 10.0);
-                    centerInstance.rotation.y = Math.PI / 2;
-                    centerInstance.position.y = 0.02; // Pequeno deslocamento para evitar z-fighting
-                    centerInstance.receiveShadow = true;
-                    holeGroup.add(centerInstance);
-                }
-
+                holeGroup.add(centerInstance);
 
                 // Alinha o grupo do buraco com a normal da superfície
                 const up = new THREE.Vector3(0, 1, 0);
@@ -1735,19 +1727,19 @@
             const seabedTextureURL = sandTextureURL;
 
             textureLoader.load(groundTextureURL, (groundTexture) => {
-                textureLoader.load(holeBorderTextureURL, (holeBorderTexture) => {
-                    holeBorderMaterial = new THREE.MeshStandardMaterial({ map: holeBorderTexture });
-                    grassMaterialForHole = new THREE.MeshStandardMaterial({ map: groundTexture });
-                    textureLoader.load(seabedTextureURL, (seabedTexture) => {
-                        textureLoader.load(sandTextureURL, (sandTexture) => {
+                holeBorderMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
+                textureLoader.load(seabedTextureURL, (seabedTexture) => {
+                    textureLoader.load(sandTextureURL, (sandTexture) => {
+                        textureLoader.load(holeTextureURL, (holeTexture) => { // NOVO: Carrega a textura do buraco
                             // Todas as quatro texturas estão carregadas
-                            [groundTexture, seabedTexture, sandTexture].forEach(texture => {
+                            [groundTexture, seabedTexture, sandTexture, holeTexture].forEach(texture => {
                                 texture.wrapS = THREE.RepeatWrapping;
                                 texture.wrapT = THREE.RepeatWrapping;
                             });
                             groundTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
                             seabedTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
                             sandTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                            holeTexture.repeat.set(islandRadiusTop / 16, islandRadiusTop / 16); // Repetição diferente para a textura do buraco
 
                             const islandMeshMaterial = new THREE.MeshStandardMaterial({
                                 map: groundTexture,
