@@ -624,7 +624,8 @@
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
         const textureApplicatorImageURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Ícone para o pincel
         const stoneTextureURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Textura de pedra para aplicar
-        const holeTextureURL = dirtDepositTextureURL;
+        const holeTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=ziskp31e&dl=0";
+        const holeBorderTextureURL = "https://dl.dropbox.com/scl/fi/79c7fk1vkpny11gpatwa0/textura-de-terra-com-grama.png?rlkey=j3gpxsyiq2hq28cpecctrszuk&st=yeyeppxk&dl=0";
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -1204,7 +1205,7 @@
                 volcanoGroup.add(outerConeMesh);
 
                 // Cria um material para o cilindro interno com renderização em ambos os lados
-                const innerCylinderMaterial = holeMaterial.clone();
+                const innerCylinderMaterial = holeBorderMaterial.clone();
                 innerCylinderMaterial.side = THREE.DoubleSide;
                 // Cria a geometria do cilindro interno
                 const innerCylinderGeometry = new THREE.CylinderGeometry(volcanoInnerRadius, volcanoInnerRadius, volcanoHeight, volcanoRadialSegments, 1, true);
@@ -1726,19 +1727,18 @@
             const seabedTextureURL = sandTextureURL;
 
             textureLoader.load(groundTextureURL, (groundTexture) => {
-                holeBorderMaterial = new THREE.MeshStandardMaterial({ map: groundTexture });
-                textureLoader.load(seabedTextureURL, (seabedTexture) => {
-                    textureLoader.load(sandTextureURL, (sandTexture) => {
-                        textureLoader.load(holeTextureURL, (holeTexture) => { // NOVO: Carrega a textura do buraco
+                textureLoader.load(holeBorderTextureURL, (holeBorderTexture) => {
+                    holeBorderMaterial = new THREE.MeshStandardMaterial({ map: holeBorderTexture });
+                    textureLoader.load(seabedTextureURL, (seabedTexture) => {
+                        textureLoader.load(sandTextureURL, (sandTexture) => {
                             // Todas as quatro texturas estão carregadas
-                            [groundTexture, seabedTexture, sandTexture, holeTexture].forEach(texture => {
+                            [groundTexture, seabedTexture, sandTexture].forEach(texture => {
                                 texture.wrapS = THREE.RepeatWrapping;
                                 texture.wrapT = THREE.RepeatWrapping;
                             });
                             groundTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
                             seabedTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
                             sandTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                            holeTexture.repeat.set(islandRadiusTop / 16, islandRadiusTop / 16); // Repetição diferente para a textura do buraco
 
                             const islandMeshMaterial = new THREE.MeshStandardMaterial({
                                 map: groundTexture,
