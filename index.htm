@@ -1744,14 +1744,12 @@
 
                             shader.vertexShader = `
                                 varying vec3 vWorldPosition;
-                                varying vec3 vNormal;
                                 ${shader.vertexShader}
                             `.replace(
                                 `#include <worldpos_vertex>`,
                                 `
                                 #include <worldpos_vertex>
                                 vWorldPosition = worldPosition.xyz;
-                                vNormal = normal;
                                 `
                             );
 
@@ -1760,12 +1758,11 @@
                                 uniform sampler2D uSandTexture;
                                 uniform float uWaterLevel;
                                 varying vec3 vWorldPosition;
-                                varying vec3 vNormal;
 
                                 vec3 triplanar(sampler2D texture, vec3 p) {
                                     vec3 n = normalize(vNormal);
                                     vec3 blend = pow(abs(n), vec3(1.0));
-                                    blend /= (blend.x + blend.y + blend.z + 0.00001);
+                                    blend /= (blend.x + blend.y + blend.z);
 
                                     vec2 uvX = p.yz;
                                     vec2 uvY = p.xz;
