@@ -1195,53 +1195,32 @@
                 // Cria um grupo para o vulcão
                 const volcanoGroup = new THREE.Group();
 
-                // Cria a geometria do cone externo do vulcão
+                // Cria a geometria do cone externo do vulcão (parede externa)
                 const outerConeGeometry = new THREE.CylinderGeometry(volcanoOuterRadiusAtTop, volcanoOuterRadiusAtBottom, volcanoHeight, volcanoRadialSegments, 1, true);
-                const outerConeMesh = new THREE.Mesh(outerConeGeometry, islandMeshes[0].mesh.material);
+                const outerConeMesh = new THREE.Mesh(outerConeGeometry, islandMeshes[0].mesh.material); // Usa o material dinâmico do terreno
                 outerConeMesh.position.y = volcanoHeight / 2;
                 outerConeMesh.receiveShadow = true;
                 volcanoGroup.add(outerConeMesh);
 
-                // Cria um material para o cilindro interno com renderização em ambos os lados
-                const innerCylinderMaterial = islandMeshes[0].mesh.material.clone();
-                innerCylinderMaterial.side = THREE.DoubleSide;
-                // Cria a geometria do cilindro interno
+                // Cria a geometria do cilindro interno (parede interna)
                 const innerCylinderGeometry = new THREE.CylinderGeometry(volcanoInnerRadius, volcanoInnerRadius, volcanoHeight, volcanoRadialSegments, 1, true);
-                const innerCylinderMesh = new THREE.Mesh(innerCylinderGeometry, innerCylinderMaterial);
+                const innerCylinderMesh = new THREE.Mesh(innerCylinderGeometry, islandMeshes[0].mesh.material); // Usa o material dinâmico do terreno
                 innerCylinderMesh.position.y = volcanoHeight / 2;
                 innerCylinderMesh.receiveShadow = true;
                 volcanoGroup.add(innerCylinderMesh);
 
                 // Cria a geometria do anel superior para fechar o vulcão
                 const topRingGeometry = new THREE.RingGeometry(volcanoInnerRadius, volcanoOuterRadiusAtTop, volcanoRadialSegments);
-                const topRingMesh = new THREE.Mesh(topRingGeometry, islandMeshes[0].mesh.material);
+                const topRingMesh = new THREE.Mesh(topRingGeometry, islandMeshes[0].mesh.material); // Usa o material dinâmico do terreno
                 topRingMesh.position.y = volcanoHeight;
                 topRingMesh.rotation.x = -Math.PI / 2;
                 topRingMesh.receiveShadow = true;
                 volcanoGroup.add(topRingMesh);
 
+
                 // Adiciona um pequeno deslocamento vertical ao vulcão e o adiciona ao grupo do buraco
                 volcanoGroup.position.y = 0.01;
                 holeGroup.add(volcanoGroup);
-
-                // Recalcula os UVs para o grupo do vulcão
-                volcanoGroup.children.forEach(mesh => {
-                    const geometry = mesh.geometry;
-                    const uvAttribute = geometry.attributes.uv;
-                    const positionAttribute = geometry.attributes.position;
-                    const worldPosition = new THREE.Vector3();
-
-                    for (let i = 0; i < positionAttribute.count; i++) {
-                        worldPosition.fromBufferAttribute(positionAttribute, i);
-                        mesh.localToWorld(worldPosition); // Converte a posição do vértice para coordenadas mundiais
-
-                        // Mapeia as coordenadas do mundo para UVs para repetição da textura
-                        const u = worldPosition.x / worldSize;
-                        const v = worldPosition.z / worldSize;
-                        uvAttribute.setXY(i, u, v);
-                    }
-                    uvAttribute.needsUpdate = true; // Marca o atributo UV como necessitando de atualização
-                });
 
                 // Cria, dimensiona e posiciona o modelo do buraco central
                 const holeRadius = 1.4;
@@ -1765,12 +1744,14 @@
 
                             shader.vertexShader = `
                                 varying vec3 vWorldPosition;
+                                varying vec3 vNormal;
                                 ${shader.vertexShader}
                             `.replace(
                                 `#include <worldpos_vertex>`,
                                 `
                                 #include <worldpos_vertex>
                                 vWorldPosition = worldPosition.xyz;
+                                vNormal = normal;
                                 `
                             );
 
@@ -1779,19 +1760,37 @@
                                 uniform sampler2D uSandTexture;
                                 uniform float uWaterLevel;
                                 varying vec3 vWorldPosition;
+                                varying vec3 vNormal;
+
+                                vec3 triplanar(sampler2D texture, vec3 p) {
+                                    vec3 n = normalize(vNormal);
+                                    vec3 blend = pow(abs(n), vec3(1.0));
+                                    blend /= (blend.x + blend.y + blend.z);
+
+                                    vec2 uvX = p.yz;
+                                    vec2 uvY = p.xz;
+                                    vec2 uvZ = p.xy;
+
+                                    vec3 cX = texture2D(texture, uvX).rgb;
+                                    vec3 cY = texture2D(texture, uvY).rgb;
+                                    vec3 cZ = texture2D(texture, uvZ).rgb;
+
+                                    return cX * blend.x + cY * blend.y + cZ * blend.z;
+                                }
+
                                 ${shader.fragmentShader}
                             `.replace(
                                 `#include <map_fragment>`,
                                 `
                                 #ifdef USE_MAP
-                                    vec4 groundColor = texture2D(map, vUv);
-                                    vec4 seabedColor = texture2D(uSeabedTexture, vUv);
-                                    vec4 sandColor = texture2D(uSandTexture, vUv);
+                                    vec3 groundColor = triplanar(map, vWorldPosition / 8.0);
+                                    vec3 seabedColor = triplanar(uSeabedTexture, vWorldPosition / 8.0);
+                                    vec3 sandColor = triplanar(uSandTexture, vWorldPosition / 8.0);
 
                                     float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
-                                    vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
+                                    vec3 seabedSandMix = mix(seabedColor, sandColor, seabedToSandBlend);
                                     float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
-                                    vec3 terrainMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
+                                    vec3 terrainMix = mix(seabedSandMix, groundColor, sandToGrassBlend);
 
                                     diffuseColor *= vec4(terrainMix, 1.0);
                                 #endif
