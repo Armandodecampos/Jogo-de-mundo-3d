@@ -625,7 +625,6 @@
         const textureApplicatorImageURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Ícone para o pincel
         const stoneTextureURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Textura de pedra para aplicar
         const holeTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&dl=1";
-        const holeBorderTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&dl=1";
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -637,7 +636,6 @@
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
         let stoneMaterial; // NOVO: Material para chão com a nova textura
         let holeMaterial; // NOVO: Material para o buraco cavado
-        let holeBorderMaterial; // NOVO: Material para a borda do buraco
         let holeGeometryTemplate = null; // NOVO: Para armazenar a geometria do modelo do buraco
         let dirtTextureForHole; // NOVO: Textura de terra para o buraco
 
@@ -1164,7 +1162,7 @@
 
         function createMound() {
             // Garante que os modelos e materiais necessários estejam carregados
-            if (!holeGeometryTemplate || !holeMaterial || !holeBorderMaterial) {
+            if (!holeGeometryTemplate || !holeMaterial) {
                 console.warn("Modelos ou materiais do buraco ainda não foram carregados.");
                 return;
             }
@@ -1199,13 +1197,13 @@
 
                 // Cria a geometria do cone externo do vulcão
                 const outerConeGeometry = new THREE.CylinderGeometry(volcanoOuterRadiusAtTop, volcanoOuterRadiusAtBottom, volcanoHeight, volcanoRadialSegments, 1, true);
-                const outerConeMesh = new THREE.Mesh(outerConeGeometry, holeBorderMaterial);
+                const outerConeMesh = new THREE.Mesh(outerConeGeometry, islandMeshes[0].mesh.material);
                 outerConeMesh.position.y = volcanoHeight / 2;
                 outerConeMesh.receiveShadow = true;
                 volcanoGroup.add(outerConeMesh);
 
                 // Cria um material para o cilindro interno com renderização em ambos os lados
-                const innerCylinderMaterial = holeBorderMaterial.clone();
+                const innerCylinderMaterial = islandMeshes[0].mesh.material.clone();
                 innerCylinderMaterial.side = THREE.DoubleSide;
                 // Cria a geometria do cilindro interno
                 const innerCylinderGeometry = new THREE.CylinderGeometry(volcanoInnerRadius, volcanoInnerRadius, volcanoHeight, volcanoRadialSegments, 1, true);
@@ -1216,7 +1214,7 @@
 
                 // Cria a geometria do anel superior para fechar o vulcão
                 const topRingGeometry = new THREE.RingGeometry(volcanoInnerRadius, volcanoOuterRadiusAtTop, volcanoRadialSegments);
-                const topRingMesh = new THREE.Mesh(topRingGeometry, holeBorderMaterial);
+                const topRingMesh = new THREE.Mesh(topRingGeometry, islandMeshes[0].mesh.material);
                 topRingMesh.position.y = volcanoHeight;
                 topRingMesh.rotation.x = -Math.PI / 2;
                 topRingMesh.receiveShadow = true;
@@ -1225,6 +1223,25 @@
                 // Adiciona um pequeno deslocamento vertical ao vulcão e o adiciona ao grupo do buraco
                 volcanoGroup.position.y = 0.01;
                 holeGroup.add(volcanoGroup);
+
+                // Recalcula os UVs para o grupo do vulcão
+                volcanoGroup.children.forEach(mesh => {
+                    const geometry = mesh.geometry;
+                    const uvAttribute = geometry.attributes.uv;
+                    const positionAttribute = geometry.attributes.position;
+                    const worldPosition = new THREE.Vector3();
+
+                    for (let i = 0; i < positionAttribute.count; i++) {
+                        worldPosition.fromBufferAttribute(positionAttribute, i);
+                        mesh.localToWorld(worldPosition); // Converte a posição do vértice para coordenadas mundiais
+
+                        // Mapeia as coordenadas mundiais para UVs, garantindo que o valor esteja sempre entre 0 e 1
+                        const u = ((worldPosition.x / worldSize) % 1 + 1) % 1;
+                        const v = ((worldPosition.z / worldSize) % 1 + 1) % 1;
+                        uvAttribute.setXY(i, u, v);
+                    }
+                    uvAttribute.needsUpdate = true; // Marca o atributo UV como necessitando de atualização
+                });
 
                 // Cria, dimensiona e posiciona o modelo do buraco central
                 const holeRadius = 1.4;
@@ -1726,75 +1743,72 @@
             const seabedTextureURL = sandTextureURL;
 
             textureLoader.load(groundTextureURL, (groundTexture) => {
-                textureLoader.load(holeBorderTextureURL, (holeBorderTexture) => {
-                    holeBorderMaterial = new THREE.MeshBasicMaterial({ map: holeBorderTexture });
-                    textureLoader.load(seabedTextureURL, (seabedTexture) => {
-                        textureLoader.load(sandTextureURL, (sandTexture) => {
-                            // Todas as quatro texturas estão carregadas
-                            [groundTexture, seabedTexture, sandTexture].forEach(texture => {
-                                texture.wrapS = THREE.RepeatWrapping;
-                                texture.wrapT = THREE.RepeatWrapping;
-                            });
-                            groundTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                            seabedTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                            sandTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                textureLoader.load(seabedTextureURL, (seabedTexture) => {
+                    textureLoader.load(sandTextureURL, (sandTexture) => {
+                        // Todas as três texturas estão carregadas
+                        [groundTexture, seabedTexture, sandTexture].forEach(texture => {
+                            texture.wrapS = THREE.RepeatWrapping;
+                            texture.wrapT = THREE.RepeatWrapping;
+                        });
+                        groundTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                        seabedTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                        sandTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
 
-                            const islandMeshMaterial = new THREE.MeshStandardMaterial({
-                                map: groundTexture,
-                            });
+                        const islandMeshMaterial = new THREE.MeshStandardMaterial({
+                            map: groundTexture,
+                        });
 
-                            islandMeshMaterial.onBeforeCompile = (shader) => {
-                                shader.uniforms.uSeabedTexture = { value: seabedTexture };
-                                shader.uniforms.uSandTexture = { value: sandTexture };
-                                shader.uniforms.uWaterLevel = { value: waterLevel };
+                        islandMeshMaterial.onBeforeCompile = (shader) => {
+                            shader.uniforms.uSeabedTexture = { value: seabedTexture };
+                            shader.uniforms.uSandTexture = { value: sandTexture };
+                            shader.uniforms.uWaterLevel = { value: waterLevel };
 
-                                shader.vertexShader = `
-                                    varying vec3 vWorldPosition;
-                                    ${shader.vertexShader}
-                                `.replace(
-                                    `#include <worldpos_vertex>`,
-                                    `
-                                    #include <worldpos_vertex>
-                                    vWorldPosition = worldPosition.xyz;
-                                    `
-                                );
+                            shader.vertexShader = `
+                                varying vec3 vWorldPosition;
+                                ${shader.vertexShader}
+                            `.replace(
+                                `#include <worldpos_vertex>`,
+                                `
+                                #include <worldpos_vertex>
+                                vWorldPosition = worldPosition.xyz;
+                                `
+                            );
 
-                                shader.fragmentShader = `
-                                    uniform sampler2D uSeabedTexture;
-                                    uniform sampler2D uSandTexture;
-                                    uniform float uWaterLevel;
-                                    varying vec3 vWorldPosition;
-                                    ${shader.fragmentShader}
-                                `.replace(
-                                    `#include <map_fragment>`,
-                                    `
-                                    #ifdef USE_MAP
-                                        vec4 groundColor = texture2D(map, vUv);
-                                        vec4 seabedColor = texture2D(uSeabedTexture, vUv);
-                                        vec4 sandColor = texture2D(uSandTexture, vUv);
+                            shader.fragmentShader = `
+                                uniform sampler2D uSeabedTexture;
+                                uniform sampler2D uSandTexture;
+                                uniform float uWaterLevel;
+                                varying vec3 vWorldPosition;
+                                ${shader.fragmentShader}
+                            `.replace(
+                                `#include <map_fragment>`,
+                                `
+                                #ifdef USE_MAP
+                                    vec4 groundColor = texture2D(map, vUv);
+                                    vec4 seabedColor = texture2D(uSeabedTexture, vUv);
+                                    vec4 sandColor = texture2D(uSandTexture, vUv);
 
-                                        float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
-                                        vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
-                                        float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
-                                        vec3 terrainMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
+                                    float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
+                                    vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
+                                    float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
+                                    vec3 terrainMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
 
-                                        diffuseColor *= vec4(terrainMix, 1.0);
-                                    #endif
-                                    `
-                                );
-                            };
+                                    diffuseColor *= vec4(terrainMix, 1.0);
+                                #endif
+                                `
+                            );
+                        };
 
-                            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                                    const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
-                                    islandMesh.receiveShadow = true;
-                                    islandMesh.userData.physicsBody = islandBody;
-                                    scene.add(islandMesh);
-                                    islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                                }
+                        for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                                const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
+                                islandMesh.receiveShadow = true;
+                                islandMesh.userData.physicsBody = islandBody;
+                                scene.add(islandMesh);
+                                islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                             }
-                            islandMeshMaterial.needsUpdate = true;
-                        }, undefined, (error) => console.error('Falha ao carregar a textura do buraco:', error));
+                        }
+                        islandMeshMaterial.needsUpdate = true;
                     }, undefined, (error) => console.error('Falha ao carregar a textura de areia:', error));
                 }, undefined, (error) => console.error('Falha ao carregar a textura do fundo do mar:', error));
             }, undefined, (error) => console.error('Falha ao carregar a textura do solo:', error));
