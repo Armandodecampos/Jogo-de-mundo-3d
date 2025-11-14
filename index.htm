@@ -1202,12 +1202,10 @@
                 outerConeMesh.receiveShadow = true;
                 volcanoGroup.add(outerConeMesh);
 
-                // Cria um material para o cilindro interno com renderização em ambos os lados
-                const innerCylinderMaterial = islandMeshes[0].mesh.material.clone();
-                innerCylinderMaterial.side = THREE.DoubleSide;
                 // Cria a geometria do cilindro interno
                 const innerCylinderGeometry = new THREE.CylinderGeometry(volcanoInnerRadius, volcanoInnerRadius, volcanoHeight, volcanoRadialSegments, 1, true);
-                const innerCylinderMesh = new THREE.Mesh(innerCylinderGeometry, innerCylinderMaterial);
+                // The material will be assigned later after cloning and modification
+                const innerCylinderMesh = new THREE.Mesh(innerCylinderGeometry);
                 innerCylinderMesh.position.y = volcanoHeight / 2;
                 innerCylinderMesh.receiveShadow = true;
                 volcanoGroup.add(innerCylinderMesh);
@@ -1223,6 +1221,47 @@
                 // Adiciona um pequeno deslocamento vertical ao vulcão e o adiciona ao grupo do buraco
                 volcanoGroup.position.y = 0.01;
                 holeGroup.add(volcanoGroup);
+
+                // Clone the material for the inner cylinder to modify its texture mapping
+                const innerCylinderMaterial = islandMeshes[0].mesh.material.clone();
+                innerCylinderMaterial.side = THREE.DoubleSide;
+                // Adjust the texture repeat to fix stretching on the inner wall
+                innerCylinderMaterial.map.repeat.set(1, 0.1); // Repeat U once, V much less
+                innerCylinderMesh.material = innerCylinderMaterial;
+
+
+                // Recalculate UVs for each part of the volcano group
+                volcanoGroup.children.forEach(mesh => {
+                    const geometry = mesh.geometry;
+                    const uvAttribute = geometry.attributes.uv;
+                    const positionAttribute = geometry.attributes.position;
+                    const normalAttribute = geometry.attributes.normal;
+                    const worldPosition = new THREE.Vector3();
+
+                    // Specific UV logic for the top ring to avoid seams
+                    if (mesh === topRingMesh) {
+                        for (let i = 0; i < positionAttribute.count; i++) {
+                            const x = positionAttribute.getX(i);
+                            const y = positionAttribute.getY(i);
+
+                            // Linear mapping based on vertex position relative to the ring's geometry
+                            const u = (x / (volcanoOuterRadiusAtTop * 2)) + 0.5;
+                            const v = (y / (volcanoOuterRadiusAtTop * 2)) + 0.5;
+                            uvAttribute.setXY(i, u, v);
+                        }
+                    } else { // Keep the existing world-space tri-planar logic for other parts
+                        for (let i = 0; i < positionAttribute.count; i++) {
+                            worldPosition.fromBufferAttribute(positionAttribute, i);
+                            mesh.localToWorld(worldPosition); // Convert vertex position to world coordinates
+
+                            // Map world coordinates to UVs for texture repetition
+                            const u = worldPosition.x / worldSize;
+                            const v = worldPosition.z / worldSize;
+                            uvAttribute.setXY(i, u, v);
+                        }
+                    }
+                    uvAttribute.needsUpdate = true; // Mark UV attribute as needing update
+                });
 
                 // Cria, dimensiona e posiciona o modelo do buraco central
                 const holeRadius = 1.4;
