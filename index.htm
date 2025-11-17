@@ -1,4 +1,5 @@
 
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -316,14 +317,14 @@
 
         #progressContainer {
             position: absolute;
-            top: 10%;
+            top: calc(50% + 25px); /* Posição abaixo da mira */
             left: 50%;
-            transform: translate(-50%, -50%);
-            width: 200px;
-            height: 20px;
+            transform: translateX(-50%); /* Apenas centraliza horizontalmente */
+            width: 150px; /* Largura menor */
+            height: 15px; /* Altura menor */
             background-color: rgba(0, 0, 0, 0.5);
-            border: 2px solid white;
-            border-radius: 10px;
+            border: 1px solid white;
+            border-radius: 8px;
             overflow: hidden;
             z-index: 1000;
             display: none; /* Inicia oculto */
@@ -428,6 +429,11 @@
         let destroyTargetPatchObject = null;
         let destroyTargetDeposit = null; // Para rastrear o depósito alvo
         let destructionComplete = false; // NOVO: Flag para gerenciar o estado de destruição
+
+        // NOVO: Variáveis para o sistema de escavação progressiva
+        let isDigging = false;
+        let digProgress = 0;
+        let targetDigTime = 2.0; // Tempo para cavar (em segundos)
 
         // NOVO: Variáveis para a lógica de clique vs. segurar
         let mouseDownTime = 0;
@@ -642,6 +648,7 @@
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
         let mounds = [];
         let visualMounds = []; // NOVO: Para os montes de terra visuais
+        let scalingMounds = []; // NOVO: Para a animação de escala dos buracos
         let moundDomes = [];
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
         let splatMap; // NOVO: Máscara de textura para pintar os buracos
@@ -1263,6 +1270,9 @@
                 // Salva o quaternion final para uso posterior
                 const finalQuaternion = holeGroup.quaternion.clone();
 
+                // Define a escala inicial para a animação
+                holeGroup.scale.set(0.01, 0.01, 0.01);
+
                 // Clona o grupo do buraco para criar o efeito de mundo infinito
                 const visualMoundMeshes = [];
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
@@ -1273,13 +1283,17 @@
                     }
                 }
 
-                // Adiciona o novo monte à lista de montes visuais
-                visualMounds.push({
+                const newMound = {
                     position: hitPoint.clone(),
                     meshes: visualMoundMeshes,
                     createdAt: world.time,
                     quaternion: finalQuaternion
-                });
+                };
+
+                // Adiciona o novo monte à lista de montes visuais E à lista de animação
+                visualMounds.push(newMound);
+                scalingMounds.push(newMound);
+
 
                 // Adiciona terra ao inventário do jogador e atualiza a exibição
                 addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
@@ -2202,27 +2216,23 @@
 
             // NOVO: Listener de mousedown consolidado
             renderer.domElement.addEventListener('mousedown', (event) => {
-                if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) return;
+                if (!isWorldReady || gamePaused || !document.pointerLockElement) return;
 
-                mouseDownTime = performance.now();
-                const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
+                if (event.button === 0) { // Botão esquerdo
+                    const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
 
-                if (event.button === 0) { // Clique esquerdo
                     if (primaryActionType === 'destroy') {
                         startDestruction();
-                    } else if (primaryActionType === 'grab' || primaryActionType === 'create_mound') {
-                        // Inicia o temporizador. Se for mantido, irá AGARRAR o objeto.
+                    } else if (primaryActionType === 'create_mound') {
+                        startDigging();
+                    } else if (primaryActionType === 'grab') {
+                        // Inicia o temporizador para diferenciar clique de segurar
                         clickHoldTimer = setTimeout(() => {
-                            if (primaryActionType === 'grab' && !pickedObjectBody) { // O clique longo só funciona para AGARRAR
+                            clickHoldTimer = null; // O temporizador disparou, então é um clique longo
+                            if (!pickedObjectBody) {
                                 grabObject();
                             }
-                            // A escavação não tem ação de espera
-                            clickHoldTimer = null; // O temporizador disparou
                         }, CLICK_HOLD_DURATION);
-                    }
-                } else if (event.button === 2) { // Clique direito
-                    if (getActionType(beltItems[1]) === 'destroy') {
-                        startDestruction();
                     }
                 }
             });
@@ -2232,6 +2242,7 @@
                 if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) return;
 
                 stopDestruction(); // Para sempre a destruição em qualquer mouseup
+                stopDigging();
 
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
                 const secondaryActionType = getActionType(beltItems[1]);
@@ -2246,8 +2257,6 @@
                             } else {
                                 collectObject(); // Clique curto enquanto não segura -> recolher
                             }
-                        } else if (primaryActionType === 'create_mound') {
-                            createMound(); // Ação de escavação no clique curto
                         }
                     }
                     // Se foi um clique longo, o temporizador é nulo e a função grabObject() já foi chamada.
@@ -2363,6 +2372,24 @@
                 destroyTargetPatchObject = null;
                 destroyTargetDeposit = null; // Reseta o depósito alvo
                 destructionComplete = false; // Garante que a flag seja redefinida
+            }
+
+            function startDigging() {
+                scene.background = new THREE.Color(0xff0000); // Red background for debugging
+                console.log("startDigging called!");
+                 isDigging = true;
+                 digProgress = 0;
+                 progressContainer.style.display = 'block';
+                 progressBar.style.backgroundColor = '#966F33'; // Cor marrom para cavar
+            }
+
+            function stopDigging() {
+                if (isDigging) {
+                    isDigging = false;
+                    digProgress = 0;
+                    progressContainer.style.display = 'none';
+                    progressBar.style.backgroundColor = '#4CAF50'; // Redefine para o verde padrão
+                }
             }
 
             function collectObject() {
@@ -2883,6 +2910,49 @@
                 renderer.render(scene, camera);
                 return;
             }
+
+            // NOVO: Animação de escala dos buracos
+            const scalingSpeed = 1.5; // Velocidade com que o buraco cresce
+            for (let i = scalingMounds.length - 1; i >= 0; i--) {
+                const mound = scalingMounds[i];
+                const elapsedTime = world.time - mound.createdAt;
+                let scale = elapsedTime * scalingSpeed;
+
+                if (scale >= 1.0) {
+                    scale = 1.0;
+                    scalingMounds.splice(i, 1); // Remove da lista de animação
+                }
+
+                // Aplica a escala a todas as malhas do buraco
+                mound.meshes.forEach(item => {
+                    item.mesh.scale.set(scale, scale, scale);
+                });
+            }
+
+            // NOVO: Lógica de escavação progressiva
+            if (isDigging) {
+                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                const groundMeshes = islandMeshes.map(item => item.mesh);
+                const intersects = raycaster.intersectObjects(groundMeshes);
+                let stillOnTarget = false;
+                if (intersects.length > 0 && intersects[0].distance < destroyDistance && intersects[0].point.y > waterLevel) {
+                    stillOnTarget = true;
+                }
+
+                if (!stillOnTarget) {
+                    stopDigging();
+                } else {
+                    digProgress += 1 / 60; // Incrementa o progresso
+                    if (digProgress >= targetDigTime) {
+                        createMound();
+                        stopDigging();
+                    } else {
+                        // Atualiza a barra de progresso
+                        progressBar.style.width = `${(digProgress / targetDigTime) * 100}%`;
+                    }
+                }
+            }
+
 
             // Lógica de destruição progressiva
             // NOVO: A lógica só continua se a destruição estiver em andamento E não estiver completa.
