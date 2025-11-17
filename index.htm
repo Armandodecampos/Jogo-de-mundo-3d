@@ -517,7 +517,6 @@
         loadingManager.onLoad = () => {
             console.log("All resources loaded, world is ready.");
             isWorldReady = true;
-            window.isWorldReady = true; // Expose for verification
         };
 
         // Instância do carregador de textura, agora usando o gerenciador de carregamento
@@ -1161,6 +1160,7 @@
         }
 
         function createMound() {
+            console.log("createMound called."); // DEBUG
             // Garante que os modelos e materiais necessários estejam carregados
             if (!holeGeometryTemplate || !holeMaterial) {
                 console.warn("Modelos ou materiais do buraco ainda não foram carregados.");
@@ -1171,24 +1171,58 @@
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const groundMeshes = islandMeshes.map(item => item.mesh);
             const intersects = raycaster.intersectObjects(groundMeshes);
+            console.log(`Intersects found: ${intersects.length}`); // DEBUG
 
             if (intersects.length > 0) {
                 const intersect = intersects[0];
                 const hitPoint = intersect.point;
+                let holeRadius = 1.4; // Alterado para let para que possa ser modificado
 
                 // Verifica se o ponto de impacto está acima do nível da água e dentro da distância de destruição
+                console.log(`Checking conditions: hitPoint.y (${hitPoint.y}) < waterLevel (${waterLevel}) = ${hitPoint.y < waterLevel}`); // DEBUG
+                console.log(`Checking conditions: intersect.distance (${intersect.distance}) > destroyDistance (${destroyDistance}) = ${intersect.distance > destroyDistance}`); // DEBUG
                 if (hitPoint.y < waterLevel || intersect.distance > destroyDistance) {
                     return;
+                }
+
+                // NOVO: Verifica se há um buraco existente próximo para fundir
+                for (let i = visualMounds.length - 1; i >= 0; i--) {
+                    const existingMound = visualMounds[i];
+                    // Usa uma verificação de distância no plano XZ para evitar problemas com alturas ligeiramente diferentes
+                    const distanceXZ = new THREE.Vector2(existingMound.position.x, existingMound.position.z).distanceTo(new THREE.Vector2(hitPoint.x, hitPoint.z));
+                    if (distanceXZ < (existingMound.radius || holeRadius)) { // Usa o raio do buraco existente, com fallback para o novo
+                        // Aumenta o raio do novo buraco para simular a fusão
+                        holeRadius = Math.max(holeRadius, existingMound.radius * 1.25);
+
+                        // Remove as malhas visuais do buraco antigo da cena e descarta seus recursos
+                        existingMound.meshes.forEach(m => {
+                            m.mesh.traverse(child => {
+                                if (child.isMesh) {
+                                    if (child.geometry) child.geometry.dispose();
+                                    if (child.material) {
+                                        if (Array.isArray(child.material)) {
+                                            child.material.forEach(material => material.dispose());
+                                        } else {
+                                            child.material.dispose();
+                                        }
+                                    }
+                                }
+                            });
+                            scene.remove(m.mesh);
+                        });
+                        // Remove o buraco antigo do array
+                        visualMounds.splice(i, 1);
+                    }
                 }
 
                 // Cria um grupo para conter todos os objetos do buraco
                 const holeGroup = new THREE.Group();
                 holeGroup.position.copy(hitPoint);
 
-                // Define as dimensões e segmentos do vulcão
-                const volcanoInnerRadius = 1.0;
-                const volcanoOuterRadiusAtTop = 1.0;
-                const volcanoOuterRadiusAtBottom = 1.5;
+                // Define as dimensões e segmentos do vulcão, agora escaláveis com o holeRadius
+                const volcanoInnerRadius = holeRadius * 0.71;
+                const volcanoOuterRadiusAtTop = holeRadius * 0.71;
+                const volcanoOuterRadiusAtBottom = holeRadius * 1.07;
                 const volcanoHeight = 0.1;
                 const volcanoRadialSegments = 32;
 
@@ -1244,7 +1278,6 @@
                 });
 
                 // Cria, dimensiona e posiciona o modelo do buraco central
-                const holeRadius = 1.4;
                 const centerGeometry = new THREE.CircleGeometry(holeRadius, 32);
                 const centerInstance = new THREE.Mesh(centerGeometry, holeMaterial);
                 centerInstance.rotation.x = -Math.PI / 2;
@@ -1278,7 +1311,8 @@
                     position: hitPoint.clone(),
                     meshes: visualMoundMeshes,
                     createdAt: world.time,
-                    quaternion: finalQuaternion
+                    quaternion: finalQuaternion,
+                    radius: holeRadius // NOVO: Armazena o raio para futuras verificações
                 });
 
                 // Adiciona terra ao inventário do jogador e atualiza a exibição
@@ -2036,8 +2070,6 @@
             inventoryBeltElement = document.getElementById('inventoryBelt');
             updateBeltDisplay(); // Preenche os slots inicialmente
 
-
-            window.visualMounds = visualMounds; // Expor para verificação
 
             // Configura os Listeners de Eventos para teclado e mouse
             window.addEventListener('keydown', (event) => {
@@ -4013,15 +4045,6 @@
             console.log("startGame called");
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
-            window.dirtDeposits = dirtDeposits; // Expose for debug
-            window.beltItems = beltItems;
-            window.backpackItems = backpackItems; // Expor para teste
-            window.updateBeltDisplay = updateBeltDisplay;
-            window.updateBackpackDisplay = updateBackpackDisplay; // Expor para teste
-            window.playerBody = playerBody;
-            window.visualMounds = visualMounds;
-            window.createMound = createMound;
-
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
             if (menuIconButton) {
