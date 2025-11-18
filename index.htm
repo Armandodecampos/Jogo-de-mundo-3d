@@ -650,6 +650,7 @@
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
         let mounds = [];
         let visualMounds = []; // NOVO: Para os montes de terra visuais
+        let closingMounds = []; // NOVO: Para animar o fechamento dos buracos
         let moundDomes = [];
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
         let splatMap; // NOVO: Máscara de textura para pintar os buracos
@@ -1175,6 +1176,12 @@
                 return null;
             }
 
+                // NOVO: Remove todos os buracos existentes antes de criar um novo
+                visualMounds.forEach(mound => {
+                    mound.meshes.forEach(item => scene.remove(item.mesh));
+                });
+                visualMounds.length = 0; // Limpa o array
+
             // Usa um raycaster para encontrar o ponto de interseção no chão
             raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
             const groundMeshes = islandMeshes.map(item => item.mesh);
@@ -1291,7 +1298,8 @@
                     meshes: visualMoundMeshes,
                     createdAt: world.time,
                     quaternion: finalQuaternion,
-                    growthStage: 0 // Inicia no primeiro estágio
+                    growthStage: 0, // Inicia no primeiro estágio
+                    lastDugAt: world.time // NOVO: Rastreia a última vez que foi cavado
                 };
 
                 // Adiciona o novo monte à lista de montes visuais e o retorna
@@ -2417,6 +2425,9 @@
 
             function stopDigging() {
                 if (isDigging) {
+                    if (currentMound) {
+                        currentMound.lastDugAt = world.time; // Atualiza o tempo de inatividade
+                    }
                     isDigging = false;
                     digProgress = 0;
                     progressContainer.style.display = 'none';
@@ -3302,6 +3313,29 @@
                     }
                 });
             });
+
+            // NOVO: Lógica para fechar buracos inativos
+            for (let i = visualMounds.length - 1; i >= 0; i--) {
+                const mound = visualMounds[i];
+                if (mound !== currentMound && world.time - mound.lastDugAt > 20) {
+                    closingMounds.push(mound);
+                    visualMounds.splice(i, 1);
+                }
+            }
+
+            for (let i = closingMounds.length - 1; i >= 0; i--) {
+                const mound = closingMounds[i];
+                const scale = mound.meshes[0].mesh.scale.x;
+                const newScale = scale * 0.95; // Reduz a escala em 5% a cada quadro
+
+                if (newScale < 0.01) {
+                    mound.meshes.forEach(item => scene.remove(item.mesh));
+                    closingMounds.splice(i, 1);
+                } else {
+                    mound.meshes.forEach(item => item.mesh.scale.set(newScale, newScale, newScale));
+                }
+            }
+
 
             visualMounds.forEach(mound => {
                 const distance = calculateWrappedDistance(playerBody.position, mound.position);
