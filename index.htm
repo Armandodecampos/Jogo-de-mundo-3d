@@ -436,6 +436,7 @@
         let targetDigTime = 0.5; // Tempo para cavar (em segundos)
         let currentMound = null; // NOVO: Referência ao buraco que está sendo cavado
         const moundGrowthStages = [0.25, 0.5, 0.75, 1.0]; // NOVO: Estágios de crescimento
+        let diggingComplete = false; // NOVO: Flag para gerenciar o estado da escavação
 
         // NOVO: Variáveis para a lógica de clique vs. segurar
         let mouseDownTime = 0;
@@ -1551,9 +1552,9 @@
                 ));
 
                 const impulse = new CANNON.Vec3(
-                    (Math.random() - 0.5) * 0.2,
-                    0.5 + Math.random() * 0.5,
-                    (Math.random() - 0.5) * 0.2
+                    (Math.random() - 0.5) * 0.1,
+                    0.2 + Math.random() * 0.2,
+                    (Math.random() - 0.5) * 0.1
                 );
                 debrisBody.applyImpulse(impulse, debrisBody.position);
 
@@ -2472,6 +2473,7 @@
             }
 
             function startDigging() {
+                diggingComplete = false; // Redefine a flag no início
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
 
@@ -2523,6 +2525,7 @@
                     progressBar.style.backgroundColor = '#4CAF50'; // Redefine para o verde padrão
                     currentMound = null; // Apenas limpa a referência, não destrói o monte
                 }
+                diggingComplete = false; // Garante que a flag seja redefinida
             }
 
             function collectObject() {
@@ -3046,7 +3049,7 @@
 
 
             // NOVO: Lógica de escavação progressiva
-            if (isDigging && currentMound) {
+            if (isDigging && currentMound && !diggingComplete) {
                 digProgress += 1 / 60; // Incrementa o progresso
                 const progressRatio = Math.min(digProgress / targetDigTime, 1.0);
 
@@ -3075,7 +3078,9 @@
                     if (currentMound.growthStage >= moundGrowthStages.length) {
                         // A escavação está totalmente concluída
                         currentMound.growthStage = moundGrowthStages.length - 1; // Garante que não ultrapasse o limite
-                        stopDigging();
+                        diggingComplete = true; // Impede que a escavação reinicie
+                        isDigging = false; // Para a barra de progresso
+                        progressContainer.style.display = 'none'; // Esconde a barra
                     } else {
                         // Define a escala para o novo estágio e reinicia o progresso
                         const newScale = moundGrowthStages[currentMound.growthStage];
