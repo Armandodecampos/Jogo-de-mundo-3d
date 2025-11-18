@@ -1482,8 +1482,8 @@
 
         // Function to create a smoke effect at a given position
         function createSmokeEffect(position) {
-            const smokeCount = 10; // Number of smoke particles
-            const smokeGeometry = new THREE.SphereGeometry(0.05, 8, 8); // Small spheres
+            const smokeCount = 15; // Increased particle count for denser smoke
+            const smokeGeometry = new THREE.SphereGeometry(0.15, 8, 8); // Tripled the size
             const smokeMaterial = new THREE.MeshBasicMaterial({
                 color: 0x888888, // Grey color
                 transparent: true,
@@ -1496,11 +1496,11 @@
                 particle.position.copy(position);
                 // Give particles a slight random initial velocity
                 particle.userData.velocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.5, // X velocity
-                    Math.random() * 0.5 + 0.1,   // Y velocity (mostly upwards)
-                    (Math.random() - 0.5) * 0.5  // Z velocity
+                    (Math.random() - 0.5) * 0.8, // Increased spread
+                    Math.random() * 0.6 + 0.2,   // Increased upward velocity
+                    (Math.random() - 0.5) * 0.8  // Increased spread
                 );
-                particle.userData.lifetime = 1.0; // Lifetime in seconds
+                particle.userData.lifetime = 1.5; // Increased lifetime for a larger cloud
                 scene.add(particle);
                 smokeParticles.push(particle);
             }
@@ -1551,9 +1551,9 @@
                 ));
 
                 const impulse = new CANNON.Vec3(
-                    (Math.random() - 0.5) * 3,
-                    2 + Math.random() * 3,
-                    (Math.random() - 0.5) * 3
+                    (Math.random() - 0.5) * 1, // Reduced horizontal force
+                    1.5 + Math.random() * 1.5,   // Adjusted vertical force for a 'pop'
+                    (Math.random() - 0.5) * 1  // Reduced horizontal force
                 );
                 debrisBody.applyImpulse(impulse, debrisBody.position);
 
@@ -4211,8 +4211,8 @@
                     smokeParticles.splice(i, 1);
                 } else {
                     particle.position.add(particle.userData.velocity.clone().multiplyScalar(1 / 60));
-                    particle.material.opacity = particle.userData.lifetime; // Fade out
-                    particle.scale.addScalar(0.01); // Grow slightly
+                    particle.material.opacity = particle.userData.lifetime / 1.5; // Fade out over the new lifetime
+                    particle.scale.addScalar(0.03); // Grow faster
                 }
             }
 
