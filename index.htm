@@ -433,10 +433,9 @@
         // NOVO: Variáveis para o sistema de escavação progressiva
         let isDigging = false;
         let digProgress = 0;
-        let targetDigTime = 1.5; // Tempo total para cavar (em segundos)
+        let targetDigTime = 0.5; // Tempo para cavar (em segundos)
         let currentMound = null; // NOVO: Referência ao buraco que está sendo cavado
-        const moundInitialScale = 0.2;
-        const moundMaxScale = 1.0;
+        const moundGrowthStages = [0.25, 0.5, 0.75, 1.0]; // NOVO: Estágios de crescimento
 
         // NOVO: Variáveis para a lógica de clique vs. segurar
         let mouseDownTime = 0;
@@ -777,17 +776,16 @@
 
         // Global array to hold active smoke particles
         let smokeParticles = [];
-        let diggingDustClouds = []; // NOVO: Para o efeito de poeira da escavação (otimizado)
-        let destructionDustCloud = null; // NOVO: Para o efeito de poeira da tela inteira
+        let dustParticles = null; // NOVO: Para o efeito de poeira da tela inteira
 
         // NOVO: Função para criar o efeito de poeira de partículas
         function createDustCloud() {
             // Se já existir uma nuvem de poeira, remove-a primeiro
-            if (destructionDustCloud) {
-                camera.remove(destructionDustCloud);
-                destructionDustCloud.geometry.dispose();
-                destructionDustCloud.material.dispose();
-                destructionDustCloud = null;
+            if (dustParticles) {
+                camera.remove(dustParticles);
+                dustParticles.geometry.dispose();
+                dustParticles.material.dispose();
+                dustParticles = null;
             }
 
             const particleCount = 2000;
@@ -815,9 +813,9 @@
                 depthWrite: false
             });
 
-            destructionDustCloud = new THREE.Points(particles, particleMaterial);
-            destructionDustCloud.userData.startTime = world.time; // Armazena a hora de início
-            camera.add(destructionDustCloud); // Adiciona as partículas diretamente à câmera
+            dustParticles = new THREE.Points(particles, particleMaterial);
+            dustParticles.userData.startTime = world.time; // Armazena a hora de início
+            camera.add(dustParticles); // Adiciona as partículas diretamente à câmera
         }
 
         // Função para mostrar a tela de opções e pausar o jogo
@@ -1281,7 +1279,7 @@
                 const finalQuaternion = holeGroup.quaternion.clone();
 
                 // Define a escala inicial para a animação
-                const initialScale = moundInitialScale;
+                const initialScale = moundGrowthStages[0];
                 holeGroup.scale.set(initialScale, initialScale, initialScale);
 
 
@@ -1502,45 +1500,6 @@
                 scene.add(particle);
                 smokeParticles.push(particle);
             }
-        }
-
-        function createDiggingDustEffect(position) {
-            const particleCount = 50; // Mais partículas para um efeito melhor
-            const particles = new THREE.BufferGeometry();
-            const positions = new Float32Array(particleCount * 3);
-            const velocities = [];
-
-            for (let i = 0; i < particleCount; i++) {
-                positions[i * 3] = position.x;
-                positions[i * 3 + 1] = position.y;
-                positions[i * 3 + 2] = position.z;
-
-                velocities.push(new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.8, // Velocidade X
-                    Math.random() * 1.0 + 0.2,   // Velocidade Y (principalmente para cima)
-                    (Math.random() - 0.5) * 0.8  // Velocidade Z
-                ));
-            }
-
-            particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-            const particleMaterial = new THREE.PointsMaterial({
-                color: 0x966F33, // Cor de poeira/marrom
-                size: 0.08,
-                transparent: true,
-                opacity: 0.7,
-                blending: THREE.NormalBlending,
-                depthWrite: false
-            });
-
-            const dustCloud = new THREE.Points(particles, particleMaterial);
-            dustCloud.userData = {
-                velocities: velocities,
-                startTime: world.time,
-                lifetime: 2.0 // segundos
-            };
-            scene.add(dustCloud);
-            diggingDustClouds.push(dustCloud);
         }
 
 
@@ -2424,15 +2383,43 @@
             }
 
             function startDigging() {
-                if (isDigging) return; // Previne múltiplas execuções
+                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                const intersects = raycaster.intersectObjects(scene.children, true);
 
-                const newMound = createMound();
-                if (newMound) {
-                    currentMound = newMound;
+                let targetMound = null;
+
+                // Primeiro, verifica se o jogador está olhando para um buraco existente
+                for (const intersect of intersects) {
+                    const intersectedObject = intersect.object;
+                    // Encontra o objeto 'mound' pai, se houver
+                    const parentMound = visualMounds.find(m => m.meshes.some(item => item.mesh === intersectedObject.parent.parent));
+                    if (parentMound && parentMound.growthStage < moundGrowthStages.length - 1) {
+                        if (intersect.distance < destroyDistance) {
+                            targetMound = parentMound;
+                            break;
+                        }
+                    }
+                }
+
+                if (targetMound) {
+                    // Continua cavando um buraco existente
+                    currentMound = targetMound;
                     isDigging = true;
-                    digProgress = 0;
+                    digProgress = 0; // Reinicia o progresso para o próximo estágio
                     progressContainer.style.display = 'block';
-                    progressBar.style.backgroundColor = '#966F33'; // Cor de terra
+                    progressBar.style.backgroundColor = '#966F33';
+                } else {
+                    // Cria um novo buraco
+                    const newMound = createMound();
+                    if (newMound) {
+                        currentMound = newMound;
+                        isDigging = true;
+                        digProgress = 0;
+                        progressContainer.style.display = 'block';
+                        progressBar.style.backgroundColor = '#966F33';
+                    } else {
+                        isDigging = false; // Não pode cavar aqui
+                    }
                 }
             }
 
@@ -2971,28 +2958,32 @@
 
             // NOVO: Lógica de escavação progressiva
             if (isDigging && currentMound) {
-                digProgress += 1 / 60; // Incrementa o progresso com base no tempo do quadro
+                digProgress += 1 / 60; // Incrementa o progresso
                 const progressRatio = Math.min(digProgress / targetDigTime, 1.0);
-
-                // Interpola a escala do inicial ao máximo com base no progresso
-                const newScale = moundInitialScale + (moundMaxScale - moundInitialScale) * progressRatio;
-                currentMound.meshes.forEach(item => {
-                    item.mesh.scale.set(newScale, newScale, newScale);
-                });
 
                 // Atualiza a barra de progresso
                 progressBar.style.width = `${progressRatio * 100}%`;
 
-                // Cria o efeito de poeira enquanto cava
-                if (currentMound.meshes.length > 0) {
-                    createDiggingDustEffect(currentMound.position);
-                }
-
                 if (digProgress >= targetDigTime) {
-                    // Adiciona um item de terra ao inventário
+                    // Avança para o próximo estágio
+                    currentMound.growthStage++;
+
+                    // Adiciona um item de terra ao inventário para cada estágio concluído
                     addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
                     updateBackpackDisplay();
-                    stopDigging(); // Para quando a barra de progresso estiver cheia
+
+                    if (currentMound.growthStage >= moundGrowthStages.length) {
+                        // A escavação está totalmente concluída
+                        currentMound.growthStage = moundGrowthStages.length - 1; // Garante que não ultrapasse o limite
+                        stopDigging();
+                    } else {
+                        // Define a escala para o novo estágio e reinicia o progresso
+                        const newScale = moundGrowthStages[currentMound.growthStage];
+                        currentMound.meshes.forEach(item => {
+                            item.mesh.scale.set(newScale, newScale, newScale);
+                        });
+                        digProgress = 0; // Reinicia para o próximo estágio
+                    }
                 }
             }
 
@@ -4123,41 +4114,18 @@
                 }
             }
 
-            // NOVO: Atualiza as nuvens de poeira da escavação
-            for (let i = diggingDustClouds.length - 1; i >= 0; i--) {
-                const cloud = diggingDustClouds[i];
-                const elapsedTime = world.time - cloud.userData.startTime;
-
-                if (elapsedTime >= cloud.userData.lifetime) {
-                    scene.remove(cloud);
-                    cloud.geometry.dispose();
-                    cloud.material.dispose();
-                    diggingDustClouds.splice(i, 1);
-                } else {
-                    const positions = cloud.geometry.attributes.position.array;
-                    const velocities = cloud.userData.velocities;
-                    for (let j = 0; j < velocities.length; j++) {
-                        positions[j * 3] += velocities[j].x * (1 / 60);
-                        positions[j * 3 + 1] += velocities[j].y * (1 / 60);
-                        positions[j * 3 + 2] += velocities[j].z * (1 / 60);
-                    }
-                    cloud.geometry.attributes.position.needsUpdate = true;
-                    cloud.material.opacity = 0.7 * (1 - (elapsedTime / cloud.userData.lifetime));
-                }
-            }
-
             // NOVO: Atualiza o efeito de poeira da tela inteira
-            if (destructionDustCloud) {
-                const elapsedTime = world.time - destructionDustCloud.userData.startTime;
+            if (dustParticles) {
+                const elapsedTime = world.time - dustParticles.userData.startTime;
                 const duration = 1.0; // Duração do efeito em segundos
                 if (elapsedTime >= duration) {
-                    camera.remove(destructionDustCloud);
-                    destructionDustCloud.geometry.dispose();
-                    destructionDustCloud.material.dispose();
-                    destructionDustCloud = null;
+                    camera.remove(dustParticles);
+                    dustParticles.geometry.dispose();
+                    dustParticles.material.dispose();
+                    dustParticles = null;
                 } else {
                     // Faz o fade out da opacidade
-                    destructionDustCloud.material.opacity = 0.8 * (1 - (elapsedTime / duration));
+                    dustParticles.material.opacity = 0.8 * (1 - (elapsedTime / duration));
                 }
             }
 
@@ -4180,7 +4148,6 @@
             window.playerBody = playerBody;
             window.visualMounds = visualMounds;
             window.createMound = createMound;
-            window.diggingDustClouds = diggingDustClouds;
 
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
