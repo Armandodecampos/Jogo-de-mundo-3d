@@ -661,6 +661,7 @@
         let islandMaterial; // Renomeado de streetMaterial
         let cubeMaterial;
         let constructionMaterial;
+        let debrisMaterial; // For flying dirt/stone chunks
 
         // Define tree stages with base physics bounding box and visual geometry properties
         // These are base values that will be randomized for each tree instance
@@ -776,13 +777,14 @@
 
         // Global array to hold active smoke particles
         let smokeParticles = [];
+        let debrisParticles = []; // For dirt and stone chunks
         let dustParticles = null; // NOVO: Para o efeito de poeira da tela inteira
 
         // NOVO: Função para criar o efeito de poeira de partículas
-        function createDustCloud() {
+        function createDustCloud(position) {
             // Se já existir uma nuvem de poeira, remove-a primeiro
             if (dustParticles) {
-                camera.remove(dustParticles);
+                scene.remove(dustParticles);
                 dustParticles.geometry.dispose();
                 dustParticles.material.dispose();
                 dustParticles = null;
@@ -791,31 +793,33 @@
             const particleCount = 2000;
             const particles = new THREE.BufferGeometry();
             const positions = new Float32Array(particleCount * 3);
+            const radius = 1.5;
 
             for (let i = 0; i < particleCount * 3; i++) {
-                // Cria partículas em um volume esférico ao redor da câmera
+                // Creates particles in a spherical volume
                 const theta = Math.random() * Math.PI * 2;
                 const phi = Math.acos(2 * Math.random() - 1);
-                const radius = 0.5 + Math.random() * 2; // Distribui em um raio de 0.5 a 2.5
-                positions[i] = radius * Math.sin(phi) * Math.cos(theta);
-                positions[i + 1] = radius * Math.sin(phi) * Math.sin(theta);
-                positions[i + 2] = radius * Math.cos(phi) - 1.5; // Posiciona ligeiramente à frente da câmera
+                const r = Math.random() * radius;
+                positions[i] = r * Math.sin(phi) * Math.cos(theta);
+                positions[i + 1] = r * Math.sin(phi) * Math.sin(theta) + (radius * 0.5); // Slightly offset upwards
+                positions[i + 2] = r * Math.cos(phi);
             }
 
             particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
             const particleMaterial = new THREE.PointsMaterial({
-                color: 0x966F33, // Cor de poeira/marrom
-                size: 0.05,
+                color: 0x966F33, // Dust/brown color
+                size: 0.08,
                 transparent: true,
-                opacity: 0.8,
-                blending: THREE.AdditiveBlending,
+                opacity: 0.7,
+                blending: THREE.NormalBlending,
                 depthWrite: false
             });
 
             dustParticles = new THREE.Points(particles, particleMaterial);
-            dustParticles.userData.startTime = world.time; // Armazena a hora de início
-            camera.add(dustParticles); // Adiciona as partículas diretamente à câmera
+            dustParticles.position.copy(position);
+            dustParticles.userData.startTime = world.time; // Store start time
+            scene.add(dustParticles); // Add particles to the scene at the specified position
         }
 
         // Função para mostrar a tela de opções e pausar o jogo
@@ -1502,6 +1506,69 @@
             }
         }
 
+        // NEW: Function to create digging debris (dirt and stone)
+        function createDebris(position, count) {
+            const debrisTypes = [
+                { type: 'dirt', color: 0x8B4513, shape: 'box' },
+                { type: 'stone', color: 0x808080, shape: 'icosahedron' }
+            ];
+
+            for (let i = 0; i < count; i++) {
+                const debrisType = debrisTypes[Math.floor(Math.random() * debrisTypes.length)];
+                const size = Math.random() * 0.1 + 0.05;
+
+                let debrisGeometry;
+                let debrisShape;
+
+                if (debrisType.shape === 'box') {
+                    debrisGeometry = new THREE.BoxGeometry(size, size, size);
+                    debrisShape = new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2));
+                } else { // icosahedron for stones
+                    debrisGeometry = new THREE.IcosahedronGeometry(size / 2, 0);
+                    debrisShape = new CANNON.Sphere(size / 2); // Approximate with a sphere for performance
+                }
+
+                const debrisMaterialMesh = new THREE.MeshStandardMaterial({
+                    color: debrisType.color,
+                    roughness: 0.8,
+                    metalness: 0.1
+                });
+                const debrisMesh = new THREE.Mesh(debrisGeometry, debrisMaterialMesh);
+                debrisMesh.castShadow = true;
+
+                const debrisBody = new CANNON.Body({
+                    mass: size * 10,
+                    shape: debrisShape,
+                    material: debrisMaterial,
+                    linearDamping: 0.1,
+                    angularDamping: 0.5
+                });
+
+                debrisBody.position.copy(position).vadd(new CANNON.Vec3(
+                    (Math.random() - 0.5) * 0.5,
+                    Math.random() * 0.5,
+                    (Math.random() - 0.5) * 0.5
+                ));
+
+                const impulse = new CANNON.Vec3(
+                    (Math.random() - 0.5) * 3,
+                    2 + Math.random() * 3,
+                    (Math.random() - 0.5) * 3
+                );
+                debrisBody.applyImpulse(impulse, debrisBody.position);
+
+
+                world.addBody(debrisBody);
+                scene.add(debrisMesh);
+
+                debrisParticles.push({
+                    mesh: debrisMesh,
+                    body: debrisBody,
+                    lifetime: 2.0 + Math.random() * 2.0 // Lifetime in seconds
+                });
+            }
+        }
+
 
         function updateIslandGeometry() {
             const hfGridSize = 128;
@@ -1684,6 +1751,28 @@
                 }
             );
             world.addContactMaterial(constructionConstructionContactMaterial);
+
+            // NEW: Contact material for debris
+            debrisMaterial = new CANNON.Material('debrisMaterial');
+            const debrisGroundContactMaterial = new CANNON.ContactMaterial(
+                debrisMaterial,
+                islandMaterial,
+                {
+                    friction: 0.5,
+                    restitution: 0.3 // Allow some bouncing
+                }
+            );
+            world.addContactMaterial(debrisGroundContactMaterial);
+
+            const debrisPlayerContactMaterial = new CANNON.ContactMaterial(
+                debrisMaterial,
+                playerMaterial,
+                {
+                    friction: 0,
+                    restitution: 0 // No bouncing off the player
+                }
+            );
+            world.addContactMaterial(debrisPlayerContactMaterial);
 
 
             // Configuração das Luzes
@@ -2961,10 +3050,21 @@
                 digProgress += 1 / 60; // Incrementa o progresso
                 const progressRatio = Math.min(digProgress / targetDigTime, 1.0);
 
+                // Create particles and smoke as the player digs
+                if (Math.random() < 0.5) { // Spawn debris intermittently
+                    createDebris(currentMound.position, 2);
+                }
+                if (Math.random() < 0.2) { // Spawn smoke intermittently
+                    createSmokeEffect(currentMound.position);
+                }
+
                 // Atualiza a barra de progresso
                 progressBar.style.width = `${progressRatio * 100}%`;
 
                 if (digProgress >= targetDigTime) {
+                    // A big puff of dust when a stage is complete
+                    createDustCloud(currentMound.position);
+
                     // Avança para o próximo estágio
                     currentMound.growthStage++;
 
@@ -3035,8 +3135,10 @@
 
                         // NOVO: Lógica de destruição de depósitos de pedra
                         if (destroyTargetDeposit) {
-                            createDustCloud(); // NOVO: Chama o efeito de poeira de partículas
-                            position = new THREE.Vector3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
+                            const debrisPosition = new THREE.Vector3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
+                            createDustCloud(debrisPosition);
+                            createDebris(debrisPosition, 10);
+                            position = debrisPosition.clone();
                             destroyTargetDeposit.flattened = true;
                             destroyTargetDeposit.regenerationTimer = 60; // Inicia o temporizador de 1 minuto
 
@@ -4114,18 +4216,33 @@
                 }
             }
 
+            // NEW: Update debris particles
+            for (let i = debrisParticles.length - 1; i >= 0; i--) {
+                const particle = debrisParticles[i];
+                particle.lifetime -= 1 / 60;
+
+                if (particle.lifetime <= 0) {
+                    scene.remove(particle.mesh);
+                    world.removeBody(particle.body);
+                    debrisParticles.splice(i, 1);
+                } else {
+                    particle.mesh.position.copy(particle.body.position);
+                    particle.mesh.quaternion.copy(particle.body.quaternion);
+                }
+            }
+
             // NOVO: Atualiza o efeito de poeira da tela inteira
             if (dustParticles) {
                 const elapsedTime = world.time - dustParticles.userData.startTime;
-                const duration = 1.0; // Duração do efeito em segundos
+                const duration = 1.5; // Increased duration
                 if (elapsedTime >= duration) {
-                    camera.remove(dustParticles);
+                    scene.remove(dustParticles);
                     dustParticles.geometry.dispose();
                     dustParticles.material.dispose();
                     dustParticles = null;
                 } else {
-                    // Faz o fade out da opacidade
-                    dustParticles.material.opacity = 0.8 * (1 - (elapsedTime / duration));
+                    // Fade out the opacity
+                    dustParticles.material.opacity = 0.7 * (1 - (elapsedTime / duration));
                 }
             }
 
