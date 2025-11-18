@@ -434,6 +434,7 @@
         let isDigging = false;
         let digProgress = 0;
         let targetDigTime = 2.0; // Tempo para cavar (em segundos)
+        let currentMound = null; // NOVO: Referência ao buraco que está sendo cavado
 
         // NOVO: Variáveis para a lógica de clique vs. segurar
         let mouseDownTime = 0;
@@ -648,7 +649,6 @@
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
         let mounds = [];
         let visualMounds = []; // NOVO: Para os montes de terra visuais
-        let scalingMounds = []; // NOVO: Para a animação de escala dos buracos
         let moundDomes = [];
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
         let splatMap; // NOVO: Máscara de textura para pintar os buracos
@@ -1171,7 +1171,7 @@
             // Garante que os modelos e materiais necessários estejam carregados
             if (!holeGeometryTemplate || !holeMaterial) {
                 console.warn("Modelos ou materiais do buraco ainda não foram carregados.");
-                return;
+                return null;
             }
 
             // Usa um raycaster para encontrar o ponto de interseção no chão
@@ -1185,7 +1185,7 @@
 
                 // Verifica se o ponto de impacto está acima do nível da água e dentro da distância de destruição
                 if (hitPoint.y < waterLevel || intersect.distance > destroyDistance) {
-                    return;
+                    return null;
                 }
 
                 // Cria um grupo para conter todos os objetos do buraco
@@ -1290,15 +1290,11 @@
                     quaternion: finalQuaternion
                 };
 
-                // Adiciona o novo monte à lista de montes visuais E à lista de animação
+                // Adiciona o novo monte à lista de montes visuais e o retorna
                 visualMounds.push(newMound);
-                scalingMounds.push(newMound);
-
-
-                // Adiciona terra ao inventário do jogador e atualiza a exibição
-                addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
-                updateBackpackDisplay();
+                return newMound;
             }
+            return null; // Retorna nulo se nenhum buraco pôde ser criado
         }
 
         // NOVO: Função para criar uma nova caixa dinâmica
@@ -2375,12 +2371,16 @@
             }
 
             function startDigging() {
-                scene.background = new THREE.Color(0xff0000); // Red background for debugging
-                console.log("startDigging called!");
-                 isDigging = true;
-                 digProgress = 0;
-                 progressContainer.style.display = 'block';
-                 progressBar.style.backgroundColor = '#966F33'; // Cor marrom para cavar
+                isDigging = true;
+                digProgress = 0;
+                // Tenta criar o monte imediatamente. Se não for possível (por exemplo, apontando para o céu), a escavação não começa.
+                currentMound = createMound();
+                if (currentMound) {
+                    progressContainer.style.display = 'block';
+                    progressBar.style.backgroundColor = '#966F33'; // Cor de terra para cavar
+                } else {
+                    isDigging = false; // Cancela a escavação se nenhum monte pôde ser criado
+                }
             }
 
             function stopDigging() {
@@ -2389,6 +2389,15 @@
                     digProgress = 0;
                     progressContainer.style.display = 'none';
                     progressBar.style.backgroundColor = '#4CAF50'; // Redefine para o verde padrão
+                    // Se o jogador soltar antes de terminar, remove o monte inacabado
+                    if (currentMound) {
+                        const moundIndex = visualMounds.indexOf(currentMound);
+                        if (moundIndex > -1) {
+                            visualMounds.splice(moundIndex, 1);
+                        }
+                        currentMound.meshes.forEach(item => scene.remove(item.mesh));
+                        currentMound = null;
+                    }
                 }
             }
 
@@ -2911,26 +2920,9 @@
                 return;
             }
 
-            // NOVO: Animação de escala dos buracos
-            const scalingSpeed = 1.5; // Velocidade com que o buraco cresce
-            for (let i = scalingMounds.length - 1; i >= 0; i--) {
-                const mound = scalingMounds[i];
-                const elapsedTime = world.time - mound.createdAt;
-                let scale = elapsedTime * scalingSpeed;
-
-                if (scale >= 1.0) {
-                    scale = 1.0;
-                    scalingMounds.splice(i, 1); // Remove da lista de animação
-                }
-
-                // Aplica a escala a todas as malhas do buraco
-                mound.meshes.forEach(item => {
-                    item.mesh.scale.set(scale, scale, scale);
-                });
-            }
 
             // NOVO: Lógica de escavação progressiva
-            if (isDigging) {
+            if (isDigging && currentMound) {
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const groundMeshes = islandMeshes.map(item => item.mesh);
                 const intersects = raycaster.intersectObjects(groundMeshes);
@@ -2940,15 +2932,26 @@
                 }
 
                 if (!stillOnTarget) {
-                    stopDigging();
+                    stopDigging(); // Isso irá limpar o currentMound e remover a malha
                 } else {
                     digProgress += 1 / 60; // Incrementa o progresso
+                    const progressRatio = Math.min(digProgress / targetDigTime, 1.0);
+
+                    // Atualiza a escala do monte com base no progresso
+                    const scale = 0.01 + progressRatio * 0.99; // Escala de 0.01 a 1.0
+                    currentMound.meshes.forEach(item => {
+                        item.mesh.scale.set(scale, scale, scale);
+                    });
+
                     if (digProgress >= targetDigTime) {
-                        createMound();
-                        stopDigging();
+                        // A escavação está completa. Finaliza o monte.
+                        addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
+                        updateBackpackDisplay();
+                        currentMound = null; // Libera a referência para que não seja mais modificado
+                        stopDigging(); // Para a barra de progresso etc.
                     } else {
                         // Atualiza a barra de progresso
-                        progressBar.style.width = `${(digProgress / targetDigTime) * 100}%`;
+                        progressBar.style.width = `${progressRatio * 100}%`;
                     }
                 }
             }
