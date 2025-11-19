@@ -1486,7 +1486,7 @@
             const smokeCount = 15; // Increased particle count for denser smoke
             const smokeGeometry = new THREE.SphereGeometry(0.15, 8, 8); // Tripled the size
             const smokeMaterial = new THREE.MeshBasicMaterial({
-                color: 0x888888, // Grey color
+                color: 0xA0522D, // Dirt color
                 transparent: true,
                 opacity: 0.5,
                 depthWrite: false // Important for transparent objects
@@ -1497,11 +1497,11 @@
                 particle.position.copy(position);
                 // Give particles a slight random initial velocity
                 particle.userData.velocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.8, // Increased spread
-                    Math.random() * 0.6 + 0.2,   // Increased upward velocity
-                    (Math.random() - 0.5) * 0.8  // Increased spread
+                    (Math.random() - 0.5) * 0.5, // Increased spread
+                    Math.random() * 0.1 + 0.1,   // Increased upward velocity
+                    (Math.random() - 0.5) * 0.5  // Increased spread
                 );
-                particle.userData.lifetime = 1.5; // Increased lifetime for a larger cloud
+                particle.userData.lifetime = 4.5; // Increased lifetime for a larger cloud
                 scene.add(particle);
                 smokeParticles.push(particle);
             }
@@ -1510,13 +1510,13 @@
         // NEW: Function to create digging debris (dirt and stone)
         function createDebris(position, count) {
             const debrisTypes = [
-                { type: 'dirt', color: 0x8B4513, shape: 'box' },
+                { type: 'dirt', color: 0xA0522D, shape: 'box' },
                 { type: 'stone', color: 0x808080, shape: 'icosahedron' }
             ];
 
             for (let i = 0; i < count; i++) {
                 const debrisType = debrisTypes[Math.floor(Math.random() * debrisTypes.length)];
-                const size = Math.random() * 0.01 + 0.1;
+                const size = Math.random() * 0.01 + 0.07;
 
                 let debrisGeometry;
                 let debrisShape;
@@ -1525,8 +1525,8 @@
                     debrisGeometry = new THREE.BoxGeometry(size, size, size);
                     debrisShape = new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2));
                 } else { // icosahedron for stones
-                    debrisGeometry = new THREE.IcosahedronGeometry(size / 2, 0);
-                    debrisShape = new CANNON.Sphere(size / 2); // Approximate with a sphere for performance
+                    debrisGeometry = new THREE.IcosahedronGeometry(size / 1, 0);
+                    debrisShape = new CANNON.Sphere(size / 1); // Approximate with a sphere for performance
                 }
 
                 const debrisMaterialMesh = new THREE.MeshStandardMaterial({
@@ -4210,21 +4210,21 @@
             // Update smoke particles
             for (let i = smokeParticles.length - 1; i >= 0; i--) {
                 const particle = smokeParticles[i];
-                particle.userData.lifetime -= 1 / 60; // Assuming 60 FPS
+                particle.userData.lifetime -= 1 / 30; // Assuming 60 FPS
                 if (particle.userData.lifetime <= 0) {
                     scene.remove(particle);
                     smokeParticles.splice(i, 1);
                 } else {
-                    particle.position.add(particle.userData.velocity.clone().multiplyScalar(1 / 60));
+                    particle.position.add(particle.userData.velocity.clone().multiplyScalar(1 / 30));
                     particle.material.opacity = particle.userData.lifetime / 1.5; // Fade out over the new lifetime
-                    particle.scale.addScalar(0.03); // Grow faster
+                    particle.scale.addScalar(0.01); // Grow faster
                 }
             }
 
             // NEW: Update debris particles
             for (let i = debrisParticles.length - 1; i >= 0; i--) {
                 const particle = debrisParticles[i];
-                particle.lifetime -= 1 / 60;
+                particle.lifetime -= 1 / 10;
 
                 if (particle.lifetime <= 0) {
                     scene.remove(particle.mesh);
