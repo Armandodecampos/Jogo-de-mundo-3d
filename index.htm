@@ -3426,6 +3426,7 @@
             for (let i = visualMounds.length - 1; i >= 0; i--) {
                 const mound = visualMounds[i];
                 if (mound !== currentMound && world.time - mound.lastDugAt > 2) {
+                    mound.closingStageTimer = world.time; // Initialize timer upon starting to close
                     closingMounds.push(mound);
                     visualMounds.splice(i, 1);
                 }
@@ -3433,14 +3434,28 @@
 
             for (let i = closingMounds.length - 1; i >= 0; i--) {
                 const mound = closingMounds[i];
-                const scale = mound.meshes[0].mesh.scale.x;
-                const newScale = scale * 0.95; // Reduz a escala em 5% a cada quadro
 
-                if (newScale < 0.01) {
-                    mound.meshes.forEach(item => scene.remove(item.mesh));
-                    closingMounds.splice(i, 1);
-                } else {
-                    mound.meshes.forEach(item => item.mesh.scale.set(newScale, newScale, newScale));
+                // Initialize the timer if it doesn't exist
+                if (mound.closingStageTimer === undefined) {
+                    mound.closingStageTimer = world.time;
+                }
+
+                // Time per closing stage (e.g., 0.5 seconds)
+                const timePerClosingStage = 0.5;
+
+                if (world.time - mound.closingStageTimer > timePerClosingStage) {
+                    mound.growthStage--;
+                    mound.closingStageTimer = world.time; // Reset timer for next stage
+
+                    if (mound.growthStage < 0) {
+                        // Remove the mound completely
+                        mound.meshes.forEach(item => scene.remove(item.mesh));
+                        closingMounds.splice(i, 1);
+                    } else {
+                        // Set the scale to the previous stage
+                        const newScale = moundGrowthStages[mound.growthStage];
+                        mound.meshes.forEach(item => item.mesh.scale.set(newScale, newScale, newScale));
+                    }
                 }
             }
 
