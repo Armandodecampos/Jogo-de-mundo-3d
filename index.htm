@@ -3081,6 +3081,11 @@
                         diggingComplete = true; // Impede que a escavação reinicie
                         isDigging = false; // Para a barra de progresso
                         progressContainer.style.display = 'none'; // Esconde a barra
+
+                        // Define o tempo para o buraco começar a fechar: duração da poeira (1.5s) + 1s de atraso
+                        const dustDuration = 1.5;
+                        const closingDelay = 1.0;
+                        currentMound.closingStartTime = world.time + dustDuration + closingDelay;
                     } else {
                         // Define a escala para o novo estágio e reinicia o progresso
                         const newScale = moundGrowthStages[currentMound.growthStage];
@@ -3424,18 +3429,24 @@
             // NOVO: Lógica para fechar buracos inativos
             for (let i = visualMounds.length - 1; i >= 0; i--) {
                 const mound = visualMounds[i];
-                if (mound !== currentMound && world.time - mound.lastDugAt > 20) {
+                // Verifica se o tempo de fechamento foi definido e se o tempo atual o ultrapassou
+                if (mound.closingStartTime && world.time >= mound.closingStartTime) {
                     closingMounds.push(mound);
                     visualMounds.splice(i, 1);
                 }
             }
 
+            const closingDuration = 1.0; // Duração do fechamento em segundos
             for (let i = closingMounds.length - 1; i >= 0; i--) {
                 const mound = closingMounds[i];
-                const scale = mound.meshes[0].mesh.scale.x;
-                const newScale = scale * 0.95; // Reduz a escala em 5% a cada quadro
+                const elapsedTime = world.time - mound.closingStartTime;
+                const progress = Math.min(elapsedTime / closingDuration, 1.0);
 
-                if (newScale < 0.01) {
+                // A escala inicial é o último estágio de crescimento
+                const initialScale = moundGrowthStages[moundGrowthStages.length - 1];
+                const newScale = initialScale * (1 - progress);
+
+                if (progress >= 1.0) {
                     mound.meshes.forEach(item => scene.remove(item.mesh));
                     closingMounds.splice(i, 1);
                 } else {
