@@ -812,7 +812,7 @@
                 color: 0x966F33, // Dust/brown color
                 size: 0.08,
                 transparent: true,
-                opacity: 0.4,
+                opacity: 0.2,
                 blending: THREE.NormalBlending,
                 depthWrite: false
             });
@@ -3081,6 +3081,7 @@
                         diggingComplete = true; // Impede que a escavação reinicie
                         isDigging = false; // Para a barra de progresso
                         progressContainer.style.display = 'none'; // Esconde a barra
+                        currentMound.lastDugAt = world.time; // Inicia o temporizador de fechamento
                     } else {
                         // Define a escala para o novo estágio e reinicia o progresso
                         const newScale = moundGrowthStages[currentMound.growthStage];
@@ -3424,7 +3425,7 @@
             // NOVO: Lógica para fechar buracos inativos
             for (let i = visualMounds.length - 1; i >= 0; i--) {
                 const mound = visualMounds[i];
-                if (mound !== currentMound && world.time - mound.lastDugAt > 5) {
+                if (mound !== currentMound && world.time - mound.lastDugAt > 2) {
                     closingMounds.push(mound);
                     visualMounds.splice(i, 1);
                 }
@@ -4247,7 +4248,7 @@
                     dustParticles = null;
                 } else {
                     // Fade out the opacity
-                    dustParticles.material.opacity = 0.4 * (1 - (elapsedTime / duration));
+                    dustParticles.material.opacity = 0.2 * (1 - (elapsedTime / duration));
                 }
             }
 
