@@ -1825,6 +1825,14 @@
                     } else {
                         height = seabedLevel;
                     }
+
+                    // Adiciona uma montanha no centro
+                    const mountainRadius = 60;
+                    const mountainHeight = 40;
+                    if (distance < mountainRadius) {
+                        const mountainT = 1 - (distance / mountainRadius);
+                        height += mountainHeight * mountainT * mountainT;
+                    }
                     hfMatrix[i][j] = height;
                 }
             }
@@ -1983,7 +1991,7 @@
                 sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer"
             });
             // Posição inicial: centro da esfera em playerRadius + islandSurfaceHeight
-            playerBody.position.set(0, playerRadius + islandSurfaceHeight, 0); // Posição inicial ajustada do jogador
+            playerBody.position.set(70, playerRadius + islandSurfaceHeight + 10, 0); // Posição inicial ajustada do jogador
             world.addBody(playerBody);
 
             // Reintroduz o listener de colisão para canJump, mas com uma verificação adicional
@@ -2805,7 +2813,7 @@
 
             // NOVO: Chama as funções para configurar os depósitos
             setupStoneDeposits();
-            setupDirtDeposits();
+            // setupDirtDeposits();
         }
 
         // NOVO: Função separada para configurar os depósitos de pedra
@@ -3153,8 +3161,6 @@
                             destroyTargetDeposit.flattened = true;
                             if (destroyTargetDeposit.type === 'stone') {
                                 destroyTargetDeposit.regenerationTimer = 10; // 10 segundos para pedra
-                            } else {
-                                destroyTargetDeposit.regenerationTimer = 60; // 1 minuto para terra
                             }
 
                             // Remove o corpo de física principal
@@ -3202,10 +3208,7 @@
                                 }
                             }
                             // O rendimento agora é proporcional ao raio do depósito
-                            if (destroyTargetDeposit.type === 'dirt') {
-                                const dirtYield = Math.round(destroyTargetDeposit.radius * 1.5);
-                                addItemToInventory(backpackItems, { name: dirtItemName, quantity: dirtYield });
-                            } else if (destroyTargetDeposit.type === 'stone') {
+                            if (destroyTargetDeposit.type === 'stone') {
                                 const stoneYield = Math.round(destroyTargetDeposit.radius);
                                 addItemToInventory(backpackItems, { name: stoneItemName, quantity: stoneYield });
                             }
