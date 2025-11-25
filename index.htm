@@ -438,14 +438,6 @@
         const moundGrowthStages = [0.25, 0.5, 0.75, 1.0]; // NOVO: Estágios de crescimento
         let diggingComplete = false; // NOVO: Flag para gerenciar o estado da escavação
 
-        // NEW: Variables for the mining system
-        let isMining = false;
-        let mineProgress = 0;
-        let targetMineTime = 0.5; // Time to mine (in seconds)
-        let currentCrack = null;
-        let miningComplete = false;
-        let visualCracks = [];
-
         // NOVO: Variáveis para a lógica de clique vs. segurar
         let mouseDownTime = 0;
         let clickHoldTimer = null;
@@ -572,7 +564,6 @@
         const stoneItemName = 'pedra'; // NOVO: Nome do item de pedra no inventário
         const dirtItemName = 'terra'; // NOVO: Nome do item de terra no inventário
         const shovelItemName = 'pá'; // NOVO: Nome do item de pá no inventário
-        const pickaxeItemName = 'picareta'; // NEW
         const textureApplicatorItemName = 'pincel'; // FERRAMENTA RENOMEADA
 
         // NOVO: Variáveis para o sistema de colocação de blocos (Cob, Piso, Muda de Árvore, Tronco de Árvore, Tábuas)
@@ -635,7 +626,6 @@
         const stoneImageURL = 'https://placehold.co/100x100/964B00/FFFFFF?text=Pedra'; // NOVO: Imagem para a pedra
         const dirtImageURL = 'https://placehold.co/100x100/A0522D/FFFFFF?text=Terra'; // NOVO: Imagem para a terra
         const shovelImageURL = 'https://placehold.co/100x100/808080/FFFFFF?text=Pá'; // NOVO: Imagem para a pá
-        const pickaxeImageURL = 'data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz48c3ZnIHZlcnNpb249IjEuMSIgaWQ9IkxheWVyXzEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHg9IjBweCIgeT0iMHB4IiB2aWV3Qm94PSIwIDAgODAgODAiIHN0eWxlPSJlbmFibGUtYmFja2dyb3VuZDpuZXcgMCAwIDgwIDgwOyIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI+PHN0eWxlIHR5cGU9InRleHQvY3NzIj4uc3Qwe2ZpbGw6YmxhY2s7fTwvc3R5bGU+PGc+PHBhdGggY2xhc3M9InN0MCIgZD0iTTY0LjcsMjUuM0w3MCwyMEw2MCwxMGwtNS4zLDUuM0M0Mi4yLDUuMSwyNi4zLC0wLjQsMTAsMGMxMi43LDcsMjQuNCwxNS40LDM0LjksMjUuMUwwLDcwbDEwLDEwbDQ0LjktNDQuOUM2NC42LDQ1LjYsNzMuMSw1Ny4zLDgwLDcwQzgwLjQsNTMuNyw3NC45LDM3LjgsNjQuNywyNS4zeiIvPjwvZz48L3N2Zz4=';
         const treeBarkTextureURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // Corrected URL
         const treeLeavesTextureURL = 'https://dl.dropbox.com/s/scl/fi/gdz8f8qzmrdza0t0nntzs/textura-folhas-arvore.jpg?rlkey=efabv8qthg0fpxg1ugf7fpd3k&dl=0'; // Corrected URL
         const handImageURL = 'https://dl.dropbox.com/scl/fi/adirqfks81emnagkoljcw/m-o-direita.png?rlkey=pj17lswbeg8lene1n5ypdbmob&st=i2qtxssr&dl=0';
@@ -954,8 +944,6 @@
                     img.src = dirtImageURL;
                 } else if (item.name === shovelItemName) { // NOVO
                     img.src = shovelImageURL;
-                } else if (item.name === pickaxeItemName) {
-                    img.src = pickaxeImageURL;
                 } else if (item.name === textureApplicatorItemName) {
                     img.src = textureApplicatorImageURL;
                 } else if (item.name === cobItemName) {
@@ -1184,56 +1172,6 @@
             draggedItem = null;
             updateBeltDisplay();
             updateBackpackDisplay();
-        }
-
-        function createCrack() {
-            if (!holeMaterial) {
-                console.warn("Crack material not loaded yet.");
-                return null;
-            }
-
-            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-            const groundMeshes = islandMeshes.map(item => item.mesh);
-            const intersects = raycaster.intersectObjects(groundMeshes);
-
-            let hitPoint;
-            let intersect;
-
-            if (intersects.length > 0) {
-                intersect = intersects[0];
-                hitPoint = intersect.point;
-
-                if (hitPoint.y < waterLevel || intersect.distance > destroyDistance) {
-                    return null;
-                }
-            } else {
-                return null;
-            }
-
-            const crackSize = 1.5;
-            const crackGeometry = new THREE.CircleGeometry(crackSize, 32);
-            const crackInstance = new THREE.Mesh(crackGeometry, holeMaterial);
-            crackInstance.rotation.x = -Math.PI / 2;
-            crackInstance.position.copy(hitPoint);
-            crackInstance.position.y += 0.02;
-
-            const up = new THREE.Vector3(0, 1, 0);
-            const normal = intersect.face.normal.clone();
-            const alignQuaternion = new THREE.Quaternion().setFromUnitVectors(up, normal);
-            crackInstance.quaternion.copy(alignQuaternion);
-
-            scene.add(crackInstance);
-
-            const newCrack = {
-                position: hitPoint.clone(),
-                mesh: crackInstance,
-                createdAt: world.time,
-                lastMinedAt: world.time
-            };
-
-            visualCracks.push(newCrack);
-
-            return newCrack;
         }
 
         function createMound() {
@@ -2231,7 +2169,6 @@
             addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 }); // NOVO
             beltItems[0] = { name: shovelItemName, quantity: 1 }; // NOVO: PÁ NA MÃO ESQUERDA
-            addItemToInventory(backpackItems, { name: pickaxeItemName, quantity: 1 });
             addItemToInventory(backpackItems, { name: textureApplicatorItemName, quantity: 1 });
             addItemToInventory(backpackItems, { name: cobItemName, quantity: 100 });
             addItemToInventory(backpackItems, { name: floorItemName, quantity: 50 });
@@ -2419,8 +2356,6 @@
                         startDestruction();
                     } else if (primaryActionType === 'create_mound') {
                         startDigging();
-                    } else if (primaryActionType === 'create_crack') {
-                        startMining();
                     } else if (primaryActionType === 'grab') {
                         // Inicia o temporizador para diferenciar clique de segurar
                         clickHoldTimer = setTimeout(() => {
@@ -2439,7 +2374,6 @@
 
                 stopDestruction(); // Para sempre a destruição em qualquer mouseup
                 stopDigging();
-                stopMining();
 
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
                 const secondaryActionType = getActionType(beltItems[1]);
@@ -2476,7 +2410,6 @@
                 if (item === null) return 'grab';
                 if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName) return 'destroy';
                 if (item.name === shovelItemName) return 'create_mound';
-                if (item.name === pickaxeItemName) return 'create_crack';
                 if (item.name === textureApplicatorItemName) return 'apply_texture';
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
                 return null;
@@ -2582,11 +2515,6 @@
                 // Primeiro, verifica se o jogador está olhando para um buraco existente
                 for (const intersect of intersects) {
                     const intersectedObject = intersect.object;
-                    // Check if the intersection point is on the mountain
-                    if (intersect.point.y > islandSurfaceHeight + 1) { // A simple height check to identify the mountain
-                        isDigging = false;
-                        return;
-                    }
                     // Encontra o objeto 'mound' pai, se houver
                     const parentMound = visualMounds.find(m => m.meshes.some(item => item.mesh === intersectedObject.parent.parent));
                     if (parentMound && parentMound.growthStage < moundGrowthStages.length - 1) {
@@ -2621,7 +2549,7 @@
 
             function stopDigging() {
                 if (currentMound) {
-                    currentMund.lastDugAt = world.time; // Atualiza o tempo de inatividade
+                    currentMound.lastDugAt = world.time; // Atualiza o tempo de inatividade
                 }
                 isDigging = false;
                 digProgress = 0;
@@ -2629,29 +2557,6 @@
                 progressBar.style.backgroundColor = '#4CAF50'; // Redefine para o verde padrão
                 currentMound = null; // Apenas limpa a referência, não destrói o monte
                 diggingComplete = false; // Garante que a flag seja redefinida
-            }
-
-            function startMining() {
-                miningComplete = false;
-                const newCrack = createCrack();
-                if (newCrack) {
-                    currentCrack = newCrack;
-                    isMining = true;
-                    mineProgress = 0;
-                    progressContainer.style.display = 'block';
-                    progressBar.style.backgroundColor = '#966F33';
-                } else {
-                    isMining = false;
-                }
-            }
-
-            function stopMining() {
-                isMining = false;
-                mineProgress = 0;
-                progressContainer.style.display = 'none';
-                progressBar.style.backgroundColor = '#4CAF50'; // Reset to default green
-                currentCrack = null;
-                miningComplete = false;
             }
 
             function collectObject() {
@@ -3155,34 +3060,6 @@
             }
 
 
-            // NEW: Mining logic
-            if (isMining && currentCrack && !miningComplete) {
-                mineProgress += 1 / 60; // Increment progress
-                const progressRatio = Math.min(mineProgress / targetMineTime, 1.0);
-
-                // Create particles and smoke as the player mines
-                if (Math.random() < 0.5) { // Spawn debris intermittently
-                    createDebris(currentCrack.position, 2);
-                }
-                if (Math.random() < 0.2) { // Spawn smoke intermittently
-                    createSmokeEffect(currentCrack.position);
-                }
-
-                // Update progress bar
-                progressBar.style.width = `${progressRatio * 100}%`;
-
-                if (mineProgress >= targetMineTime) {
-                    createDustCloud(currentCrack.position);
-                    addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
-                    updateBackpackDisplay();
-                    miningComplete = true;
-                    isMining = false;
-                    progressContainer.style.display = 'none';
-                    currentCrack.lastMinedAt = world.time;
-                    currentCrack = null;
-                }
-            }
-
             // NOVO: Lógica de escavação progressiva
             if (isDigging && currentMound && !diggingComplete) {
                 digProgress += 1 / 60; // Incrementa o progresso
@@ -3564,14 +3441,6 @@
                     mound.closingStageTimer = world.time; // Initialize timer upon starting to close
                     closingMounds.push(mound);
                     visualMounds.splice(i, 1);
-                }
-            }
-
-            for (let i = visualCracks.length - 1; i >= 0; i--) {
-                const crack = visualCracks[i];
-                if (crack !== currentCrack && world.time - crack.lastMinedAt > 5) {
-                    scene.remove(crack.mesh);
-                    visualCracks.splice(i, 1);
                 }
             }
 
