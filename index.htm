@@ -433,7 +433,7 @@
         // NOVO: Variáveis para o sistema de escavação progressiva
         let isDigging = false;
         let digProgress = 0;
-        let targetDigTime = 0.5; // Tempo para cavar (em segundos)
+        let targetDigTime = 1.0; // Tempo para cavar (em segundos)
         let currentMound = null; // NOVO: Referência ao buraco que está sendo cavado
         const moundGrowthStages = [0.25, 0.5, 0.75, 1.0]; // NOVO: Estágios de crescimento
         let diggingComplete = false; // NOVO: Flag para gerenciar o estado da escavação
@@ -561,6 +561,7 @@
         // NOVO: Variáveis para o sistema de destruição de blocos (Machado e Martelo)
         const axeItemName = 'machado'; // Nome do item de machado no inventário
         const hammerItemName = 'martelo'; // Nome do item de martelo no inventário
+        const pickaxeItemName = 'picareta';
         const stoneItemName = 'pedra'; // NOVO: Nome do item de pedra no inventário
         const dirtItemName = 'terra'; // NOVO: Nome do item de terra no inventário
         const shovelItemName = 'pá'; // NOVO: Nome do item de pá no inventário
@@ -623,6 +624,7 @@
         const treeSaplingTextureURL = 'https://dl.dropbox.com/scl/fi/pjdpuxo189igkd5wyvp0z/icone-de-muda-de-arvore.png?rlkey=9bvfgukhymi4qo02965pt3zl4&st=xs4n6qwo&dl=0'; // Dark green placeholder for tree icon
         const axeImageURL = 'https://dl.dropbox.com/scl/fi/6td6rpc8n54j6sz62w383/icone-de-machado.png?rlkey=zepycmnfyohef27tp7f5urnx0&st=7kbd3no2&dl=0'; // Placeholder for axe image
         const hammerImageURL = 'https://dl.dropbox.com/scl/fi/vadd8ztbnmzfqi18ml1cl/icone-de-martelo.png?rlkey=45l4k78t728fh4w4fkd4tvlef&st=cbi6paz9&dl=0'; // Placeholder for hammer image
+        const pickaxeImageURL = 'https://dl.dropbox.com/scl/fi/ps038ea5extmn93xv21il/pickaxe-img.png?rlkey=k59x2is2b9qo5iv26868xlblw&dl=0';
         const stoneImageURL = 'https://placehold.co/100x100/964B00/FFFFFF?text=Pedra'; // NOVO: Imagem para a pedra
         const dirtImageURL = 'https://placehold.co/100x100/A0522D/FFFFFF?text=Terra'; // NOVO: Imagem para a terra
         const shovelImageURL = 'https://placehold.co/100x100/808080/FFFFFF?text=Pá'; // NOVO: Imagem para a pá
@@ -782,7 +784,7 @@
         let dustParticles = null; // NOVO: Para o efeito de poeira da tela inteira
 
         // NOVO: Função para criar o efeito de poeira de partículas
-        function createDustCloud(position) {
+        function createDustCloud(position, color = 0x966F33) {
             // Se já existir uma nuvem de poeira, remove-a primeiro
             if (dustParticles) {
                 scene.remove(dustParticles);
@@ -809,7 +811,7 @@
             particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
             const particleMaterial = new THREE.PointsMaterial({
-                color: 0x966F33, // Dust/brown color
+                color: color,
                 size: 0.08,
                 transparent: true,
                 opacity: 0.2,
@@ -938,6 +940,8 @@
                     img.src = axeImageURL;
                 } else if (item.name === hammerItemName) {
                     img.src = hammerImageURL;
+                } else if (item.name === pickaxeItemName) {
+                    img.src = pickaxeImageURL;
                 } else if (item.name === stoneItemName) { // NOVO
                     img.src = stoneImageURL;
                 } else if (item.name === dirtItemName) { // NOVO
@@ -1488,11 +1492,11 @@
         }
 
         // Function to create a smoke effect at a given position
-        function createSmokeEffect(position) {
+        function createSmokeEffect(position, color = 0xA0522D) {
             const smokeCount = 15; // Increased particle count for denser smoke
             const smokeGeometry = new THREE.SphereGeometry(0.15, 8, 8); // Tripled the size
             const smokeMaterial = new THREE.MeshBasicMaterial({
-                color: 0xA0522D, // Dirt color
+                color: color,
                 transparent: true,
                 opacity: 0.5,
                 depthWrite: false // Important for transparent objects
@@ -1514,14 +1518,15 @@
         }
 
         // NEW: Function to create digging debris (dirt and stone)
-        function createDebris(position, count) {
+        function createDebris(position, count, type = null) {
             const debrisTypes = [
                 { type: 'dirt', color: 0xA0522D, shape: 'box' },
                 { type: 'stone', color: 0xA0522D, shape: 'icosahedron' }
             ];
 
             for (let i = 0; i < count; i++) {
-                const debrisType = debrisTypes[Math.floor(Math.random() * debrisTypes.length)];
+                const debrisType = type ? debrisTypes.find(d => d.type === type) : debrisTypes[Math.floor(Math.random() * debrisTypes.length)];
+                if (!debrisType) continue;
                 const size = Math.random() * 0.01 + 0.07;
 
                 let debrisGeometry;
@@ -2166,6 +2171,7 @@
 
             // Adiciona outros itens diretamente na mochila
             addItemToInventory(backpackItems, { name: hammerItemName, quantity: 1 });
+            addItemToInventory(backpackItems, { name: pickaxeItemName, quantity: 1 });
             addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 }); // NOVO
             beltItems[0] = { name: shovelItemName, quantity: 1 }; // NOVO: PÁ NA MÃO ESQUERDA
@@ -2408,7 +2414,7 @@
 
             function getActionType(item) {
                 if (item === null) return 'grab';
-                if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName) return 'destroy';
+                if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName || item.name === pickaxeItemName) return 'destroy';
                 if (item.name === shovelItemName) return 'create_mound';
                 if (item.name === textureApplicatorItemName) return 'apply_texture';
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
@@ -2419,6 +2425,31 @@
                 destructionComplete = false; // NOVO: Redefine a flag no início de uma nova destruição
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
+
+                const selectedItem = beltItems[selectedSlotIndex];
+                if (selectedItem && selectedItem.name === pickaxeItemName) {
+                    for (const intersect of intersects) {
+                        if (intersect.distance > destroyDistance) continue;
+                        if (intersect.object.userData.physicsBody === islandBody) {
+                            const hitPoint = intersect.point;
+                            const distanceToCenter = new THREE.Vector2(hitPoint.x, hitPoint.z).length();
+                            const mountainRadius = 60;
+                            if (distanceToCenter < mountainRadius) {
+                                isDestroying = true;
+                                destroyProgress = 0;
+                                destroyTargetBody = null;
+                                destroyTargetMesh = null;
+                                destroyTargetPatchObject = null;
+                                destroyTargetDeposit = { type: 'mountain', hitPoint: hitPoint };
+                                targetDestroyTime = 1.0; // Set duration for mining
+                                progressContainer.style.display = 'block';
+                                progressBar.style.backgroundColor = '#808080'; // Gray for stone
+                                return;
+                            }
+                        }
+                    }
+                }
+
                 let target = null;
                 destroyTargetDeposit = null; // Reseta no início
                 for (let i = 0; i < intersects.length; i++) {
@@ -2496,6 +2527,7 @@
                     isDestroying = false;
                     destroyProgress = 0;
                     progressContainer.style.display = 'none';
+                    progressBar.style.backgroundColor = '#4CAF50'; // Reset to default green
                 }
                 // Limpa os alvos apenas quando o botão do mouse é solto ou a mira é perdida.
                 destroyTargetBody = null;
@@ -2508,6 +2540,18 @@
             function startDigging() {
                 diggingComplete = false; // Redefine a flag no início
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+
+                const groundMeshes = islandMeshes.map(item => item.mesh);
+                const groundIntersects = raycaster.intersectObjects(groundMeshes);
+                if (groundIntersects.length > 0) {
+                    const hitPoint = groundIntersects[0].point;
+                    const distanceToCenter = new THREE.Vector2(hitPoint.x, hitPoint.z).length();
+                    const mountainRadius = 60;
+                    if (distanceToCenter < mountainRadius) {
+                        return;
+                    }
+                }
+
                 const intersects = raycaster.intersectObjects(scene.children, true);
 
                 let targetMound = null;
@@ -2531,7 +2575,7 @@
                     isDigging = true;
                     digProgress = 0; // Reinicia o progresso para o próximo estágio
                     progressContainer.style.display = 'block';
-                    progressBar.style.backgroundColor = '#966F33';
+                    progressBar.style.backgroundColor = '#4CAF50'; // Green for digging
                 } else {
                     // Cria um novo buraco
                     const newMound = createMound();
@@ -2540,7 +2584,7 @@
                         isDigging = true;
                         digProgress = 0;
                         progressContainer.style.display = 'block';
-                        progressBar.style.backgroundColor = '#966F33';
+                        progressBar.style.backgroundColor = '#4CAF50'; // Green for digging
                     } else {
                         isDigging = false; // Não pode cavar aqui
                     }
@@ -3148,12 +3192,31 @@
                 } else {
                     // Se estiver na mira, continua o progresso
                     destroyProgress += 1 / 60;
+                    // If destroying the mountain, create particles during the process
+                    if (destroyTargetDeposit && destroyTargetDeposit.type === 'mountain') {
+                        if (Math.random() < 0.6) { // Spawn debris intermittently
+                            createDebris(destroyTargetDeposit.hitPoint, 1, 'stone');
+                        }
+                        if (Math.random() < 0.3) { // Spawn dust intermittently
+                            createSmokeEffect(destroyTargetDeposit.hitPoint, 0x808080);
+                        }
+                    }
+
                     if (destroyProgress >= targetDestroyTime) {
                         // Objeto destruído!
                         let position;
 
                         // NOVO: Lógica de destruição de depósitos de pedra
                         if (destroyTargetDeposit) {
+                            if (destroyTargetDeposit.type === 'mountain') {
+                                createDustCloud(destroyTargetDeposit.hitPoint, 0x808080); // Big puff of dust on completion
+                                addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
+                                updateBackpackDisplay();
+                                destructionComplete = true;
+                                isDestroying = false;
+                                progressContainer.style.display = 'none';
+                                // No return here, let it fall through to reset targets
+                            }
                             const debrisPosition = new THREE.Vector3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
                             createDustCloud(debrisPosition);
                             createDebris(debrisPosition, 10);
@@ -4302,6 +4365,11 @@
             window.world = world;
             window.moundGrowthStages = moundGrowthStages;
             window.animate = animate;
+
+            window.setSelectedSlotIndex = (newIndex) => {
+                selectedSlotIndex = newIndex;
+                updateBeltDisplay();
+            };
 
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
