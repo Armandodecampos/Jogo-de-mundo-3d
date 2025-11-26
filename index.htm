@@ -433,7 +433,7 @@
         // NOVO: Variáveis para o sistema de escavação progressiva
         let isDigging = false;
         let digProgress = 0;
-        let targetDigTime = 0.5; // Tempo para cavar (em segundos)
+        let targetDigTime = 1.0; // Tempo para cavar (em segundos)
         let currentMound = null; // NOVO: Referência ao buraco que está sendo cavado
         const moundGrowthStages = [0.25, 0.5, 0.75, 1.0]; // NOVO: Estágios de crescimento
         let diggingComplete = false; // NOVO: Flag para gerenciar o estado da escavação
@@ -1492,11 +1492,11 @@
         }
 
         // Function to create a smoke effect at a given position
-        function createSmokeEffect(position) {
+        function createSmokeEffect(position, color = 0xA0522D) {
             const smokeCount = 15; // Increased particle count for denser smoke
             const smokeGeometry = new THREE.SphereGeometry(0.15, 8, 8); // Tripled the size
             const smokeMaterial = new THREE.MeshBasicMaterial({
-                color: 0xA0522D, // Dirt color
+                color: color,
                 transparent: true,
                 opacity: 0.5,
                 depthWrite: false // Important for transparent objects
@@ -2526,6 +2526,7 @@
                     isDestroying = false;
                     destroyProgress = 0;
                     progressContainer.style.display = 'none';
+                    progressBar.style.backgroundColor = '#4CAF50'; // Reset to default green
                 }
                 // Limpa os alvos apenas quando o botão do mouse é solto ou a mira é perdida.
                 destroyTargetBody = null;
@@ -2573,7 +2574,7 @@
                     isDigging = true;
                     digProgress = 0; // Reinicia o progresso para o próximo estágio
                     progressContainer.style.display = 'block';
-                    progressBar.style.backgroundColor = '#966F33';
+                    progressBar.style.backgroundColor = '#4CAF50'; // Green for digging
                 } else {
                     // Cria um novo buraco
                     const newMound = createMound();
@@ -2582,7 +2583,7 @@
                         isDigging = true;
                         digProgress = 0;
                         progressContainer.style.display = 'block';
-                        progressBar.style.backgroundColor = '#966F33';
+                        progressBar.style.backgroundColor = '#4CAF50'; // Green for digging
                     } else {
                         isDigging = false; // Não pode cavar aqui
                     }
@@ -3190,6 +3191,16 @@
                 } else {
                     // Se estiver na mira, continua o progresso
                     destroyProgress += 1 / 60;
+                    // If destroying the mountain, create particles during the process
+                    if (destroyTargetDeposit && destroyTargetDeposit.type === 'mountain') {
+                        if (Math.random() < 0.6) { // Spawn debris intermittently
+                            createDebris(destroyTargetDeposit.hitPoint, 1, 'stone');
+                        }
+                        if (Math.random() < 0.3) { // Spawn dust intermittently
+                            createSmokeEffect(destroyTargetDeposit.hitPoint, 0x808080);
+                        }
+                    }
+
                     if (destroyProgress >= targetDestroyTime) {
                         // Objeto destruído!
                         let position;
