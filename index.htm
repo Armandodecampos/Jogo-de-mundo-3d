@@ -2441,8 +2441,9 @@
                                 destroyTargetMesh = null;
                                 destroyTargetPatchObject = null;
                                 destroyTargetDeposit = { type: 'mountain', hitPoint: hitPoint };
-                                targetDestroyTime = 1.0;
+                                targetDestroyTime = 1.0; // Set duration for mining
                                 progressContainer.style.display = 'block';
+                                progressBar.style.backgroundColor = '#808080'; // Gray for stone
                                 return;
                             }
                         }
@@ -3167,9 +3168,15 @@
                             stillOnTarget = true;
                         }
                     } else if (destroyTargetDeposit) { // NOVO: Verifica se o depósito é o alvo
-                        const deposit = dirtDeposits.find(d => d.domeMeshes.some(m => m.mesh === intersectedObject));
-                        if (deposit && deposit === destroyTargetDeposit) {
-                            stillOnTarget = true;
+                        if (destroyTargetDeposit.type === 'mountain') {
+                           if (intersectedObject.userData.physicsBody === islandBody) {
+                                stillOnTarget = true;
+                           }
+                        } else {
+                            const deposit = [...dirtDeposits, ...stoneDeposits].find(d => d.domeMeshes.some(m => m.mesh === intersectedObject));
+                            if (deposit && deposit === destroyTargetDeposit) {
+                                stillOnTarget = true;
+                            }
                         }
                     } else if (destroyTargetMesh) {
                         // Se estivermos destruindo um bloco, faz a verificação normal
@@ -3208,14 +3215,13 @@
                         // NOVO: Lógica de destruição de depósitos de pedra
                         if (destroyTargetDeposit) {
                             if (destroyTargetDeposit.type === 'mountain') {
-                                createDustCloud(destroyTargetDeposit.hitPoint, 0x808080);
-                                createDebris(destroyTargetDeposit.hitPoint, 5, 'stone');
+                                createDustCloud(destroyTargetDeposit.hitPoint, 0x808080); // Big puff of dust on completion
                                 addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
                                 updateBackpackDisplay();
                                 destructionComplete = true;
                                 isDestroying = false;
                                 progressContainer.style.display = 'none';
-                                return;
+                                // No return here, let it fall through to reset targets
                             }
                             const debrisPosition = new THREE.Vector3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
                             createDustCloud(debrisPosition);
