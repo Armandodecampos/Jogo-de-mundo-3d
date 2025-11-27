@@ -1509,7 +1509,7 @@
             }
         }
 
-        // NEW: Function to create digging debris (dirt and stone)
+        // NEW: Function to create digging debris (dirt and stone) - Visual Only for Performance
         function createDebris(position, count, type = null) {
             const debrisTypes = [
                 { type: 'dirt', color: 0xA0522D, shape: 'box' },
@@ -1522,14 +1522,10 @@
                 const size = Math.random() * 0.01 + 0.07;
 
                 let debrisGeometry;
-                let debrisShape;
-
                 if (debrisType.shape === 'box') {
                     debrisGeometry = new THREE.BoxGeometry(size, size, size);
-                    debrisShape = new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2));
                 } else { // icosahedron for stones
-                    debrisGeometry = new THREE.IcosahedronGeometry(size / 1, 0);
-                    debrisShape = new CANNON.Sphere(size / 1); // Approximate with a sphere for performance
+                    debrisGeometry = new THREE.IcosahedronGeometry(size / 1.5, 0);
                 }
 
                 const debrisMaterialMesh = new THREE.MeshStandardMaterial({
@@ -1540,35 +1536,30 @@
                 const debrisMesh = new THREE.Mesh(debrisGeometry, debrisMaterialMesh);
                 debrisMesh.castShadow = true;
 
-                const debrisBody = new CANNON.Body({
-                    mass: size * 50,
-                    shape: debrisShape,
-                    material: debrisMaterial,
-                    linearDamping: 0.1,
-                    angularDamping: 0.5
-                });
-
-                debrisBody.position.copy(position).vadd(new CANNON.Vec3(
+                // Set initial position with a slight random offset
+                debrisMesh.position.copy(position).add(new THREE.Vector3(
                     (Math.random() - 0.5) * 0.5,
                     Math.random() * 0.5,
                     (Math.random() - 0.5) * 0.5
                 ));
 
-                const impulse = new CANNON.Vec3(
-                    (Math.random() - 0.5) * 0.1,
-                    0.2 + Math.random() * 0.2,
-                    (Math.random() - 0.5) * 0.1
+                // Store a random velocity in userData, just like smoke particles
+                debrisMesh.userData.velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 2, // Horizontal spread
+                    (Math.random() * 2 + 1.5),   // Upward velocity
+                    (Math.random() - 0.5) * 2  // Horizontal spread
                 );
-                debrisBody.applyImpulse(impulse);
+                 debrisMesh.userData.angularVelocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 5,
+                    (Math.random() - 0.5) * 5,
+                    (Math.random() - 0.5) * 5
+                );
 
-
-                world.addBody(debrisBody);
                 scene.add(debrisMesh);
 
                 debrisParticles.push({
                     mesh: debrisMesh,
-                    body: debrisBody,
-                    lifetime: 2.0 + Math.random() * 2.0 // Lifetime in seconds
+                    lifetime: 1.0 + Math.random() * 1.0 // Shorter lifetime for visual-only particles
                 });
             }
         }
@@ -4229,18 +4220,29 @@
                 }
             }
 
-            // NEW: Update debris particles
+            // NEW: Update visual-only debris particles
             for (let i = debrisParticles.length - 1; i >= 0; i--) {
-                const particle = debrisParticles[i];
-                particle.lifetime -= 1 / 10;
+                const particleData = debrisParticles[i];
+                const particleMesh = particleData.mesh;
+                particleData.lifetime -= 1 / 60; // Frame-rate independent decrement
 
-                if (particle.lifetime <= 0) {
-                    scene.remove(particle.mesh);
-                    world.removeBody(particle.body);
+                if (particleData.lifetime <= 0 || particleMesh.position.y < waterLevel) {
+                    scene.remove(particleMesh);
+                    particleMesh.geometry.dispose();
+                    particleMesh.material.dispose();
                     debrisParticles.splice(i, 1);
                 } else {
-                    particle.mesh.position.copy(particle.body.position);
-                    particle.mesh.quaternion.copy(particle.body.quaternion);
+                    // Apply gravity to velocity
+                    const gravity = 30.0; // Match world gravity
+                    particleMesh.userData.velocity.y -= gravity * (1 / 60);
+
+                    // Update position
+                    particleMesh.position.add(particleMesh.userData.velocity.clone().multiplyScalar(1 / 60));
+
+                    // Update rotation
+                    particleMesh.rotation.x += particleMesh.userData.angularVelocity.x * (1 / 60);
+                    particleMesh.rotation.y += particleMesh.userData.angularVelocity.y * (1 / 60);
+                    particleMesh.rotation.z += particleMesh.userData.angularVelocity.z * (1 / 60);
                 }
             }
 
