@@ -2149,15 +2149,14 @@
             backpackItems = new Array(numBackpackSlots).fill(null);
 
             // Itens padrão para os dois slots do cinto
-            // beltItems[0] agora começa como null para representar a mão quando vazio
+            beltItems[0] = { name: pickaxeItemName, quantity: 1 }; // Picareta no slot esquerdo (principal)
             beltItems[1] = { name: axeItemName, quantity: 1 }; // Machado no slot direito (secundário)
 
             // Adiciona outros itens diretamente na mochila
             addItemToInventory(backpackItems, { name: hammerItemName, quantity: 1 });
-            addItemToInventory(backpackItems, { name: pickaxeItemName, quantity: 1 });
             addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 }); // NOVO
-            beltItems[0] = { name: shovelItemName, quantity: 1 }; // NOVO: PÁ NA MÃO ESQUERDA
+            addItemToInventory(backpackItems, { name: shovelItemName, quantity: 1 }); // PÁ agora na mochila
             addItemToInventory(backpackItems, { name: textureApplicatorItemName, quantity: 1 });
             addItemToInventory(backpackItems, { name: cobItemName, quantity: 100 });
             addItemToInventory(backpackItems, { name: floorItemName, quantity: 50 });
@@ -2412,11 +2411,16 @@
                 const selectedItem = beltItems[selectedSlotIndex];
                 if (selectedItem && selectedItem.name === pickaxeItemName) {
                     for (const intersect of intersects) {
-                        if (intersect.distance > destroyDistance) continue;
-                        if (intersect.object.userData.physicsBody === islandBody) {
+                        const islandMeshObject = islandMeshes.find(m => m.mesh === intersect.object);
+                        if (islandMeshObject) {
+                            if (intersect.distance > destroyDistance) continue;
+
                             const hitPoint = intersect.point;
-                            const distanceToCenter = new THREE.Vector2(hitPoint.x, hitPoint.z).length();
+                            const unwrappedHitPointX = hitPoint.x + visualOffsetX;
+                            const unwrappedHitPointZ = hitPoint.z + visualOffsetZ;
+                            const distanceToCenter = new THREE.Vector2(unwrappedHitPointX, unwrappedHitPointZ).length();
                             const mountainRadius = 60;
+
                             if (distanceToCenter < mountainRadius) {
                                 isDestroying = true;
                                 destroyProgress = 0;
@@ -2424,10 +2428,9 @@
                                 destroyTargetMesh = null;
                                 destroyTargetPatchObject = null;
                                 destroyTargetDeposit = { type: 'mountain', hitPoint: hitPoint };
-                                targetDestroyTime = 1.0; // Set duration for mining
+                                targetDestroyTime = 1.0;
                                 progressContainer.style.display = 'block';
-                                progressBar.style.backgroundColor = '#808080'; // Gray for stone
-                                createDustCloud(destroyTargetDeposit.hitPoint, 0x808080); // Big puff of dust on completion
+                                progressBar.style.backgroundColor = '#808080';
                                 return;
                             }
                         }
@@ -3124,13 +3127,13 @@
                         // NOVO: Lógica de destruição de depósitos de pedra
                         if (destroyTargetDeposit) {
                             if (destroyTargetDeposit.type === 'mountain') {
-                            // createDustCloud(destroyTargetDeposit.hitPoint, 0x808080); // Big puff of dust on completion
+                                createDustCloud(destroyTargetDeposit.hitPoint, 0x808080); // Big puff of dust on completion
                                 addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
                                 updateBackpackDisplay();
-                                destructionComplete = true;
-                                isDestroying = false;
+                                destructionComplete = true; // Set flag to prevent re-triggering
+                                isDestroying = false; // Stop the progress bar
                                 progressContainer.style.display = 'none';
-                                // No return here, let it fall through to reset targets
+                                // No return here, let it fall through to reset all targets
                             }
                             const debrisPosition = new THREE.Vector3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
                             createDustCloud(debrisPosition);
