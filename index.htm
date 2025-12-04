@@ -423,7 +423,6 @@
         // NOVO: Variáveis para o sistema de destruição progressiva
         let isDestroying = false;
         let destroyProgress = 0;
-        let lastParticleTime = 0; // Para controlar a criação de partículas
         let targetDestroyTime = 0; // Tempo necessário para destruir o objeto (em segundos)
         let destroyTargetBody = null; // Corpo que está sendo destruído
         let destroyTargetMesh = null; // Malha visual do corpo
@@ -434,7 +433,7 @@
         // NOVO: Variáveis para o sistema de escavação progressiva
         let isDigging = false;
         let digProgress = 0;
-        let targetDigTime = 1.0; // Tempo para cavar (em segundos)
+        let targetDigTime = 0.5; // Tempo para cavar (em segundos)
         let currentMound = null; // NOVO: Referência ao buraco que está sendo cavado
         const moundGrowthStages = [0.25, 0.5, 0.75, 1.0]; // NOVO: Estágios de crescimento
         let diggingComplete = false; // NOVO: Flag para gerenciar o estado da escavação
@@ -475,6 +474,15 @@
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
         const islandSurfaceHeight = 0.8; // A altura da superfície visível da ilha
+
+        // NOVO: Constantes e variáveis para depósitos de pedra
+        const stoneDepositTextureURL = "https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1";
+        let stoneDepositMaterial;
+        let flattenedStoneDepositMaterial;
+        const numStoneDeposits = 30;
+        const stoneDepositRadius = 4;
+        const stoneDepositHeight = 3;
+        let stoneDeposits = [];
 
         // NOVO: Constantes e variáveis para depósitos de terra
         const dirtDepositTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=2hknz00t&dl=0";
@@ -553,7 +561,6 @@
         // NOVO: Variáveis para o sistema de destruição de blocos (Machado e Martelo)
         const axeItemName = 'machado'; // Nome do item de machado no inventário
         const hammerItemName = 'martelo'; // Nome do item de martelo no inventário
-        const pickaxeItemName = 'picareta';
         const stoneItemName = 'pedra'; // NOVO: Nome do item de pedra no inventário
         const dirtItemName = 'terra'; // NOVO: Nome do item de terra no inventário
         const shovelItemName = 'pá'; // NOVO: Nome do item de pá no inventário
@@ -616,7 +623,6 @@
         const treeSaplingTextureURL = 'https://dl.dropbox.com/scl/fi/pjdpuxo189igkd5wyvp0z/icone-de-muda-de-arvore.png?rlkey=9bvfgukhymi4qo02965pt3zl4&st=xs4n6qwo&dl=0'; // Dark green placeholder for tree icon
         const axeImageURL = 'https://dl.dropbox.com/scl/fi/6td6rpc8n54j6sz62w383/icone-de-machado.png?rlkey=zepycmnfyohef27tp7f5urnx0&st=7kbd3no2&dl=0'; // Placeholder for axe image
         const hammerImageURL = 'https://dl.dropbox.com/scl/fi/vadd8ztbnmzfqi18ml1cl/icone-de-martelo.png?rlkey=45l4k78t728fh4w4fkd4tvlef&st=cbi6paz9&dl=0'; // Placeholder for hammer image
-        const pickaxeImageURL = 'https://dl.dropbox.com/scl/fi/ps038ea5extmn93xv21il/pickaxe-img.png?rlkey=k59x2is2b9qo5iv26868xlblw&dl=0';
         const stoneImageURL = 'https://placehold.co/100x100/964B00/FFFFFF?text=Pedra'; // NOVO: Imagem para a pedra
         const dirtImageURL = 'https://placehold.co/100x100/A0522D/FFFFFF?text=Terra'; // NOVO: Imagem para a terra
         const shovelImageURL = 'https://placehold.co/100x100/808080/FFFFFF?text=Pá'; // NOVO: Imagem para a pá
@@ -776,7 +782,7 @@
         let dustParticles = null; // NOVO: Para o efeito de poeira da tela inteira
 
         // NOVO: Função para criar o efeito de poeira de partículas
-        function createDustCloud(position, color = 0x966F33) {
+        function createDustCloud(position) {
             // Se já existir uma nuvem de poeira, remove-a primeiro
             if (dustParticles) {
                 scene.remove(dustParticles);
@@ -785,7 +791,7 @@
                 dustParticles = null;
             }
 
-            const particleCount = 200;
+            const particleCount = 2000;
             const particles = new THREE.BufferGeometry();
             const positions = new Float32Array(particleCount * 3);
             const radius = 1.5;
@@ -803,7 +809,7 @@
             particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
             const particleMaterial = new THREE.PointsMaterial({
-                color: color,
+                color: 0x966F33, // Dust/brown color
                 size: 0.08,
                 transparent: true,
                 opacity: 0.2,
@@ -932,8 +938,6 @@
                     img.src = axeImageURL;
                 } else if (item.name === hammerItemName) {
                     img.src = hammerImageURL;
-                } else if (item.name === pickaxeItemName) {
-                    img.src = pickaxeImageURL;
                 } else if (item.name === stoneItemName) { // NOVO
                     img.src = stoneImageURL;
                 } else if (item.name === dirtItemName) { // NOVO
@@ -1484,11 +1488,11 @@
         }
 
         // Function to create a smoke effect at a given position
-        function createSmokeEffect(position, color = 0xA0522D) {
-            const smokeCount = 5; // Increased particle count for denser smoke
+        function createSmokeEffect(position) {
+            const smokeCount = 15; // Increased particle count for denser smoke
             const smokeGeometry = new THREE.SphereGeometry(0.15, 8, 8); // Tripled the size
             const smokeMaterial = new THREE.MeshBasicMaterial({
-                color: color,
+                color: 0xA0522D, // Dirt color
                 transparent: true,
                 opacity: 0.5,
                 depthWrite: false // Important for transparent objects
@@ -1509,23 +1513,26 @@
             }
         }
 
-        // NEW: Function to create digging debris (dirt and stone) - Visual Only for Performance
-        function createDebris(position, count, type = null) {
+        // NEW: Function to create digging debris (dirt and stone)
+        function createDebris(position, count) {
             const debrisTypes = [
                 { type: 'dirt', color: 0xA0522D, shape: 'box' },
-                { type: 'stone', color: 0x808080, shape: 'icosahedron' }
+                { type: 'stone', color: 0xA0522D, shape: 'icosahedron' }
             ];
 
             for (let i = 0; i < count; i++) {
-                const debrisType = type ? debrisTypes.find(d => d.type === type) : debrisTypes[Math.floor(Math.random() * debrisTypes.length)];
-                if (!debrisType) continue;
+                const debrisType = debrisTypes[Math.floor(Math.random() * debrisTypes.length)];
                 const size = Math.random() * 0.01 + 0.07;
 
                 let debrisGeometry;
+                let debrisShape;
+
                 if (debrisType.shape === 'box') {
                     debrisGeometry = new THREE.BoxGeometry(size, size, size);
+                    debrisShape = new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2));
                 } else { // icosahedron for stones
-                    debrisGeometry = new THREE.IcosahedronGeometry(size / 1.5, 0);
+                    debrisGeometry = new THREE.IcosahedronGeometry(size / 1, 0);
+                    debrisShape = new CANNON.Sphere(size / 1); // Approximate with a sphere for performance
                 }
 
                 const debrisMaterialMesh = new THREE.MeshStandardMaterial({
@@ -1536,30 +1543,35 @@
                 const debrisMesh = new THREE.Mesh(debrisGeometry, debrisMaterialMesh);
                 debrisMesh.castShadow = true;
 
-                // Set initial position with a slight random offset
-                debrisMesh.position.copy(position).add(new THREE.Vector3(
+                const debrisBody = new CANNON.Body({
+                    mass: size * 50,
+                    shape: debrisShape,
+                    material: debrisMaterial,
+                    linearDamping: 0.1,
+                    angularDamping: 0.5
+                });
+
+                debrisBody.position.copy(position).vadd(new CANNON.Vec3(
                     (Math.random() - 0.5) * 0.5,
                     Math.random() * 0.5,
                     (Math.random() - 0.5) * 0.5
                 ));
 
-                // Store a random velocity in userData, just like smoke particles
-                debrisMesh.userData.velocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * 2, // Horizontal spread
-                    (Math.random() * 2 + 1.5),   // Upward velocity
-                    (Math.random() - 0.5) * 2  // Horizontal spread
+                const impulse = new CANNON.Vec3(
+                    (Math.random() - 0.5) * 0.1,
+                    0.2 + Math.random() * 0.2,
+                    (Math.random() - 0.5) * 0.1
                 );
-                 debrisMesh.userData.angularVelocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * 5,
-                    (Math.random() - 0.5) * 5,
-                    (Math.random() - 0.5) * 5
-                );
+                debrisBody.applyImpulse(impulse);
 
+
+                world.addBody(debrisBody);
                 scene.add(debrisMesh);
 
                 debrisParticles.push({
                     mesh: debrisMesh,
-                    lifetime: 1.0 + Math.random() * 1.0 // Shorter lifetime for visual-only particles
+                    body: debrisBody,
+                    lifetime: 2.0 + Math.random() * 2.0 // Lifetime in seconds
                 });
             }
         }
@@ -2149,14 +2161,14 @@
             backpackItems = new Array(numBackpackSlots).fill(null);
 
             // Itens padrão para os dois slots do cinto
-            beltItems[0] = { name: pickaxeItemName, quantity: 1 }; // Picareta no slot esquerdo (principal)
+            // beltItems[0] agora começa como null para representar a mão quando vazio
             beltItems[1] = { name: axeItemName, quantity: 1 }; // Machado no slot direito (secundário)
 
             // Adiciona outros itens diretamente na mochila
             addItemToInventory(backpackItems, { name: hammerItemName, quantity: 1 });
             addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 }); // NOVO
-            addItemToInventory(backpackItems, { name: shovelItemName, quantity: 1 }); // PÁ agora na mochila
+            beltItems[0] = { name: shovelItemName, quantity: 1 }; // NOVO: PÁ NA MÃO ESQUERDA
             addItemToInventory(backpackItems, { name: textureApplicatorItemName, quantity: 1 });
             addItemToInventory(backpackItems, { name: cobItemName, quantity: 100 });
             addItemToInventory(backpackItems, { name: floorItemName, quantity: 50 });
@@ -2396,7 +2408,7 @@
 
             function getActionType(item) {
                 if (item === null) return 'grab';
-                if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName || item.name === pickaxeItemName) return 'destroy';
+                if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName) return 'destroy';
                 if (item.name === shovelItemName) return 'create_mound';
                 if (item.name === textureApplicatorItemName) return 'apply_texture';
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
@@ -2407,36 +2419,6 @@
                 destructionComplete = false; // NOVO: Redefine a flag no início de uma nova destruição
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
-
-                const selectedItem = beltItems[selectedSlotIndex];
-                if (selectedItem && selectedItem.name === pickaxeItemName) {
-                    for (const intersect of intersects) {
-                        const islandMeshObject = islandMeshes.find(m => m.mesh === intersect.object);
-                        if (islandMeshObject) {
-                            if (intersect.distance > destroyDistance) continue;
-
-                            const hitPoint = intersect.point;
-                            const unwrappedHitPointX = hitPoint.x + visualOffsetX;
-                            const unwrappedHitPointZ = hitPoint.z + visualOffsetZ;
-                            const distanceToCenter = new THREE.Vector2(unwrappedHitPointX, unwrappedHitPointZ).length();
-                            const mountainRadius = 60;
-
-                            if (distanceToCenter < mountainRadius) {
-                                isDestroying = true;
-                                destroyProgress = 0;
-                                destroyTargetBody = null;
-                                destroyTargetMesh = null;
-                                destroyTargetPatchObject = null;
-                                destroyTargetDeposit = { type: 'mountain', hitPoint: hitPoint };
-                                targetDestroyTime = 1.0;
-                                progressContainer.style.display = 'block';
-                                progressBar.style.backgroundColor = '#808080';
-                                return;
-                            }
-                        }
-                    }
-                }
-
                 let target = null;
                 destroyTargetDeposit = null; // Reseta no início
                 for (let i = 0; i < intersects.length; i++) {
@@ -2444,7 +2426,7 @@
                     let intersectedObject = intersects[i].object;
 
                     // NOVO: Verifica se o objeto intersectado é um depósito de pedra ou terra
-                    const allDeposits = [...dirtDeposits];
+                    const allDeposits = [...stoneDeposits, ...dirtDeposits];
                     const deposit = allDeposits.find(d => d.domeMeshes.some(m => m.mesh === intersectedObject));
                     if (deposit && !deposit.flattened) {
                         target = { body: deposit.body, mesh: intersectedObject, patchObject: null };
@@ -2514,7 +2496,6 @@
                     isDestroying = false;
                     destroyProgress = 0;
                     progressContainer.style.display = 'none';
-                    progressBar.style.backgroundColor = '#4CAF50'; // Reset to default green
                 }
                 // Limpa os alvos apenas quando o botão do mouse é solto ou a mira é perdida.
                 destroyTargetBody = null;
@@ -2527,18 +2508,6 @@
             function startDigging() {
                 diggingComplete = false; // Redefine a flag no início
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-
-                const groundMeshes = islandMeshes.map(item => item.mesh);
-                const groundIntersects = raycaster.intersectObjects(groundMeshes);
-                if (groundIntersects.length > 0) {
-                    const hitPoint = groundIntersects[0].point;
-                    const distanceToCenter = new THREE.Vector2(hitPoint.x, hitPoint.z).length();
-                    const mountainRadius = 60;
-                    if (distanceToCenter < mountainRadius) {
-                        return;
-                    }
-                }
-
                 const intersects = raycaster.intersectObjects(scene.children, true);
 
                 let targetMound = null;
@@ -2562,7 +2531,7 @@
                     isDigging = true;
                     digProgress = 0; // Reinicia o progresso para o próximo estágio
                     progressContainer.style.display = 'block';
-                    progressBar.style.backgroundColor = '#4CAF50'; // Green for digging
+                    progressBar.style.backgroundColor = '#966F33';
                 } else {
                     // Cria um novo buraco
                     const newMound = createMound();
@@ -2571,7 +2540,7 @@
                         isDigging = true;
                         digProgress = 0;
                         progressContainer.style.display = 'block';
-                        progressBar.style.backgroundColor = '#4CAF50'; // Green for digging
+                        progressBar.style.backgroundColor = '#966F33';
                     } else {
                         isDigging = false; // Não pode cavar aqui
                     }
@@ -2843,11 +2812,86 @@
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
 
             // NOVO: Chama as funções para configurar os depósitos
+            setupStoneDeposits();
             // setupDirtDeposits();
         }
 
+        // NOVO: Função separada para configurar os depósitos de pedra
+        const minDepositDistance = 18; // Distância mínima entre os depósitos
+        function setupStoneDeposits() {
+            textureLoader.load(stoneDepositTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(2, 1);
+                stoneDepositMaterial = new THREE.MeshStandardMaterial({ map: texture });
+
+                const flatTexture = texture.clone();
+                flatTexture.needsUpdate = true;
+                flatTexture.repeat.set(1, 1);
+                flattenedStoneDepositMaterial = new THREE.MeshStandardMaterial({ map: flatTexture });
+
+                const quarryRadius = 50.0;
+                const numQuarryDeposits = 8;
+                const depositPlacementRadius = quarryRadius + 10; // Coloca os depósitos um pouco afastados da pedreira
+
+                for (let i = 0; i < numQuarryDeposits; i++) {
+                    const angle = (i / numQuarryDeposits) * Math.PI * 2;
+                    const x = Math.cos(angle) * depositPlacementRadius;
+                    const z = Math.sin(angle) * depositPlacementRadius;
+
+                    const rayFrom = new CANNON.Vec3(x, islandSurfaceHeight + 20, z);
+                    const rayTo = new CANNON.Vec3(x, seabedLevel - 10, z);
+                    const rayResult = new CANNON.RaycastResult();
+                    world.raycastClosest(rayFrom, rayTo, {}, rayResult);
+
+                    if (rayResult.hasHit && rayResult.hitPointWorld.y >= waterLevel) {
+                        const hitPoint = rayResult.hitPointWorld;
+                        const hitNormal = rayResult.hitNormalWorld;
+                        const up = new CANNON.Vec3(0, 1, 0);
+                        const quaternion = new CANNON.Quaternion().setFromVectors(up, hitNormal);
+
+                        const sizeFactor = 1.0; // Tamanho uniforme para os depósitos da pedreira
+                        const depositRadius = stoneDepositRadius * sizeFactor;
+                        const depositHeight = stoneDepositHeight * sizeFactor;
+
+                        const domeGeometry = new THREE.SphereGeometry(depositRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+                        const domeMesh = new THREE.Mesh(domeGeometry, stoneDepositMaterial);
+                        domeMesh.castShadow = true;
+                        domeMesh.receiveShadow = true;
+
+                        const depositMeshes = [];
+                        for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                            for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
+                                const mesh = domeMesh.clone();
+                                scene.add(mesh);
+                                depositMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
+                            }
+                        }
+
+                        const sphereShape = new CANNON.Sphere(depositRadius);
+                        const sphereBody = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC, material: islandMaterial });
+                        sphereBody.addShape(sphereShape);
+                        sphereBody.position.copy(hitPoint);
+                        sphereBody.quaternion.copy(quaternion);
+                        world.addBody(sphereBody);
+
+                        stoneDeposits.push({
+                            x: hitPoint.x, z: hitPoint.z, y: hitPoint.y,
+                            radius: depositRadius,
+                            height: depositHeight,
+                            flattened: false,
+                            regenerationTimer: 0,
+                            domeMeshes: depositMeshes,
+                            flattenedMeshes: [],
+                            body: sphereBody,
+                            type: 'stone'
+                        });
+                    }
+                }
+            }, undefined, (error) => console.error("Falha ao carregar a textura do depósito de pedra:", error));
+        }
+
         // NOVO: Função separada para configurar os depósitos de terra
-    const minDepositDistance = 18; // Distância mínima entre os depósitos
         function setupDirtDeposits() {
             textureLoader.load(dirtDepositTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
@@ -3022,10 +3066,10 @@
                 const progressRatio = Math.min(digProgress / targetDigTime, 1.0);
 
                 // Create particles and smoke as the player digs
-                if (Math.random() < 0.2) { // Spawn debris intermittently
+                if (Math.random() < 0.5) { // Spawn debris intermittently
                     createDebris(currentMound.position, 2);
                 }
-                if (Math.random() < 0.1) { // Spawn smoke intermittently
+                if (Math.random() < 0.2) { // Spawn smoke intermittently
                     createSmokeEffect(currentMound.position);
                 }
 
@@ -3080,15 +3124,9 @@
                             stillOnTarget = true;
                         }
                     } else if (destroyTargetDeposit) { // NOVO: Verifica se o depósito é o alvo
-                        if (destroyTargetDeposit.type === 'mountain') {
-                           if (intersectedObject.userData.physicsBody === islandBody) {
-                                stillOnTarget = true;
-                           }
-                        } else {
-                            const deposit = [...dirtDeposits].find(d => d.domeMeshes.some(m => m.mesh === intersectedObject));
-                            if (deposit && deposit === destroyTargetDeposit) {
-                                stillOnTarget = true;
-                            }
+                        const deposit = dirtDeposits.find(d => d.domeMeshes.some(m => m.mesh === intersectedObject));
+                        if (deposit && deposit === destroyTargetDeposit) {
+                            stillOnTarget = true;
                         }
                     } else if (destroyTargetMesh) {
                         // Se estivermos destruindo um bloco, faz a verificação normal
@@ -3110,36 +3148,20 @@
                 } else {
                     // Se estiver na mira, continua o progresso
                     destroyProgress += 1 / 60;
-                    // If destroying the mountain, create particles during the process
-                    if (destroyTargetDeposit && destroyTargetDeposit.type === 'mountain') {
-                        if (Math.random() < 0.2) { // Spawn debris intermittently
-                            createDebris(destroyTargetDeposit.hitPoint, 1, 'stone');
-                        }
-                        if (Math.random() < 0.1) { // Spawn dust intermittently
-                            createSmokeEffect(destroyTargetDeposit.hitPoint, 0x808080);
-                        }
-                    }
-
                     if (destroyProgress >= targetDestroyTime) {
                         // Objeto destruído!
                         let position;
 
                         // NOVO: Lógica de destruição de depósitos de pedra
                         if (destroyTargetDeposit) {
-                            if (destroyTargetDeposit.type === 'mountain') {
-                                createDustCloud(destroyTargetDeposit.hitPoint, 0x808080); // Big puff of dust on completion
-                                addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
-                                updateBackpackDisplay();
-                                destructionComplete = true; // Set flag to prevent re-triggering
-                                isDestroying = false; // Stop the progress bar
-                                progressContainer.style.display = 'none';
-                                // No return here, let it fall through to reset all targets
-                            }
                             const debrisPosition = new THREE.Vector3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
                             createDustCloud(debrisPosition);
                             createDebris(debrisPosition, 10);
                             position = debrisPosition.clone();
                             destroyTargetDeposit.flattened = true;
+                            if (destroyTargetDeposit.type === 'stone') {
+                                destroyTargetDeposit.regenerationTimer = 10; // 10 segundos para pedra
+                            }
 
                             // Remove o corpo de física principal
                             if (destroyTargetDeposit.body) {
@@ -3184,6 +3206,11 @@
                                     scene.add(mesh);
                                     destroyTargetDeposit.flattenedMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
                                 }
+                            }
+                            // O rendimento agora é proporcional ao raio do depósito
+                            if (destroyTargetDeposit.type === 'stone') {
+                                const stoneYield = Math.round(destroyTargetDeposit.radius);
+                                addItemToInventory(backpackItems, { name: stoneItemName, quantity: stoneYield });
                             }
                             updateBackpackDisplay();
                         }
@@ -3267,7 +3294,7 @@
             world.step(1 / 60);
 
             // NOVO: Lógica de regeneração para todos os depósitos
-            const allDeposits = [...dirtDeposits];
+            const allDeposits = [...stoneDeposits, ...dirtDeposits];
             allDeposits.forEach(deposit => {
                 if (deposit.flattened && deposit.regenerationTimer > 0) {
                     deposit.regenerationTimer -= 1 / 60; // Subtrai o tempo do frame
@@ -4222,29 +4249,18 @@
                 }
             }
 
-            // NEW: Update visual-only debris particles
+            // NEW: Update debris particles
             for (let i = debrisParticles.length - 1; i >= 0; i--) {
-                const particleData = debrisParticles[i];
-                const particleMesh = particleData.mesh;
-                particleData.lifetime -= 1 / 60; // Frame-rate independent decrement
+                const particle = debrisParticles[i];
+                particle.lifetime -= 1 / 10;
 
-                if (particleData.lifetime <= 0 || particleMesh.position.y < waterLevel) {
-                    scene.remove(particleMesh);
-                    particleMesh.geometry.dispose();
-                    particleMesh.material.dispose();
+                if (particle.lifetime <= 0) {
+                    scene.remove(particle.mesh);
+                    world.removeBody(particle.body);
                     debrisParticles.splice(i, 1);
                 } else {
-                    // Apply gravity to velocity
-                    const gravity = 30.0; // Match world gravity
-                    particleMesh.userData.velocity.y -= gravity * (1 / 60);
-
-                    // Update position
-                    particleMesh.position.add(particleMesh.userData.velocity.clone().multiplyScalar(1 / 60));
-
-                    // Update rotation
-                    particleMesh.rotation.x += particleMesh.userData.angularVelocity.x * (1 / 60);
-                    particleMesh.rotation.y += particleMesh.userData.angularVelocity.y * (1 / 60);
-                    particleMesh.rotation.z += particleMesh.userData.angularVelocity.z * (1 / 60);
+                    particle.mesh.position.copy(particle.body.position);
+                    particle.mesh.quaternion.copy(particle.body.quaternion);
                 }
             }
 
@@ -4286,11 +4302,6 @@
             window.world = world;
             window.moundGrowthStages = moundGrowthStages;
             window.animate = animate;
-
-            window.setSelectedSlotIndex = (newIndex) => {
-                selectedSlotIndex = newIndex;
-                updateBeltDisplay();
-            };
 
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
