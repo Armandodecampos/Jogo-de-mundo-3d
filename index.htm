@@ -541,15 +541,6 @@
         const numBeltSlots = 2; // Número total de slots do cinto (apenas 2 agora)
             var selectedSlotIndex = 0; // NOVO: Índice do slot selecionado (0 para esquerdo, 1 para direito)
 
-        // NOVO: Expõe a função para definir o slot selecionado para verificação
-        function setSelectedSlotIndex(index) {
-            if (index >= 0 && index < numBeltSlots) {
-                selectedSlotIndex = index;
-                updateBeltDisplay();
-            }
-        }
-        window.setSelectedSlotIndex = setSelectedSlotIndex;
-
         // Variáveis para o sistema de mochila
         let backpackModal;
         let backpackSlotsContainer;
@@ -1184,59 +1175,6 @@
             updateBackpackDisplay();
         }
 
-        let visualCracks = []; // Para rastrear os efeitos de rachadura
-
-        function createCracks(position, normal) {
-            // Remove quaisquer rachaduras existentes
-            visualCracks.forEach(crack => {
-                crack.meshes.forEach(item => scene.remove(item.mesh));
-            });
-            visualCracks.length = 0;
-
-            const crackGroup = new THREE.Group();
-            crackGroup.position.copy(position);
-
-            const crackMaterial = new THREE.MeshBasicMaterial({ color: 0x1A1A1A, side: THREE.DoubleSide });
-            const numCracks = 7;
-            for (let i = 0; i < numCracks; i++) {
-                const crackLength = (Math.random() * 1.0) + 0.5;
-                const crackWidth = 0.03;
-                const crackHeight = 0.01;
-                const crackGeometry = new THREE.BoxGeometry(crackLength, crackHeight, crackWidth);
-                const crackMesh = new THREE.Mesh(crackGeometry, crackMaterial);
-
-                crackMesh.position.set(
-                    (Math.random() - 0.5) * 1.0,
-                    0.02, // Ligeiramente acima da superfície para evitar z-fighting
-                    (Math.random() - 0.5) * 1.0
-                );
-                crackMesh.rotation.y = Math.random() * Math.PI;
-
-                crackGroup.add(crackMesh);
-            }
-
-            const up = new THREE.Vector3(0, 1, 0);
-            const alignQuaternion = new THREE.Quaternion().setFromUnitVectors(up, normal);
-            crackGroup.quaternion.copy(alignQuaternion);
-
-            const crackMeshes = [];
-            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                    const groupClone = crackGroup.clone(true);
-                    scene.add(groupClone);
-                    crackMeshes.push({ mesh: groupClone, offsetX: j * worldSize, offsetZ: k * worldSize });
-                }
-            }
-
-            const newCrack = {
-                position: position.clone(),
-                meshes: crackMeshes,
-                quaternion: crackGroup.quaternion.clone(),
-            };
-
-            visualCracks.push(newCrack);
-        }
-
         function createMound() {
             // Garante que os modelos e materiais necessários estejam carregados
             if (!holeGeometryTemplate || !holeMaterial) {
@@ -1276,28 +1214,39 @@
             const holeGroup = new THREE.Group();
             holeGroup.position.copy(hitPoint);
 
-            // Lógica para cavar na terra
+            // Adicionado: Verifica se a escavação está na montanha
+            const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
+            const isMountain = distanceToCenter < 50.0; // 50.0 é o quarryRadius
+
+            // Define as dimensões e segmentos do vulcão
             const volcanoInnerRadius = 1.0;
             const volcanoOuterRadiusAtTop = 1.0;
             const volcanoOuterRadiusAtBottom = 1.5;
             const volcanoHeight = 0.1;
-            const volcanoRadialSegments = 32;
+            // Modificado: O número de segmentos agora depende se é montanha ou não
+            const volcanoRadialSegments = isMountain ? 6 : 32;
 
+            // Cria um grupo para o vulcão
             const volcanoGroup = new THREE.Group();
+
+            // Cria a geometria do cone externo do vulcão
             const outerConeGeometry = new THREE.CylinderGeometry(volcanoOuterRadiusAtTop, volcanoOuterRadiusAtBottom, volcanoHeight, volcanoRadialSegments, 1, true);
             const outerConeMesh = new THREE.Mesh(outerConeGeometry, islandMeshes[0].mesh.material);
             outerConeMesh.position.y = volcanoHeight / 2;
             outerConeMesh.receiveShadow = true;
             volcanoGroup.add(outerConeMesh);
 
+            // Cria um material para o cilindro interno com renderização em ambos os lados
             const innerCylinderMaterial = islandMeshes[0].mesh.material.clone();
             innerCylinderMaterial.side = THREE.DoubleSide;
+            // Cria a geometria do cilindro interno
             const innerCylinderGeometry = new THREE.CylinderGeometry(volcanoInnerRadius, volcanoInnerRadius, volcanoHeight, volcanoRadialSegments, 1, true);
             const innerCylinderMesh = new THREE.Mesh(innerCylinderGeometry, innerCylinderMaterial);
             innerCylinderMesh.position.y = volcanoHeight / 2;
             innerCylinderMesh.receiveShadow = true;
             volcanoGroup.add(innerCylinderMesh);
 
+            // Cria a geometria do anel superior para fechar o vulcão
             const topRingGeometry = new THREE.RingGeometry(volcanoInnerRadius, volcanoOuterRadiusAtTop, volcanoRadialSegments);
             const topRingMesh = new THREE.Mesh(topRingGeometry, islandMeshes[0].mesh.material);
             topRingMesh.position.y = volcanoHeight;
@@ -1305,27 +1254,34 @@
             topRingMesh.receiveShadow = true;
             volcanoGroup.add(topRingMesh);
 
+            // Adiciona um pequeno deslocamento vertical ao vulcão e o adiciona ao grupo do buraco
             volcanoGroup.position.y = 0.01;
             holeGroup.add(volcanoGroup);
 
+            // Recalcula os UVs para o grupo do vulcão
             volcanoGroup.children.forEach(mesh => {
                 const geometry = mesh.geometry;
                 const uvAttribute = geometry.attributes.uv;
                 const positionAttribute = geometry.attributes.position;
                 const worldPosition = new THREE.Vector3();
+
                 for (let i = 0; i < positionAttribute.count; i++) {
                     worldPosition.fromBufferAttribute(positionAttribute, i);
-                    mesh.localToWorld(worldPosition);
+                    mesh.localToWorld(worldPosition); // Converte a posição do vértice para coordenadas mundiais
+
+                    // Mapeia as coordenadas do mundo para UVs para repetição da textura
                     const u = worldPosition.x / worldSize;
                     const v = worldPosition.z / worldSize;
                     uvAttribute.setXY(i, u, v);
                 }
-                uvAttribute.needsUpdate = true;
+                uvAttribute.needsUpdate = true; // Marca o atributo UV como necessitando de atualização
             });
 
+            // Cria, dimensiona e posiciona o modelo do buraco central
             const holeRadius = 1.4;
-            const centerGeometry = new THREE.CircleGeometry(holeRadius, 32);
-            const centerInstance = new THREE.Mesh(centerGeometry, holeMaterial);
+            // Modificado: A geometria do buraco agora é condicional
+            const centerGeometry = isMountain ? new THREE.CylinderGeometry(holeRadius, holeRadius, 0.01, 6) : new THREE.CircleGeometry(holeRadius, 32);
+            const centerInstance = new THREE.Mesh(centerGeometry, isMountain ? stoneHoleMaterial : holeMaterial);
             centerInstance.rotation.x = -Math.PI / 2;
             centerInstance.position.y = 0.02;
             centerInstance.receiveShadow = true;
@@ -1539,11 +1495,11 @@
         }
 
         // Function to create a smoke effect at a given position
-        function createSmokeEffect(position, isMountain) {
+        function createSmokeEffect(position) {
             const smokeCount = 15; // Increased particle count for denser smoke
             const smokeGeometry = new THREE.SphereGeometry(0.15, 8, 8); // Tripled the size
             const smokeMaterial = new THREE.MeshBasicMaterial({
-                color: isMountain ? 0x888888 : 0xA0522D, // Gray for mountain, dirt color otherwise
+                color: 0xA0522D, // Dirt color
                 transparent: true,
                 opacity: 0.5,
                 depthWrite: false // Important for transparent objects
@@ -2486,22 +2442,6 @@
                     if (intersects[i].distance > destroyDistance) continue;
                     let intersectedObject = intersects[i].object;
 
-                    // VERIFICAÇÃO DA MONTANHA: Verifica se o alvo é a montanha
-                    const groundMeshes = islandMeshes.map(item => item.mesh);
-                    if (groundMeshes.includes(intersectedObject)) {
-                        const hitPoint = intersects[i].point;
-                        const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
-                        const isMountain = distanceToCenter < 50.0; // quarryRadius
-
-                        if (isMountain) {
-                            // É a montanha, cria rachaduras e para
-                            const normal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
-                            createCracks(hitPoint, normal);
-                            createSmokeEffect(hitPoint, true); // true para fumaça cinza
-                            return; // Impede o resto da lógica de destruição
-                        }
-                    }
-
                     // NOVO: Verifica se o objeto intersectado é um depósito de pedra ou terra
                     const allDeposits = [...stoneDeposits, ...dirtDeposits];
                     const deposit = allDeposits.find(d => d.domeMeshes.some(m => m.mesh === intersectedObject));
@@ -2588,6 +2528,23 @@
                 const intersects = raycaster.intersectObjects(scene.children, true);
 
                 let targetMound = null;
+
+                // Adicionado: Verifica se o alvo é a montanha
+                if (intersects.length > 0 && intersects[0].distance <= destroyDistance) {
+                    const intersectedObject = intersects[0].object;
+                    const groundMeshes = islandMeshes.map(item => item.mesh);
+                    if (groundMeshes.includes(intersectedObject)) {
+                        const hitPoint = intersects[0].point;
+                        const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
+                        if (distanceToCenter < 50.0) { // quarryRadius
+                            // É a montanha, cria rachaduras e para
+                            const normal = intersects[0].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
+                            createCracks(hitPoint, normal);
+                            createSmokeEffect(hitPoint, true); // true para fumaça cinza
+                            return; // Impede a criação de um buraco
+                        }
+                    }
+                }
 
                 // Primeiro, verifica se o jogador está olhando para um buraco existente
                 for (const intersect of intersects) {
@@ -3152,7 +3109,7 @@
                     createDebris(currentMound.position, 2, isMountain);
                 }
                 if (Math.random() < 0.2) { // Spawn smoke intermittently
-                    createSmokeEffect(currentMound.position, isMountain);
+                    createSmokeEffect(currentMound.position);
                 }
 
                 // Atualiza a barra de progresso
@@ -3565,21 +3522,6 @@
                         item.mesh.position.x += item.offsetX - visualOffsetX;
                         item.mesh.position.z += item.offsetZ - visualOffsetZ;
                         item.mesh.quaternion.copy(mound.quaternion); // Aplica a orientação
-                    }
-                });
-            });
-
-            visualCracks.forEach(crack => {
-                const distance = calculateWrappedDistance(playerBody.position, crack.position);
-                const isVisible = distance <= renderDistance;
-
-                crack.meshes.forEach(item => {
-                    item.mesh.visible = isVisible;
-                    if (isVisible) {
-                        item.mesh.position.copy(crack.position);
-                        item.mesh.position.x += item.offsetX - visualOffsetX;
-                        item.mesh.position.z += item.offsetZ - visualOffsetZ;
-                        item.mesh.quaternion.copy(crack.quaternion);
                     }
                 });
             });
