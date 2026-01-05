@@ -660,6 +660,7 @@
         let mounds = [];
         let visualMounds = []; // NOVO: Para os montes de terra visuais
         let closingMounds = []; // NOVO: Para animar o fechamento dos buracos
+        let visualCracks = [];
         let moundDomes = [];
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
         let splatMap; // NOVO: Máscara de textura para pintar os buracos
@@ -1332,6 +1333,72 @@
             // Adiciona o novo monte à lista de montes visuais e o retorna
             visualMounds.push(newMound);
             return newMound;
+        }
+
+        function createCracks() {
+            if (!stoneHoleMaterial) {
+                console.warn("Crack material not loaded yet.");
+                return null;
+            }
+
+            visualCracks.forEach(crack => {
+                crack.meshes.forEach(item => scene.remove(item.mesh));
+            });
+            visualCracks.length = 0;
+
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const groundMeshes = islandMeshes.map(item => item.mesh);
+            const intersects = raycaster.intersectObjects(groundMeshes);
+
+            if (intersects.length > 0) {
+                const intersect = intersects[0];
+                const hitPoint = intersect.point;
+
+                const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
+                const isMountain = distanceToCenter < 50.0;
+
+                if (!isMountain || intersect.distance > destroyDistance) {
+                    return null;
+                }
+
+                const crackSize = 2.5;
+                const crackGeometry = new THREE.PlaneGeometry(crackSize, crackSize);
+                const crackMesh = new THREE.Mesh(crackGeometry, stoneHoleMaterial);
+
+                const up = new THREE.Vector3(0, 1, 0);
+                const normal = intersect.face.normal.clone();
+                const alignQuaternion = new THREE.Quaternion().setFromUnitVectors(up, normal);
+
+                crackMesh.position.copy(hitPoint).add(normal.multiplyScalar(0.05));
+                crackMesh.quaternion.copy(alignQuaternion);
+
+                const randomRotation = new THREE.Quaternion().setFromAxisAngle(normal, Math.random() * Math.PI * 2);
+                crackMesh.quaternion.multiply(randomRotation);
+
+                const finalQuaternion = crackMesh.quaternion.clone();
+
+                const visualCrackMeshes = [];
+                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
+                        const meshClone = crackMesh.clone();
+                        scene.add(meshClone);
+                        visualCrackMeshes.push({ mesh: meshClone, offsetX: j * worldSize, offsetZ: k * worldSize });
+                    }
+                }
+
+                const newCrack = {
+                    position: hitPoint.clone(),
+                    meshes: visualCrackMeshes,
+                    createdAt: world.time,
+                    quaternion: finalQuaternion,
+                    growthStage: 0,
+                    lastDugAt: world.time
+                };
+
+                visualCracks.push(newCrack);
+                return newCrack;
+            }
+            return null;
         }
 
         // NOVO: Função para criar uma nova caixa dinâmica
@@ -2530,47 +2597,62 @@
             }
 
             function startDigging() {
-                diggingComplete = false; // Redefine a flag no início
+                diggingComplete = false;
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                const intersects = raycaster.intersectObjects(scene.children, true);
+                const groundMeshes = islandMeshes.map(item => item.mesh);
+                const intersects = raycaster.intersectObjects(groundMeshes, true);
 
-                let targetMound = null;
-
-                // Primeiro, verifica se o jogador está olhando para um buraco existente
-                for (const intersect of intersects) {
-                    const intersectedObject = intersect.object;
-                    // Encontra o objeto 'mound' pai, se houver
-                    const parentMound = visualMounds.find(m => m.meshes.some(item => item.mesh === intersectedObject.parent.parent));
-                    if (parentMound && parentMound.growthStage < moundGrowthStages.length - 1) {
-                        if (intersect.distance < destroyDistance) {
-                            targetMound = parentMound;
-                            break;
-                        }
-                    }
+                if (intersects.length === 0) {
+                    isDigging = false;
+                    return;
                 }
 
-                if (targetMound) {
-                    // Continua cavando um buraco existente
-                    currentMound = targetMound;
-                    isDigging = true;
-                    digProgress = 0; // Reinicia o progresso para o próximo estágio
-                    progressContainer.style.display = 'block';
-                    const distanceToCenter = Math.sqrt(currentMound.position.x * currentMound.position.x + currentMound.position.z * currentMound.position.z);
-                    const isMountain = distanceToCenter < 50.0;
-                    progressBar.style.backgroundColor = isMountain ? '#888888' : '#966F33';
-                } else {
-                    // Cria um novo buraco
-                    const newMound = createMound();
-                    if (newMound) {
-                        currentMound = newMound;
+                const intersect = intersects[0];
+                const hitPoint = intersect.point;
+                const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
+                const isMountain = distanceToCenter < 50.0;
+
+                if (isMountain) {
+                    const newCrack = createCracks();
+                    if (newCrack) {
+                        currentMound = newCrack;
                         isDigging = true;
                         digProgress = 0;
                         progressContainer.style.display = 'block';
-                        const distanceToCenter = Math.sqrt(currentMound.position.x * currentMound.position.x + currentMound.position.z * currentMound.position.z);
-                        const isMountain = distanceToCenter < 50.0;
-                        progressBar.style.backgroundColor = isMountain ? '#888888' : '#966F33';
+                        progressBar.style.backgroundColor = '#888888';
                     } else {
-                        isDigging = false; // Não pode cavar aqui
+                        isDigging = false;
+                    }
+                } else {
+                    let targetMound = null;
+                    for (const intersect of intersects) {
+                        const intersectedObject = intersect.object;
+                        const parentMound = visualMounds.find(m => m.meshes.some(item => item.mesh === intersectedObject.parent.parent));
+                        if (parentMound && parentMound.growthStage < moundGrowthStages.length - 1) {
+                            if (intersect.distance < destroyDistance) {
+                                targetMound = parentMound;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (targetMound) {
+                        currentMound = targetMound;
+                        isDigging = true;
+                        digProgress = 0;
+                        progressContainer.style.display = 'block';
+                        progressBar.style.backgroundColor = '#966F33';
+                    } else {
+                        const newMound = createMound();
+                        if (newMound) {
+                            currentMound = newMound;
+                            isDigging = true;
+                            digProgress = 0;
+                            progressContainer.style.display = 'block';
+                            progressBar.style.backgroundColor = '#966F33';
+                        } else {
+                            isDigging = false;
+                        }
                     }
                 }
             }
@@ -3127,8 +3209,12 @@
                     } else {
                         // Define a escala para o novo estágio e reinicia o progresso
                         const newScale = moundGrowthStages[currentMound.growthStage];
+                        const isCrack = visualCracks.includes(currentMound);
+
                         currentMound.meshes.forEach(item => {
-                            item.mesh.scale.set(newScale, newScale, newScale);
+                           if(isCrack) {
+                             item.mesh.scale.set(newScale, newScale, newScale);
+                           }
                         });
                         digProgress = 0; // Reinicia para o próximo estágio
                     }
@@ -3475,6 +3561,7 @@
 
             for (let i = closingMounds.length - 1; i >= 0; i--) {
                 const mound = closingMounds[i];
+                const isCrack = visualCracks.includes(mound);
 
                 // Initialize the timer if it doesn't exist
                 if (mound.closingStageTimer === undefined) {
@@ -3492,10 +3579,20 @@
                         // Remove the mound completely
                         mound.meshes.forEach(item => scene.remove(item.mesh));
                         closingMounds.splice(i, 1);
+                        if (isCrack) {
+                            const crackIndex = visualCracks.indexOf(mound);
+                            if (crackIndex > -1) {
+                                visualCracks.splice(crackIndex, 1);
+                            }
+                        }
                     } else {
                         // Set the scale to the previous stage
                         const newScale = moundGrowthStages[mound.growthStage];
-                        mound.meshes.forEach(item => item.mesh.scale.set(newScale, newScale, newScale));
+                        mound.meshes.forEach(item => {
+                            if(isCrack) {
+                                item.mesh.scale.set(newScale, newScale, newScale)
+                            }
+                        });
                     }
                 }
             }
@@ -3512,6 +3609,21 @@
                         item.mesh.position.x += item.offsetX - visualOffsetX;
                         item.mesh.position.z += item.offsetZ - visualOffsetZ;
                         item.mesh.quaternion.copy(mound.quaternion); // Aplica a orientação
+                    }
+                });
+            });
+
+            visualCracks.forEach(crack => {
+                const distance = calculateWrappedDistance(playerBody.position, crack.position);
+                const isVisible = distance <= renderDistance;
+
+                crack.meshes.forEach(item => {
+                    item.mesh.visible = isVisible;
+                    if (isVisible) {
+                        item.mesh.position.copy(crack.position);
+                        item.mesh.position.x += item.offsetX - visualOffsetX;
+                        item.mesh.position.z += item.offsetZ - visualOffsetZ;
+                        item.mesh.quaternion.copy(crack.quaternion);
                     }
                 });
             });
