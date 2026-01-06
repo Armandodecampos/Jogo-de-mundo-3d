@@ -524,9 +524,7 @@
         let isWorldReady = false;
         const loadingManager = new THREE.LoadingManager();
         loadingManager.onLoad = () => {
-            console.log("All resources loaded, world is ready.");
             isWorldReady = true;
-            window.isWorldReady = true; // Expose for verification
         };
 
         // Instância do carregador de textura, agora usando o gerenciador de carregamento
@@ -1215,16 +1213,19 @@
             const holeGroup = new THREE.Group();
             holeGroup.position.copy(hitPoint);
 
-            // Adicionado: Verifica se a escavação está na montanha
             const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
-            if (distanceToCenter < 50.0) { // 50.0 é o quarryRadius
-                return null;
-            }
 
             // Define as dimensões e segmentos do vulcão
             const volcanoInnerRadius = 1.0;
             const volcanoOuterRadiusAtTop = 1.0;
             const volcanoOuterRadiusAtBottom = 1.5;
+            const mountainRadius = 50.0;
+
+            // Bloqueia a criação do buraco se este for sobrepor-se à montanha.
+            // A sobreposição ocorre se a distância ao centro for menor que a soma dos raios da montanha e do buraco.
+            if (distanceToCenter < mountainRadius + volcanoOuterRadiusAtBottom) {
+                return null;
+            }
             const volcanoHeight = 0.1;
             const volcanoRadialSegments = 32;
 
@@ -1480,7 +1481,6 @@
                 randomizedDimensions: randomizedTreeDimensions // Store randomized dimensions for trees
             };
             placedConstructionBodies.push(blockBody);
-            console.log("Bloco colocado. Corpos de construção colocados:", placedConstructionBodies); // Log para depuração
 
             const blockMeshes = [];
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
@@ -1628,6 +1628,971 @@
         }
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
+
+        function init() {
+            window.THREE = THREE;
+            window.CANNON = CANNON;
+            // Define o offset inicial do nível dos olhos da câmera como o raio da esfera
+            cameraEyeLevelOffset = playerRadius;
+            originalCameraEyeLevelOffset = cameraEyeLevelOffset; // Para armazenar o valor inicial
+
+            // Configuração da Cena Three.js
+            scene = new THREE.Scene();
+            window.scene = scene;
+            skyColor = new THREE.Color(0x87CEEB);
+            underwaterColor = new THREE.Color(0x001e3d);
+            scene.background = skyColor; // Começa com a cor do céu
+
+            // Inicializa ambos os nevoeiros
+            skyFog = new THREE.Fog(skyColor, 100, 200);
+            underwaterFog = new THREE.Fog(underwaterColor, 1, 30); // Nevoeiro denso para debaixo d'água
+
+            scene.fog = skyFog; // Começa com o nevoeiro do céu
+
+            // Configuração da Câmera Three.js
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
+            camera.rotation.order = 'YXZ'; // Define a ordem de rotação para guinada (Y), inclinação (X), rolagem (Z)
+
+            // Configuração do Renderizador Three.js
+            renderer = new THREE.WebGLRenderer({ antialiased: true }); // Habilita antialiasing para gráficos mais suaves
+            renderer.setSize(window.innerWidth, window.innerHeight); // Define o tamanho do renderizador para o tamanho da janela
+            renderer.shadowMap.enabled = true;
+            document.body.appendChild(renderer.domElement); // Adiciona o canvas ao corpo do documento
+
+            // Configuração do Mundo Cannon-es (física)
+            world = new CANNON.World();
+            world.gravity.set(0, -30, 0); // Define a gravidade (para baixo), aumentada para -30
+            world.solver.iterations = 40; // Aumenta as iterações do solver para melhor estabilidade (de 20 para 40)
+
+            // Inicializa os materiais de física
+            playerMaterial = new CANNON.Material('playerMaterial');
+            islandMaterial = new CANNON.Material('islandMaterial'); // Material para terreno e estrada
+            cubeMaterial = new CANNON.Material('cubeMaterial');
+            constructionMaterial = new CANNON.Material('constructionMaterial'); // Novo material para cobs e pisos
+
+            // Define material de contato entre jogador e terreno/estrada
+            const playerGroundContactMaterial = new CANNON.ContactMaterial(
+                playerMaterial,
+                islandMaterial,
+                {
+                    friction: 0, // Attrition set to 0
+                    restitution: 0,
+                    contactEquationStiffness: 1e9, // Increased for higher rigidity
+                    contactEquationRelaxation: 3
+                }
+            );
+            world.addContactMaterial(playerGroundContactMaterial);
+
+            // Material de contato entre jogador e blocos de construção (cobs/pisos)
+            const playerConstructionContactMaterial = new CANNON.ContactMaterial(
+                playerMaterial,
+                constructionMaterial,
+                {
+                    friction: 0, // CRUCIAL: Atrito zero para evitar que o jogador "cole"
+                    restitution: 0,
+                    contactEquationStiffness: 1e9, // Alta rigidez
+                    contactEquationRelaxation: 3
+                }
+            );
+            world.addContactMaterial(playerConstructionContactMaterial);
+
+            // Material de contato entre cubo e terreno/estrada
+            const cubeGroundContactMaterial = new CANNON.ContactMaterial(
+                cubeMaterial,
+                islandMaterial,
+                {
+                    friction: 0.7,
+                    restitution: 0,
+                    contactEquationStiffness: 1e8, // Aumenta a rigidez para evitar que os objectos se "afundem"
+                    contactEquationRelaxation: 4    // Proporciona um ligeiro "amortecimento" para evitar o ressalto
+                }
+            );
+            world.addContactMaterial(cubeGroundContactMaterial);
+
+            // Material de contato entre cubo e jogador
+            const cubePlayerContactMaterial = new CANNON.ContactMaterial(
+                cubeMaterial,
+                playerMaterial,
+                {
+                    friction: 0, // Attrition set to 0
+                    restitution: 0,
+                    contactEquationStiffness: 1e9, // Increased for higher rigidity
+                    contactEquationRelaxation: 20
+                }
+            );
+            world.addContactMaterial(cubePlayerContactMaterial);
+
+            // Material de contato entre cubo e cubo
+            const cubeCubeContactMaterial = new CANNON.ContactMaterial(
+                cubeMaterial,
+                cubeMaterial,
+                {
+                    friction: 0,
+                    restitution: 0,
+                    contactEquationStiffness: 1e8,
+                    contactEquationRelaxation: 3
+                }
+            );
+            world.addContactMaterial(cubeCubeContactMaterial);
+
+            // Material de contato entre blocos de construção e terreno/estrada (podem ter atrito)
+            const constructionGroundContactMaterial = new CANNON.ContactMaterial(
+                constructionMaterial,
+                islandMaterial,
+                {
+                    friction: 0.7, // Blocos podem ter atrito com o chão
+                    restitution: 0
+                }
+            );
+            world.addContactMaterial(constructionGroundContactMaterial);
+
+            // Material de contato entre blocos de construção e cubos (podem ter atrito)
+            const constructionCubeContactMaterial = new CANNON.ContactMaterial(
+                constructionMaterial,
+                cubeMaterial,
+                {
+                    friction: 0.7, // Blocos podem ter atrito com cubos
+                    restitution: 0
+                }
+            );
+            world.addContactMaterial(constructionCubeContactMaterial);
+
+            // Material de contato entre blocos de construção (cob com cob, piso com piso, etc.)
+            const constructionConstructionContactMaterial = new CANNON.ContactMaterial(
+                constructionMaterial,
+                constructionMaterial,
+                {
+                    friction: 0.7, // Attrito entre blocos de construção
+                    restitution: 0
+                }
+            );
+            world.addContactMaterial(constructionConstructionContactMaterial);
+
+            // NEW: Contact material for debris
+            debrisMaterial = new CANNON.Material('debrisMaterial');
+            const debrisGroundContactMaterial = new CANNON.ContactMaterial(
+                debrisMaterial,
+                islandMaterial,
+                {
+                    friction: 0.5,
+                    restitution: 0.3 // Allow some bouncing
+                }
+            );
+            world.addContactMaterial(debrisGroundContactMaterial);
+
+            const debrisPlayerContactMaterial = new CANNON.ContactMaterial(
+                debrisMaterial,
+                playerMaterial,
+                {
+                    friction: 0,
+                    restitution: 0 // No bouncing off the player
+                }
+            );
+            world.addContactMaterial(debrisPlayerContactMaterial);
+
+
+            // Configuração das Luzes
+            ambientLight = new THREE.AmbientLight(0xffffff, 0.6); // Luz ambiente suave
+            scene.add(ambientLight);
+
+            directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); // Luz direcional (simula o sol)
+            directionalLight.position.set(10, 15, 10); // Posição inicial
+            directionalLight.castShadow = true;
+            directionalLight.shadow.mapSize.width = 2048;
+            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.camera.near = 0.5;
+            directionalLight.shadow.camera.far = 50;
+            directionalLight.shadow.camera.left = -20;
+            directionalLight.shadow.camera.right = 20;
+            directionalLight.shadow.camera.top = 20;
+            directionalLight.shadow.camera.bottom = -20;
+            scene.add(directionalLight);
+            scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
+
+            // Cria o Terreno (Ilha Redonda)
+            // A geometria visual é agora um plano segmentado cujos vértices correspondem ao Heightfield.
+            const hfGridSize = 128; // A resolução DEVE corresponder à do Heightfield
+            const islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
+
+            // --- Criação do Corpo de Física da Ilha com Heightfield ---
+            const hfMatrix = [];
+            for (let i = 0; i < hfGridSize; i++) {
+                hfMatrix.push([]);
+                for (let j = 0; j < hfGridSize; j++) {
+                    // Mapeia os índices da grelha para coordenadas do mundo
+                    const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
+                    const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
+                    const distance = Math.sqrt(x * x + z * z);
+                    let height;
+
+                    if (distance <= islandRadiusTop) {
+                        height = islandSurfaceHeight;
+                    } else if (distance <= islandRadiusBottom) {
+                        // Interpola linearmente da superfície da ilha para o fundo do mar
+                        const t = (distance - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
+                        height = islandSurfaceHeight * (1 - t) + seabedLevel * t;
+                    } else {
+                        height = seabedLevel;
+                    }
+
+                    // Adiciona uma montanha no centro
+                    const mountainRadius = 60;
+                    const mountainHeight = 40;
+                    if (distance < mountainRadius) {
+                        const mountainT = 1 - (distance / mountainRadius);
+                        height += mountainHeight * mountainT * mountainT;
+                    }
+                    hfMatrix[i][j] = height;
+                }
+            }
+            baseMatrix = JSON.parse(JSON.stringify(hfMatrix)); // Armazena a geometria inicial
+
+            // Gira a geometria para ficar no plano XZ.
+            islandGeometry.rotateX(-Math.PI / 2);
+
+            // Define a altura de cada vértice na geometria para corresponder à matriz do Heightfield.
+            const vertices = islandGeometry.attributes.position.array;
+            for (let i = 0; i < hfGridSize; i++) {
+                for (let j = 0; j < hfGridSize; j++) {
+                    const height = hfMatrix[i][j];
+                    const index = (i * hfGridSize + j) * 3;
+                    vertices[index + 1] = height; // Atualiza a coordenada Y
+                }
+            }
+            islandGeometry.attributes.position.needsUpdate = true;
+            islandGeometry.computeVertexNormals(); // Recalcula as normais para uma iluminação correta
+
+            const hfShape = new CANNON.Heightfield(hfMatrix, {
+                elementSize: worldSize / (hfGridSize - 1)
+            });
+
+            islandBody = new CANNON.Body({ mass: 0, material: islandMaterial });
+            islandBody.addShape(hfShape);
+            // Os Heightfields são criados no plano XY, por isso rodamos para o plano XZ.
+            islandBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+            // Posiciona o corpo no canto do mundo para alinhar a grelha.
+            islandBody.position.set(-worldSize / 2, 0, worldSize / 2);
+            world.addBody(islandBody);
+            const groundTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=0";
+            const sandTextureURL = "https://dl.dropbox.com/scl/fi/2ediqx91o54kqrua9l4jk/Textura-de-areia.png?rlkey=pale1g1zkjqlrkjhpz4kr3ypw&st=fbuzn6iu&dl=0";
+            const seabedTextureURL = sandTextureURL;
+
+            textureLoader.load(groundTextureURL, (groundTexture) => {
+                textureLoader.load(seabedTextureURL, (seabedTexture) => {
+                    textureLoader.load(sandTextureURL, (sandTexture) => {
+                        textureLoader.load(stoneTextureURL, (stoneTexture) => {
+                        // Todas as quatro texturas estão carregadas
+                        [groundTexture, seabedTexture, sandTexture, stoneTexture].forEach(texture => {
+                            texture.wrapS = THREE.RepeatWrapping;
+                            texture.wrapT = THREE.RepeatWrapping;
+                        });
+                        groundTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                        seabedTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                        sandTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                        stoneTexture.repeat.set(islandRadiusTop / 16, islandRadiusTop / 16);
+
+                        const islandMeshMaterial = new THREE.MeshStandardMaterial({
+                            map: groundTexture,
+                        });
+
+                        islandMeshMaterial.onBeforeCompile = (shader) => {
+                            shader.uniforms.uSeabedTexture = { value: seabedTexture };
+                            shader.uniforms.uSandTexture = { value: sandTexture };
+                            shader.uniforms.uStoneTexture = { value: stoneTexture };
+                            shader.uniforms.uWaterLevel = { value: waterLevel };
+
+                            shader.vertexShader = `
+                                varying vec3 vWorldPosition;
+                                ${shader.vertexShader}
+                            `.replace(
+                                `#include <worldpos_vertex>`,
+                                `
+                                #include <worldpos_vertex>
+                                vWorldPosition = worldPosition.xyz;
+                                `
+                            );
+
+                            shader.fragmentShader = `
+                                uniform sampler2D uSeabedTexture;
+                                uniform sampler2D uSandTexture;
+                                uniform sampler2D uStoneTexture;
+                                uniform float uWaterLevel;
+                                varying vec3 vWorldPosition;
+                                ${shader.fragmentShader}
+                            `.replace(
+                                `#include <map_fragment>`,
+                                `
+                                #ifdef USE_MAP
+                                    vec4 groundColor = texture2D(map, vUv);
+                                    vec4 seabedColor = texture2D(uSeabedTexture, vUv);
+                                    vec4 sandColor = texture2D(uSandTexture, vUv);
+                                    vec4 stoneColor = texture2D(uStoneTexture, vUv);
+
+                                    float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
+                                    vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
+                                    float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
+                                    vec3 terrainMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
+
+                                    // Lógica da Pedreira
+                                    float quarryRadius = 50.0;
+                                    float distanceToCenter = length(vWorldPosition.xz);
+
+                                    vec4 finalColor;
+                                    if (distanceToCenter < quarryRadius) {
+                                        // Dentro da pedreira, usa a textura de pedra
+                                        finalColor = stoneColor;
+                                    } else {
+                                        // Fora da pedreira, usa a mistura de terreno
+                                        finalColor = vec4(terrainMix, 1.0);
+                                    }
+
+                                    diffuseColor *= finalColor;
+                                #endif
+                                `
+                            );
+                        };
+
+                        for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                                const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
+                                islandMesh.receiveShadow = true;
+                                islandMesh.userData.physicsBody = islandBody;
+                                scene.add(islandMesh);
+                                islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                            }
+                        }
+                        islandMeshMaterial.needsUpdate = true;
+                        });
+                    }, undefined, (error) => console.error('Falha ao carregar a textura de areia:', error));
+                }, undefined, (error) => console.error('Falha ao carregar a textura do fundo do mar:', error));
+            }, undefined, (error) => console.error('Falha ao carregar a textura do solo:', error));
+
+            // Cria a Água (agora como uma grelha)
+            const waterGeometry = new THREE.BoxGeometry(worldSize, 0.1, worldSize);
+            const waterMaterial = new THREE.MeshBasicMaterial({ color: 0x006994, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const mesh = new THREE.Mesh(waterGeometry, waterMaterial);
+                    mesh.position.y = waterLevel - 0.05; // Posição visual da água
+                    mesh.userData.isWater = true; // Identificador para o raycaster
+                    scene.add(mesh);
+                    waterMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
+
+            // O fundo do mar é agora renderizado pela própria ilha, pelo que esta secção foi removida.
+
+            // A rua foi removida, então o código relacionado a ela foi excluído.
+
+            // Cria o Corpo de Física do Jogador (esfera)
+            originalPlayerShape = new CANNON.Sphere(playerRadius); // Esfera com raio baseado na altura
+            crouchPlayerShape = new CANNON.Sphere(crouchRadius);   // Esfera agachada
+
+            playerBody = new CANNON.Body({
+                mass: 80,
+                shape: originalPlayerShape, // Começa com a forma original
+                material: playerMaterial,
+                linearDamping: 0.9, // Reverted to a higher damping for better stop-on-a-dime feel
+                angularDamping: 0.9,
+                fixedRotation: true, // Mantém rotação fixa para a câmera
+                allowSleep: true, // Permite que o jogador entre em modo de "sono"
+                sleepSpeedLimit: 0.01, // Velocidade linear mínima para "acordar"
+                sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer"
+            });
+            // Posição inicial: centro da esfera em playerRadius + islandSurfaceHeight
+            playerBody.position.set(70, playerRadius + islandSurfaceHeight + 10, 0); // Posição inicial ajustada do jogador
+            world.addBody(playerBody);
+
+            // Reintroduz o listener de colisão para canJump, mas com uma verificação adicional
+            playerBody.addEventListener('collide', (event) => {
+                // canJump é verdadeiro APENAS se o corpo colidido NÃO for o objeto que está sendo segurado
+                // A lista de corpos "chão" agora inclui apenas superfícies que podem ser pisadas
+                const allGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+                if (event.body !== pickedObjectBody && allGroundBodies.includes(event.body)) {
+                    canJump = true;
+                }
+            });
+
+            // --- Configuração dos Cubos Interativos ---
+            const cubeSize = 1;
+            // Carrega a textura para os cubos, CRIA o material e SÓ ENTÃO cria as caixas.
+            textureLoader.load(cubeTextureURL, (cubeTexture) => {
+                cubeTexture.wrapS = THREE.RepeatWrapping;
+                cubeTexture.wrapT = THREE.RepeatWrapping;
+                cubeTexture.repeat.set(1, 1);
+                cubeMaterialMesh = new THREE.MeshStandardMaterial({ map: cubeTexture });
+
+                // Cria as caixas iniciais DENTRO do callback, garantindo que o material exista.
+                createBox(new THREE.Vector3(0, cubeSize / 2 + islandSurfaceHeight, -10));
+                createBox(new THREE.Vector3(5, cubeSize / 2 + islandSurfaceHeight, -10));
+                createBox(new THREE.Vector3(-5, cubeSize / 2 + islandSurfaceHeight, -10));
+            });
+
+            // Cria o ghost block (transparente)
+            const ghostBlockMaterial = new THREE.MeshBasicMaterial({
+                color: 0x00ff00, // Verde para indicar que pode ser colocado
+                transparent: true,
+                opacity: 0.5,
+                depthWrite: false // Importante para renderizar corretamente sobre outros objetos
+            });
+            // Inicializa com a geometria do cob, será atualizada em updateSelectedSlot
+            ghostBlockMesh = new THREE.Mesh(new THREE.BoxGeometry(cobWidth, cobHeight, cobDepth), ghostBlockMaterial);
+            ghostBlockMesh.visible = false; // Inicialmente invisível
+            scene.add(ghostBlockMesh);
+
+            // NOVO: Carrega a textura de pedra para a ferramenta aplicadora
+            textureLoader.load(stoneTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1); // A textura cobre um patch
+                stoneMaterial = new THREE.MeshStandardMaterial({ map: texture });
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura de pedra:', error);
+                stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 }); // Fallback cinza
+            });
+
+            // NOVO: Carrega a textura do buraco para a ferramenta pá e o modelo do buraco
+            textureLoader.load(holeTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                holeMaterial = new THREE.MeshBasicMaterial({ map: texture });
+
+                // Adicionado: Carrega a textura de pedra para o buraco da montanha
+                textureLoader.load(stoneTextureURL, (stoneTexture) => {
+                    stoneTexture.wrapS = THREE.RepeatWrapping;
+                    stoneTexture.wrapT = THREE.RepeatWrapping;
+                    stoneTexture.repeat.set(1, 1);
+                    stoneHoleMaterial = new THREE.MeshBasicMaterial({ map: stoneTexture });
+                });
+
+                const gltfLoader = new GLTFLoader(loadingManager);
+
+...1 lines omitted for brevity...
+
+                gltfLoader.load(glbData, (gltf) => {
+                    // NOVO: Percorre a cena para encontrar a primeira malha e armazena a sua geometria.
+                    gltf.scene.traverse((node) => {
+                        if (node.isMesh && !holeGeometryTemplate) { // Pega apenas a primeira geometria que encontrar
+                            holeGeometryTemplate = node.geometry;
+                        }
+                    });
+                    console.log("Geometria do buraco carregada e armazenada a partir de Base64.");
+                }, undefined, (error) => {
+                    console.error('Erro ao carregar o modelo do buraco a partir de Base64:', error);
+                });
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura do buraco:', error);
+                holeMaterial = new THREE.MeshStandardMaterial({ color: 0x3b2712 }); // Fallback marrom escuro
+            });
+
+            // Load the cob texture and create the material once
+            textureLoader.load(cobTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                cobMaterialMesh = new THREE.MeshStandardMaterial({ map: texture }); // Create the material here
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura do cob:', error);
+                // Fallback to a plain color if texture fails to load
+                cobMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Brown color
+            });
+
+            // Load the floor texture and create the material once
+            textureLoader.load(floorTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                floorMaterialMesh = new THREE.MeshStandardMaterial({ map: texture }); // Create the material here
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura do piso:', error);
+                // Fallback to a plain color if texture fails to load
+                floorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xAAAAAA }); // Grey color for floor
+            });
+
+            // Load the wooden plank texture and create the material once
+            textureLoader.load(woodenPlankTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura da tábua de madeira:', error);
+                woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xdeb887 }); // Fallback brown
+            });
+
+            // Load the tree sapling texture (for icon) and create the material once
+            textureLoader.load(treeSaplingTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                treeSaplingMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura da muda de árvore:', error);
+                treeSaplingMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 }); // Dark green color
+            });
+
+            // Load tree bark texture and create material
+            textureLoader.load(treeBarkTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1); // Adjust as needed for bark
+                treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura do tronco da árvore:', error);
+                treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Fallback brown
+            });
+
+            // Load tree leaves texture and create material
+            textureLoader.load(treeLeavesTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1); // Adjust as needed for leaves
+                treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ map: texture, transparent: true, alphaTest: 0.5 }); // alphaTest for transparency
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura das folhas da árvore:', error);
+                treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 }); // Fallback dark green
+            });
+
+            // Cria um corpo "grabber" invisível para segurar objetos
+            grabberBody = new CANNON.Body({ mass: 0, type: CANNON.Body.KINEMATIC });
+            world.addBody(grabberBody);
+
+            // Inicializa o Raycaster
+            raycaster = new THREE.Raycaster();
+
+            // Pega o elemento da mira
+            crosshairElement = document.getElementById('crosshair');
+
+            // Pega elementos da barra de progresso
+            progressContainer = document.getElementById('progressContainer');
+            progressBar = document.getElementById('progressBar');
+
+            // Pega o elemento do botão de ícone do menu
+            menuIconButton = document.getElementById('menuIconButton');
+
+            // Pega elementos da mochila
+            backpackModal = document.getElementById('backpackModal');
+            backpackSlotsContainer = document.getElementById('backpackSlotsContainer');
+
+            // Inicializa o inventário
+            beltItems = new Array(numBeltSlots).fill(null); // Garante que esteja vazio primeiro
+            backpackItems = new Array(numBackpackSlots).fill(null);
+
+            // Itens padrão para os dois slots do cinto
+            // beltItems[0] agora começa como null para representar a mão quando vazio
+            beltItems[1] = { name: axeItemName, quantity: 1 }; // Machado no slot direito (secundário)
+
+            // Adiciona outros itens diretamente na mochila
+            addItemToInventory(backpackItems, { name: hammerItemName, quantity: 1 });
+            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 }); // NOVO
+            addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 }); // NOVO
+            beltItems[0] = { name: shovelItemName, quantity: 1 }; // NOVO: PÁ NA MÃO ESQUERDA
+            addItemToInventory(backpackItems, { name: textureApplicatorItemName, quantity: 1 });
+            addItemToInventory(backpackItems, { name: cobItemName, quantity: 100 });
+            addItemToInventory(backpackItems, { name: floorItemName, quantity: 50 });
+            addItemToInventory(backpackItems, { name: treeSaplingItemName, quantity: 10 });
+            addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 20 }); // NOVO: Adiciona troncos de árvore à mochila
+            addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 10 }); // NOVO: Adiciona tábuas de madeira à mochila
+            addItemToInventory(backpackItems, { name: boxItemName, quantity: 20 }); // Adiciona 20 caixas ao inventário inicial
+
+            // Pega o elemento do cinto de inventário e seus slots
+            inventoryBeltElement = document.getElementById('inventoryBelt');
+            updateBeltDisplay(); // Preenche os slots inicialmente
+
+
+            // Configura os Listeners de Eventos para teclado e mouse
+            window.addEventListener('keydown', (event) => {
+                // A lógica de Escape/Menu deve funcionar mesmo que o mundo não esteja pronto
+                if (event.key === 'Escape') {
+                    event.preventDefault(); // IMPEDE O COMPORTAMENTO PADRÃO DO NAVEGADOR (sair do pointer lock)
+
+                    if (gamePaused) {
+                        hideOptionsScreen(); // Se o menu estiver aberto, fecha-o
+                    } else if (document.pointerLockElement === renderer.domElement) {
+                        // Se o jogo estiver a correr e o ponteiro estiver bloqueado,
+                        // libertamos o bloqueio do ponteiro. O evento 'pointerlockchange'
+                        // irá então tratar de mostrar o menu.
+                        document.exitPointerLock();
+                    } else {
+                        // Se o jogo não estiver pausado e o ponteiro não estiver bloqueado
+                        // (ex: logo após iniciar o jogo e não clicou no canvas),
+                        // podemos mostrar o menu diretamente.
+                        showOptionsScreen();
+                    }
+                }
+
+                // Toggle backpack with 'B' key
+                if (event.key.toLowerCase() === 'b') {
+                    if (backpackModal.classList.contains('active')) {
+                        closeBackpack();
+                    } else {
+                        openBackpack();
+                    }
+                }
+
+                // NOVO: Seleção de slots com Q e E
+                if (!gamePaused && !backpackModal.classList.contains('active')) {
+                    if (event.key.toLowerCase() === 'q') {
+                        selectedSlotIndex = 0;
+                        updateBeltDisplay();
+                    } else if (event.key.toLowerCase() === 'e') {
+                        selectedSlotIndex = 1;
+                        updateBeltDisplay();
+                    }
+
+                    keysPressed[event.key.toLowerCase()] = true;
+                    if (event.key.toLowerCase() === ' ') { // Pular
+                        const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
+                        const isInWater = playerBottomY < waterLevel;
+                        if (canJump || isInWater) {
+                            // Impulso de salto mais forte necessário para sair da água
+                            const jumpImpulse = isInWater ? 600 * 3 : 400 * 3;
+                            playerBody.applyImpulse(new CANNON.Vec3(0, jumpImpulse, 0));
+                            canJump = false; // Impede pulos múltiplos
+                            if (isInWater) {
+                                isWaterJumping = true;
+                                // Desativa temporariamente as forças de flutuação para permitir que o salto tenha efeito
+                                setTimeout(() => { isWaterJumping = false; }, 500); // Reativa após meio segundo
+                            }
+                        }
+                    }
+                }
+            });
+            window.addEventListener('keyup', (event) => {
+                // Sempre permite que os eventos de soltar tecla desregistrem as teclas, mesmo se pausado
+                keysPressed[event.key.toLowerCase()] = false;
+            });
+
+            // Adiciona um listener para bloquear o ponteiro do mouse no clique do canvas
+            renderer.domElement.addEventListener('click', () => {
+                // Solicita o bloqueio do ponteiro apenas se o jogo não estiver pausado e a mochila não estiver aberta
+                if (isWorldReady && !gamePaused && !backpackModal.classList.contains('active') && document.pointerLockElement !== renderer.domElement) { // Verifica se o ponteiro já está bloqueado
+                    if (renderer && renderer.domElement) { // Adicionado verificação para renderer.domElement
+                        renderer.domElement.requestPointerLock().catch(error => { // Adicionado .catch()
+                            if (error.name === 'SecurityError' && error.message.includes('exited the lock')) {
+                                console.warn('Solicitação de bloqueio do ponteiro falhou porque o utilizador saiu do bloqueio prematuramente.');
+                            } else {
+                                console.error('Erro ao solicitar bloqueio do ponteiro:', error);
+                            }
+                        });
+                    }
+                }
+            });
+
+            document.addEventListener('pointerlockchange', () => {
+                if (document.pointerLockElement === renderer.domElement) {
+                    // Ponteiro bloqueado (jogo a correr)
+                    isDragging = true;
+                    document.body.style.cursor = 'none'; // Esconde o cursor
+                    if (renderer && renderer.domElement) {
+                        renderer.domElement.style.cursor = 'none'; // Garante que o cursor do canvas também esteja oculto
+                    }
+                    // Garante que o menu esteja escondido e o jogo não esteja pausado
+                    document.getElementById('optionsScreen').classList.remove('active');
+                    document.getElementById('crosshair').style.display = 'flex'; // Mostra a mira
+                    if (menuIconButton) {
+                        menuIconButton.style.display = 'flex'; // Mostra o botão do menu
+                    }
+                    if (inventoryBeltElement) {
+                        inventoryBeltElement.style.visibility = 'visible'; // Mostra o cinto de inventário
+                        inventoryBeltElement.style.opacity = '1';
+                    }
+                    backpackModal.classList.remove('active'); // Garante que a mochila esteja fechada
+                    gamePaused = false;
+                } else {
+                    // Ponteiro desbloqueado (saiu do bloqueio)
+                    isDragging = false;
+                    // Lida com a libertação de objetos, se houver
+                    if (pickedObjectBody) {
+                        if (grabberConstraint) {
+                            world.removeConstraint(grabberConstraint);
+                            grabberConstraint = null; // Limpa a referência da restrição
+                        }
+                        // O objeto já é dinâmico, então não precisamos restaurar massa/tipo
+                        pickedObjectBody.wakeUp();
+                        pickedObjectBody.allowSleep = true;
+
+                        pickedObjectBody = null;
+                        pickedObjectMesh = null;
+
+                        // Ao soltar o objeto, zera a velocidade do jogador para evitar arrasto residual
+                        playerBody.velocity.set(0,0,0);
+                        playerBody.angularVelocity.set(0,0,0);
+                        playerBody.allowSleep = true; // Permite que o jogador volte a dormir se estiver parado
+                        return; // Sai da função para evitar pegar outro objeto imediatamente
+                    }
+
+                    // Reinicia a destruição se o pointer lock for perdido
+                    isDestroying = false;
+                    destroyProgress = 0;
+                    progressContainer.style.display = 'none';
+
+                    document.body.style.cursor = 'default'; // Mostra o cursor
+                    if (renderer && renderer.domElement) {
+                        renderer.domElement.style.cursor = 'default'; // Mostra o cursor do canvas
+                    }
+                    crosshairElement.style.setProperty('--crosshair-color', 'white');
+                    if (ghostBlockMesh) {
+                        ghostBlockMesh.visible = false; // Oculta o ghost block
+                    }
+
+                    // Se o bloqueio do ponteiro foi perdido e NÃO foi por causa da mochila
+                    if (!pointerLockExitForBackpack) {
+                        showOptionsScreen(); // Isso irá definir gamePaused como true e mostrar o menu
+                    }
+                    // O cinto de inventário deve ser escondido APENAS se não for por causa da mochila
+                    if (inventoryBeltElement && !pointerLockExitForBackpack) {
+                        inventoryBeltElement.style.visibility = 'hidden';
+                        inventoryBeltElement.style.opacity = '0';
+                    }
+
+                    // Lida com o estado de agachamento se o bloqueio do ponteiro for perdido
+                    if (isCrouching) {
+                        isCrouching = false;
+                        playerBody.removeShape(originalPlayerShape);
+                        playerBody.addShape(crouchPlayerShape);
+                        playerBody.position.y += (originalPlayerShape.radius - crouchPlayerShape.radius);
+                        cameraEyeLevelOffset = originalPlayerShape.radius;
+                        playerBody.velocity.y = 0;
+                        playerBody.wakeUp();
+                    }
+                }
+                // Sempre reseta a flag após o processamento do pointerlockchange
+                pointerLockExitForBackpack = false;
+            });
+
+            // NOVO: Listener de mousedown consolidado
+            renderer.domElement.addEventListener('mousedown', (event) => {
+                if (!isWorldReady || gamePaused || !document.pointerLockElement) return;
+
+                if (event.button === 0) { // Botão esquerdo
+                    const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
+
+                    if (primaryActionType === 'destroy') {
+                        startDestruction();
+                    } else if (primaryActionType === 'create_mound') {
+                        startDigging();
+                    } else if (primaryActionType === 'grab') {
+                        // Inicia o temporizador para diferenciar clique de segurar
+                        clickHoldTimer = setTimeout(() => {
+                            clickHoldTimer = null; // O temporizador disparou, então é um clique longo
+                            if (!pickedObjectBody) {
+                                grabObject();
+                            }
+                        }, CLICK_HOLD_DURATION);
+                    }
+                }
+            });
+
+            // NOVO: Listener de mouseup consolidado
+            renderer.domElement.addEventListener('mouseup', (event) => {
+                if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) return;
+
+                stopDestruction(); // Para sempre a destruição em qualquer mouseup
+                stopDigging();
+
+                const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
+                const secondaryActionType = getActionType(beltItems[1]);
+
+                if (event.button === 0) { // Botão esquerdo do mouse para cima
+                    if (clickHoldTimer) { // Se o temporizador ainda existir, foi um clique curto
+                        clearTimeout(clickHoldTimer);
+                        clickHoldTimer = null;
+                        if (primaryActionType === 'grab') {
+                            if (pickedObjectBody) {
+                                dropObject(); // Clique curto enquanto segura -> largar
+                            } else {
+                                collectObject(); // Clique curto enquanto não segura -> recolher
+                            }
+                        }
+                    }
+                    // Se foi um clique longo, o temporizador é nulo e a função grabObject() já foi chamada.
+
+                    if (primaryActionType === 'place') {
+                        placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
+                    } else if (primaryActionType === 'apply_texture') {
+                        applyTexture();
+                    }
+                } else if (event.button === 2) { // Botão direito do mouse para cima
+                    if (secondaryActionType === 'place') {
+                        placeBlock(beltItems[1], 1);
+                    }
+                }
+            });
+
+            // --- Funções Auxiliares para Ações do Jogador ---
+
+            function getActionType(item) {
+                if (item === null) return 'grab';
+                if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName) return 'destroy';
+                if (item.name === shovelItemName) return 'create_mound';
+                if (item.name === textureApplicatorItemName) return 'apply_texture';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
+                return null;
+            }
+
+            function startDestruction() {
+                destructionComplete = false; // NOVO: Redefine a flag no início de uma nova destruição
+                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                const intersects = raycaster.intersectObjects(scene.children, true);
+                let target = null;
+                destroyTargetDeposit = null; // Reseta no início
+                for (let i = 0; i < intersects.length; i++) {
+                    if (intersects[i].distance > destroyDistance) continue;
+                    let intersectedObject = intersects[i].object;
+
+                    // NOVO: Verifica se o objeto intersectado é um depósito de pedra ou terra
+                    const allDeposits = [...stoneDeposits, ...dirtDeposits];
+                    const deposit = allDeposits.find(d => d.domeMeshes.some(m => m.mesh === intersectedObject));
+                    if (deposit && !deposit.flattened) {
+                        target = { body: deposit.body, mesh: intersectedObject, patchObject: null };
+                        destroyTargetDeposit = deposit;
+                        break;
+                    }
+
+                    // Lógica de destruição de patch atualizada
+                    if (intersectedObject.userData.patchObject) {
+                        const patchObject = intersectedObject.userData.patchObject;
+                        target = {
+                            body: null, // Patches não têm corpo de física
+                            mesh: intersectedObject, // A malha específica que foi atingida
+                            patchObject: patchObject // O objeto principal do patch
+                        };
+                        break;
+                    }
+
+                    let mainObject = null, intersectedBody = null;
+                    let currentObject = intersectedObject;
+                    while (currentObject) {
+                        if (currentObject.userData && currentObject.userData.physicsBody) {
+                            mainObject = currentObject;
+                            intersectedBody = currentObject.userData.physicsBody;
+                            break;
+                        }
+                        currentObject = currentObject.parent;
+                    }
+                    if (mainObject && intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible) {
+                        target = { body: intersectedBody, mesh: mainObject };
+                        break;
+                    }
+                }
+                if (target) {
+                    isDestroying = true;
+                    destroyProgress = 0;
+                    destroyTargetBody = target.body;
+                    destroyTargetMesh = target.mesh;
+                    destroyTargetPatchObject = target.patchObject || null;
+
+                    if (destroyTargetDeposit) {
+                        // O tempo de destruição agora é proporcional ao raio do depósito (ex: raio * 0.5)
+                        targetDestroyTime = destroyTargetDeposit.radius * 0.5;
+                        progressContainer.style.display = 'block';
+                    } else {
+                        let targetUserData;
+                        if (destroyTargetPatchObject) {
+                            targetUserData = destroyTargetPatchObject.userData;
+                        } else if (destroyTargetBody) {
+                            targetUserData = destroyTargetBody.userData;
+                        }
+
+                        if (targetUserData) {
+                            targetDestroyTime = targetUserData.durability || 1.0;
+                            progressContainer.style.display = 'block';
+                        } else {
+                            isDestroying = false; // Cancela se não houver dados do usuário
+                        }
+                    }
+                }
+            }
+
+            function stopDestruction() {
+                // Esta função agora apenas limpa o estado.
+                // A lógica de parar a barra de progresso foi movida para o loop de animação.
+                if (isDestroying) {
+                    isDestroying = false;
+                    destroyProgress = 0;
+                    progressContainer.style.display = 'none';
+                }
+                // Limpa os alvos apenas quando o botão do mouse é solto ou a mira é perdida.
+                destroyTargetBody = null;
+                destroyTargetMesh = null;
+                destroyTargetPatchObject = null;
+                destroyTargetDeposit = null; // Reseta o depósito alvo
+                destructionComplete = false; // Garante que a flag seja redefinida
+            }
+            function startDigging() {
+            diggingComplete = false;
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const groundMeshes = islandMeshes.map(item => item.mesh);
+            const intersects = raycaster.intersectObjects(groundMeshes, true);
+
+            if (intersects.length === 0) {
+                isDigging = false;
+                return;
+            }
+
+            const intersect = intersects[0];
+            const hitPoint = intersect.point;
+            const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
+            const isMountain = distanceToCenter < 50.0;
+
+            if (isMountain) {
+                // Create a temporary object to hold the digging position for the mountain
+                currentMound = {
+                    position: hitPoint.clone(),
+                    isMountain: true, // Add a flag to identify this as a mountain dig
+                };
+                isDigging = true;
+                digProgress = 0;
+                progressContainer.style.display = 'block';
+                progressBar.style.backgroundColor = '#888888'; // Gray for stone
+            } else {
+                let targetMound = null;
+                for (const intersect of intersects) {
+                    const intersectedObject = intersect.object;
+                    const parentMound = visualMounds.find(m => m.meshes.some(item => item.mesh === intersectedObject.parent.parent));
+                    if (parentMound && parentMound.growthStage < moundGrowthStages.length - 1) {
+                        if (intersect.distance < destroyDistance) {
+                            targetMound = parentMound;
+                            break;
+                        }
+                    }
+                }
+
+                if (targetMound) {
+                    currentMound = targetMound;
+                    isDigging = true;
+                    digProgress = 0;
+                    progressContainer.style.display = 'block';
+                    progressBar.style.backgroundColor = '#966F33';
+                } else {
+                    const newMound = createMound();
+                    if (newMound) {
+                        currentMound = newMound;
+                        isDigging = true;
+                        digProgress = 0;
+                        progressContainer.style.display = 'block';
+                        progressBar.style.backgroundColor = '#966F33';
+                    } else {
+                        isDigging = false;
+                    }
+                }
+            }
+        }
+
+        function stopDigging() {
+            if (currentMound) {
+                currentMound.lastDugAt = world.time; // Atualiza o tempo de inatividade
+            }
+            isDigging = false;
+            digProgress = 0;
+            progressContainer.style.display = 'none';
+            progressBar.style.backgroundColor = '#4CAF50'; // Redefine para o verde padrão
+            currentMound = null; // Apenas limpa a referência, não destrói o monte
+            diggingComplete = false; // Garante que a flag seja redefinida
+        }
+
         function init() {
             console.log("init called");
             window.THREE = THREE;
@@ -2521,78 +3486,6 @@
                 destroyTargetPatchObject = null;
                 destroyTargetDeposit = null; // Reseta o depósito alvo
                 destructionComplete = false; // Garante que a flag seja redefinida
-            }
-
-            function startDigging() {
-                diggingComplete = false;
-                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                const groundMeshes = islandMeshes.map(item => item.mesh);
-                const intersects = raycaster.intersectObjects(groundMeshes, true);
-
-                if (intersects.length === 0) {
-                    isDigging = false;
-                    return;
-                }
-
-                const intersect = intersects[0];
-                const hitPoint = intersect.point;
-                const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
-                const isMountain = distanceToCenter < 50.0;
-
-                if (isMountain) {
-                    // Create a temporary object to hold the digging position for the mountain
-                    currentMound = {
-                        position: hitPoint.clone(),
-                        isMountain: true, // Add a flag to identify this as a mountain dig
-                    };
-                    isDigging = true;
-                    digProgress = 0;
-                    progressContainer.style.display = 'block';
-                    progressBar.style.backgroundColor = '#888888'; // Gray for stone
-                } else {
-                    let targetMound = null;
-                    for (const intersect of intersects) {
-                        const intersectedObject = intersect.object;
-                        const parentMound = visualMounds.find(m => m.meshes.some(item => item.mesh === intersectedObject.parent.parent));
-                        if (parentMound && parentMound.growthStage < moundGrowthStages.length - 1) {
-                            if (intersect.distance < destroyDistance) {
-                                targetMound = parentMound;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (targetMound) {
-                        currentMound = targetMound;
-                        isDigging = true;
-                        digProgress = 0;
-                        progressContainer.style.display = 'block';
-                        progressBar.style.backgroundColor = '#966F33';
-                    } else {
-                        const newMound = createMound();
-                        if (newMound) {
-                            currentMound = newMound;
-                            isDigging = true;
-                            digProgress = 0;
-                            progressContainer.style.display = 'block';
-                            progressBar.style.backgroundColor = '#966F33';
-                        } else {
-                            isDigging = false;
-                        }
-                    }
-                }
-            }
-
-            function stopDigging() {
-                if (currentMound) {
-                    currentMound.lastDugAt = world.time; // Atualiza o tempo de inatividade
-                }
-                isDigging = false;
-                digProgress = 0;
-                progressContainer.style.display = 'none';
-                progressBar.style.backgroundColor = '#4CAF50'; // Redefine para o verde padrão
-                currentMound = null; // Apenas limpa a referência, não destrói o monte
-                diggingComplete = false; // Garante que a flag seja redefinida
             }
 
             function collectObject() {
@@ -4341,19 +5234,6 @@
             console.log("startGame called");
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
-            window.dirtDeposits = dirtDeposits; // Expose for debug
-            window.beltItems = beltItems;
-            window.backpackItems = backpackItems; // Expor para teste
-            window.updateBeltDisplay = updateBeltDisplay;
-            window.updateBackpackDisplay = updateBackpackDisplay; // Expor para teste
-            window.playerBody = playerBody;
-            window.visualMounds = visualMounds;
-            window.closingMounds = closingMounds;
-            window.createMound = createMound;
-            window.world = world;
-            window.moundGrowthStages = moundGrowthStages;
-            window.animate = animate;
-
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
             if (menuIconButton) {
