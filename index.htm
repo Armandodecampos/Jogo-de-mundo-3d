@@ -1217,15 +1217,16 @@
 
             // Adicionado: Verifica se a escavação está na montanha
             const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
-            const isMountain = distanceToCenter < 50.0; // 50.0 é o quarryRadius
+            if (distanceToCenter < 50.0) { // 50.0 é o quarryRadius
+                return null;
+            }
 
             // Define as dimensões e segmentos do vulcão
             const volcanoInnerRadius = 1.0;
             const volcanoOuterRadiusAtTop = 1.0;
             const volcanoOuterRadiusAtBottom = 1.5;
             const volcanoHeight = 0.1;
-            // Modificado: O número de segmentos agora depende se é montanha ou não
-            const volcanoRadialSegments = isMountain ? 6 : 32;
+            const volcanoRadialSegments = 32;
 
             // Cria um grupo para o vulcão
             const volcanoGroup = new THREE.Group();
@@ -1280,9 +1281,8 @@
 
             // Cria, dimensiona e posiciona o modelo do buraco central
             const holeRadius = 1.4;
-            // Modificado: A geometria do buraco agora é condicional
-            const centerGeometry = isMountain ? new THREE.CylinderGeometry(holeRadius, holeRadius, 0.01, 6) : new THREE.CircleGeometry(holeRadius, 32);
-            const centerInstance = new THREE.Mesh(centerGeometry, isMountain ? stoneHoleMaterial : holeMaterial);
+            const centerGeometry = new THREE.CircleGeometry(holeRadius, 32);
+            const centerInstance = new THREE.Mesh(centerGeometry, holeMaterial);
             centerInstance.rotation.x = -Math.PI / 2;
             centerInstance.position.y = 0.02;
             centerInstance.receiveShadow = true;
