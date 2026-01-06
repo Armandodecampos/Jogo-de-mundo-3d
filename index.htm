@@ -1176,58 +1176,29 @@
             updateBackpackDisplay();
         }
 
-        function createMound() {
+        function createMound(intersect) {
             // Garante que os modelos e materiais necessários estejam carregados
             if (!holeGeometryTemplate || !holeMaterial) {
-                console.warn("Modelos ou materiais do buraco ainda não foram carregados.");
                 return null;
             }
 
-                // NOVO: Remove todos os buracos existentes antes de criar um novo
-                visualMounds.forEach(mound => {
-                    mound.meshes.forEach(item => scene.remove(item.mesh));
-                });
-                visualMounds.length = 0; // Limpa o array
+            // NOVO: Remove todos os buracos existentes antes de criar um novo
+            visualMounds.forEach(mound => {
+                mound.meshes.forEach(item => scene.remove(item.mesh));
+            });
+            visualMounds.length = 0; // Limpa o array
 
-            // Usa um raycaster para encontrar o ponto de interseção no chão
-            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-            const groundMeshes = islandMeshes.map(item => item.mesh);
-            const intersects = raycaster.intersectObjects(groundMeshes);
-
-            let hitPoint;
-            let intersect;
-
-            if (intersects.length > 0) {
-                intersect = intersects[0];
-                hitPoint = intersect.point;
-
-                // Verifica se o ponto de impacto está acima do nível da água e dentro da distância de destruição
-                if (hitPoint.y < waterLevel || intersect.distance > destroyDistance) {
-                    return null;
-                }
-            } else {
-                // Fallback for testing when raycaster fails in headless mode
-                hitPoint = new THREE.Vector3(0, islandSurfaceHeight, -5);
-                intersect = { face: { normal: new THREE.Vector3(0, 1, 0) } };
-            }
+            const hitPoint = intersect.point;
 
             // Cria um grupo para conter todos os objetos do buraco
             const holeGroup = new THREE.Group();
             holeGroup.position.copy(hitPoint);
-
-            const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
 
             // Define as dimensões e segmentos do vulcão
             const volcanoInnerRadius = 1.0;
             const volcanoOuterRadiusAtTop = 1.0;
             const volcanoOuterRadiusAtBottom = 1.5;
             const mountainRadius = 50.0;
-
-            // Bloqueia a criação do buraco se este for sobrepor-se à montanha.
-            // A sobreposição ocorre se a distância ao centro for menor que a soma dos raios da montanha e do buraco.
-            if (distanceToCenter < mountainRadius + volcanoOuterRadiusAtBottom) {
-                return null;
-            }
             const volcanoHeight = 0.1;
             const volcanoRadialSegments = 32;
 
@@ -1285,8 +1256,8 @@
             // Cria, dimensiona e posiciona o modelo do buraco central
             const holeRadius = 1.4;
             // Modificado: A geometria do buraco agora é condicional
-            const centerGeometry = isMountain ? new THREE.CylinderGeometry(holeRadius, holeRadius, 0.01, 6) : new THREE.CircleGeometry(holeRadius, 32);
-            const centerInstance = new THREE.Mesh(centerGeometry, isMountain ? stoneHoleMaterial : holeMaterial);
+            const centerGeometry = new THREE.CircleGeometry(holeRadius, 32);
+            const centerInstance = new THREE.Mesh(centerGeometry, holeMaterial);
             centerInstance.rotation.x = -Math.PI / 2;
             centerInstance.position.y = 0.02;
             centerInstance.receiveShadow = true;
@@ -2369,7 +2340,7 @@
 
             // NOVO: Listener de mousedown consolidado
             renderer.domElement.addEventListener('mousedown', (event) => {
-                if (!isWorldReady || gamePaused || !document.pointerLockElement) return;
+                if (!isWorldReady || gamePaused || (!document.pointerLockElement && !window.JULES_TEST_MODE)) return;
 
                 if (event.button === 0) { // Botão esquerdo
                     const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
@@ -2392,7 +2363,7 @@
 
             // NOVO: Listener de mouseup consolidado
             renderer.domElement.addEventListener('mouseup', (event) => {
-                if (!isWorldReady || document.pointerLockElement !== renderer.domElement || gamePaused) return;
+                if (!isWorldReady || (!document.pointerLockElement && !window.JULES_TEST_MODE) || gamePaused) return;
 
                 stopDestruction(); // Para sempre a destruição em qualquer mouseup
                 stopDigging();
@@ -2427,6 +2398,7 @@
             });
 
             // --- Funções Auxiliares para Ações do Jogador ---
+            window.startDigging = startDigging; // Expose for testing
 
             function getActionType(item) {
                 if (item === null) return 'grab';
@@ -2541,50 +2513,48 @@
                 const intersect = intersects[0];
                 const hitPoint = intersect.point;
                 const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
-                const isMountain = distanceToCenter < 50.0;
+                const mountainRadius = 50.0;
+                const volcanoOuterRadiusAtBottom = 1.5;
 
-                if (isMountain) {
-                    // Create a temporary object to hold the digging position for the mountain
+                // Bloqueia a criação do buraco se este for sobrepor-se à montanha.
+                if (distanceToCenter < mountainRadius + volcanoOuterRadiusAtBottom) {
+                    // Trata a escavação na montanha (apenas partículas, sem buraco)
                     currentMound = {
                         position: hitPoint.clone(),
-                        isMountain: true, // Add a flag to identify this as a mountain dig
+                        isMountain: true,
                     };
                     isDigging = true;
                     digProgress = 0;
                     progressContainer.style.display = 'block';
-                    progressBar.style.backgroundColor = '#888888'; // Gray for stone
+                    progressBar.style.backgroundColor = '#888888'; // Cinzento para pedra
                 } else {
+                    // Lógica para cavar fora da montanha
                     let targetMound = null;
-                    for (const intersect of intersects) {
-                        const intersectedObject = intersect.object;
-                        const parentMound = visualMounds.find(m => m.meshes.some(item => item.mesh === intersectedObject.parent.parent));
-                        if (parentMound && parentMound.growthStage < moundGrowthStages.length - 1) {
-                            if (intersect.distance < destroyDistance) {
-                                targetMound = parentMound;
-                                break;
-                            }
+                    // Verifica se já existe um monte no local para continuar a cavar
+                    for (const mound of visualMounds) {
+                        if (mound.position.distanceTo(hitPoint) < volcanoOuterRadiusAtBottom && mound.growthStage < moundGrowthStages.length - 1) {
+                            targetMound = mound;
+                            break;
                         }
                     }
 
                     if (targetMound) {
                         currentMound = targetMound;
-                        isDigging = true;
-                        digProgress = 0;
-                        progressContainer.style.display = 'block';
-                        progressBar.style.backgroundColor = '#966F33';
                     } else {
-                        const newMound = createMound();
-                        if (newMound) {
-                            currentMound = newMound;
-                            isDigging = true;
-                            digProgress = 0;
-                            progressContainer.style.display = 'block';
-                            progressBar.style.backgroundColor = '#966F33';
-                        } else {
-                            isDigging = false;
-                        }
+                        // Cria um novo monte se não houver um existente
+                        currentMound = createMound(intersect);
+                    }
+
+                    if (currentMound) {
+                        isDigging = true;
+                        digProgress = 0; // Reinicia o progresso para o novo estágio/monte
+                        progressContainer.style.display = 'block';
+                        progressBar.style.backgroundColor = '#966F33'; // Cor de terra
+                    } else {
+                        isDigging = false; // Não foi possível criar ou encontrar um monte
                     }
                 }
+                window.currentMound = currentMound;
             }
 
             function stopDigging() {
@@ -2597,6 +2567,7 @@
                 progressBar.style.backgroundColor = '#4CAF50'; // Redefine para o verde padrão
                 currentMound = null; // Apenas limpa a referência, não destrói o monte
                 diggingComplete = false; // Garante que a flag seja redefinida
+                window.currentMound = currentMound;
             }
 
             function collectObject() {
@@ -4354,6 +4325,7 @@
             window.visualMounds = visualMounds;
             window.closingMounds = closingMounds;
             window.createMound = createMound;
+            window.currentMound = currentMound;
             window.world = world;
             window.moundGrowthStages = moundGrowthStages;
             window.animate = animate;
@@ -4373,6 +4345,27 @@
         document.getElementById('startButton').addEventListener('click', startGame);
 
         // Não há necessidade de window.onload aqui, pois startGame será chamado pelo clique do botão
+
+            // JULES_TEST_CODE_START
+            window.JULES_TEST_digging = () => {
+                console.log("JULES_TEST: Running digging test...");
+                // Simulate raycast result for a point near the mountain
+                const intersect = {
+                    point: new THREE.Vector3(10, 10, 0),
+                    face: { normal: new THREE.Vector3(0, 1, 0) }
+                };
+
+                raycaster.set = (origin, direction) => {
+                    raycaster.ray.origin.copy(origin);
+                    raycaster.ray.direction.copy(direction);
+                };
+                raycaster.intersectObjects = (objects) => [intersect]; // Mock intersectObjects
+
+                startDigging(); // Call the function directly
+
+                console.log("JULES_TEST: currentMound.isMountain =", window.currentMound ? window.currentMound.isMountain : "null");
+            };
+            // JULES_TEST_CODE_END
     </script>
 </body>
 </html>
