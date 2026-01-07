@@ -418,7 +418,7 @@
         let grabberConstraint = null;
         let distanceToPickedObject = 5; // Declarada globalmente para resolver o ReferenceError
         const pickUpDistance = 3.0; // Distância máxima para pegar um objeto
-        const destroyDistance = 5.0; // Distância máxima para destruir um objeto
+        const destroyDistance = 3.0; // Distância máxima para destruir um objeto
 
         // NOVO: Variáveis para o sistema de destruição progressiva
         let isDestroying = false;
@@ -2544,6 +2544,10 @@
                 }
 
                 const intersect = intersects[0];
+                if (intersect.distance > destroyDistance) {
+                    isDigging = false;
+                    return;
+                }
                 const hitPoint = intersect.point;
                 const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
                 const mountainRadius = 50.0;
@@ -2575,7 +2579,7 @@
                     isDigging = true;
                     digProgress = 0; // Reinicia o progresso para o novo estágio/monte
                     progressContainer.style.display = 'block';
-                    progressBar.style.backgroundColor = '#966F33'; // Cor de terra
+                    progressBar.style.backgroundColor = '#4CAF50'; // Verde para terra
                 } else {
                     isDigging = false; // Não foi possível criar ou encontrar um monte
                 }
@@ -3196,6 +3200,15 @@
                 } else {
                     // Se estiver na mira, continua o progresso
                     destroyProgress += 1 / 60;
+
+                    // NOVO: Gera detritos intermitentemente ao minerar
+                    if (destroyTargetMountainInfo || destroyTargetDeposit) {
+                        if (Math.random() < 0.5) {
+                            const position = destroyTargetMountainInfo ? destroyTargetMountainInfo.position : new THREE.Vector3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
+                            createDebris(position, 2, true); // true para pedra
+                        }
+                    }
+
                     if (destroyProgress >= targetDestroyTime) {
                         // Objeto destruído!
                         let position;
