@@ -3103,7 +3103,6 @@
             // NOVO: Lógica de escavação progressiva
             if (isDigging && currentMound && !diggingComplete) {
                 digProgress += 1 / 60; // Incrementa o progresso
-                const progressRatio = Math.min(digProgress / targetDigTime, 1.0);
 
                 // Create particles and smoke as the player digs
                 if (Math.random() < 0.5) { // Spawn debris intermittently
@@ -3112,9 +3111,6 @@
                 if (Math.random() < 0.2) { // Spawn smoke intermittently
                     createSmokeEffect(currentMound.position);
                 }
-
-                // Atualiza a barra de progresso
-                progressBar.style.width = `${progressRatio * 100}%`;
 
                 if (digProgress >= targetDigTime) {
                     // A big puff of dust when a stage is complete
@@ -3155,6 +3151,10 @@
                             digProgress = 0; // Reset for next stage
                         }
                     }
+                } else {
+                    // Atualiza a barra de progresso
+                    const progressRatio = Math.min(digProgress / targetDigTime, 1.0);
+                    progressBar.style.width = `${progressRatio * 100}%`;
                 }
             }
 
@@ -3203,7 +3203,7 @@
 
                     // NOVO: Gera detritos intermitentemente ao minerar
                     if (destroyTargetMountainInfo || destroyTargetDeposit) {
-                        if (Math.random() < 0.5) {
+                        if (Math.random() < 0.2) {
                             const position = destroyTargetMountainInfo ? destroyTargetMountainInfo.position : new THREE.Vector3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
                             createDebris(position, 2, true); // true para pedra
                         }
@@ -4394,27 +4394,6 @@
         document.getElementById('startButton').addEventListener('click', startGame);
 
         // Não há necessidade de window.onload aqui, pois startGame será chamado pelo clique do botão
-
-            // JULES_TEST_CODE_START
-            window.JULES_TEST_digging = () => {
-                console.log("JULES_TEST: Running digging test...");
-                // Simulate raycast result for a point near the mountain
-                const intersect = {
-                    point: new THREE.Vector3(10, 10, 0),
-                    face: { normal: new THREE.Vector3(0, 1, 0) }
-                };
-
-                raycaster.set = (origin, direction) => {
-                    raycaster.ray.origin.copy(origin);
-                    raycaster.ray.direction.copy(direction);
-                };
-                raycaster.intersectObjects = (objects) => [intersect]; // Mock intersectObjects
-
-                startDigging(); // Call the function directly
-
-                console.log("JULES_TEST: currentMound.isMountain =", window.currentMound ? window.currentMound.isMountain : "null");
-            };
-            // JULES_TEST_CODE_END
     </script>
 </body>
 </html>
