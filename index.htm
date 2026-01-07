@@ -527,7 +527,6 @@
         loadingManager.onLoad = () => {
             console.log("All resources loaded, world is ready.");
             isWorldReady = true;
-            window.isWorldReady = true; // Expose for verification
         };
 
         // Instância do carregador de textura, agora usando o gerenciador de carregamento
@@ -1501,28 +1500,23 @@
             }
         }
 
-        // NEW: Function to create digging debris (dirt and stone)
+        // NEW: Function to create digging debris (dirt and stone) - NOW VISUAL ONLY
         function createDebris(position, count, isMountain) {
             const debrisTypes = isMountain ? [
                 { type: 'stone', color: 0x888888, shape: 'icosahedron' }
             ] : [
-                { type: 'dirt', color: 0xA0522D, shape: 'box' },
-                { type: 'stone', color: 0xA0522D, shape: 'icosahedron' }
+                { type: 'dirt', color: 0xA0522D, shape: 'box' }
             ];
 
             for (let i = 0; i < count; i++) {
                 const debrisType = debrisTypes[Math.floor(Math.random() * debrisTypes.length)];
-                const size = Math.random() * 0.01 + 0.07;
+                const size = Math.random() * 0.05 + 0.05; // Slightly smaller and less varied size
 
                 let debrisGeometry;
-                let debrisShape;
-
                 if (debrisType.shape === 'box') {
                     debrisGeometry = new THREE.BoxGeometry(size, size, size);
-                    debrisShape = new CANNON.Box(new CANNON.Vec3(size / 2, size / 2, size / 2));
                 } else { // icosahedron for stones
-                    debrisGeometry = new THREE.IcosahedronGeometry(size / 1, 0);
-                    debrisShape = new CANNON.Sphere(size / 1); // Approximate with a sphere for performance
+                    debrisGeometry = new THREE.IcosahedronGeometry(size, 0);
                 }
 
                 const debrisMaterialMesh = new THREE.MeshStandardMaterial({
@@ -1530,39 +1524,32 @@
                     roughness: 0.8,
                     metalness: 0.1
                 });
+
                 const debrisMesh = new THREE.Mesh(debrisGeometry, debrisMaterialMesh);
                 debrisMesh.castShadow = true;
 
-                const debrisBody = new CANNON.Body({
-                    mass: size * 50,
-                    shape: debrisShape,
-                    material: debrisMaterial,
-                    linearDamping: 0.1,
-                    angularDamping: 0.5
-                });
-
-                debrisBody.position.copy(position).vadd(new CANNON.Vec3(
-                    (Math.random() - 0.5) * 0.5,
-                    Math.random() * 0.5,
-                    (Math.random() - 0.5) * 0.5
+                // Set initial position with a slight random offset
+                debrisMesh.position.copy(position).add(new THREE.Vector3(
+                    (Math.random() - 0.5) * 0.2,
+                    Math.random() * 0.2,
+                    (Math.random() - 0.5) * 0.2
                 ));
 
-                const impulse = new CANNON.Vec3(
-                    (Math.random() - 0.5) * 0.1,
-                    0.2 + Math.random() * 0.2,
-                    (Math.random() - 0.5) * 0.1
+                // Store velocity and lifetime in userData for manual simulation
+                debrisMesh.userData.velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 2.0,       // Horizontal spread
+                    1.5 + Math.random() * 2.0,         // Upward velocity
+                    (Math.random() - 0.5) * 2.0        // Horizontal spread
                 );
-                debrisBody.applyImpulse(impulse);
+                debrisMesh.userData.angularVelocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 5,
+                    (Math.random() - 0.5) * 5,
+                    (Math.random() - 0.5) * 5
+                );
+                debrisMesh.userData.lifetime = 1.0 + Math.random() * 1.5; // Lifetime in seconds
 
-
-                world.addBody(debrisBody);
                 scene.add(debrisMesh);
-
-                debrisParticles.push({
-                    mesh: debrisMesh,
-                    body: debrisBody,
-                    lifetime: 2.0 + Math.random() * 2.0 // Lifetime in seconds
-                });
+                debrisParticles.push(debrisMesh); // Push the mesh directly
             }
         }
 
@@ -2181,8 +2168,6 @@
             updateBeltDisplay(); // Preenche os slots inicialmente
 
 
-            window.visualMounds = visualMounds; // Expor para verificação
-
             // Configura os Listeners de Eventos para teclado e mouse
             window.addEventListener('keydown', (event) => {
                 // A lógica de Escape/Menu deve funcionar mesmo que o mundo não esteja pronto
@@ -2353,8 +2338,6 @@
 
                     if (primaryActionType === 'destroy') {
                         startDestruction();
-                    } else if (primaryActionType === 'create_mound') {
-                        startDigging();
                     } else if (primaryActionType === 'grab') {
                         // Inicia o temporizador para diferenciar clique de segurar
                         clickHoldTimer = setTimeout(() => {
@@ -2404,55 +2387,64 @@
             });
 
             // --- Funções Auxiliares para Ações do Jogador ---
-            window.startDigging = startDigging; // Expose for testing
 
             function getActionType(item) {
                 if (item === null) return 'grab';
-                if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName || item.name === pickaxeItemName) return 'destroy';
-                if (item.name === shovelItemName) return 'create_mound';
+                if (item.name === axeItemName || item.name === hammerItemName || item.name === stoneItemName || item.name === pickaxeItemName || item.name === shovelItemName) return 'destroy';
                 if (item.name === textureApplicatorItemName) return 'apply_texture';
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
                 return null;
             }
 
             function startDestruction() {
-                destructionComplete = false; // NOVO: Redefine a flag no início de uma nova destruição
+                destructionComplete = false;
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
                 let target = null;
-                destroyTargetDeposit = null; // Reseta no início
+                destroyTargetDeposit = null;
+
+                const heldItemName = beltItems[selectedSlotIndex]?.name;
+
                 for (let i = 0; i < intersects.length; i++) {
                     if (intersects[i].distance > destroyDistance) continue;
                     let intersectedObject = intersects[i].object;
+                    const hitPoint = intersects[i].point;
 
+                    // Lógica 1: Atingiu a Montanha
                     const isIslandMesh = islandMeshes.some(m => m.mesh === intersectedObject);
                     if (isIslandMesh) {
-                        const hitPoint = intersects[i].point;
                         const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
                         const mountainRadius = 50.0;
                         if (distanceToCenter < mountainRadius) {
-                            if (beltItems[selectedSlotIndex]?.name !== pickaxeItemName) continue;
-                            target = {
-                                body: null,
-                                mesh: intersectedObject,
-                                isMountain: true,
-                                position: hitPoint.clone()
-                            };
+                            if (heldItemName === pickaxeItemName) {
+                                target = { body: null, mesh: intersectedObject, isMountain: true, position: hitPoint.clone() };
+                                break;
+                            }
+                        } else {
+                             // Lógica 2: Atingiu o chão (para cavar com a pá)
+                            if (heldItemName === shovelItemName) {
+                                // Inicia a lógica de cavar diretamente aqui
+                                startDigging(intersects[i]);
+                                return; // Sai da função startDestruction, pois a ação de cavar foi iniciada
+                            }
+                        }
+                    }
+
+                    // Lógica 3: Atingiu um Depósito
+                    const allDeposits = [...stoneDeposits, ...dirtDeposits];
+                    const deposit = allDeposits.find(d => d.domeMeshes.some(m => m.mesh === intersectedObject));
+                    if (deposit && !deposit.flattened) {
+                        const isStoneDeposit = deposit.type === 'stone';
+                        const isDirtDeposit = deposit.type === 'dirt';
+
+                        if ((isStoneDeposit && heldItemName === pickaxeItemName) || (isDirtDeposit && heldItemName === shovelItemName)) {
+                            target = { body: deposit.body, mesh: intersectedObject, patchObject: null };
+                            destroyTargetDeposit = deposit;
                             break;
                         }
                     }
 
-                    // NOVO: Verifica se o objeto intersectado é um depósito de pedra ou terra
-                    const allDeposits = [...stoneDeposits, ...dirtDeposits];
-                    const deposit = allDeposits.find(d => d.domeMeshes.some(m => m.mesh === intersectedObject));
-                    if (deposit && !deposit.flattened) {
-                         if (beltItems[selectedSlotIndex]?.name !== pickaxeItemName) continue;
-                        target = { body: deposit.body, mesh: intersectedObject, patchObject: null };
-                        destroyTargetDeposit = deposit;
-                        break;
-                    }
-
-                    // Lógica de destruição de patch atualizada
+                    // Lógica 4: Atingiu um Patch
                     if (intersectedObject.userData.patchObject) {
                         const patchObject = intersectedObject.userData.patchObject;
                         target = {
@@ -2523,6 +2515,7 @@
                     destroyProgress = 0;
                     progressContainer.style.display = 'none';
                 }
+                 stopDigging();
                 // Limpa os alvos apenas quando o botão do mouse é solto ou a mira é perdida.
                 destroyTargetBody = null;
                 destroyTargetMesh = null;
@@ -2532,22 +2525,8 @@
                 destructionComplete = false; // Garante que a flag seja redefinida
             }
 
-            function startDigging() {
+            function startDigging(intersect) {
                 diggingComplete = false;
-                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                const groundMeshes = islandMeshes.map(item => item.mesh);
-                const intersects = raycaster.intersectObjects(groundMeshes, true);
-
-                if (intersects.length === 0) {
-                    isDigging = false;
-                    return;
-                }
-
-                const intersect = intersects[0];
-                if (intersect.distance > destroyDistance) {
-                    isDigging = false;
-                    return;
-                }
                 const hitPoint = intersect.point;
                 const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
                 const mountainRadius = 50.0;
@@ -2583,20 +2562,19 @@
                 } else {
                     isDigging = false; // Não foi possível criar ou encontrar um monte
                 }
-                window.currentMound = currentMound;
             }
-
             function stopDigging() {
-                if (currentMound) {
-                    currentMound.lastDugAt = world.time; // Atualiza o tempo de inatividade
+                if(isDigging) {
+                    if (currentMound) {
+                        currentMound.lastDugAt = world.time; // Atualiza o tempo de inatividade
+                    }
+                    isDigging = false;
+                    digProgress = 0;
+                    progressContainer.style.display = 'none';
+                    progressBar.style.backgroundColor = '#4CAF50'; // Redefine para o verde padrão
+                    currentMound = null; // Apenas limpa a referência, não destrói o monte
+                    diggingComplete = false; // Garante que a flag seja redefinida
                 }
-                isDigging = false;
-                digProgress = 0;
-                progressContainer.style.display = 'none';
-                progressBar.style.backgroundColor = '#4CAF50'; // Redefine para o verde padrão
-                currentMound = null; // Apenas limpa a referência, não destrói o monte
-                diggingComplete = false; // Garante que a flag seja redefinida
-                window.currentMound = currentMound;
             }
 
             function collectObject() {
@@ -2853,7 +2831,7 @@
 
             // NOVO: Chama as funções para configurar os depósitos
             setupStoneDeposits();
-            // setupDirtDeposits();
+            setupDirtDeposits();
         }
 
         // NOVO: Função separada para configurar os depósitos de pedra
@@ -4324,18 +4302,28 @@
                 }
             }
 
-            // NEW: Update debris particles
+            // NEW: Update debris particles (visual only)
+            const timeStep = 1 / 60;
             for (let i = debrisParticles.length - 1; i >= 0; i--) {
                 const particle = debrisParticles[i];
-                particle.lifetime -= 1 / 10;
+                particle.userData.lifetime -= timeStep;
 
-                if (particle.lifetime <= 0) {
-                    scene.remove(particle.mesh);
-                    world.removeBody(particle.body);
+                if (particle.userData.lifetime <= 0) {
+                    scene.remove(particle);
+                    if(particle.geometry) particle.geometry.dispose();
+                    if(particle.material) particle.material.dispose();
                     debrisParticles.splice(i, 1);
                 } else {
-                    particle.mesh.position.copy(particle.body.position);
-                    particle.mesh.quaternion.copy(particle.body.quaternion);
+                    // Apply gravity
+                    particle.userData.velocity.y -= 9.82 * timeStep * 2; // A bit stronger gravity for effect
+
+                    // Update position
+                    particle.position.add(particle.userData.velocity.clone().multiplyScalar(timeStep));
+
+                    // Update rotation
+                    particle.rotation.x += particle.userData.angularVelocity.x * timeStep;
+                    particle.rotation.y += particle.userData.angularVelocity.y * timeStep;
+                    particle.rotation.z += particle.userData.angularVelocity.z * timeStep;
                 }
             }
 
@@ -4365,19 +4353,6 @@
             console.log("startGame called");
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
-            window.dirtDeposits = dirtDeposits; // Expose for debug
-            window.beltItems = beltItems;
-            window.backpackItems = backpackItems; // Expor para teste
-            window.updateBeltDisplay = updateBeltDisplay;
-            window.updateBackpackDisplay = updateBackpackDisplay; // Expor para teste
-            window.playerBody = playerBody;
-            window.visualMounds = visualMounds;
-            window.closingMounds = closingMounds;
-            window.createMound = createMound;
-            window.currentMound = currentMound;
-            window.world = world;
-            window.moundGrowthStages = moundGrowthStages;
-            window.animate = animate;
 
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
