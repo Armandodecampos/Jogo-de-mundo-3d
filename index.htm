@@ -1597,15 +1597,12 @@
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function init() {
             console.log("init called");
-            window.THREE = THREE;
-            window.CANNON = CANNON;
             // Define o offset inicial do nível dos olhos da câmera como o raio da esfera
             cameraEyeLevelOffset = playerRadius;
             originalCameraEyeLevelOffset = cameraEyeLevelOffset; // Para armazenar o valor inicial
 
             // Configuração da Cena Three.js
             scene = new THREE.Scene();
-            window.scene = scene;
             skyColor = new THREE.Color(0x87CEEB);
             underwaterColor = new THREE.Color(0x001e3d);
             scene.background = skyColor; // Começa com a cor do céu
@@ -1618,7 +1615,6 @@
 
             // Configuração da Câmera Three.js
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
-            window.camera = camera; // Expose for debug
             camera.rotation.order = 'YXZ'; // Define a ordem de rotação para guinada (Y), inclinação (X), rolagem (Z)
 
             // Configuração do Renderizador Three.js
@@ -2832,6 +2828,7 @@
             // NOVO: Chama as funções para configurar os depósitos
             setupStoneDeposits();
             setupDirtDeposits();
+
         }
 
         // NOVO: Função separada para configurar os depósitos de pedra
@@ -3185,6 +3182,10 @@
                             const position = destroyTargetMountainInfo ? destroyTargetMountainInfo.position : new THREE.Vector3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
                             createDebris(position, 2, true); // true para pedra
                         }
+                        // Adiciona efeito de fumaça ao minerar a montanha
+                        if (destroyTargetMountainInfo && Math.random() < 0.2) {
+                            createSmokeEffect(destroyTargetMountainInfo.position);
+                        }
                     }
 
                     if (destroyProgress >= targetDestroyTime) {
@@ -3200,6 +3201,11 @@
                             });
                             updateBackpackDisplay();
                             position = destroyTargetMountainInfo.position.clone();
+                            // Corrige o bug de congelamento redefinindo o estado imediatamente
+                            destructionComplete = true;
+                            isDestroying = false;
+                            progressContainer.style.display = 'none';
+                            destroyProgress = 0;
                         }
                         // NOVO: Lógica de destruição de depósitos de pedra
                         else if (destroyTargetDeposit) {
