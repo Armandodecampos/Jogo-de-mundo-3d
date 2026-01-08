@@ -427,17 +427,11 @@
         let destroyTargetBody = null; // Corpo que está sendo destruído
         let destroyTargetMesh = null; // Malha visual do corpo
         let destroyTargetPatchObject = null;
-        let destroyTargetDeposit = null; // Para rastrear o depósito alvo
         let destroyTargetMountainInfo = null;
+        let destroyTargetDigInfo = null; // NOVO: Para unificar a escavação
         let destructionComplete = false; // NOVO: Flag para gerenciar o estado de destruição
-
-        // NOVO: Variáveis para o sistema de escavação progressiva
-        let isDigging = false;
-        let digProgress = 0;
-        let targetDigTime = 0.5; // Tempo para cavar (em segundos)
         let currentMound = null; // NOVO: Referência ao buraco que está sendo cavado
         const moundGrowthStages = [0.25, 0.5, 0.75, 1.0]; // NOVO: Estágios de crescimento
-        let diggingComplete = false; // NOVO: Flag para gerenciar o estado da escavação
 
         // NOVO: Variáveis para a lógica de clique vs. segurar
         let mouseDownTime = 0;
@@ -476,23 +470,6 @@
         const cobSize = 0.4;
         const islandSurfaceHeight = 0.8; // A altura da superfície visível da ilha
 
-        // NOVO: Constantes e variáveis para depósitos de pedra
-        const stoneDepositTextureURL = "https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1";
-        let stoneDepositMaterial;
-        let flattenedStoneDepositMaterial;
-        const numStoneDeposits = 30;
-        const stoneDepositRadius = 4;
-        const stoneDepositHeight = 3;
-        let stoneDeposits = [];
-
-        // NOVO: Constantes e variáveis para depósitos de terra
-        const dirtDepositTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&st=2hknz00t&dl=0";
-        let dirtDepositMaterial;
-        let flattenedDirtDepositMaterial; // Material para o estado achatado
-        const numDirtDeposits = 40;
-        const dirtDepositRadius = 3; // Isso agora servirá como um raio *base*
-        const dirtDepositHeight = 2; // Isso agora servirá como uma altura *base*
-        let dirtDeposits = []; // Array para rastrear o estado e os objetos de cada depósito
         const islandHeight = islandSurfaceHeight - seabedLevel; // Altura total do cilindro da ilha
         const roadWidth = 10; // Largura da estrada
         const roadHeight = 0.2; // Espessura da estrada
@@ -1475,11 +1452,11 @@
         }
 
         // Function to create a smoke effect at a given position
-        function createSmokeEffect(position) {
+        function createSmokeEffect(position, isMountain = false) {
             const smokeCount = 15; // Increased particle count for denser smoke
             const smokeGeometry = new THREE.SphereGeometry(0.15, 8, 8); // Tripled the size
             const smokeMaterial = new THREE.MeshBasicMaterial({
-                color: 0xA0522D, // Dirt color
+                color: isMountain ? 0x888888 : 0xA0522D, // Gray for mountain, brown for dirt
                 transparent: true,
                 opacity: 0.5,
                 depthWrite: false // Important for transparent objects
@@ -2327,7 +2304,7 @@
 
             // NOVO: Listener de mousedown consolidado
             renderer.domElement.addEventListener('mousedown', (event) => {
-                if (!isWorldReady || gamePaused || (!document.pointerLockElement && !window.JULES_TEST_MODE)) return;
+                if (!isWorldReady || gamePaused || !document.pointerLockElement) return;
 
                 if (event.button === 0) { // Botão esquerdo
                     const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
@@ -2348,10 +2325,9 @@
 
             // NOVO: Listener de mouseup consolidado
             renderer.domElement.addEventListener('mouseup', (event) => {
-                if (!isWorldReady || (!document.pointerLockElement && !window.JULES_TEST_MODE) || gamePaused) return;
+                if (!isWorldReady || !document.pointerLockElement || gamePaused) return;
 
                 stopDestruction(); // Para sempre a destruição em qualquer mouseup
-                stopDigging();
 
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
                 const secondaryActionType = getActionType(beltItems[1]);
@@ -2397,7 +2373,6 @@
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
                 let target = null;
-                destroyTargetDeposit = null;
 
                 const heldItemName = beltItems[selectedSlotIndex]?.name;
 
@@ -2406,7 +2381,7 @@
                     let intersectedObject = intersects[i].object;
                     const hitPoint = intersects[i].point;
 
-                    // Lógica 1: Atingiu a Montanha
+                    // Lógica 1: Atingiu a Montanha ou Chão
                     const isIslandMesh = islandMeshes.some(m => m.mesh === intersectedObject);
                     if (isIslandMesh) {
                         const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
@@ -2417,28 +2392,13 @@
                                 break;
                             }
                         } else {
-                             // Lógica 2: Atingiu o chão (para cavar com a pá)
                             if (heldItemName === shovelItemName) {
-                                // Inicia a lógica de cavar diretamente aqui
-                                startDigging(intersects[i]);
-                                return; // Sai da função startDestruction, pois a ação de cavar foi iniciada
+                                target = { body: null, mesh: intersectedObject, isDigging: true, intersect: intersects[i] };
+                                break;
                             }
                         }
                     }
 
-                    // Lógica 3: Atingiu um Depósito
-                    const allDeposits = [...stoneDeposits, ...dirtDeposits];
-                    const deposit = allDeposits.find(d => d.domeMeshes.some(m => m.mesh === intersectedObject));
-                    if (deposit && !deposit.flattened) {
-                        const isStoneDeposit = deposit.type === 'stone';
-                        const isDirtDeposit = deposit.type === 'dirt';
-
-                        if ((isStoneDeposit && heldItemName === pickaxeItemName) || (isDirtDeposit && heldItemName === shovelItemName)) {
-                            target = { body: deposit.body, mesh: intersectedObject, patchObject: null };
-                            destroyTargetDeposit = deposit;
-                            break;
-                        }
-                    }
 
                     // Lógica 4: Atingiu um Patch
                     if (intersectedObject.userData.patchObject) {
@@ -2473,13 +2433,43 @@
                     destroyTargetMesh = target.mesh;
                     destroyTargetPatchObject = target.patchObject || null;
                     destroyTargetMountainInfo = target.isMountain ? { position: target.position } : null;
+                    destroyTargetDigInfo = null; // Reseta a info de escavação
 
-                    if (destroyTargetDeposit) {
-                        // O tempo de destruição agora é proporcional ao raio do depósito (ex: raio * 0.5)
-                        targetDestroyTime = destroyTargetDeposit.radius * 0.5;
-                        progressContainer.style.display = 'block';
-                        progressBar.style.backgroundColor = '#888888';
-                        progressBar.style.width = '0%';
+                    if (target.isDigging) {
+                        const intersect = target.intersect;
+                        const hitPoint = intersect.point;
+                        const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
+                        const mountainRadius = 50.0;
+                        const volcanoOuterRadiusAtBottom = 1.5;
+
+                        if (distanceToCenter < mountainRadius + volcanoOuterRadiusAtBottom) {
+                            return; // Sai se estiver muito perto da montanha
+                        }
+
+                        let targetMound = null;
+                        for (const mound of visualMounds) {
+                            if (mound.position.distanceTo(hitPoint) < volcanoOuterRadiusAtBottom && mound.growthStage < moundGrowthStages.length - 1) {
+                                targetMound = mound;
+                                break;
+                            }
+                        }
+
+                        if (targetMound) {
+                            currentMound = targetMound;
+                        } else {
+                            currentMound = createMound(intersect);
+                        }
+
+                        if (currentMound) {
+                            isDestroying = true; // Flag unificada
+                            destroyProgress = 0;
+                            destroyTargetDigInfo = { mound: currentMound };
+                            targetDestroyTime = 1.0; // Tempo fixo para cada estágio de escavação
+                            progressContainer.style.display = 'block';
+                            progressBar.style.backgroundColor = '#4CAF50';
+                            progressBar.style.width = '0%';
+                        }
+
                     } else if (destroyTargetMountainInfo) {
                         targetDestroyTime = 2.0; // Tempo fixo para minerar a montanha
                         progressContainer.style.display = 'block';
@@ -2504,72 +2494,21 @@
             }
 
             function stopDestruction() {
-                // Esta função agora apenas limpa o estado.
-                // A lógica de parar a barra de progresso foi movida para o loop de animação.
                 if (isDestroying) {
+                    if (currentMound) {
+                        currentMound.lastDugAt = world.time; // Atualiza o tempo de inatividade ao parar
+                    }
                     isDestroying = false;
                     destroyProgress = 0;
                     progressContainer.style.display = 'none';
-                }
-                 stopDigging();
-                // Limpa os alvos apenas quando o botão do mouse é solto ou a mira é perdida.
-                destroyTargetBody = null;
-                destroyTargetMesh = null;
-                destroyTargetPatchObject = null;
-                destroyTargetDeposit = null; // Reseta o depósito alvo
-                destroyTargetMountainInfo = null;
-                destructionComplete = false; // Garante que a flag seja redefinida
-            }
-
-            function startDigging(intersect) {
-                diggingComplete = false;
-                const hitPoint = intersect.point;
-                const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
-                const mountainRadius = 50.0;
-                const volcanoOuterRadiusAtBottom = 1.5;
-
-                // Bloqueia a criação do buraco se este for sobrepor-se à montanha.
-                if (distanceToCenter < mountainRadius + volcanoOuterRadiusAtBottom) {
-                    isDigging = false;
-                    return;
-                }
-                // Lógica para cavar fora da montanha
-                let targetMound = null;
-                // Verifica se já existe um monte no local para continuar a cavar
-                for (const mound of visualMounds) {
-                    if (mound.position.distanceTo(hitPoint) < volcanoOuterRadiusAtBottom && mound.growthStage < moundGrowthStages.length - 1) {
-                        targetMound = mound;
-                        break;
-                    }
-                }
-
-                if (targetMound) {
-                    currentMound = targetMound;
-                } else {
-                    // Cria um novo monte se não houver um existente
-                    currentMound = createMound(intersect);
-                }
-
-                if (currentMound) {
-                    isDigging = true;
-                    digProgress = 0; // Reinicia o progresso para o novo estágio/monte
-                    progressContainer.style.display = 'block';
-                    progressBar.style.backgroundColor = '#4CAF50'; // Verde para terra
-                } else {
-                    isDigging = false; // Não foi possível criar ou encontrar um monte
-                }
-            }
-            function stopDigging() {
-                if(isDigging) {
-                    if (currentMound) {
-                        currentMound.lastDugAt = world.time; // Atualiza o tempo de inatividade
-                    }
-                    isDigging = false;
-                    digProgress = 0;
-                    progressContainer.style.display = 'none';
-                    progressBar.style.backgroundColor = '#4CAF50'; // Redefine para o verde padrão
-                    currentMound = null; // Apenas limpa a referência, não destrói o monte
-                    diggingComplete = false; // Garante que a flag seja redefinida
+                    progressBar.style.backgroundColor = '#4CAF50'; // Redefine para o padrão
+                    currentMound = null;
+                    destroyTargetBody = null;
+                    destroyTargetMesh = null;
+                    destroyTargetPatchObject = null;
+                    destroyTargetMountainInfo = null;
+                    destroyTargetDigInfo = null; // Limpa a informação de escavação
+                    destructionComplete = false;
                 }
             }
 
@@ -2824,199 +2763,6 @@
             // Listeners para o botão da mochila
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
-
-            // NOVO: Chama as funções para configurar os depósitos
-            setupStoneDeposits();
-            setupDirtDeposits();
-
-        }
-
-        // NOVO: Função separada para configurar os depósitos de pedra
-        const minDepositDistance = 18; // Distância mínima entre os depósitos
-        function setupStoneDeposits() {
-            textureLoader.load(stoneDepositTextureURL, (texture) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(2, 1);
-                stoneDepositMaterial = new THREE.MeshStandardMaterial({ map: texture });
-
-                const flatTexture = texture.clone();
-                flatTexture.needsUpdate = true;
-                flatTexture.repeat.set(1, 1);
-                flattenedStoneDepositMaterial = new THREE.MeshStandardMaterial({ map: flatTexture });
-
-                const quarryRadius = 50.0;
-                const numQuarryDeposits = 8;
-                const depositPlacementRadius = quarryRadius + 10; // Coloca os depósitos um pouco afastados da pedreira
-
-                for (let i = 0; i < numQuarryDeposits; i++) {
-                    const angle = (i / numQuarryDeposits) * Math.PI * 2;
-                    const x = Math.cos(angle) * depositPlacementRadius;
-                    const z = Math.sin(angle) * depositPlacementRadius;
-
-                    const rayFrom = new CANNON.Vec3(x, islandSurfaceHeight + 20, z);
-                    const rayTo = new CANNON.Vec3(x, seabedLevel - 10, z);
-                    const rayResult = new CANNON.RaycastResult();
-                    world.raycastClosest(rayFrom, rayTo, {}, rayResult);
-
-                    if (rayResult.hasHit && rayResult.hitPointWorld.y >= waterLevel) {
-                        const hitPoint = rayResult.hitPointWorld;
-                        const hitNormal = rayResult.hitNormalWorld;
-                        const up = new CANNON.Vec3(0, 1, 0);
-                        const quaternion = new CANNON.Quaternion().setFromVectors(up, hitNormal);
-
-                        const sizeFactor = 1.0; // Tamanho uniforme para os depósitos da pedreira
-                        const depositRadius = stoneDepositRadius * sizeFactor;
-                        const depositHeight = stoneDepositHeight * sizeFactor;
-
-                        const domeGeometry = new THREE.SphereGeometry(depositRadius, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2);
-                        const domeMesh = new THREE.Mesh(domeGeometry, stoneDepositMaterial);
-                        domeMesh.castShadow = true;
-                        domeMesh.receiveShadow = true;
-
-                        const depositMeshes = [];
-                        for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                            for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                                const mesh = domeMesh.clone();
-                                scene.add(mesh);
-                                depositMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
-                            }
-                        }
-
-                        const sphereShape = new CANNON.Sphere(depositRadius);
-                        const sphereBody = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC, material: islandMaterial });
-                        sphereBody.addShape(sphereShape);
-                        sphereBody.position.copy(hitPoint);
-                        sphereBody.quaternion.copy(quaternion);
-                        world.addBody(sphereBody);
-
-                        stoneDeposits.push({
-                            x: hitPoint.x, z: hitPoint.z, y: hitPoint.y,
-                            radius: depositRadius,
-                            height: depositHeight,
-                            flattened: false,
-                            regenerationTimer: 0,
-                            domeMeshes: depositMeshes,
-                            flattenedMeshes: [],
-                            body: sphereBody,
-                            type: 'stone'
-                        });
-                    }
-                }
-            }, undefined, (error) => console.error("Falha ao carregar a textura do depósito de pedra:", error));
-        }
-
-        // NOVO: Função separada para configurar os depósitos de terra
-        function setupDirtDeposits() {
-            textureLoader.load(dirtDepositTextureURL, (texture) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(4, 2); // Repete a textura na cúpula
-                dirtDepositMaterial = new THREE.MeshStandardMaterial({ map: texture });
-
-                const flatTexture = texture.clone();
-                flatTexture.needsUpdate = true; // Importante ao clonar
-                flatTexture.repeat.set(1, 1);
-                flattenedDirtDepositMaterial = new THREE.MeshStandardMaterial({ map: flatTexture });
-
-                // Gera os dados dos depósitos de terra
-                let attempts = 0;
-                const maxAttempts = numDirtDeposits * 20; // Limite de tentativas para evitar loop infinito
-
-                while (dirtDeposits.length < numDirtDeposits && attempts < maxAttempts) {
-                    attempts++;
-                    const angle = Math.random() * Math.PI * 2;
-                    const radius = Math.random() * islandRadiusTop; // Generate points only on the flat top part
-                    const x = Math.cos(angle) * radius;
-                    const z = Math.sin(angle) * radius;
-
-                    let isValid = true;
-                    // Verifica a distância dos depósitos de terra existentes
-                    for (const existingDeposit of dirtDeposits) {
-                        const dx = x - existingDeposit.x;
-                        const dz = z - existingDeposit.z;
-                        const distance = Math.sqrt(dx * dx + dz * dz);
-                        if (distance < minDepositDistance) {
-                            isValid = false;
-                            break;
-                        }
-                    }
-
-                    if (isValid) {
-                        // Usa um raycast para encontrar a posição e a normal corretas no terreno
-                        const rayFrom = new CANNON.Vec3(x, islandSurfaceHeight + 20, z);
-                        const rayTo = new CANNON.Vec3(x, seabedLevel - 10, z);
-                        const rayResult = new CANNON.RaycastResult();
-                        world.raycastClosest(rayFrom, rayTo, {}, rayResult);
-
-                        if (rayResult.hasHit) {
-                            const hitPoint = rayResult.hitPointWorld;
-                            // SÓ SPAWNA SE ESTIVER ACIMA DO NÍVEL DO MAR
-                            if (hitPoint.y < waterLevel) {
-                                continue; // Pula para a próxima tentativa
-                            }
-                            const hitNormal = rayResult.hitNormalWorld;
-
-                            // Cria um quaternion para alinhar o depósito com a normal do terreno
-                            const up = new CANNON.Vec3(0, 1, 0);
-                            const quaternion = new CANNON.Quaternion();
-                            quaternion.setFromVectors(up, hitNormal);
-
-                            const sizeFactor = 0.3 + Math.random() * 1.7; // Usa o mesmo fator de aleatorização da pedra
-                            const depositRadius = dirtDepositRadius * sizeFactor;
-                            const depositHeight = dirtDepositHeight * sizeFactor;
-
-                            const coneGeometry = new THREE.ConeGeometry(depositRadius, depositHeight, 16);
-                            const coneMesh = new THREE.Mesh(coneGeometry, dirtDepositMaterial);
-                            coneMesh.castShadow = true;
-                            coneMesh.receiveShadow = true;
-
-                            const depositMeshes = [];
-                            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                                for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                                    const mesh = coneMesh.clone();
-                                    scene.add(mesh);
-                                    depositMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
-                                }
-                            }
-
-                            const cylinderShape = new CANNON.Cylinder(0.01, depositRadius, depositHeight, 16);
-                            const cylinderBody = new CANNON.Body({
-                                mass: 0,
-                                type: CANNON.Body.STATIC,
-                                material: islandMaterial
-                            });
-                            cylinderBody.addShape(cylinderShape); // Shape is centered on the body
-
-                            // Position the body so its base is at the hit point
-                            const bodyPosition = hitPoint.clone();
-                            bodyPosition.y += depositHeight / 2;
-                            cylinderBody.position.copy(bodyPosition);
-
-                            cylinderBody.quaternion.copy(quaternion);
-                            world.addBody(cylinderBody);
-
-                            dirtDeposits.push({
-                                x: hitPoint.x, z: hitPoint.z, y: hitPoint.y,
-                                radius: depositRadius,
-                                height: depositHeight,
-                                flattened: false,
-                                regenerationTimer: 0,
-                                domeMeshes: depositMeshes, // Renomeado para depositMeshes
-                                flattenedMeshes: [],
-                                body: cylinderBody, // Usa o corpo do cilindro
-                                type: 'dirt' // NOVO: Identificador de tipo
-                            });
-                        }
-                    }
-                }
-
-                if (attempts >= maxAttempts) {
-                    console.warn(`Não foi possível colocar todos os depósitos de terra. Apenas ${dirtDeposits.length}/${numDirtDeposits} foram colocados.`);
-                }
-            }, undefined, (error) => {
-                console.error("Falha ao carregar a textura do depósito de terra:", error);
-            });
         }
 
         // Função para lidar com o redimensionamento da janela
@@ -3074,66 +2820,6 @@
                 return;
             }
 
-
-            // NOVO: Lógica de escavação progressiva
-            if (isDigging && currentMound && !diggingComplete) {
-                digProgress += 1 / 60; // Incrementa o progresso
-
-                // Create particles and smoke as the player digs
-                if (Math.random() < 0.5) { // Spawn debris intermittently
-                    createDebris(currentMound.position, 2, currentMound.isMountain);
-                }
-                if (Math.random() < 0.2) { // Spawn smoke intermittently
-                    createSmokeEffect(currentMound.position);
-                }
-
-                if (digProgress >= targetDigTime) {
-                    // A big puff of dust when a stage is complete
-                    createDustCloud(currentMound.position, currentMound.isMountain);
-
-                    if (currentMound.isMountain) {
-                        // Mountain digging: add stone, reset state, no visual change.
-                        addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
-                        updateBackpackDisplay();
-                        diggingComplete = true;
-                        isDigging = false;
-                        progressContainer.style.display = 'none';
-                        currentMound = null;
-                        digProgress = 0; // Reset for next dig
-                    } else {
-                        // Normal ground digging: advance growth stage.
-                        currentMound.growthStage++;
-                        addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
-                        updateBackpackDisplay();
-
-                        if (currentMound.growthStage >= moundGrowthStages.length) {
-                            // Digging is fully complete
-                            currentMound.growthStage = moundGrowthStages.length - 1; // Cap at max stage
-                            diggingComplete = true; // Prevent further digging on this mound
-                            isDigging = false;
-                            progressContainer.style.display = 'none';
-                            currentMound.lastDugAt = world.time; // Start the closing timer
-                            currentMound = null;
-                        } else {
-                            // Set scale for the new stage and reset progress for the next stage
-                            const newScale = moundGrowthStages[currentMound.growthStage];
-                            // This part now only applies to non-mountain mounds which have meshes
-                            if (currentMound.meshes) {
-                                currentMound.meshes.forEach(item => {
-                                    item.mesh.scale.set(newScale, newScale, newScale);
-                                });
-                            }
-                            digProgress = 0; // Reset for next stage
-                        }
-                    }
-                } else {
-                    // Atualiza a barra de progresso
-                    const progressRatio = Math.min(digProgress / targetDigTime, 1.0);
-                    progressBar.style.width = `${progressRatio * 100}%`;
-                }
-            }
-
-
             // Lógica de destruição progressiva
             // NOVO: A lógica só continua se a destruição estiver em andamento E não estiver completa.
             if (isDestroying && !destructionComplete) {
@@ -3145,21 +2831,27 @@
                 if (intersects.length > 0 && intersects[0].distance <= destroyDistance) {
                     let intersectedObject = intersects[0].object;
 
-                    if (destroyTargetPatchObject) {
-                        // Se estivermos destruindo um patch, verifica se a malha atingida pertence ao patch
+                     if (destroyTargetDigInfo) {
+                        const isIslandMesh = islandMeshes.some(m => m.mesh === intersectedObject);
+                         if (isIslandMesh) {
+                             stillOnTarget = true;
+                         }
+                    } else if (destroyTargetPatchObject) {
                         if (intersectedObject.userData.patchObject === destroyTargetPatchObject) {
                             stillOnTarget = true;
                         }
-                    } else if (destroyTargetDeposit) { // NOVO: Verifica se o depósito é o alvo
-                        const deposit = dirtDeposits.find(d => d.domeMeshes.some(m => m.mesh === intersectedObject));
-                        if (deposit && deposit === destroyTargetDeposit) {
-                            stillOnTarget = true;
+                    } else if (destroyTargetMountainInfo) {
+                        const isIslandMesh = islandMeshes.some(m => m.mesh === intersectedObject);
+                        if (isIslandMesh) {
+                           const distanceToCenter = Math.sqrt(intersects[0].point.x * intersects[0].point.x + intersects[0].point.z * intersects[0].point.z);
+                            if (distanceToCenter < 50.0) {
+                                stillOnTarget = true;
+                            }
                         }
-                    } else if (destroyTargetMesh) {
-                        // Se estivermos destruindo um bloco, faz a verificação normal
+                    } else if (destroyTargetBody) { // Para blocos destrutíveis
                         let currentObject = intersectedObject;
                         while (currentObject) {
-                            if (currentObject === destroyTargetMesh) {
+                            if (currentObject.userData.physicsBody === destroyTargetBody) {
                                 stillOnTarget = true;
                                 break;
                             }
@@ -3168,178 +2860,89 @@
                     }
                 }
 
+
                 // Se não estiver mais na mira, para tudo.
-                // A função stopDestruction agora limpa todas as variáveis de estado.
                 if (!stillOnTarget) {
                     stopDestruction();
                 } else {
                     // Se estiver na mira, continua o progresso
                     destroyProgress += 1 / 60;
 
-                    // NOVO: Gera detritos intermitentemente ao minerar
-                    if (destroyTargetMountainInfo || destroyTargetDeposit) {
-                        if (Math.random() < 0.2) {
-                            const position = destroyTargetMountainInfo ? destroyTargetMountainInfo.position : new THREE.Vector3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
-                            createDebris(position, 2, true); // true para pedra
-                        }
-                        // Adiciona efeito de fumaça ao minerar a montanha
-                        if (destroyTargetMountainInfo && Math.random() < 0.2) {
-                            createSmokeEffect(destroyTargetMountainInfo.position);
-                        }
+                    // Efeitos de partículas unificados
+                    if (destroyTargetDigInfo && Math.random() < 0.5) {
+                        createDebris(destroyTargetDigInfo.mound.position, 2, false);
+                        createSmokeEffect(destroyTargetDigInfo.mound.position, false);
+                    } else if (destroyTargetMountainInfo && Math.random() < 0.3) {
+                        createDebris(destroyTargetMountainInfo.position, 2, true);
+                        createSmokeEffect(destroyTargetMountainInfo.position, true); // Fumaça cinza
                     }
 
-                    if (destroyProgress >= targetDestroyTime) {
-                        // Objeto destruído!
-                        let position;
 
-                        if (destroyTargetMountainInfo) {
+                    if (destroyProgress >= targetDestroyTime) {
+                         if (destroyTargetDigInfo) {
+                            const mound = destroyTargetDigInfo.mound;
+                            createDustCloud(mound.position, false);
+                            mound.growthStage++;
+                            addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
+                            updateBackpackDisplay();
+
+                            if (mound.growthStage >= moundGrowthStages.length) {
+                                mound.growthStage = moundGrowthStages.length - 1;
+                                destructionComplete = true;
+                                isDestroying = false;
+                                progressContainer.style.display = 'none';
+                                mound.lastDugAt = world.time;
+                                currentMound = null;
+                            } else {
+                                const newScale = moundGrowthStages[mound.growthStage];
+                                mound.meshes.forEach(item => {
+                                    item.mesh.scale.set(newScale, newScale, newScale);
+                                });
+                                destroyProgress = 0; // Reinicia para o próximo estágio
+                            }
+                        } else if (destroyTargetMountainInfo) {
                             createDustCloud(destroyTargetMountainInfo.position, true);
                             createDebris(destroyTargetMountainInfo.position, 5, true);
-                            addItemToInventory(backpackItems, {
-                                name: stoneItemName,
-                                quantity: 1
-                            });
+                            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
                             updateBackpackDisplay();
-                            position = destroyTargetMountainInfo.position.clone();
-                            // Corrige o bug de congelamento redefinindo o estado imediatamente
+                            destroyProgress = 0; // FIX: Reinicia o progresso para permitir mineração contínua
+                        }
+                        // Lógica para outros objetos destrutíveis (depósitos, blocos)
+                        else {
+                            let position;
+                            if (destroyTargetPatchObject) {
+                                position = destroyTargetPatchObject.position.clone();
+                                const patchIndex = texturePatches.indexOf(destroyTargetPatchObject);
+                                if (patchIndex > -1) texturePatches.splice(patchIndex, 1);
+                                destroyTargetPatchObject.meshes.forEach(m => scene.remove(m.mesh));
+                                addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
+
+                            } else if (destroyTargetBody) {
+                                 position = destroyTargetBody.position.clone();
+                                const bodyIndex = placedConstructionBodies.indexOf(destroyTargetBody);
+                                if (bodyIndex !== -1) {
+                                     // ... (código de recompensa de item)
+                                    world.removeBody(destroyTargetBody);
+                                    placedConstructionBodies.splice(bodyIndex, 1);
+                                    placedConstructionMeshesArrays[bodyIndex].forEach(m => scene.remove(m.mesh));
+                                    placedConstructionMeshesArrays.splice(bodyIndex, 1);
+                                }
+                            }
+                            updateBackpackDisplay();
+                            if(position) createSmokeEffect(position);
                             destructionComplete = true;
                             isDestroying = false;
                             progressContainer.style.display = 'none';
-                            destroyProgress = 0;
                         }
-                        // NOVO: Lógica de destruição de depósitos de pedra
-                        else if (destroyTargetDeposit) {
-                            const debrisPosition = new THREE.Vector3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
-                            createDustCloud(debrisPosition, true);
-                            createDebris(debrisPosition, 10, true);
-                            position = debrisPosition.clone();
-                            destroyTargetDeposit.flattened = true;
-                            if (destroyTargetDeposit.type === 'stone') {
-                                destroyTargetDeposit.regenerationTimer = 10; // 10 segundos para pedra
-                            }
-
-                            // Remove o corpo de física principal
-                            if (destroyTargetDeposit.body) {
-                                world.removeBody(destroyTargetDeposit.body);
-                            }
-
-                            const flattenedHeight = 0.2;
-                            const flattenedGeometry = new THREE.CylinderGeometry(destroyTargetDeposit.radius, destroyTargetDeposit.radius, flattenedHeight, 16);
-                            // NOVO: Usa o material correto (pedra ou terra) para o estado achatado
-                            const flattenedMesh = new THREE.Mesh(flattenedGeometry, flattenedDirtDepositMaterial);
-                            flattenedMesh.receiveShadow = true;
-
-                            // Cria um novo corpo de física para o estado achatado, alinhado com o terreno
-                            const flattenedShape = new CANNON.Cylinder(destroyTargetDeposit.radius, destroyTargetDeposit.radius, flattenedHeight, 16);
-                            const flattenedBody = new CANNON.Body({
-                                mass: 0,
-                                type: CANNON.Body.STATIC,
-                                shape: flattenedShape,
-                                material: islandMaterial
-                            });
-
-                            // Get the surface normal from the original body's orientation
-                            const up = new CANNON.Vec3(0, 1, 0);
-                            const worldNormal = destroyTargetDeposit.body.quaternion.vmult(up);
-
-                            // Calculate the new body's position from the ground up
-                            const basePosition = new CANNON.Vec3(destroyTargetDeposit.x, destroyTargetDeposit.y, destroyTargetDeposit.z);
-                            // The center of the new body should be at the base + half its height along the normal.
-                            const offsetDistance = (flattenedHeight / 2) + 0.01; // Add a small epsilon to prevent z-fighting
-                            const positionOffset = worldNormal.scale(offsetDistance);
-                            const finalPosition = basePosition.vadd(positionOffset);
-
-                            flattenedBody.position.copy(finalPosition);
-                            flattenedBody.quaternion.copy(destroyTargetDeposit.body.quaternion);
-                            world.addBody(flattenedBody);
-                            destroyTargetDeposit.flattenedBody = flattenedBody;
-
-
-                            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                                for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                                    const mesh = flattenedMesh.clone();
-                                    scene.add(mesh);
-                                    destroyTargetDeposit.flattenedMeshes.push({ mesh: mesh, offsetX: j * worldSize, offsetZ: k * worldSize });
-                                }
-                            }
-                            // O rendimento agora é proporcional ao raio do depósito
-                            if (destroyTargetDeposit.type === 'stone') {
-                                const stoneYield = Math.round(destroyTargetDeposit.radius);
-                                addItemToInventory(backpackItems, { name: stoneItemName, quantity: stoneYield });
-                            }
-                            updateBackpackDisplay();
-                        }
-                        // Lida com a destruição de patches
-                        else if (destroyTargetPatchObject) {
-                            position = destroyTargetPatchObject.position.clone();
-                            const patchIndex = texturePatches.indexOf(destroyTargetPatchObject);
-                            if (patchIndex > -1) {
-                                texturePatches.splice(patchIndex, 1);
-                            }
-                            destroyTargetPatchObject.meshes.forEach(m => {
-                                scene.remove(m.mesh);
-                                if (m.mesh.geometry) m.mesh.geometry.dispose();
-                            });
-                            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
-                            updateBackpackDisplay();
-                        }
-                        // Handle regular block destruction
-                        else if (destroyTargetBody) {
-                            position = destroyTargetMesh.position.clone();
-                            const bodyIndex = placedConstructionBodies.indexOf(destroyTargetBody);
-                            if (bodyIndex !== -1) {
-                               // Adiciona a lógica de recompensa de troncos com base no estágio da árvore
-                               if (destroyTargetBody.userData.growthStage === 'media') {
-                                   addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 1 });
-                               } else if (destroyTargetBody.userData.growthStage === 'arvore_adulta') {
-                                   addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 3 });
-                               }
-                               // Adiciona tábuas de madeira ao inventário se o objeto destruído for um tronco ou tábua
-                               else if (destroyTargetBody.userData.type === 'tronco_arvore' || destroyTargetBody.userData.type === 'tábuas') {
-                                   addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 2 });
-                               }
-                               // Adiciona o item original ao inventário ao destruir
-                               if (destroyTargetBody.userData.type === 'cob' || destroyTargetBody.userData.type === 'piso') {
-                                   addItemToInventory(backpackItems, { name: destroyTargetBody.userData.type, quantity: 1 });
-                               }
-                               updateBackpackDisplay();
-
-                               world.removeBody(destroyTargetBody);
-                               placedConstructionBodies.splice(bodyIndex, 1);
-                               scene.remove(destroyTargetMesh);
-                               if (destroyTargetMesh.isGroup) {
-                                   destroyTargetMesh.children.forEach(child => {
-                                       if (child.geometry) child.geometry.dispose();
-                                   });
-                               } else if (destroyTargetMesh.geometry) {
-                                   destroyTargetMesh.geometry.dispose();
-                               }
-                               placedConstructionMeshesArrays.splice(bodyIndex, 1);
-                            }
-                        }
-
-                        if (position) {
-                            createSmokeEffect(position);
-                        }
-                        destructionComplete = true; // A destruição está completa!
-                        isDestroying = false; // Para a barra de progresso
-                        progressContainer.style.display = 'none'; // Esconde a barra de progresso
-
                     } else {
                         // Atualiza a barra de progresso
                         const progressPercentage = Math.min((destroyProgress / targetDestroyTime) * 100, 100);
                         progressBar.style.width = `${progressPercentage}%`;
                     }
                 }
-            } else {
-                 // Reseta a barra de progresso se o usuário parar de destruir
-                // NOVO: Agora só chama stopDestruction se a destruição NÃO foi concluída com sucesso.
-                if (isDestroying && !destructionComplete) {
-                    stopDestruction();
-                }
-                if (progressBar.style.width !== '0%') {
-                    progressBar.style.width = '0%';
-                }
+            } else if (isDestroying && destructionComplete) {
+                // Se a destruição foi concluída, chama stopDestruction para limpar
+                stopDestruction();
             }
 
 
@@ -3348,30 +2951,6 @@
 
             // Atualiza o mundo da física
             world.step(1 / 60);
-
-            // NOVO: Lógica de regeneração para todos os depósitos
-            const allDeposits = [...stoneDeposits, ...dirtDeposits];
-            allDeposits.forEach(deposit => {
-                if (deposit.flattened && deposit.regenerationTimer > 0) {
-                    deposit.regenerationTimer -= 1 / 60; // Subtrai o tempo do frame
-                    if (deposit.regenerationTimer <= 0) {
-                        deposit.flattened = false;
-                        if (deposit.flattenedBody) {
-                            world.removeBody(deposit.flattenedBody);
-                            deposit.flattenedBody = null;
-                        }
-                        if (deposit.body) {
-                            world.addBody(deposit.body);
-                        }
-                        deposit.flattenedMeshes.forEach(item => {
-                            scene.remove(item.mesh);
-                            if (item.mesh.geometry) item.mesh.geometry.dispose();
-                        });
-                        deposit.flattenedMeshes = [];
-                        deposit.domeMeshes.forEach(item => item.mesh.visible = true);
-                    }
-                }
-            });
 
             // Lógica para os cubos e blocos: sempre dinâmicos e com massa original, a menos que sejam segurados
             // Apenas os cubos são pickable agora
@@ -3560,41 +3139,6 @@
                         if (patch.quaternion) {
                             visualObject.quaternion.copy(patch.quaternion);
                         }
-                    }
-                });
-            });
-
-            // NOVO: Atualiza a posição e visibilidade de todos os depósitos
-            allDeposits.forEach(deposit => {
-                const depositPosition = new THREE.Vector3(deposit.x, deposit.y, deposit.z);
-                const distance = calculateWrappedDistance(playerBody.position, depositPosition);
-                const isVisible = distance <= renderDistance;
-
-                // Atualiza as malhas da cúpula
-                deposit.domeMeshes.forEach(item => {
-                    item.mesh.visible = isVisible && !deposit.flattened;
-                    if (item.mesh.visible) {
-                        const bodyToFollow = deposit.body;
-                        item.mesh.position.set(
-                            bodyToFollow.position.x + item.offsetX - visualOffsetX,
-                            bodyToFollow.position.y,
-                            bodyToFollow.position.z + item.offsetZ - visualOffsetZ
-                        );
-                        item.mesh.quaternion.copy(bodyToFollow.quaternion);
-                    }
-                });
-
-                // Atualiza as malhas do estado achatado
-                deposit.flattenedMeshes.forEach(item => {
-                    item.mesh.visible = isVisible && deposit.flattened;
-                    if (item.mesh.visible) {
-                        const bodyToFollow = deposit.flattenedBody;
-                        item.mesh.position.set(
-                            bodyToFollow.position.x + item.offsetX - visualOffsetX,
-                            bodyToFollow.position.y,
-                            bodyToFollow.position.z + item.offsetZ - visualOffsetZ
-                        );
-                        item.mesh.quaternion.copy(bodyToFollow.quaternion);
                     }
                 });
             });
