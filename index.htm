@@ -3731,37 +3731,37 @@
                     }
                     crosshairColor = canApply ? 'lime' : 'white';
                 } else if (isPrimaryToolDestroying) {
-                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                    const intersects = raycaster.intersectObjects(scene.children, true);
-                    let canDestroy = false;
-                    for (let i = 0; i < intersects.length; i++) {
-                        if (intersects[i].distance > destroyDistance) continue;
-
-                        let intersectedObject = intersects[i].object;
-
-                        // Check for patches
-                        if (intersectedObject.userData && intersectedObject.userData.isDestructible && intersectedObject.userData.type === 'patch') {
-                            canDestroy = true;
-                            break;
-                        }
-
-                        // Check for blocks with physics bodies
-                        let intersectedBody = null;
-                        let currentObject = intersectedObject;
-                        while (currentObject) {
-                            if (currentObject.userData && currentObject.userData.physicsBody) {
-                                intersectedBody = currentObject.userData.physicsBody;
-                                if (intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible) {
-                                    canDestroy = true;
-                                }
+                    if (!isDestroying) {
+                        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                        const intersects = raycaster.intersectObjects(scene.children, true);
+                        let canDestroy = false;
+                        for (let i = 0; i < intersects.length; i++) {
+                            if (intersects[i].distance > destroyDistance) continue;
+                            let intersectedObject = intersects[i].object;
+                            // Check for patches
+                            if (intersectedObject.userData && intersectedObject.userData.isDestructible && intersectedObject.userData.type === 'patch') {
+                                canDestroy = true;
                                 break;
                             }
-                            currentObject = currentObject.parent;
+                            // Check for blocks with physics bodies
+                            let intersectedBody = null;
+                            let currentObject = intersectedObject;
+                            while (currentObject) {
+                                if (currentObject.userData && currentObject.userData.physicsBody) {
+                                    intersectedBody = currentObject.userData.physicsBody;
+                                    if (intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible) {
+                                        canDestroy = true;
+                                    }
+                                    break;
+                                }
+                                currentObject = currentObject.parent;
+                            }
+                            if (canDestroy) break;
                         }
-
-                        if (canDestroy) break;
+                        crosshairColor = canDestroy ? 'red' : 'white';
+                    } else {
+                        crosshairColor = 'red';
                     }
-                    crosshairColor = canDestroy ? 'red' : 'white';
                 } else if (isPrimaryToolGrabbing) {
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                     const intersects = raycaster.intersectObjects(scene.children);
