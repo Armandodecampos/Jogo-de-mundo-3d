@@ -2823,122 +2823,79 @@
             // Lógica de destruição progressiva
             // NOVO: A lógica só continua se a destruição estiver em andamento E não estiver completa.
             if (isDestroying && !destructionComplete) {
-                // --- Verificação de mira atualizada ---
-                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                const intersects = raycaster.intersectObjects(scene.children, true);
+                // Se estiver na mira, continua o progresso
+                destroyProgress += 1 / 60;
 
-                let stillOnTarget = false;
-                if (intersects.length > 0 && intersects[0].distance <= destroyDistance) {
-                    let intersectedObject = intersects[0].object;
-
-                     if (destroyTargetDigInfo) {
-                        const isIslandMesh = islandMeshes.some(m => m.mesh === intersectedObject);
-                         if (isIslandMesh) {
-                             stillOnTarget = true;
-                         }
-                    } else if (destroyTargetPatchObject) {
-                        if (intersectedObject.userData.patchObject === destroyTargetPatchObject) {
-                            stillOnTarget = true;
-                        }
-                    } else if (destroyTargetMountainInfo) {
-                        const isIslandMesh = islandMeshes.some(m => m.mesh === intersectedObject);
-                        if (isIslandMesh) {
-                           const distanceToCenter = Math.sqrt(intersects[0].point.x * intersects[0].point.x + intersects[0].point.z * intersects[0].point.z);
-                            if (distanceToCenter < 50.0) {
-                                stillOnTarget = true;
-                            }
-                        }
-                    } else if (destroyTargetBody) { // Para blocos destrutíveis
-                        let currentObject = intersectedObject;
-                        while (currentObject) {
-                            if (currentObject.userData.physicsBody === destroyTargetBody) {
-                                stillOnTarget = true;
-                                break;
-                            }
-                            currentObject = currentObject.parent;
-                        }
-                    }
+                // Efeitos de partículas unificados
+                if (destroyTargetDigInfo && Math.random() < 0.5) {
+                    createDebris(destroyTargetDigInfo.mound.position, 2, false);
+                    createSmokeEffect(destroyTargetDigInfo.mound.position, false);
+                } else if (destroyTargetMountainInfo && Math.random() < 0.3) {
+                    createDebris(destroyTargetMountainInfo.position, 2, true);
+                    createSmokeEffect(destroyTargetMountainInfo.position, true); // Fumaça cinza
                 }
 
 
-                // Se não estiver mais na mira, para tudo.
-                if (!stillOnTarget) {
-                    stopDestruction();
-                } else {
-                    // Se estiver na mira, continua o progresso
-                    destroyProgress += 1 / 60;
+                if (destroyProgress >= targetDestroyTime) {
+                     if (destroyTargetDigInfo) {
+                        const mound = destroyTargetDigInfo.mound;
+                        createDustCloud(mound.position, false);
+                        mound.growthStage++;
+                        addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
+                        updateBackpackDisplay();
 
-                    // Efeitos de partículas unificados
-                    if (destroyTargetDigInfo && Math.random() < 0.5) {
-                        createDebris(destroyTargetDigInfo.mound.position, 2, false);
-                        createSmokeEffect(destroyTargetDigInfo.mound.position, false);
-                    } else if (destroyTargetMountainInfo && Math.random() < 0.3) {
-                        createDebris(destroyTargetMountainInfo.position, 2, true);
-                        createSmokeEffect(destroyTargetMountainInfo.position, true); // Fumaça cinza
-                    }
-
-
-                    if (destroyProgress >= targetDestroyTime) {
-                         if (destroyTargetDigInfo) {
-                            const mound = destroyTargetDigInfo.mound;
-                            createDustCloud(mound.position, false);
-                            mound.growthStage++;
-                            addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
-                            updateBackpackDisplay();
-
-                            if (mound.growthStage >= moundGrowthStages.length) {
-                                mound.growthStage = moundGrowthStages.length - 1;
-                                destructionComplete = true;
-                                isDestroying = false;
-                                progressContainer.style.display = 'none';
-                                mound.lastDugAt = world.time;
-                                currentMound = null;
-                            } else {
-                                const newScale = moundGrowthStages[mound.growthStage];
-                                mound.meshes.forEach(item => {
-                                    item.mesh.scale.set(newScale, newScale, newScale);
-                                });
-                                destroyProgress = 0; // Reinicia para o próximo estágio
-                            }
-                        } else if (destroyTargetMountainInfo) {
-                            createDustCloud(destroyTargetMountainInfo.position, true);
-                            createDebris(destroyTargetMountainInfo.position, 5, true);
-                            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
-                            updateBackpackDisplay();
-                            destroyProgress = 0; // FIX: Reinicia o progresso para permitir mineração contínua
-                        }
-                        // Lógica para outros objetos destrutíveis (depósitos, blocos)
-                        else {
-                            let position;
-                            if (destroyTargetPatchObject) {
-                                position = destroyTargetPatchObject.position.clone();
-                                const patchIndex = texturePatches.indexOf(destroyTargetPatchObject);
-                                if (patchIndex > -1) texturePatches.splice(patchIndex, 1);
-                                destroyTargetPatchObject.meshes.forEach(m => scene.remove(m.mesh));
-                                addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
-
-                            } else if (destroyTargetBody) {
-                                 position = destroyTargetBody.position.clone();
-                                const bodyIndex = placedConstructionBodies.indexOf(destroyTargetBody);
-                                if (bodyIndex !== -1) {
-                                     // ... (código de recompensa de item)
-                                    world.removeBody(destroyTargetBody);
-                                    placedConstructionBodies.splice(bodyIndex, 1);
-                                    placedConstructionMeshesArrays[bodyIndex].forEach(m => scene.remove(m.mesh));
-                                    placedConstructionMeshesArrays.splice(bodyIndex, 1);
-                                }
-                            }
-                            updateBackpackDisplay();
-                            if(position) createSmokeEffect(position);
+                        if (mound.growthStage >= moundGrowthStages.length) {
+                            mound.growthStage = moundGrowthStages.length - 1;
                             destructionComplete = true;
                             isDestroying = false;
                             progressContainer.style.display = 'none';
+                            mound.lastDugAt = world.time;
+                            currentMound = null;
+                        } else {
+                            const newScale = moundGrowthStages[mound.growthStage];
+                            mound.meshes.forEach(item => {
+                                item.mesh.scale.set(newScale, newScale, newScale);
+                            });
+                            destroyProgress = 0; // Reinicia para o próximo estágio
                         }
-                    } else {
-                        // Atualiza a barra de progresso
-                        const progressPercentage = Math.min((destroyProgress / targetDestroyTime) * 100, 100);
-                        progressBar.style.width = `${progressPercentage}%`;
+                    } else if (destroyTargetMountainInfo) {
+                        createDustCloud(destroyTargetMountainInfo.position, true);
+                        createDebris(destroyTargetMountainInfo.position, 5, true);
+                        addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
+                        updateBackpackDisplay();
+                        destructionComplete = true;
                     }
+                    // Lógica para outros objetos destrutíveis (depósitos, blocos)
+                    else {
+                        let position;
+                        if (destroyTargetPatchObject) {
+                            position = destroyTargetPatchObject.position.clone();
+                            const patchIndex = texturePatches.indexOf(destroyTargetPatchObject);
+                            if (patchIndex > -1) texturePatches.splice(patchIndex, 1);
+                            destroyTargetPatchObject.meshes.forEach(m => scene.remove(m.mesh));
+                            addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
+
+                        } else if (destroyTargetBody) {
+                             position = destroyTargetBody.position.clone();
+                            const bodyIndex = placedConstructionBodies.indexOf(destroyTargetBody);
+                            if (bodyIndex !== -1) {
+                                 // ... (código de recompensa de item)
+                                world.removeBody(destroyTargetBody);
+                                placedConstructionBodies.splice(bodyIndex, 1);
+                                placedConstructionMeshesArrays[bodyIndex].forEach(m => scene.remove(m.mesh));
+                                placedConstructionMeshesArrays.splice(bodyIndex, 1);
+                            }
+                        }
+                        updateBackpackDisplay();
+                        if(position) createSmokeEffect(position);
+                        destructionComplete = true;
+                        isDestroying = false;
+                        progressContainer.style.display = 'none';
+                    }
+                } else {
+                    // Atualiza a barra de progresso
+                    const progressPercentage = Math.min((destroyProgress / targetDestroyTime) * 100, 100);
+                    progressBar.style.width = `${progressPercentage}%`;
                 }
             } else if (isDestroying && destructionComplete) {
                 // Se a destruição foi concluída, chama stopDestruction para limpar
