@@ -429,6 +429,7 @@
         let destroyTargetPatchObject = null;
         let destroyTargetMountainInfo = null;
         let destroyTargetDigInfo = null; // NOVO: Para unificar a escavação
+        let destroyTargetPosition = null;
         let destructionComplete = false; // NOVO: Flag para gerenciar o estado de destruição
         let currentMound = null; // NOVO: Referência ao buraco que está sendo cavado
         const moundGrowthStages = [0.25, 0.5, 0.75, 1.0]; // NOVO: Estágios de crescimento
@@ -2428,6 +2429,15 @@
                 }
                 if (target) {
                     isDestroying = true;
+                    if (target.isDigging) {
+                        destroyTargetPosition = target.intersect.point.clone();
+                    } else if (target.isMountain) {
+                        destroyTargetPosition = target.position.clone();
+                    } else if (target.patchObject) {
+                        destroyTargetPosition = target.patchObject.position.clone();
+                    } else if (target.body) {
+                        destroyTargetPosition = target.body.position.clone();
+                    }
                     destroyProgress = 0;
                     destroyTargetBody = target.body;
                     destroyTargetMesh = target.mesh;
@@ -2509,6 +2519,7 @@
                     destroyTargetMountainInfo = null;
                     destroyTargetDigInfo = null; // Limpa a informação de escavação
                     destructionComplete = false;
+                    destroyTargetPosition = null;
                 }
             }
 
@@ -2823,6 +2834,13 @@
             // Lógica de destruição progressiva
             // NOVO: A lógica só continua se a destruição estiver em andamento E não estiver completa.
             if (isDestroying && !destructionComplete) {
+                if (destroyTargetPosition) {
+                    const playerPosition = new THREE.Vector3().copy(playerBody.position);
+                    if (playerPosition.distanceTo(destroyTargetPosition) > destroyDistance) {
+                        stopDestruction();
+                        return;
+                    }
+                }
                 // Se estiver na mira, continua o progresso
                 destroyProgress += 1 / 60;
 
