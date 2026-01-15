@@ -632,6 +632,7 @@
         let dirtTextureForHole; // NOVO: Textura de terra para o buraco
 
         const texturePatches = []; // NOVO: Para rastrear os remendos de aplicação de textura
+        const dirtDeposits = []; // Adicionado para corrigir a regressão do code review
         let mounds = [];
         let visualMounds = []; // NOVO: Para os montes de terra visuais
         let closingMounds = []; // NOVO: Para animar o fechamento dos buracos
@@ -3744,8 +3745,12 @@
                     }
                     crosshairColor = canApply ? 'lime' : 'white';
                 } else if (isPrimaryToolDestroying) {
-                    // Otimização: Só faz o raycast se NÃO estiver a tentar destruir ativamente
-                    if (!isAttemptingToDestroy) {
+                    // If the user is holding the button, just show a red crosshair and do nothing else.
+                    // This prevents the expensive raycast from running every frame.
+                    if (isAttemptingToDestroy) {
+                        crosshairColor = 'red';
+                    } else {
+                        // If the mouse is not held down, perform the check to see if a valid target is in range.
                         raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                         const intersects = raycaster.intersectObjects(scene.children, true);
                         let canDestroy = false;
@@ -3753,9 +3758,9 @@
                             if (intersects[i].distance > destroyDistance) continue;
                             let intersectedObject = intersects[i].object;
 
-                            // Lógica de verificação unificada (Montanha, Chão, Blocos, etc.)
+                            // Unified check logic (Mountain, Ground, Blocks, etc.)
                             const heldItemName = beltItems[selectedSlotIndex]?.name;
-                             const isIslandMesh = islandMeshes.some(m => m.mesh === intersectedObject);
+                            const isIslandMesh = islandMeshes.some(m => m.mesh === intersectedObject);
                             if (isIslandMesh) {
                                 const hitPoint = intersects[i].point;
                                 const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
@@ -3768,7 +3773,7 @@
                                 }
                             }
 
-                            // Verifica blocos destrutíveis, etc.
+                            // Check for destructible blocks, etc.
                             let intersectedBody = null;
                             let currentObject = intersectedObject;
                             while (currentObject) {
@@ -3784,9 +3789,6 @@
                             if (canDestroy) break;
                         }
                         crosshairColor = canDestroy ? 'red' : 'white';
-                    } else {
-                        // Se está a tentar destruir, a mira fica vermelha por defeito
-                        crosshairColor = 'red';
                     }
                 } else if (isPrimaryToolGrabbing) {
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
