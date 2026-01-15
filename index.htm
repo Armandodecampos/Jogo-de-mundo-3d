@@ -422,6 +422,7 @@
 
         // NOVO: Variáveis para o sistema de destruição progressiva
         let isDestroying = false;
+        let isAttemptingToDestroy = false; // NOVO: Rastreia a intenção do usuário
         let destroyProgress = 0;
         let targetDestroyTime = 0; // Tempo necessário para destruir o objeto (em segundos)
         let destroyTargetBody = null; // Corpo que está sendo destruído
@@ -2311,6 +2312,7 @@
                     const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
 
                     if (primaryActionType === 'destroy') {
+                        isAttemptingToDestroy = true; // Define a intenção
                         startDestruction();
                     } else if (primaryActionType === 'grab') {
                         // Inicia o temporizador para diferenciar clique de segurar
@@ -2328,7 +2330,8 @@
             renderer.domElement.addEventListener('mouseup', (event) => {
                 if (!isWorldReady || !document.pointerLockElement || gamePaused) return;
 
-                stopDestruction(); // Para sempre a destruição em qualquer mouseup
+                isAttemptingToDestroy = false; // Limpa a intenção em qualquer mouseup
+                stopDestruction(); // Para a ação de destruição ativa
 
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
                 const secondaryActionType = getActionType(beltItems[1]);
@@ -2776,6 +2779,7 @@
             // Listeners para o botão da mochila
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
+
         }
 
         // Função para lidar com o redimensionamento da janela
@@ -2838,15 +2842,17 @@
             if (isDestroying && !destructionComplete) {
                 if (destroyTargetPosition) {
                     const playerPosition = new THREE.Vector3().copy(playerBody.position);
+                    // NOVO: A verificação de distância agora apenas para a ação, não retorna
                     if (playerPosition.distanceTo(destroyTargetPosition) > destroyDistance) {
-                        stopDestruction();
-                        return;
+                        stopDestruction(); // Cancela a ação de destruir
                     }
                 }
-                // Se estiver na mira, continua o progresso
-                destroyProgress += 1 / 60;
 
-                // Efeitos de partículas unificados
+                // NOVO: Continua com a lógica de progresso apenas se a destruição ainda estiver ativa
+                if (isDestroying) {
+                    destroyProgress += 1 / 60; // Avança o progresso
+
+                    // Efeitos de partículas unificados
                 if (destroyTargetDigInfo && Math.random() < 0.5) {
                     createDebris(destroyTargetDigInfo.mound.position, 2, false);
                     createSmokeEffect(destroyTargetDigInfo.mound.position, false);
@@ -2917,6 +2923,7 @@
                     const progressPercentage = Math.min((destroyProgress / targetDestroyTime) * 100, 100);
                     progressBar.style.width = `${progressPercentage}%`;
                 }
+                } // Fecha o if (isDestroying)
             } else if (isDestroying && destructionComplete) {
                 // Se a destruição foi concluída, chama stopDestruction para limpar
                 stopDestruction();
@@ -3637,7 +3644,7 @@
                 isPrimaryToolGrabbing = true;
             } else if (primaryToolForCrosshair.name === textureApplicatorItemName) {
                 isPrimaryToolApplyingTexture = true;
-            } else if (primaryToolForCrosshair.name === axeItemName || primaryToolForCrosshair.name === hammerItemName || primaryToolForCrosshair.name === stoneItemName) {
+            } else if (primaryToolForCrosshair.name === axeItemName || primaryToolForCrosshair.name === hammerItemName || primaryToolForCrosshair.name === stoneItemName || primaryToolForCrosshair.name === shovelItemName || primaryToolForCrosshair.name === pickaxeItemName) {
                 isPrimaryToolDestroying = true;
             } else if (primaryToolForCrosshair.name === cobItemName || primaryToolForCrosshair.name === floorItemName || primaryToolForCrosshair.name === treeSaplingItemName || primaryToolForCrosshair.name === woodenPlankItemName || primaryToolForCrosshair.name === treeTrunkItemName || primaryToolForCrosshair.name === boxItemName) {
                 isPrimaryToolPlacing = true;
@@ -3692,20 +3699,6 @@
                             if (intersects[i].distance <= pickUpDistance + 1) {
                                 const hitPoint = intersects[i].point;
 
-                                // NOVO: Adiciona a verificação da área do depósito de pedra à lógica da mira
-                                let isOnDirtDepositArea = false;
-                                for (const deposit of dirtDeposits) {
-                                    const depositPosition = new THREE.Vector3().copy(deposit.body.position);
-                                    if (hitPoint.distanceTo(depositPosition) < deposit.radius) {
-                                        isOnDirtDepositArea = true;
-                                        break;
-                                    }
-                                }
-
-                                if (isOnDirtDepositArea) {
-                                    continue; // Pula esta interseção, pois está em uma área proibida
-                                }
-
                                 const hitNormal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
                                 placementPosition.copy(hitPoint);
                                 placementPosition.add(hitNormal.multiplyScalar(currentGhostHeight / 2));
@@ -3751,19 +3744,31 @@
                     }
                     crosshairColor = canApply ? 'lime' : 'white';
                 } else if (isPrimaryToolDestroying) {
-                    if (!isDestroying) {
+                    // Otimização: Só faz o raycast se NÃO estiver a tentar destruir ativamente
+                    if (!isAttemptingToDestroy) {
                         raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                         const intersects = raycaster.intersectObjects(scene.children, true);
                         let canDestroy = false;
                         for (let i = 0; i < intersects.length; i++) {
                             if (intersects[i].distance > destroyDistance) continue;
                             let intersectedObject = intersects[i].object;
-                            // Check for patches
-                            if (intersectedObject.userData && intersectedObject.userData.isDestructible && intersectedObject.userData.type === 'patch') {
-                                canDestroy = true;
-                                break;
+
+                            // Lógica de verificação unificada (Montanha, Chão, Blocos, etc.)
+                            const heldItemName = beltItems[selectedSlotIndex]?.name;
+                             const isIslandMesh = islandMeshes.some(m => m.mesh === intersectedObject);
+                            if (isIslandMesh) {
+                                const hitPoint = intersects[i].point;
+                                const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
+                                if (distanceToCenter < 50.0 && heldItemName === pickaxeItemName) {
+                                    canDestroy = true;
+                                    break;
+                                } else if (distanceToCenter >= 50.0 && heldItemName === shovelItemName) {
+                                    canDestroy = true;
+                                    break;
+                                }
                             }
-                            // Check for blocks with physics bodies
+
+                            // Verifica blocos destrutíveis, etc.
                             let intersectedBody = null;
                             let currentObject = intersectedObject;
                             while (currentObject) {
@@ -3780,6 +3785,7 @@
                         }
                         crosshairColor = canDestroy ? 'red' : 'white';
                     } else {
+                        // Se está a tentar destruir, a mira fica vermelha por defeito
                         crosshairColor = 'red';
                     }
                 } else if (isPrimaryToolGrabbing) {
