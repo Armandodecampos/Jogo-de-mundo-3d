@@ -2837,10 +2837,10 @@
             // NOVO: A lógica só continua se a destruição estiver em andamento E não estiver completa.
             if (isDestroying && !destructionComplete) {
                 if (destroyTargetPosition) {
-                    const playerPosition = new THREE.Vector3().copy(playerBody.position);
-                    if (playerPosition.distanceTo(destroyTargetPosition) > destroyDistance) {
-                        stopDestruction();
-                        return;
+                    // Use calculateWrappedDistance for accurate distance checking in the wrapped world
+                    if (calculateWrappedDistance(playerBody.position, destroyTargetPosition) > destroyDistance) {
+                        stopDestruction(); // Ação cancelada se o jogador estiver muito longe
+                        return; // Pule o resto da lógica de destruição para este quadro
                     }
                 }
                 // Se estiver na mira, continua o progresso
