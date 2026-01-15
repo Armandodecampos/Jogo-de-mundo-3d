@@ -7,42 +7,44 @@ async def main():
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
 
-        # Listen for the specific console message
-        test_result = None
+        # Set up a listener for the success message from our test function
+        success_message_found = asyncio.Event()
         def handle_console(msg):
-            nonlocal test_result
-            if "JULES_TEST: currentMound.isMountain" in msg.text:
-                test_result = msg.text
+            print(f"Console: {msg.text}") # Print all messages for debugging
+            if "JULES_TEST: SUCCESS" in msg.text:
+                success_message_found.set()
 
         page.on("console", handle_console)
 
         try:
-            await page.goto("http://localhost:8000/index.htm")
+            await page.goto("http://localhost:8000/index.htm", timeout=60000)
             await page.locator("#startButton").click()
-            await page.wait_for_function("window.isWorldReady === true", timeout=30000)
+
+            # Wait for the world to be ready by listening for the specific console message
+            print("Waiting for world to load...")
+            async with page.expect_console_message(
+                lambda msg: "All resources loaded, world is ready." in msg.text,
+                timeout=30000
+            ):
+                pass # The context manager handles the waiting
             print("World is ready.")
 
             # Run the injected test function
             await page.evaluate("window.JULES_TEST_digging()")
 
-            # Wait a moment for the console message to be captured
-            await page.wait_for_timeout(1000)
+            # Wait for the success message event to be set, with a timeout
+            print("Waiting for test success message...")
+            await asyncio.wait_for(success_message_found.wait(), timeout=10)
 
-            # Verify the result from the console message
-            print(f"Captured test result: {test_result}")
-            if test_result is None:
-                raise Exception("Verification failed: Did not capture test result from console.")
-            if "true" not in test_result:
-                raise Exception(f"Verification failed: Expected 'isMountain' to be true, but got: {test_result}")
+            print("Verification successful: Destruction was automatically cancelled.")
 
-            print("Verification successful: 'isMountain' flag is correctly set to true.")
-
-        except Exception as e:
-            print(f"An error occurred: {e}")
+        except (asyncio.TimeoutError, Exception) as e:
+            print(f"An error occurred during verification: {e}")
             await page.screenshot(path="dig_verification_error.png")
-            raise
+            raise # Re-raise the exception to fail the step
 
         finally:
             await browser.close()
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
