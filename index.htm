@@ -422,6 +422,7 @@
 
         // NOVO: Variáveis para o sistema de destruição progressiva
         let isDestroying = false;
+        let isAttemptingToDestroy = false; // NOVO: Para rastrear a intenção do jogador
         let destroyProgress = 0;
         let targetDestroyTime = 0; // Tempo necessário para destruir o objeto (em segundos)
         let destroyTargetBody = null; // Corpo que está sendo destruído
@@ -2311,6 +2312,7 @@
                     const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
 
                     if (primaryActionType === 'destroy') {
+                        isAttemptingToDestroy = true; // NOVO: Define a intenção
                         startDestruction();
                     } else if (primaryActionType === 'grab') {
                         // Inicia o temporizador para diferenciar clique de segurar
@@ -2328,6 +2330,7 @@
             renderer.domElement.addEventListener('mouseup', (event) => {
                 if (!isWorldReady || !document.pointerLockElement || gamePaused) return;
 
+                isAttemptingToDestroy = false; // NOVO: Reseta a intenção em qualquer mouseup
                 stopDestruction(); // Para sempre a destruição em qualquer mouseup
 
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
@@ -3751,7 +3754,11 @@
                     }
                     crosshairColor = canApply ? 'lime' : 'white';
                 } else if (isPrimaryToolDestroying) {
-                    if (!isDestroying) {
+                    if (isAttemptingToDestroy) {
+                        // Se estiver a tentar destruir, a cor depende se está ativamente a destruir (vermelho) ou fora de alcance (branco).
+                        crosshairColor = isDestroying ? 'red' : 'white';
+                    } else {
+                        // Se não estiver a tentar destruir (sem pressionar o rato), faz a verificação para ver se o alvo é válido.
                         raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                         const intersects = raycaster.intersectObjects(scene.children, true);
                         let canDestroy = false;
@@ -3779,8 +3786,6 @@
                             if (canDestroy) break;
                         }
                         crosshairColor = canDestroy ? 'red' : 'white';
-                    } else {
-                        crosshairColor = 'red';
                     }
                 } else if (isPrimaryToolGrabbing) {
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
