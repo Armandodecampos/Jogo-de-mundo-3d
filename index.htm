@@ -421,7 +421,6 @@
         const destroyDistance = 3.0; // Distância máxima para destruir um objeto
 
         // NOVO: Variáveis para o sistema de destruição progressiva
-        let isAttemptingToDestroy = false; // NOVO: Flag para a intenção do jogador
         let isDestroying = false;
         let destroyProgress = 0;
         let targetDestroyTime = 0; // Tempo necessário para destruir o objeto (em segundos)
@@ -1573,48 +1572,6 @@
             }
         }
 
-        function checkTargetStillInRange() {
-            if (!destroyTargetPosition) return false;
-
-            // Otimização: Primeiro, verifica a distância euclidiana. É mais barato que o raycast.
-            // Se o jogador se moveu para longe, podemos parar imediatamente.
-            if (calculateWrappedDistance(playerBody.position, destroyTargetPosition) > destroyDistance) {
-                return false;
-            }
-
-            // Se a distância for boa, faz um raycast para garantir que o jogador ainda está "olhando" para o alvo.
-            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-            const intersects = raycaster.intersectObjects(scene.children, true);
-
-            for (const intersect of intersects) {
-                if (intersect.distance > destroyDistance) {
-                    continue; // Pula objetos que estão muito longe.
-                }
-
-                // Verifica se o objeto intersectado corresponde ao que estamos destruindo.
-                // Isso pode ser comparando corpos de física, malhas ou tipos de alvo.
-                if (destroyTargetBody && intersect.object.userData.physicsBody === destroyTargetBody) {
-                    return true; // O corpo de física ainda está na mira.
-                }
-                if (destroyTargetMesh && intersect.object === destroyTargetMesh) {
-                    return true; // A malha visual ainda está na mira.
-                }
-                 if (destroyTargetDigInfo) {
-                    // Para cavar, apenas verifica se a interseção está próxima do ponto original.
-                    if (intersect.point.distanceTo(destroyTargetPosition) < 1.5) { // Tolerância
-                        return true;
-                    }
-                }
-                 if (destroyTargetMountainInfo) {
-                    if (intersect.point.distanceTo(destroyTargetPosition) < 2.0) {
-                        return true;
-                    }
-                }
-            }
-
-            return false; // O alvo não está mais na mira.
-        }
-
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function init() {
             console.log("init called");
@@ -2351,13 +2308,14 @@
                 if (!isWorldReady || gamePaused || !document.pointerLockElement) return;
 
                 if (event.button === 0) { // Botão esquerdo
-                    isAttemptingToDestroy = true; // Define a intenção de destruir
-
-                    // Mantém a lógica de clique/segurar para a ação de agarrar
                     const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
-                    if (primaryActionType === 'grab') {
+
+                    if (primaryActionType === 'destroy') {
+                        startDestruction();
+                    } else if (primaryActionType === 'grab') {
+                        // Inicia o temporizador para diferenciar clique de segurar
                         clickHoldTimer = setTimeout(() => {
-                            clickHoldTimer = null;
+                            clickHoldTimer = null; // O temporizador disparou, então é um clique longo
                             if (!pickedObjectBody) {
                                 grabObject();
                             }
@@ -2370,24 +2328,24 @@
             renderer.domElement.addEventListener('mouseup', (event) => {
                 if (!isWorldReady || !document.pointerLockElement || gamePaused) return;
 
-                isAttemptingToDestroy = false; // Sempre cancela a intenção de destruir
-                stopDestruction(); // E para qualquer ação de destruição em andamento
+                stopDestruction(); // Para sempre a destruição em qualquer mouseup
 
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
                 const secondaryActionType = getActionType(beltItems[1]);
 
                 if (event.button === 0) { // Botão esquerdo do mouse para cima
-                    if (clickHoldTimer) {
+                    if (clickHoldTimer) { // Se o temporizador ainda existir, foi um clique curto
                         clearTimeout(clickHoldTimer);
                         clickHoldTimer = null;
                         if (primaryActionType === 'grab') {
                             if (pickedObjectBody) {
-                                dropObject();
+                                dropObject(); // Clique curto enquanto segura -> largar
                             } else {
-                                collectObject();
+                                collectObject(); // Clique curto enquanto não segura -> recolher
                             }
                         }
                     }
+                    // Se foi um clique longo, o temporizador é nulo e a função grabObject() já foi chamada.
 
                     if (primaryActionType === 'place') {
                         placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
@@ -2548,26 +2506,23 @@
             }
 
             function stopDestruction() {
-                // Não precisa verificar isDestroying, apenas limpa tudo para garantir.
-                if (currentMound) {
-                    currentMound.lastDugAt = world.time; // Atualiza o tempo de inatividade ao parar
+                if (isDestroying) {
+                    if (currentMound) {
+                        currentMound.lastDugAt = world.time; // Atualiza o tempo de inatividade ao parar
+                    }
+                    isDestroying = false;
+                    destroyProgress = 0;
+                    progressContainer.style.display = 'none';
+                    progressBar.style.backgroundColor = '#4CAF50'; // Redefine para o padrão
+                    currentMound = null;
+                    destroyTargetBody = null;
+                    destroyTargetMesh = null;
+                    destroyTargetPatchObject = null;
+                    destroyTargetMountainInfo = null;
+                    destroyTargetDigInfo = null; // Limpa a informação de escavação
+                    destructionComplete = false;
+                    destroyTargetPosition = null;
                 }
-                isDestroying = false;
-                destroyProgress = 0;
-                if (progressContainer) progressContainer.style.display = 'none';
-                if (progressBar) progressBar.style.backgroundColor = '#4CAF50'; // Redefine para o padrão
-
-                // Reseta todas as variáveis de alvo
-                currentMound = null;
-                destroyTargetBody = null;
-                destroyTargetMesh = null;
-                destroyTargetPatchObject = null;
-                destroyTargetMountainInfo = null;
-                destroyTargetDigInfo = null;
-                destructionComplete = false;
-                destroyTargetPosition = null;
-
-                // A flag de intenção NÃO é resetada aqui, apenas no evento mouseup.
             }
 
             function collectObject() {
@@ -2821,7 +2776,6 @@
             // Listeners para o botão da mochila
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
-
         }
 
         // Função para lidar com o redimensionamento da janela
@@ -2879,28 +2833,18 @@
                 return;
             }
 
-            // Lógica de destruição unificada
-            const heldItem = beltItems[selectedSlotIndex];
-            const actionType = getActionType(heldItem);
-
-            if (isAttemptingToDestroy && actionType === 'destroy' && !isDestroying) {
-                // Se o jogador ESTÁ tentando destruir e uma ação de destruição AINDA NÃO começou,
-                // tenta iniciar uma.
-                startDestruction();
-            } else if (!isAttemptingToDestroy && isDestroying) {
-                // Se o jogador NÃO está mais tentando destruir (soltou o mouse), mas uma
-                // ação ESTÁ em andamento, para a ação.
-                stopDestruction();
-            }
-
-            // A lógica só continua se a destruição estiver em andamento.
-            if (isDestroying) {
-                const stillOnTarget = checkTargetStillInRange();
-                if (!stillOnTarget) {
-                     stopDestruction();
-                } else {
-                    // Se estiver na mira, continua o progresso
-                    destroyProgress += 1 / 60;
+            // Lógica de destruição progressiva
+            // NOVO: A lógica só continua se a destruição estiver em andamento E não estiver completa.
+            if (isDestroying && !destructionComplete) {
+                if (destroyTargetPosition) {
+                    // Use calculateWrappedDistance for accurate distance checking in the wrapped world
+                    if (calculateWrappedDistance(playerBody.position, destroyTargetPosition) > destroyDistance) {
+                        stopDestruction(); // Ação cancelada se o jogador estiver muito longe
+                        return; // Pule o resto da lógica de destruição para este quadro
+                    }
+                }
+                // Se estiver na mira, continua o progresso
+                destroyProgress += 1 / 60;
 
                 // Efeitos de partículas unificados
                 if (destroyTargetDigInfo && Math.random() < 0.5) {
