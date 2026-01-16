@@ -423,6 +423,8 @@
         // NOVO: Variáveis para o sistema de destruição progressiva
         let isDestroying = false;
         let isAttemptingToDestroy = false; // NOVO: Para rastrear a intenção do jogador
+        let lastDestroyCheckTime = 0; // NOVO: Para o throttling
+        const DESTROY_CHECK_INTERVAL = 0.25; // NOVO: Intervalo em segundos (4x por segundo)
         let destroyProgress = 0;
         let targetDestroyTime = 0; // Tempo necessário para destruir o objeto (em segundos)
         let destroyTargetBody = null; // Corpo que está sendo destruído
@@ -2836,12 +2838,21 @@
                 return;
             }
 
+            // Se o jogador estiver a tentar destruir mas não estiver ativamente a destruir, tenta (re)iniciar a ação com throttling
+            const now = world.time;
+            if (isAttemptingToDestroy && !isDestroying && (now - lastDestroyCheckTime > DESTROY_CHECK_INTERVAL)) {
+                lastDestroyCheckTime = now; // Atualiza o tempo da última verificação
+                startDestruction();
+            }
+
             // Lógica de destruição progressiva
             // NOVO: A lógica só continua se a destruição estiver em andamento E não estiver completa.
             if (isDestroying && !destructionComplete) {
                 if (destroyTargetPosition) {
+                    // Converte a posição do corpo de física (CANNON.Vec3) para THREE.Vector3 para segurança
+                    const playerPositionVec3 = new THREE.Vector3(playerBody.position.x, playerBody.position.y, playerBody.position.z);
                     // Use calculateWrappedDistance for accurate distance checking in the wrapped world
-                    if (calculateWrappedDistance(playerBody.position, destroyTargetPosition) > destroyDistance) {
+                    if (calculateWrappedDistance(playerPositionVec3, destroyTargetPosition) > destroyDistance) {
                         stopDestruction(); // Ação cancelada se o jogador estiver muito longe
                         return; // Pule o resto da lógica de destruição para este quadro
                     }
