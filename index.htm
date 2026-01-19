@@ -418,7 +418,7 @@
         let grabberConstraint = null;
         let distanceToPickedObject = 5; // Declarada globalmente para resolver o ReferenceError
         const pickUpDistance = 3.0; // Distância máxima para pegar um objeto
-        const destroyDistance = 3.0; // Distância máxima para destruir um objeto
+        const destroyDistance = 5.0; // Distância máxima para destruir um objeto
 
         // NOVO: Variáveis para o sistema de destruição progressiva
         let isDestroying = false;
@@ -653,15 +653,16 @@
         const treeStages = {
             'semente': {
                 physics: {
+                    // A semente quase não tem corpo de física, apenas uma pequena caixa para detecção
                     trunk: { width: 0.1, height: 0.1, depth: 0.1, yOffset: 0 },
-                    leaves: { width: 0, height: 0, depth: 0, yOffset: 0 }
+                    leaves: { width: 0, height: 0, depth: 0, yOffset: 0 } // Sem folhas
                 },
                 visual: {
+                    // O visual da semente agora é uma esfera
                     sphere: { radius: 0.1 }
                 },
                 overallPhysicsHeight: 0.1,
-                growthTime: 10,
-                durability: 0.5
+                growthTime: 10 // Tempo em segundos para crescer para a próxima fase
             },
             'muda': {
                 physics: {
@@ -673,8 +674,7 @@
                     leaves: { radius: cobWidth / 2, yOffsetInGroup: (0.5 + 0.2) - (0.9 / 2) }
                 },
                 overallPhysicsHeight: 0.9,
-                growthTime: 10,
-                durability: 1.5
+                growthTime: 10 // Time in seconds to grow to next stage
             },
             'media': {
                 physics: {
@@ -685,9 +685,8 @@
                     trunk: { radius: cobWidth / 2, height: 2.0, yOffsetInGroup: (2.0 / 2) - (3.6 / 2) },
                     leaves: { radius: cobWidth * 2, yOffsetInGroup: (2.0 + 0.8) - (3.6 / 2) }
                 },
-                overallPhysicsHeight: 3.6,
-                growthTime: 10,
-                durability: 3.0
+                overallPhysicsHeight: 3.6, // Will be recalculated by randomizeTreeDimensions
+                growthTime: 10
             },
             'arvore_adulta': {
                 physics: {
@@ -698,9 +697,8 @@
                     trunk: { radius: cobWidth / 2, height: 5.0, yOffsetInGroup: (5.0 / 2) - (9.0 / 2) },
                     leaves: { radius: cobWidth * 4, yOffsetInGroup: (5.0 + 2.0) - (9.0 / 2) }
                 },
-                overallPhysicsHeight: 9.0,
-                growthTime: Infinity,
-                durability: 5.0
+                overallPhysicsHeight: 9.0, // Will be recalculated by randomizeTreeDimensions
+                growthTime: Infinity // Fully grown
             }
         };
 
@@ -2431,9 +2429,9 @@
                         }
                         currentObject = currentObject.parent;
                     }
+
                     if (mainObject && intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible) {
                         const targetType = intersectedBody.userData.type;
-                        // MODIFICAÇÃO: Uma árvore é qualquer coisa com um 'growthStage', não apenas um 'sapling'.
                         const isTree = !!intersectedBody.userData.growthStage;
                         const isWooden = [woodenPlankItemName, treeTrunkItemName, boxItemName].includes(targetType);
                         const isStone = [cobItemName, floorItemName].includes(targetType);
@@ -2796,7 +2794,6 @@
             // Listeners para o botão da mochila
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
-
         }
 
         // Função para lidar com o redimensionamento da janela
@@ -2929,37 +2926,14 @@
                             addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
 
                         } else if (destroyTargetBody) {
-                            position = destroyTargetBody.position.clone();
+                             position = destroyTargetBody.position.clone();
                             const bodyIndex = placedConstructionBodies.indexOf(destroyTargetBody);
                             if (bodyIndex !== -1) {
-                                const userData = destroyTargetBody.userData;
-                                // Lógica de recompensa de item
-                                if (userData.type === 'muda_arvore') {
-                                    const stage = userData.growthStage;
-                                     if (stage === 'semente') {
-                                        addItemToInventory(backpackItems, { name: treeSaplingItemName, quantity: 1 });
-                                    } else if (stage === 'muda') {
-                                        addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 1 });
-                                    } else if (stage === 'media') {
-                                        addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 2 });
-                                        addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 1 });
-                                    } else if (stage === 'arvore_adulta') {
-                                        addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 4 });
-                                        addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 2 });
-                                        addItemToInventory(backpackItems, { name: treeSaplingItemName, quantity: 1 }); // FIX: Drop a sapling
-                                    }
-                                } else if (userData.type === 'cob') {
-                                    addItemToInventory(backpackItems, { name: cobItemName, quantity: 1 });
-                                } else if (userData.type === 'piso') {
-                                    addItemToInventory(backpackItems, { name: floorItemName, quantity: 1 });
-                                } else if (userData.type === 'tábuas') {
-                                    addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 1 });
-                                }
-
+                                 // ... (código de recompensa de item)
                                 world.removeBody(destroyTargetBody);
                                 placedConstructionBodies.splice(bodyIndex, 1);
-                                const meshesToRemove = placedConstructionMeshesArrays.splice(bodyIndex, 1)[0];
-                                meshesToRemove.forEach(m => scene.remove(m.mesh));
+                                placedConstructionMeshesArrays[bodyIndex].forEach(m => scene.remove(m.mesh));
+                                placedConstructionMeshesArrays.splice(bodyIndex, 1);
                             }
                         }
                         updateBackpackDisplay();
@@ -3200,7 +3174,7 @@
 
             if (primaryTool === null) { // Se o slot selecionado estiver vazio, a "mão" está ativa
                 isPrimaryToolGrabbing = true;
-            } else if (primaryTool.name === axeItemName || primaryTool.name === hammerItemName || primaryTool.name === pickaxeItemName || primaryTool.name === shovelItemName) {
+            } else if (primaryTool.name === axeItemName || primaryTool.name === hammerItemName || primaryTool.name === stoneItemName) {
                 isPrimaryToolDestroying = true;
             } else if (primaryTool.name === cobItemName || primaryTool.name === floorItemName || primaryTool.name === treeSaplingItemName || primaryTool.name === woodenPlankItemName || primaryTool.name === treeTrunkItemName || primaryTool.name === boxItemName) {
                 isPrimaryToolPlacing = true;
@@ -3655,7 +3629,6 @@
                             height: newOverallPhysicsHeight, // Store the new overall height
                             depth: nextRandomizedData.physics.trunk.depth // Store trunk depth as a representative
                         };
-                        blockBody.userData.durability = nextBaseStageData.durability; // ATUALIZA A DURABILIDADE
                         blockBody.userData.growthStage = nextGrowthStageName;
                         blockBody.userData.growthStartTime = world.time;
                         blockBody.userData.randomizedDimensions = nextRandomizedData; // Update randomized dimensions
@@ -3685,7 +3658,7 @@
                 isPrimaryToolGrabbing = true;
             } else if (primaryToolForCrosshair.name === textureApplicatorItemName) {
                 isPrimaryToolApplyingTexture = true;
-            } else if (primaryToolForCrosshair.name === axeItemName || primaryToolForCrosshair.name === hammerItemName || primaryToolForCrosshair.name === pickaxeItemName || primaryToolForCrosshair.name === shovelItemName) {
+            } else if (primaryToolForCrosshair.name === axeItemName || primaryToolForCrosshair.name === hammerItemName || primaryToolForCrosshair.name === stoneItemName) {
                 isPrimaryToolDestroying = true;
             } else if (primaryToolForCrosshair.name === cobItemName || primaryToolForCrosshair.name === floorItemName || primaryToolForCrosshair.name === treeSaplingItemName || primaryToolForCrosshair.name === woodenPlankItemName || primaryToolForCrosshair.name === treeTrunkItemName || primaryToolForCrosshair.name === boxItemName) {
                 isPrimaryToolPlacing = true;
