@@ -439,6 +439,7 @@
         let mouseDownTime = 0;
         let clickHoldTimer = null;
         const CLICK_HOLD_DURATION = 250; // ms
+        let lastDestroyCheckTime = 0; // NOVO: Para a verificação de destruição repetida
 
         // Altura da câmera em relação ao centro do corpo do jogador (nível dos olhos)
         let cameraEyeLevelOffset; // Alterado para 'let' pois será modificado
@@ -2309,10 +2310,10 @@
                 if (!isWorldReady || gamePaused || !document.pointerLockElement) return;
 
                 if (event.button === 0) { // Botão esquerdo
+                    isAttemptingToDestroy = true; // NOVO: Define a intenção
                     const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
 
                     if (primaryActionType === 'destroy') {
-                        isAttemptingToDestroy = true; // NOVO: Define a intenção
                         startDestruction();
                     } else if (primaryActionType === 'grab') {
                         // Inicia o temporizador para diferenciar clique de segurar
@@ -2329,8 +2330,8 @@
             // NOVO: Listener de mouseup consolidado
             renderer.domElement.addEventListener('mouseup', (event) => {
                 if (!isWorldReady || !document.pointerLockElement || gamePaused) return;
+                isAttemptingToDestroy = false; // NOVO: Limpa a intenção
 
-                isAttemptingToDestroy = false; // NOVO: Reseta a intenção em qualquer mouseup
                 stopDestruction(); // Para sempre a destruição em qualquer mouseup
 
                 const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
@@ -2836,16 +2837,25 @@
                 return;
             }
 
-
             // Lógica de destruição progressiva
+            // NOVO: Adiciona a verificação `isAttemptingToDestroy` e a lógica de reinício repetida.
+            const now = performance.now();
+            if (isAttemptingToDestroy && now - lastDestroyCheckTime > 250) { // Verifica 4 vezes por segundo
+                lastDestroyCheckTime = now;
+                if (!isDestroying) {
+                    startDestruction(); // Tenta reiniciar a destruição se a intenção estiver lá, mas a ação não.
+                }
+            }
+
             // NOVO: A lógica só continua se a destruição estiver em andamento E não estiver completa.
             if (isDestroying && !destructionComplete) {
                 if (destroyTargetPosition) {
-                    // Converte a posição do corpo de física (CANNON.Vec3) para THREE.Vector3 para segurança
-                    const playerPositionVec3 = new THREE.Vector3(playerBody.position.x, playerBody.position.y, playerBody.position.z);
                     // Use calculateWrappedDistance for accurate distance checking in the wrapped world
-                    if (calculateWrappedDistance(playerPositionVec3, destroyTargetPosition) > destroyDistance) {
-                        stopDestruction(); // Ação cancelada se o jogador estiver muito longe
+                    // A verificação de distância agora apenas interrompe a ação, mas não a intenção.
+                    if (calculateWrappedDistance(playerBody.position, destroyTargetPosition) > destroyDistance) {
+                        isDestroying = false; // Interrompe a ação atual
+                        progressContainer.style.display = 'none'; // Esconde a barra de progresso
+                        // Não chame stopDestruction() completo para manter a intenção
                         return; // Pule o resto da lógica de destruição para este quadro
                     }
                 }
@@ -3231,6 +3241,20 @@
                             if (intersects[i].distance <= pickUpDistance + 1) { // Um pouco mais longe que pegar
                                 const hitPoint = intersects[i].point;
 
+                                // NOVO: Verifica se o ponto de impacto está dentro do volume de um depósito de pedra
+                                let isOnDirtDepositArea = false;
+                                for (const deposit of dirtDeposits) {
+                                    const depositPosition = new THREE.Vector3().copy(deposit.body.position);
+                                    // A verificação agora é uma simples distância 3D
+                                    if (hitPoint.distanceTo(depositPosition) < deposit.radius) {
+                                        isOnDirtDepositArea = true;
+                                        break;
+                                    }
+                                }
+
+                                if (isOnDirtDepositArea) {
+                                    continue; // Pula para o próximo objeto intersectado, impedindo a colocação
+                                }
 
 
                                 const hitNormal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
@@ -3684,6 +3708,19 @@
                             if (intersects[i].distance <= pickUpDistance + 1) {
                                 const hitPoint = intersects[i].point;
 
+                                // NOVO: Adiciona a verificação da área do depósito de pedra à lógica da mira
+                                let isOnDirtDepositArea = false;
+                                for (const deposit of dirtDeposits) {
+                                    const depositPosition = new THREE.Vector3().copy(deposit.body.position);
+                                    if (hitPoint.distanceTo(depositPosition) < deposit.radius) {
+                                        isOnDirtDepositArea = true;
+                                        break;
+                                    }
+                                }
+
+                                if (isOnDirtDepositArea) {
+                                    continue; // Pula esta interseção, pois está em uma área proibida
+                                }
 
                                 const hitNormal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
                                 placementPosition.copy(hitPoint);
@@ -3730,11 +3767,7 @@
                     }
                     crosshairColor = canApply ? 'lime' : 'white';
                 } else if (isPrimaryToolDestroying) {
-                    if (isAttemptingToDestroy) {
-                        // Se estiver a tentar destruir, a cor depende se está ativamente a destruir (vermelho) ou fora de alcance (branco).
-                        crosshairColor = isDestroying ? 'red' : 'white';
-                    } else {
-                        // Se não estiver a tentar destruir (sem pressionar o rato), faz a verificação para ver se o alvo é válido.
+                    if (!isDestroying) {
                         raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                         const intersects = raycaster.intersectObjects(scene.children, true);
                         let canDestroy = false;
@@ -3762,6 +3795,8 @@
                             if (canDestroy) break;
                         }
                         crosshairColor = canDestroy ? 'red' : 'white';
+                    } else {
+                        crosshairColor = 'red';
                     }
                 } else if (isPrimaryToolGrabbing) {
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
@@ -3877,7 +3912,6 @@
         document.getElementById('startButton').addEventListener('click', startGame);
 
         // Não há necessidade de window.onload aqui, pois startGame será chamado pelo clique do botão
-
     </script>
 </body>
 </html>
