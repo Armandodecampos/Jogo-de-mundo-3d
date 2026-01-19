@@ -2433,7 +2433,8 @@
                     }
                     if (mainObject && intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible) {
                         const targetType = intersectedBody.userData.type;
-                        const isTree = (targetType === treeSaplingItemName);
+                        // MODIFICAÇÃO: Uma árvore é qualquer coisa com um 'growthStage', não apenas um 'sapling'.
+                        const isTree = !!intersectedBody.userData.growthStage;
                         const isWooden = [woodenPlankItemName, treeTrunkItemName, boxItemName].includes(targetType);
                         const isStone = [cobItemName, floorItemName].includes(targetType);
 
@@ -2796,27 +2797,6 @@
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
 
-            // Attach to window for testing
-            window.createPlaceableBlock = createPlaceableBlock;
-            window.world = world;
-            window.scene = scene;
-            window.placedConstructionBodies = placedConstructionBodies;
-            window.placedConstructionMeshesArrays = placedConstructionMeshesArrays;
-            window.treeTrunkMaterialMesh = treeTrunkMaterialMesh;
-            window.treeLeavesMaterialMesh = treeLeavesMaterialMesh;
-            window.constructionMaterial = constructionMaterial;
-            window.camera = camera;
-            window.playerBody = playerBody;
-            window.beltItems = beltItems;
-            window.treeSaplingItemName = treeSaplingItemName;
-            window.updateBeltDisplay = updateBeltDisplay;
-            window.selectedSlotIndex = selectedSlotIndex;
-            window.placeBlock = placeBlock;
-            window.ghostBlockMesh = ghostBlockMesh;
-            window.cobSize = cobSize;
-            window.islandSurfaceHeight = islandSurfaceHeight;
-            window.treeStages = treeStages;
-            window.THREE = THREE; // Expose THREE for vector/quaternion creation in test
         }
 
         // Função para lidar com o redimensionamento da janela
@@ -2966,6 +2946,7 @@
                                     } else if (stage === 'arvore_adulta') {
                                         addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 4 });
                                         addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 2 });
+                                        addItemToInventory(backpackItems, { name: treeSaplingItemName, quantity: 1 }); // FIX: Drop a sapling
                                     }
                                 } else if (userData.type === 'cob') {
                                     addItemToInventory(backpackItems, { name: cobItemName, quantity: 1 });
@@ -3321,8 +3302,13 @@
 
                                 // NOVO: Alinha a posição Y na grade, considerando a altura da superfície da ilha como a base.
                                 // Isso garante que os blocos se encaixem verticalmente.
-                                const n_y = Math.round((basePosition.y - islandSurfaceHeight) / currentGhostHeight - 0.5);
-                                placementPosition.y = islandSurfaceHeight + (n_y + 0.5) * currentGhostHeight;
+                                // CORREÇÃO: As sementes não devem se encaixar na grade vertical, elas devem ser colocadas no chão.
+                                if (currentBlockType === 'muda_arvore') {
+                                    placementPosition.y = basePosition.y;
+                                } else {
+                                    const n_y = Math.round((basePosition.y - islandSurfaceHeight) / currentGhostHeight - 0.5);
+                                    placementPosition.y = islandSurfaceHeight + (n_y + 0.5) * currentGhostHeight;
+                                }
 
 
                                 // A rotação agora é apenas a rotação manual, garantindo que o bloco fique sempre na vertical
