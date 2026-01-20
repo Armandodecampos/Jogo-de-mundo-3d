@@ -547,7 +547,6 @@
         const shovelItemName = 'pá'; // NOVO: Nome do item de pá no inventário
         const pickaxeItemName = 'picareta'; // NOVO: Nome do item de picareta no inventário
         const textureApplicatorItemName = 'pincel'; // FERRAMENTA RENOMEADA
-        let selectedTextureType = 'stone'; // NOVO: Para rastrear a textura selecionada ('stone' ou 'wood')
 
         // NOVO: Variáveis para o sistema de colocação de blocos (Cob, Piso, Muda de Árvore, Tronco de Árvore, Tábuas)
         const cobItemName = 'cob'; // Nome do item de cob no inventário
@@ -615,10 +614,7 @@
         const handImageURL = 'https://dl.dropbox.com/scl/fi/adirqfks81emnagkoljcw/m-o-direita.png?rlkey=pj17lswbeg8lene1n5ypdbmob&st=i2qtxssr&dl=0';
         const treeTrunkImageURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // NOVO: Ícone para o tronco de árvore (placeholder)
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
-        const textureApplicatorImageURL = {
-            stone: 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1',
-            wood: 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'
-        };
+        const textureApplicatorImageURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Ícone para o pincel
         const stoneTextureURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Textura de pedra para aplicar
         const holeTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&dl=1";
 
@@ -631,7 +627,6 @@
         let treeLeavesMaterialMesh; // Material for tree leaves (3D model)
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
         let stoneMaterial; // NOVO: Material para chão com a nova textura
-        let woodMaterial; // NOVO: Material para a textura de madeira
         let holeMaterial; // NOVO: Material para o buraco cavado
         let stoneHoleMaterial;
         let holeGeometryTemplate = null; // NOVO: Para armazenar a geometria do modelo do buraco
@@ -936,7 +931,7 @@
                 } else if (item.name === pickaxeItemName) { // NOVO
                     img.src = pickaxeImageURL;
                 } else if (item.name === textureApplicatorItemName) {
-                    img.src = textureApplicatorImageURL[selectedTextureType];
+                    img.src = textureApplicatorImageURL;
                 } else if (item.name === cobItemName) {
                     img.src = cobTextureURL;
                 } else if (item.name === floorItemName) {
@@ -2000,17 +1995,6 @@
                 stoneMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 }); // Fallback cinza
             });
 
-            // NOVO: Carrega a textura de madeira para a ferramenta aplicadora
-            textureLoader.load(woodenPlankTextureURL, (texture) => {
-                texture.wrapS = THREE.RepeatWrapping;
-                texture.wrapT = THREE.RepeatWrapping;
-                texture.repeat.set(1, 1);
-                woodMaterial = new THREE.MeshStandardMaterial({ map: texture });
-            }, undefined, (error) => {
-                console.error('Erro ao carregar a textura de madeira:', error);
-                woodMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Fallback marrom
-            });
-
             // NOVO: Carrega a textura do buraco para a ferramenta pá e o modelo do buraco
             textureLoader.load(holeTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
@@ -2146,8 +2130,8 @@
             addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 }); // NOVO
             addItemToInventory(backpackItems, { name: pickaxeItemName, quantity: 1 }); // NOVO
+            beltItems[0] = { name: shovelItemName, quantity: 1 }; // NOVO: PÁ NA MÃO ESQUERDA
             addItemToInventory(backpackItems, { name: textureApplicatorItemName, quantity: 1 });
-            addItemToInventory(backpackItems, { name: shovelItemName, quantity: 1 });
             addItemToInventory(backpackItems, { name: cobItemName, quantity: 100 });
             addItemToInventory(backpackItems, { name: floorItemName, quantity: 50 });
             addItemToInventory(backpackItems, { name: treeSaplingItemName, quantity: 10 });
@@ -2187,14 +2171,6 @@
                         closeBackpack();
                     } else {
                         openBackpack();
-                    }
-                }
-
-                // NOVO: Alterna a textura do pincel com 'T'
-                if (event.key.toLowerCase() === 't') {
-                    if (beltItems[selectedSlotIndex]?.name === textureApplicatorItemName) {
-                        selectedTextureType = selectedTextureType === 'stone' ? 'wood' : 'stone';
-                        updateBeltDisplay();
                     }
                 }
 
@@ -2674,8 +2650,7 @@
             }
 
             function applyTexture() {
-                const selectedMaterial = selectedTextureType === 'stone' ? stoneMaterial : woodMaterial;
-                if (!selectedMaterial) return;
+                if (!stoneMaterial) return;
 
                 // Primeiro Raycast: para encontrar a posição aproximada e o objeto
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
@@ -2724,7 +2699,7 @@
 
                         for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                             for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                                const mesh = new THREE.Mesh(patchGeometry, selectedMaterial);
+                                const mesh = new THREE.Mesh(patchGeometry, stoneMaterial);
                                 mesh.receiveShadow = true;
                                 mesh.userData.patchObject = patchObject;
                                 scene.add(mesh);
