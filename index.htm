@@ -168,6 +168,7 @@
             visibility: hidden;
             opacity: 0;
             transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+            white-space: pre-wrap;
         }
         .slot {
             width: 100px;
@@ -2514,9 +2515,9 @@
                 const heldItemName = beltItems[selectedSlotIndex]?.name;
                 const allTools = [axeItemName, hammerItemName, pickaxeItemName, shovelItemName];
 
-                // Only proceed if a tool is held
+                // Apenas prossiga se uma ferramenta estiver sendo segurada
                 if (!allTools.includes(heldItemName)) {
-                    return; // Not holding a tool, can't destroy anything
+                    return; // Não está segurando uma ferramenta, não pode destruir nada
                 }
 
                 for (let i = 0; i < intersects.length; i++) {
@@ -2524,7 +2525,7 @@
                     let intersectedObject = intersects[i].object;
                     const hitPoint = intersects[i].point;
 
-                    // Lógica 1: Atingiu a Montanha ou Chão (sem verificação de ferramenta)
+                    // Lógica 1: Atingiu a Montanha ou Chão
                     const isIslandMesh = islandMeshes.some(m => m.mesh === intersectedObject);
                     if (isIslandMesh) {
                         const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
@@ -2538,7 +2539,7 @@
                         }
                     }
 
-                    // Lógica 2: Atingiu um objeto destrutível (sem verificação de ferramenta)
+                    // Lógica 2: Atingiu um objeto destrutível
                     let mainObject = null, intersectedBody = null;
                     let currentObject = intersectedObject;
                     while (currentObject) {
@@ -2573,7 +2574,7 @@
                     destroyTargetMountainInfo = target.isMountain ? { position: target.position } : null;
                     destroyTargetDigInfo = null;
 
-                    // Determine material type and base durability
+                    // Determina o tipo de material e a durabilidade base
                     let baseDurability;
                     let materialType; // 'wood', 'stone', 'earth', 'other'
 
@@ -2585,7 +2586,7 @@
                         const volcanoOuterRadiusAtBottom = 1.5;
 
                         if (distanceToCenter < mountainRadius + volcanoOuterRadiusAtBottom) {
-                            return; // Exit if too close to the mountain
+                            return; // Sai se estiver muito perto da montanha
                         }
 
                         let targetMound = null;
@@ -2630,8 +2631,8 @@
                         return;
                     }
 
-                    // Calculate multiplier
-                    let multiplier = 2.0; // Default for non-specialized tool
+                    // Calcula o multiplicador
+                    let multiplier = 2.0; // Padrão para ferramenta não especializada
                     const strongMultiplier = 1.0;
 
                     if ((heldItemName === axeItemName && materialType === 'wood') ||
@@ -2642,10 +2643,10 @@
 
                     targetDestroyTime = baseDurability * multiplier;
 
-                    // Display progress bar
+                    // Exibe a barra de progresso
                     progressContainer.style.display = 'block';
                     progressBar.style.width = '0%';
-                    // Set progress bar color based on material
+                    // Define a cor da barra de progresso com base no material
                     if (materialType === 'stone') {
                         progressBar.style.backgroundColor = '#888888';
                     } else if (materialType === 'wood') {
