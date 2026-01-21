@@ -22,13 +22,21 @@ def run_verification():
             assert "Martelo" in tooltip_text
             assert "Sem uso" in tooltip_text
 
+            # Verify Shovel tooltip
+            shovel_slot = page.locator('#backpackSlotsContainer .slot:has(img[src*="Pá"])')
+            shovel_slot.hover()
+            tooltip_text = page.locator("#tooltip").inner_text()
+            print(f"Shovel tooltip: {tooltip_text}")
+            assert "Pá" in tooltip_text
+            assert "Especialidade: Terra" in tooltip_text
+
             # Verify Pickaxe tooltip
             pickaxe_slot = page.locator('#backpackSlotsContainer .slot:has(img[src*="whnsbw.svg"])')
             pickaxe_slot.hover()
             tooltip_text = page.locator("#tooltip").inner_text()
             print(f"Pickaxe tooltip: {tooltip_text}")
             assert "Picareta" in tooltip_text
-            assert "Pedra e Terra" in tooltip_text
+            assert "Especialidade: Pedra" in tooltip_text
 
             # Close the backpack to check the axe in the belt
             page.keyboard.press("B")
