@@ -328,6 +328,7 @@
             visibility: hidden;
             opacity: 0;
             transition: opacity 0.2s, visibility 0.2s;
+            white-space: pre-wrap;
         }
 
         #tooltip.visible {
@@ -587,12 +588,12 @@
         // NOVO: Mapeamento de nomes de itens para exibição
         const itemDisplayNames = {
             [handItemName]: 'Mão',
-            [axeItemName]: 'Machado',
-            [hammerItemName]: 'Martelo',
+            [axeItemName]: 'Machado\nEspecialidade: Madeira',
+            [hammerItemName]: 'Martelo\nEspecialidade: Terra',
             [stoneItemName]: 'Pedra',
             [dirtItemName]: 'Terra',
             [shovelItemName]: 'Pá',
-            [pickaxeItemName]: 'Picareta',
+            [pickaxeItemName]: 'Picareta\nEspecialidade: Pedra',
             [cobItemName]: 'Bloco de Barro',
             [floorItemName]: 'Piso de Barro',
             [treeSaplingItemName]: 'Muda de Árvore',
@@ -2511,31 +2512,33 @@
                 let target = null;
 
                 const heldItemName = beltItems[selectedSlotIndex]?.name;
+                const allTools = [axeItemName, hammerItemName, pickaxeItemName, shovelItemName];
+
+                // Only proceed if a tool is held
+                if (!allTools.includes(heldItemName)) {
+                    return; // Not holding a tool, can't destroy anything
+                }
 
                 for (let i = 0; i < intersects.length; i++) {
                     if (intersects[i].distance > destroyDistance) continue;
                     let intersectedObject = intersects[i].object;
                     const hitPoint = intersects[i].point;
 
-                    // Lógica 1: Atingiu a Montanha ou Chão
+                    // Lógica 1: Atingiu a Montanha ou Chão (sem verificação de ferramenta)
                     const isIslandMesh = islandMeshes.some(m => m.mesh === intersectedObject);
                     if (isIslandMesh) {
                         const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
                         const mountainRadius = 50.0;
                         if (distanceToCenter < mountainRadius) {
-                            if (heldItemName === pickaxeItemName) {
-                                target = { body: null, mesh: intersectedObject, isMountain: true, position: hitPoint.clone() };
-                                break;
-                            }
+                            target = { body: null, mesh: intersectedObject, isMountain: true, position: hitPoint.clone() };
+                            break;
                         } else {
-                            if (heldItemName === shovelItemName) {
-                                target = { body: null, mesh: intersectedObject, isDigging: true, intersect: intersects[i] };
-                                break;
-                            }
+                            target = { body: null, mesh: intersectedObject, isDigging: true, intersect: intersects[i] };
+                            break;
                         }
                     }
 
-
+                    // Lógica 2: Atingiu um objeto destrutível (sem verificação de ferramenta)
                     let mainObject = null, intersectedBody = null;
                     let currentObject = intersectedObject;
                     while (currentObject) {
@@ -2548,20 +2551,11 @@
                     }
 
                     if (mainObject && intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible) {
-                        const targetType = intersectedBody.userData.type;
-                        const isTree = !!intersectedBody.userData.growthStage;
-                        const isWooden = [woodenPlankItemName, treeTrunkItemName, boxItemName].includes(targetType);
-                        const isStone = [cobItemName, floorItemName].includes(targetType);
-
-                        if ((isTree || isWooden) && heldItemName === axeItemName) {
-                            target = { body: intersectedBody, mesh: mainObject };
-                            break;
-                        } else if (isStone && heldItemName === hammerItemName) {
-                            target = { body: intersectedBody, mesh: mainObject };
-                            break;
-                        }
+                        target = { body: intersectedBody, mesh: mainObject };
+                        break;
                     }
                 }
+
                 if (target) {
                     isDestroying = true;
                     if (target.isDigging) {
@@ -2577,7 +2571,11 @@
                     destroyTargetMesh = target.mesh;
                     destroyTargetPatchObject = target.patchObject || null;
                     destroyTargetMountainInfo = target.isMountain ? { position: target.position } : null;
-                    destroyTargetDigInfo = null; // Reseta a info de escavação
+                    destroyTargetDigInfo = null;
+
+                    // Determine material type and base durability
+                    let baseDurability;
+                    let materialType; // 'wood', 'stone', 'earth', 'other'
 
                     if (target.isDigging) {
                         const intersect = target.intersect;
@@ -2587,7 +2585,7 @@
                         const volcanoOuterRadiusAtBottom = 1.5;
 
                         if (distanceToCenter < mountainRadius + volcanoOuterRadiusAtBottom) {
-                            return; // Sai se estiver muito perto da montanha
+                            return; // Exit if too close to the mountain
                         }
 
                         let targetMound = null;
@@ -2605,32 +2603,55 @@
                         }
 
                         if (currentMound) {
-                            isDestroying = true; // Flag unificada
-                            destroyProgress = 0;
                             destroyTargetDigInfo = { mound: currentMound };
-                            targetDestroyTime = 1.0; // Tempo fixo para cada estágio de escavação
-                            progressContainer.style.display = 'block';
-                            progressBar.style.backgroundColor = '#4CAF50';
-                            progressBar.style.width = '0%';
-                        }
-
-                    } else if (destroyTargetMountainInfo) {
-                        targetDestroyTime = 2.0; // Tempo fixo para minerar a montanha
-                        progressContainer.style.display = 'block';
-                        progressBar.style.backgroundColor = '#888888'; // Cinza para pedra
-                        progressBar.style.width = '0%';
-                    } else {
-                        let targetUserData;
-                        if (destroyTargetBody) {
-                            targetUserData = destroyTargetBody.userData;
-                        }
-
-                        if (targetUserData) {
-                            targetDestroyTime = targetUserData.durability || 1.0;
-                            progressContainer.style.display = 'block';
+                            baseDurability = 1.0;
+                            materialType = 'earth';
                         } else {
-                            isDestroying = false; // Cancela se não houver dados do usuário
+                            isDestroying = false;
+                            return;
                         }
+                    } else if (target.isMountain) {
+                        baseDurability = 2.0;
+                        materialType = 'stone';
+                    } else if (target.body && target.body.userData) {
+                        baseDurability = target.body.userData.durability || 1.0;
+                        const targetType = target.body.userData.type;
+                        const isTree = !!target.body.userData.growthStage;
+                        const isWooden = [woodenPlankItemName, treeTrunkItemName, boxItemName, woodenBlockItemName].includes(targetType);
+                        const isStone = [stoneBlockItemName, stoneFloorItemName].includes(targetType);
+                        const isEarth = [cobItemName, floorItemName].includes(targetType);
+
+                        if (isTree || isWooden) materialType = 'wood';
+                        else if (isStone) materialType = 'stone';
+                        else if (isEarth) materialType = 'earth';
+                        else materialType = 'other';
+                    } else {
+                        isDestroying = false;
+                        return;
+                    }
+
+                    // Calculate multiplier
+                    let multiplier = 2.0; // Default for non-specialized tool
+                    const strongMultiplier = 1.0;
+
+                    if ((heldItemName === axeItemName && materialType === 'wood') ||
+                        (heldItemName === pickaxeItemName && materialType === 'stone') ||
+                        (heldItemName === hammerItemName && materialType === 'earth')) {
+                        multiplier = strongMultiplier;
+                    }
+
+                    targetDestroyTime = baseDurability * multiplier;
+
+                    // Display progress bar
+                    progressContainer.style.display = 'block';
+                    progressBar.style.width = '0%';
+                    // Set progress bar color based on material
+                    if (materialType === 'stone') {
+                        progressBar.style.backgroundColor = '#888888';
+                    } else if (materialType === 'wood') {
+                        progressBar.style.backgroundColor = '#8B4513';
+                    } else {
+                        progressBar.style.backgroundColor = '#4CAF50';
                     }
                 }
             }
