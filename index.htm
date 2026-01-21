@@ -571,6 +571,11 @@
         const shovelItemName = 'pá'; // NOVO: Nome do item de pá no inventário
         const pickaxeItemName = 'picareta'; // NOVO: Nome do item de picareta no inventário
 
+        const stoneBlockItemName = 'bloco_pedra';
+        const woodenBlockItemName = 'bloco_madeira';
+        const stoneFloorItemName = 'piso_pedra';
+
+
         // NOVO: Variáveis para o sistema de colocação de blocos (Cob, Piso, Muda de Árvore, Tronco de Árvore, Tábuas)
         const cobItemName = 'cob'; // Nome do item de cob no inventário
         const floorItemName = 'piso'; // Nome do item de piso no inventário
@@ -593,7 +598,10 @@
             [treeSaplingItemName]: 'Muda de Árvore',
             [treeTrunkItemName]: 'Tronco de Árvore',
             [woodenPlankItemName]: 'Piso de Madeira',
-            [boxItemName]: 'Caixote'
+            [boxItemName]: 'Caixote',
+            [stoneBlockItemName]: 'Bloco de Pedra',
+            [woodenBlockItemName]: 'Bloco de Madeira',
+            [stoneFloorItemName]: 'Piso de Pedra'
         };
 
         let ghostBlockMesh; // Malha transparente para pré-visualizar a colocação
@@ -621,6 +629,27 @@
         const woodenPlankDepth = cobSize;
         const initialWoodenPlankMass = 50;
         const woodenPlankDurability = 0.5; // Durabilidade da tábua em segundos
+
+        // Stone Block dimensions
+        const stoneBlockWidth = cobWidth;
+        const stoneBlockHeight = cobHeight;
+        const stoneBlockDepth = cobDepth;
+        const initialStoneBlockMass = 150;
+        const stoneBlockDurability = 2.0;
+
+        // Wooden Block dimensions
+        const woodenBlockWidth = cobWidth;
+        const woodenBlockHeight = cobHeight;
+        const woodenBlockDepth = cobDepth;
+        const initialWoodenBlockMass = 40;
+        const woodenBlockDurability = 1.0;
+
+        // Stone Floor dimensions
+        const stoneFloorWidth = cobWidth;
+        const stoneFloorHeight = floorHeight;
+        const stoneFloorDepth = cobDepth;
+        const initialStoneFloorMass = 120;
+        const stoneFloorDurability = 1.8;
 
         // Dimensões da muda de árvore
         const initialTreeSaplingMass = 10; // Massa para as mudas de árvore (leve)
@@ -656,6 +685,9 @@
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
         const stoneTextureURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Textura de pedra para aplicar
         const holeTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&dl=1";
+        const stoneBlockTextureURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1';
+        const woodenBlockTextureURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0';
+        const stoneFloorTextureURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1';
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -665,6 +697,9 @@
         let treeTrunkMaterialMesh; // Material for tree trunks (3D model)
         let treeLeavesMaterialMesh; // Material for tree leaves (3D model)
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
+        let stoneBlockMaterialMesh;
+        let woodenBlockMaterialMesh;
+        let stoneFloorMaterialMesh;
         let holeMaterial; // NOVO: Material para o buraco cavado
         let stoneHoleMaterial;
         let holeGeometryTemplate = null; // NOVO: Para armazenar a geometria do modelo do buraco
@@ -977,6 +1012,12 @@
                     img.src = treeTrunkImageURL;
                 } else if (item.name === woodenPlankItemName) { // Ícone para tábuas de madeira
                     img.src = woodenPlankTextureURL;
+                } else if (item.name === stoneBlockItemName) {
+                    img.src = stoneBlockTextureURL;
+                } else if (item.name === woodenBlockItemName) {
+                    img.src = woodenBlockTextureURL;
+                } else if (item.name === stoneFloorItemName) {
+                    img.src = stoneFloorTextureURL;
                 } else if (item.name === boxItemName) {
                     img.src = cubeTextureURL;
                 }
@@ -1468,6 +1509,33 @@
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), woodenPlankMaterialMesh);
                 initialMass = initialWoodenPlankMass;
                 durability = woodenPlankDurability;
+            } else if (type === stoneBlockItemName) {
+                width = stoneBlockWidth;
+                height = stoneBlockHeight;
+                depth = stoneBlockDepth;
+                blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+                blockBody.addShape(blockShape);
+                mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), stoneBlockMaterialMesh);
+                initialMass = initialStoneBlockMass;
+                durability = stoneBlockDurability;
+            } else if (type === woodenBlockItemName) {
+                width = woodenBlockWidth;
+                height = woodenBlockHeight;
+                depth = woodenBlockDepth;
+                blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+                blockBody.addShape(blockShape);
+                mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), woodenBlockMaterialMesh);
+                initialMass = initialWoodenBlockMass;
+                durability = woodenBlockDurability;
+            } else if (type === stoneFloorItemName) {
+                width = stoneFloorWidth;
+                height = stoneFloorHeight;
+                depth = stoneFloorDepth;
+                blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+                blockBody.addShape(blockShape);
+                mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), stoneFloorMaterialMesh);
+                initialMass = initialStoneFloorMass;
+                durability = stoneFloorDurability;
             }
             else {
                 console.error('Tipo de bloco desconhecido:', type);
@@ -2101,6 +2169,27 @@
                 woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xdeb887 }); // Fallback brown
             });
 
+            textureLoader.load(stoneBlockTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                stoneBlockMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
+            });
+
+            textureLoader.load(woodenBlockTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                woodenBlockMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
+            });
+
+            textureLoader.load(stoneFloorTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                stoneFloorMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
+            });
+
             // Load the tree sapling texture (for icon) and create the material once
             textureLoader.load(treeSaplingTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
@@ -2175,6 +2264,9 @@
             addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 20 }); // NOVO: Adiciona troncos de árvore à mochila
             addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 10 }); // NOVO: Adiciona tábuas de madeira à mochila
             addItemToInventory(backpackItems, { name: boxItemName, quantity: 20 }); // Adiciona 20 caixas ao inventário inicial
+            addItemToInventory(backpackItems, { name: stoneBlockItemName, quantity: 100 });
+            addItemToInventory(backpackItems, { name: woodenBlockItemName, quantity: 100 });
+            addItemToInventory(backpackItems, { name: stoneFloorItemName, quantity: 100 });
 
             // Pega o elemento do cinto de inventário e seus slots
             inventoryBeltElement = document.getElementById('inventoryBelt');
@@ -2408,7 +2500,7 @@
                 // Ferramentas de destruição
                 if (item.name === axeItemName || item.name === hammerItemName || item.name === pickaxeItemName || item.name === shovelItemName) return 'destroy';
                 // Itens de colocação
-                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName) return 'place';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
             }
 
@@ -2650,6 +2742,9 @@
                         else if (currentBlockType === 'tábuas' && woodenPlankMaterialMesh) materialLoaded = true;
                         else if (currentBlockType === 'muda_arvore' && treeTrunkMaterialMesh && treeLeavesMaterialMesh) materialLoaded = true;
                         else if (currentBlockType === 'tronco_arvore' && treeTrunkMaterialMesh) materialLoaded = true;
+                        else if (currentBlockType === stoneBlockItemName && stoneBlockMaterialMesh) materialLoaded = true;
+                        else if (currentBlockType === woodenBlockItemName && woodenBlockMaterialMesh) materialLoaded = true;
+                        else if (currentBlockType === stoneFloorItemName && stoneFloorMaterialMesh) materialLoaded = true;
                         else if (currentBlockType === boxItemName && cubeMaterialMesh) materialLoaded = true; // NOVO: Verifica o material da caixa
 
                         if (materialLoaded) {
@@ -3108,7 +3203,7 @@
                 isPrimaryToolGrabbing = true;
             } else if (primaryTool.name === axeItemName || primaryTool.name === hammerItemName || primaryTool.name === stoneItemName) {
                 isPrimaryToolDestroying = true;
-            } else if (primaryTool.name === cobItemName || primaryTool.name === floorItemName || primaryTool.name === treeSaplingItemName || primaryTool.name === woodenPlankItemName || primaryTool.name === treeTrunkItemName || primaryTool.name === boxItemName) {
+            } else if (primaryTool.name === cobItemName || primaryTool.name === floorItemName || primaryTool.name === treeSaplingItemName || primaryTool.name === woodenPlankItemName || primaryTool.name === treeTrunkItemName || primaryTool.name === boxItemName || primaryTool.name === stoneBlockItemName || primaryTool.name === woodenBlockItemName || primaryTool.name === stoneFloorItemName) {
                 isPrimaryToolPlacing = true;
                 currentBlockType = primaryTool.name; // Define o tipo de bloco para o ghost mesh
             }
@@ -3147,6 +3242,21 @@
                         currentGhostWidth = woodenPlankWidth;
                         currentGhostHeight = woodenPlankHeight;
                         currentGhostDepth = woodenPlankDepth;
+                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
+                    } else if (currentBlockType === stoneBlockItemName) {
+                        currentGhostWidth = stoneBlockWidth;
+                        currentGhostHeight = stoneBlockHeight;
+                        currentGhostDepth = stoneBlockDepth;
+                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
+                    } else if (currentBlockType === woodenBlockItemName) {
+                        currentGhostWidth = woodenBlockWidth;
+                        currentGhostHeight = woodenBlockHeight;
+                        currentGhostDepth = woodenBlockDepth;
+                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
+                    } else if (currentBlockType === stoneFloorItemName) {
+                        currentGhostWidth = stoneFloorWidth;
+                        currentGhostHeight = stoneFloorHeight;
+                        currentGhostDepth = stoneFloorDepth;
                         ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
                     } else if (currentBlockType === 'muda_arvore') {
                         // O ghost block para 'muda_arvore' deve corresponder ao estágio inicial 'semente'
@@ -3241,6 +3351,20 @@
                                                 if (distanceToExistingTree < minTreePlacementDistance) {
                                                     canPlace = false;
                                                     break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (canPlace) {
+                                        const isPlacingFloor = currentBlockType === floorItemName || currentBlockType === woodenPlankItemName || currentBlockType === stoneFloorItemName;
+                                        if (isPlacingFloor) {
+                                            for (const existingBody of placedConstructionBodies) {
+                                                const isExistingFloor = existingBody.userData.type === floorItemName || existingBody.userData.type === woodenPlankItemName || existingBody.userData.type === stoneFloorItemName;
+                                                if (isExistingFloor) {
+                                                    if (placementPosition.distanceToSquared(existingBody.position) < 0.01) {
+                                                        canPlace = false;
+                                                        break;
+                                                    }
                                                 }
                                             }
                                         }
@@ -3589,7 +3713,7 @@
                 isPrimaryToolGrabbing = true;
             } else if (primaryToolForCrosshair.name === axeItemName || primaryToolForCrosshair.name === hammerItemName || primaryToolForCrosshair.name === stoneItemName) {
                 isPrimaryToolDestroying = true;
-            } else if (primaryToolForCrosshair.name === cobItemName || primaryToolForCrosshair.name === floorItemName || primaryToolForCrosshair.name === treeSaplingItemName || primaryToolForCrosshair.name === woodenPlankItemName || primaryToolForCrosshair.name === treeTrunkItemName || primaryToolForCrosshair.name === boxItemName) {
+            } else if (primaryToolForCrosshair.name === cobItemName || primaryToolForCrosshair.name === floorItemName || primaryToolForCrosshair.name === treeSaplingItemName || primaryToolForCrosshair.name === woodenPlankItemName || primaryToolForCrosshair.name === treeTrunkItemName || primaryToolForCrosshair.name === boxItemName || primaryToolForCrosshair.name === stoneBlockItemName || primaryToolForCrosshair.name === woodenBlockItemName || primaryToolForCrosshair.name === stoneFloorItemName) {
                 isPrimaryToolPlacing = true;
                 currentBlockType = primaryToolForCrosshair.name; // Define o tipo de bloco para o ghost mesh
             }
@@ -3616,6 +3740,18 @@
                         currentGhostWidth = woodenPlankWidth;
                         currentGhostHeight = woodenPlankHeight;
                         currentGhostDepth = woodenPlankDepth;
+                    } else if (currentBlockType === stoneBlockItemName) {
+                        currentGhostWidth = stoneBlockWidth;
+                        currentGhostHeight = stoneBlockHeight;
+                        currentGhostDepth = stoneBlockDepth;
+                    } else if (currentBlockType === woodenBlockItemName) {
+                        currentGhostWidth = woodenBlockWidth;
+                        currentGhostHeight = woodenBlockHeight;
+                        currentGhostDepth = woodenBlockDepth;
+                    } else if (currentBlockType === stoneFloorItemName) {
+                        currentGhostWidth = stoneFloorWidth;
+                        currentGhostHeight = stoneFloorHeight;
+                        currentGhostDepth = stoneFloorDepth;
                     } else if (currentBlockType === 'muda_arvore') {
                         const seedBaseData = treeStages['semente'];
                         currentGhostWidth = seedBaseData.visual.sphere.radius * 2;
@@ -3667,6 +3803,20 @@
                                                 if (distanceToExistingTree < minTreePlacementDistance) {
                                                     canPlace = false;
                                                     break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (canPlace) {
+                                        const isPlacingFloor = currentBlockType === floorItemName || currentBlockType === woodenPlankItemName || currentBlockType === stoneFloorItemName;
+                                        if (isPlacingFloor) {
+                                            for (const existingBody of placedConstructionBodies) {
+                                                const isExistingFloor = existingBody.userData.type === floorItemName || existingBody.userData.type === woodenPlankItemName || existingBody.userData.type === stoneFloorItemName;
+                                                if (isExistingFloor) {
+                                                    if (placementPosition.distanceToSquared(existingBody.position) < 0.01) {
+                                                        canPlace = false;
+                                                        break;
+                                                    }
                                                 }
                                             }
                                         }
