@@ -315,6 +315,26 @@
             border-radius: 50%;
         }
 
+        /* Tooltip Style */
+        #tooltip {
+            position: absolute;
+            background-color: rgba(30, 30, 30, 0.9);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 0.9em;
+            pointer-events: none; /* Tooltip should not interfere with mouse events */
+            z-index: 10001; /* Ensure it's on top */
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.2s, visibility 0.2s;
+        }
+
+        #tooltip.visible {
+            visibility: visible;
+            opacity: 1;
+        }
+
         #progressContainer {
             position: absolute;
             top: calc(50% + 25px); /* Posição abaixo da mira */
@@ -339,6 +359,7 @@
     </style>
 </head>
 <body>
+    <div id="tooltip"></div>
     <div id="startScreen">
         <h1>Small World</h1>
         <button id="startButton">Jogar</button>
@@ -536,6 +557,9 @@
         let draggedItem = null; // { item: { name, quantity }, sourceLocation: 'belt' | 'backpack', sourceIndex: number }
         let draggingGhostElement = null;
 
+        // NOVO: Variável para o elemento da dica de ferramenta
+        let tooltipElement;
+
         // NOVO: Variáveis para o sistema de agarrar objetos (Mão)
         const handItemName = 'mao'; // Nome do item de mão no inventário
 
@@ -556,6 +580,24 @@
         const treeTrunkItemName = 'tronco_arvore'; // NOVO: Nome do item de tronco de árvore
         const woodenPlankItemName = 'tábuas'; // NOVO: Nome do item de tábuas de madeira
         const boxItemName = 'caixote'; // NOVO: Nome do item de caixote
+
+        // NOVO: Mapeamento de nomes de itens para exibição
+        const itemDisplayNames = {
+            [handItemName]: 'Mão',
+            [axeItemName]: 'Machado',
+            [hammerItemName]: 'Martelo',
+            [stoneItemName]: 'Pedra',
+            [dirtItemName]: 'Terra',
+            [shovelItemName]: 'Pá',
+            [pickaxeItemName]: 'Picareta',
+            [textureApplicatorItemName]: 'Pincel de Textura',
+            [cobItemName]: 'Bloco de Barro',
+            [floorItemName]: 'Piso',
+            [treeSaplingItemName]: 'Muda de Árvore',
+            [treeTrunkItemName]: 'Tronco de Árvore',
+            [woodenPlankItemName]: 'Tábuas de Madeira',
+            [boxItemName]: 'Caixote'
+        };
 
         let ghostBlockMesh; // Malha transparente para pré-visualizar a colocação
         let currentBlockType = 'cob'; // 'cob' ou 'piso'
@@ -973,13 +1015,27 @@
             // ou se for um slot da mochila (que pode ser vazio, mas não representa a "mão")
             if (!(containerType === 'belt' && item === null)) {
                 slotDiv.addEventListener('mousedown', (e) => startDrag(e, item, index, containerType));
-                slotDiv.addEventListener('mouseenter', (e) => {
+                 slotDiv.addEventListener('mouseenter', (e) => {
                     if (isDraggingItem) {
                         e.currentTarget.classList.add('drag-over');
+                    } else if (item) { // Mostra a dica de ferramenta apenas se houver um item e não estiver arrastando
+                        tooltipElement.textContent = itemDisplayNames[item.name] || item.name;
+                        tooltipElement.classList.add('visible');
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        tooltipElement.style.left = `${rect.left + rect.width / 2 - tooltipElement.offsetWidth / 2}px`;
+                        tooltipElement.style.top = `${rect.top - tooltipElement.offsetHeight - 5}px`;
+                    }
+                    if (!isDraggingItem) {
+                       e.currentTarget.style.borderColor = '#FFF'; // Highlight branco no hover
                     }
                 });
                 slotDiv.addEventListener('mouseleave', (e) => {
                     e.currentTarget.classList.remove('drag-over');
+                    tooltipElement.classList.remove('visible');
+                     // Remove o highlight, a menos que o slot esteja selecionado
+                    if (!e.currentTarget.classList.contains('selected')) {
+                        e.currentTarget.style.borderColor = '#555';
+                    }
                 });
             }
 
@@ -2158,6 +2214,9 @@
             // Pega o elemento do cinto de inventário e seus slots
             inventoryBeltElement = document.getElementById('inventoryBelt');
             updateBeltDisplay(); // Preenche os slots inicialmente
+
+            // NOVO: Pega o elemento da dica de ferramenta
+            tooltipElement = document.getElementById('tooltip');
 
 
             // Configura os Listeners de Eventos para teclado e mouse
