@@ -2733,33 +2733,53 @@
             }
 
             function placeBlock(item, slotIndex) {
-                currentBlockType = item.name;
-                if (ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
-                    if (item.quantity > 0) {
-                        let materialLoaded = false;
-                        if (currentBlockType === 'cob' && cobMaterialMesh) materialLoaded = true;
-                        else if (currentBlockType === 'piso' && floorMaterialMesh) materialLoaded = true;
-                        else if (currentBlockType === 'tábuas' && woodenPlankMaterialMesh) materialLoaded = true;
-                        else if (currentBlockType === 'muda_arvore' && treeTrunkMaterialMesh && treeLeavesMaterialMesh) materialLoaded = true;
-                        else if (currentBlockType === 'tronco_arvore' && treeTrunkMaterialMesh) materialLoaded = true;
-                        else if (currentBlockType === stoneBlockItemName && stoneBlockMaterialMesh) materialLoaded = true;
-                        else if (currentBlockType === woodenBlockItemName && woodenBlockMaterialMesh) materialLoaded = true;
-                        else if (currentBlockType === stoneFloorItemName && stoneFloorMaterialMesh) materialLoaded = true;
-                        else if (currentBlockType === boxItemName && cubeMaterialMesh) materialLoaded = true; // NOVO: Verifica o material da caixa
+                // If no item, do nothing.
+                if (!item || item.quantity <= 0) return;
 
-                        if (materialLoaded) {
-                            if (currentBlockType === boxItemName) {
-                                createBox(ghostBlockMesh.position, ghostBlockMesh.quaternion);
-                            } else {
-                                createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, currentBlockType);
+                currentBlockType = item.name;
+
+                // The ghostBlockMesh must be visible to have a valid placement position.
+                // The color check is a fast-fail based on the visual feedback from animate().
+                if (ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
+
+                    // Final, definitive check for floor stacking before consuming an item.
+                    const isPlacingFloor = currentBlockType === floorItemName || currentBlockType === woodenPlankItemName || currentBlockType === stoneFloorItemName;
+                    if (isPlacingFloor) {
+                        for (const existingBody of placedConstructionBodies) {
+                            const isExistingFloor = existingBody.userData.type === floorItemName || existingBody.userData.type === woodenPlankItemName || existingBody.userData.type === stoneFloorItemName;
+                            if (isExistingFloor) {
+                                // Check if a floor already exists at the target position.
+                                if (ghostBlockMesh.position.distanceToSquared(existingBody.position) < 0.01) {
+                                    return; // Invalid placement, exit without consuming item.
+                                }
                             }
-                            item.quantity--;
-                            if (item.quantity <= 0) {
-                                if (slotIndex < beltItems.length) beltItems[slotIndex] = null;
-                            }
-                            updateBeltDisplay();
-                            updateBackpackDisplay(); // Atualiza a mochila também, caso o item venha de lá
                         }
+                    }
+
+                    // All checks passed, proceed with placement.
+                    let materialLoaded = false;
+                    if (currentBlockType === 'cob' && cobMaterialMesh) materialLoaded = true;
+                    else if (currentBlockType === 'piso' && floorMaterialMesh) materialLoaded = true;
+                    else if (currentBlockType === 'tábuas' && woodenPlankMaterialMesh) materialLoaded = true;
+                    else if (currentBlockType === 'muda_arvore' && treeTrunkMaterialMesh && treeLeavesMaterialMesh) materialLoaded = true;
+                    else if (currentBlockType === 'tronco_arvore' && treeTrunkMaterialMesh) materialLoaded = true;
+                    else if (currentBlockType === stoneBlockItemName && stoneBlockMaterialMesh) materialLoaded = true;
+                    else if (currentBlockType === woodenBlockItemName && woodenBlockMaterialMesh) materialLoaded = true;
+                    else if (currentBlockType === stoneFloorItemName && stoneFloorMaterialMesh) materialLoaded = true;
+                    else if (currentBlockType === boxItemName && cubeMaterialMesh) materialLoaded = true;
+
+                    if (materialLoaded) {
+                        if (currentBlockType === boxItemName) {
+                            createBox(ghostBlockMesh.position, ghostBlockMesh.quaternion);
+                        } else {
+                            createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, currentBlockType);
+                        }
+                        item.quantity--;
+                        if (item.quantity <= 0) {
+                            if (slotIndex < beltItems.length) beltItems[slotIndex] = null;
+                        }
+                        updateBeltDisplay();
+                        updateBackpackDisplay();
                     }
                 }
             }
@@ -3356,20 +3376,6 @@
                                         }
                                     }
                                     if (canPlace) {
-                                        const isPlacingFloor = currentBlockType === floorItemName || currentBlockType === woodenPlankItemName || currentBlockType === stoneFloorItemName;
-                                        if (isPlacingFloor) {
-                                            for (const existingBody of placedConstructionBodies) {
-                                                const isExistingFloor = existingBody.userData.type === floorItemName || existingBody.userData.type === woodenPlankItemName || existingBody.userData.type === stoneFloorItemName;
-                                                if (isExistingFloor) {
-                                                    if (placementPosition.distanceToSquared(existingBody.position) < 0.01) {
-                                                        canPlace = false;
-                                                        break;
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if (canPlace) {
                                         break; // Encontrou uma posição válida, sai do loop
                                     }
                                 }
@@ -3803,20 +3809,6 @@
                                                 if (distanceToExistingTree < minTreePlacementDistance) {
                                                     canPlace = false;
                                                     break;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if (canPlace) {
-                                        const isPlacingFloor = currentBlockType === floorItemName || currentBlockType === woodenPlankItemName || currentBlockType === stoneFloorItemName;
-                                        if (isPlacingFloor) {
-                                            for (const existingBody of placedConstructionBodies) {
-                                                const isExistingFloor = existingBody.userData.type === floorItemName || existingBody.userData.type === woodenPlankItemName || existingBody.userData.type === stoneFloorItemName;
-                                                if (isExistingFloor) {
-                                                    if (placementPosition.distanceToSquared(existingBody.position) < 0.01) {
-                                                        canPlace = false;
-                                                        break;
-                                                    }
                                                 }
                                             }
                                         }
