@@ -590,11 +590,11 @@
         const itemDisplayNames = {
             [handItemName]: 'Mão',
             [axeItemName]: 'Machado\nEspecialidade: Madeira',
-            [hammerItemName]: 'Martelo\nEspecialidade: Terra',
+            [hammerItemName]: 'Martelo\nSem uso',
             [stoneItemName]: 'Pedra',
             [dirtItemName]: 'Terra',
             [shovelItemName]: 'Pá',
-            [pickaxeItemName]: 'Picareta\nEspecialidade: Pedra',
+            [pickaxeItemName]: 'Picareta\nEspecialidade: Pedra e Terra',
             [cobItemName]: 'Bloco de Barro',
             [floorItemName]: 'Piso de Barro',
             [treeSaplingItemName]: 'Muda de Árvore',
@@ -2500,7 +2500,8 @@
             function getActionType(item) {
                 if (item === null) return 'grab';
                 // Ferramentas de destruição
-                if (item.name === axeItemName || item.name === hammerItemName || item.name === pickaxeItemName || item.name === shovelItemName) return 'destroy';
+                // O martelo foi removido temporariamente das ferramentas de destruição
+                if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName) return 'destroy';
                 // Itens de colocação
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
@@ -2513,11 +2514,10 @@
                 let target = null;
 
                 const heldItemName = beltItems[selectedSlotIndex]?.name;
-                const allTools = [axeItemName, hammerItemName, pickaxeItemName, shovelItemName];
 
-                // Apenas prossiga se uma ferramenta estiver sendo segurada
-                if (!allTools.includes(heldItemName)) {
-                    return; // Não está segurando uma ferramenta, não pode destruir nada
+                // Impede a destruição com o martelo, mas permite com outras ferramentas ou de mão vazia
+                if (heldItemName === hammerItemName) {
+                    return;
                 }
 
                 for (let i = 0; i < intersects.length; i++) {
@@ -2632,13 +2632,19 @@
                     }
 
                     // Calcula o multiplicador
-                    let multiplier = 2.0; // Padrão para ferramenta não especializada
-                    const strongMultiplier = 1.0;
+                    let multiplier;
+                    const strongMultiplier = 1.0; // Multiplicador para a ferramenta correta
+                    const weakMultiplier = 5.0;   // Multiplicador de penalidade para a ferramenta errada
 
-                    if ((heldItemName === axeItemName && materialType === 'wood') ||
-                        (heldItemName === pickaxeItemName && materialType === 'stone') ||
-                        (heldItemName === hammerItemName && materialType === 'earth')) {
+                    // Define a ferramenta correta para cada material
+                    const isCorrectTool =
+                        (heldItemName === axeItemName && materialType === 'wood') ||
+                        (heldItemName === pickaxeItemName && (materialType === 'stone' || materialType === 'earth'));
+
+                    if (isCorrectTool) {
                         multiplier = strongMultiplier;
+                    } else {
+                        multiplier = weakMultiplier; // Aplica penalidade se a ferramenta não for a correta
                     }
 
                     targetDestroyTime = baseDurability * multiplier;
