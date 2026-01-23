@@ -401,6 +401,30 @@
         </div>
     </div>
 
+    <!-- NOVO: Modal do Baú -->
+    <div id="chestModal" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-800/90 border-2 border-stone-600 rounded-lg p-4 z-[1001] w-4/5 max-w-4xl max-h-[80%] flex flex-col text-white">
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold">Baú</h2>
+            <button id="closeChestButton" class="text-2xl font-bold">&times;</button>
+        </div>
+        <div class="flex-grow grid grid-cols-2 gap-4 overflow-y-auto">
+            <!-- Painel do Baú -->
+            <div>
+                <h3 class="text-xl mb-2 text-center">Conteúdo do Baú</h3>
+                <div id="chestSlotsContainer" class="grid grid-cols-5 gap-2 bg-black/30 p-2 rounded-md h-[calc(100%-2.5rem)] overflow-y-auto">
+                    <!-- Slots do baú serão preenchidos dinamicamente -->
+                </div>
+            </div>
+            <!-- Painel da Mochila -->
+            <div>
+                <h3 class="text-xl mb-2 text-center">Mochila</h3>
+                <div id="chestBackpackSlotsContainer" class="grid grid-cols-5 gap-2 bg-black/30 p-2 rounded-md h-[calc(100%-2.5rem)] overflow-y-auto">
+                    <!-- Slots da mochila (no modo baú) serão preenchidos dinamicamente -->
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script type="module">
         // Importa as bibliotecas Three.js e Cannon-es de CDNs
         import * as THREE from 'three';
@@ -548,6 +572,14 @@
         let backpackModal;
         let backpackSlotsContainer;
 
+        // NOVO: Variáveis para o sistema de baú
+        let chestModal;
+        let closeChestButton;
+        let chestSlotsContainer;
+        let chestBackpackSlotsContainer;
+        const numChestSlots = 50;
+        let openedChest = null; // Guarda a referência para os dados do baú aberto
+
         const numBackpackSlots = 50;
 
         // Inventário (agora separado para cinto e mochila)
@@ -585,6 +617,9 @@
         const treeTrunkItemName = 'tronco_arvore'; // NOVO: Nome do item de tronco de árvore
         const woodenPlankItemName = 'tábuas'; // NOVO: Nome do item de tábuas de madeira
         const boxItemName = 'caixote'; // NOVO: Nome do item de caixote
+        const chestItemName = 'bau'; // NOVO: Nome do item de baú
+        let chestMaterialMesh; // NOVO: Material do baú
+        let placedChests = []; // NOVO: Array para rastrear baús colocados
 
         // NOVO: Mapeamento de nomes de itens para exibição
         const itemDisplayNames = {
@@ -601,6 +636,7 @@
             [treeTrunkItemName]: 'Tronco de Árvore',
             [woodenPlankItemName]: 'Piso de Madeira',
             [boxItemName]: 'Caixote',
+            [chestItemName]: 'Baú', // NOVO
             [stoneBlockItemName]: 'Bloco de Pedra',
             [woodenBlockItemName]: 'Bloco de Madeira',
             [stoneFloorItemName]: 'Piso de Pedra'
@@ -685,6 +721,7 @@
         const handImageURL = 'https://dl.dropbox.com/scl/fi/adirqfks81emnagkoljcw/m-o-direita.png?rlkey=pj17lswbeg8lene1n5ypdbmob&st=i2qtxssr&dl=0';
         const treeTrunkImageURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // NOVO: Ícone para o tronco de árvore (placeholder)
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
+        const chestTextureURL = 'https://dl.dropbox.com/scl/fi/v01v2l5q8l6i3k9z4s5t4/bau.png?rlkey=39n4s7s13j2r8f2r4y3x5y2h3&st=o6f2z5qj&dl=0'; // NOVO: URL da textura do baú
         const stoneTextureURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1'; // NOVO: Textura de pedra para aplicar
         const holeTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&dl=1";
         const stoneBlockTextureURL = 'https://dl.dropboxusercontent.com/scl/fi/kdily5pf8dsj5z13idwj8/Textura-de-pedra.png?rlkey=qz06vax3nj8ex1c1d2kils153&st=9si0fw4p&dl=1';
@@ -693,6 +730,7 @@
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
+        let chestMaterialMesh; // NOVO
         let cobMaterialMesh;
         let floorMaterialMesh;
         let treeSaplingMaterialMesh; // New material for tree saplings icon
@@ -966,6 +1004,42 @@
             }
         }
 
+        // NOVO: Função para abrir o baú
+        function openChest(chestBody) {
+            openedChest = chestBody;
+            gamePaused = true;
+            chestModal.classList.remove('hidden');
+            document.getElementById('crosshair').style.display = 'none';
+            document.body.style.cursor = 'default';
+            if (renderer && renderer.domElement) {
+                renderer.domElement.style.cursor = 'default';
+            }
+            if (menuIconButton) {
+                menuIconButton.style.display = 'none';
+            }
+            if (ghostBlockMesh) {
+                ghostBlockMesh.visible = false;
+            }
+            pointerLockExitForBackpack = true; // Reutiliza a flag
+            document.exitPointerLock();
+            updateChestDisplay();
+        }
+
+        // NOVO: Função para fechar o baú
+        function closeChest() {
+            openedChest = null;
+            chestModal.classList.add('hidden');
+            gamePaused = false;
+            pointerLockExitForBackpack = false; // Reseta a flag
+
+            // Tenta reativar o pointer lock para retomar o jogo
+            if (renderer && renderer.domElement) {
+                renderer.domElement.requestPointerLock().catch(error => {
+                    console.warn('Não foi possível bloquear novamente o ponteiro:', error.message);
+                });
+            }
+        }
+
         // Função para renderizar um slot de inventário (cinto ou mochila)
         function renderSlot(item, index, containerType) {
             const slotDiv = document.createElement('div');
@@ -1014,6 +1088,8 @@
                     img.src = treeTrunkImageURL;
                 } else if (item.name === woodenPlankItemName) { // Ícone para tábuas de madeira
                     img.src = woodenPlankTextureURL;
+                } else if (item.name === chestItemName) { // NOVO
+                    img.src = chestTextureURL;
                 } else if (item.name === stoneBlockItemName) {
                     img.src = stoneBlockTextureURL;
                 } else if (item.name === woodenBlockItemName) {
@@ -1133,6 +1209,27 @@
             }
         }
 
+        // NOVO: Função para atualizar a exibição do baú
+        function updateChestDisplay() {
+            if (!openedChest) return;
+            // Conteúdo do Baú
+            chestSlotsContainer.innerHTML = '';
+            const chestInventory = openedChest.userData.inventory;
+            for (let i = 0; i < numChestSlots; i++) {
+                const item = chestInventory[i];
+                const slotDiv = renderSlot(item, i, 'chest'); // Novo tipo de contêiner
+                chestSlotsContainer.appendChild(slotDiv);
+            }
+
+            // Conteúdo da Mochila (na visualização do baú)
+            chestBackpackSlotsContainer.innerHTML = '';
+            for (let i = 0; i < numBackpackSlots; i++) {
+                const item = backpackItems[i];
+                const slotDiv = renderSlot(item, i, 'chestBackpack'); // Novo tipo de contêiner
+                chestBackpackSlotsContainer.appendChild(slotDiv);
+            }
+        }
+
         // Funções de drag and drop
         function startDrag(e, item, index, containerType) {
             // Se for um slot do cinto e estiver vazio (representando a mão), impede o arrasto.
@@ -1148,12 +1245,18 @@
             // Remove o item da origem para feedback visual.
             if (containerType === 'belt') {
                 beltItems[index] = null;
-            } else {
+            } else if (containerType === 'backpack' || containerType === 'chestBackpack') {
                 backpackItems[index] = null;
+            } else if (containerType === 'chest') {
+                openedChest.userData.inventory[index] = null;
             }
+
             // Atualiza a exibição para refletir a remoção do item da origem.
             updateBeltDisplay();
             updateBackpackDisplay();
+            if (openedChest) {
+                updateChestDisplay();
+            }
 
             // Cria o elemento fantasma
             draggingGhostElement = document.createElement('div');
@@ -1192,64 +1295,54 @@
                 draggingGhostElement = null;
             }
 
-            const targetElement = e.target.closest('.slot'); // Encontra o slot mais próximo
+            const getInventoryByLocation = (location) => {
+                if (location === 'belt') return beltItems;
+                if (location === 'backpack' || location === 'chestBackpack') return backpackItems;
+                if (location === 'chest' && openedChest) return openedChest.userData.inventory;
+                return null;
+            };
 
+            const targetElement = e.target.closest('.slot');
             const sourceItem = draggedItem.item;
             const sourceIndex = draggedItem.sourceIndex;
             const sourceLocation = draggedItem.sourceLocation;
+            const sourceInventory = getInventoryByLocation(sourceLocation);
 
-            // NOVO: Adiciona um caso especial para soltar o item de volta no mesmo slot
-            if (targetElement && sourceLocation === targetElement.dataset.containerType && sourceIndex == targetElement.dataset.slotIndex) {
-                if (sourceLocation === 'belt') {
-                    beltItems[sourceIndex] = sourceItem;
-                } else {
-                    backpackItems[sourceIndex] = sourceItem;
-                }
-            } else if (targetElement) { // Se o item foi solto em um slot válido (mas não o original)
-                let targetIndex = parseInt(targetElement.dataset.slotIndex);
-                let targetLocation = targetElement.dataset.containerType;
-                let tempTargetInventory = targetLocation === 'belt' ? beltItems : backpackItems;
-                let targetItem = tempTargetInventory[targetIndex];
+            if (targetElement) {
+                const targetLocation = targetElement.dataset.containerType;
+                const targetIndex = parseInt(targetElement.dataset.slotIndex);
+                const targetInventory = getInventoryByLocation(targetLocation);
 
-                if (targetItem && targetItem.name === sourceItem.name) {
-                    // Mescla pilhas se for o mesmo item
-                    targetItem.quantity += sourceItem.quantity;
-                } else {
-                    // Troca ou move
-                    let sourceInventory = sourceLocation === 'belt' ? beltItems : backpackItems;
-                    let targetInventory = targetLocation === 'belt' ? beltItems : backpackItems;
+                if (targetInventory) {
+                    const targetItem = targetInventory[targetIndex];
 
-                    // Coloca o item de origem no destino
-                    targetInventory[targetIndex] = sourceItem;
-
-                    // Coloca o item de destino de volta na origem (pode ser nulo)
-                    if (sourceLocation === 'belt' && sourceIndex === 0) {
-                        // Trata o caso especial onde a mão esquerda (slot 0) recebe o item da mochila
-                        // e o item que estava na mão esquerda (se houver) vai para a mochila.
-                        sourceInventory[sourceIndex] = null;
-                        if (targetItem) {
-                            addItemToInventory(backpackItems, targetItem);
-                        }
+                    if (targetItem && targetItem.name === sourceItem.name) {
+                        targetItem.quantity += sourceItem.quantity;
+                        if (sourceInventory) sourceInventory[sourceIndex] = null; // Limpa a origem após empilhar
                     } else {
-                        sourceInventory[sourceIndex] = targetItem;
+                        // Troca
+                        targetInventory[targetIndex] = sourceItem;
+                        if (sourceInventory) {
+                            sourceInventory[sourceIndex] = targetItem;
+                        }
                     }
-                }
-            } else { // Solto fora de qualquer slot válido, retorna o item para o slot original
-                if (sourceLocation === 'belt') {
-                    beltItems[sourceIndex] = sourceItem;
                 } else {
-                    backpackItems[sourceIndex] = sourceItem;
+                    if (sourceInventory) sourceInventory[sourceIndex] = sourceItem; // Retorna se o destino for inválido
                 }
+            } else { // Solto fora de qualquer slot
+                if (sourceInventory) sourceInventory[sourceIndex] = sourceItem; // Retorna para o slot original
             }
 
-            // Remove a classe drag-over de todos os slots
+            draggedItem = null;
             document.querySelectorAll('.slot.drag-over').forEach(slot => {
                 slot.classList.remove('drag-over');
             });
 
-            draggedItem = null;
             updateBeltDisplay();
             updateBackpackDisplay();
+            if (openedChest) {
+                updateChestDisplay();
+            }
         }
 
         function createMound(intersect) {
@@ -1422,6 +1515,96 @@
 
             // Adiciona a nova caixa à lista de caixas colecionáveis
             collectibleBoxes.push({ body: boxBody, meshes: boxMeshes });
+        }
+
+        // NOVO: Função genérica para dropar itens
+        function createDroppableItem(position, item) {
+            // Por enquanto, vamos reutilizar a lógica de 'createBox' para todos os itens dropados
+            // Apenas o 'type' em userData será diferente.
+            const itemSize = 0.5; // Itens dropados são menores que caixotes
+            const itemShape = new CANNON.Box(new CANNON.Vec3(itemSize / 2, itemSize / 2, itemSize / 2));
+            // TODO: Usar geometrias/materiais diferentes por tipo de item
+            const itemGeometry = new THREE.BoxGeometry(itemSize, itemSize, itemSize);
+            const itemMaterial = cubeMaterialMesh.clone(); // Clona para poder mudar a cor se quisermos
+
+            const itemBody = new CANNON.Body({
+                mass: 10, // Massa menor para itens
+                shape: itemShape,
+                material: cubeMaterial,
+                linearDamping: 0.4,
+                angularDamping: 0.4,
+            });
+            itemBody.position.copy(position);
+            // Adiciona um pequeno impulso aleatório para espalhar os itens
+            itemBody.applyImpulse(
+                new CANNON.Vec3(
+                    (Math.random() - 0.5) * 5,
+                    Math.random() * 5,
+                    (Math.random() - 0.5) * 5
+                ),
+                new CANNON.Vec3(0,0,0) // Ponto de aplicação
+            );
+
+            world.addBody(itemBody);
+            itemBody.userData = {
+                isCollectible: true,
+                type: item.name,
+                quantity: item.quantity
+            };
+
+            const itemMeshes = [];
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const mesh = new THREE.Mesh(itemGeometry, itemMaterial);
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    mesh.userData.physicsBody = itemBody;
+                    scene.add(mesh);
+                    itemMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
+            collectibleBoxes.push({ body: itemBody, meshes: itemMeshes });
+        }
+
+        // NOVO: Função para criar um novo baú
+        function createChest(position, quaternion) {
+            const chestSize = 1;
+            const chestShape = new CANNON.Box(new CANNON.Vec3(chestSize / 2, chestSize / 2, chestSize / 2));
+            const chestGeometry = new THREE.BoxGeometry(chestSize, chestSize, chestSize);
+
+            const chestBody = new CANNON.Body({
+                mass: 0, // Estático
+                shape: chestShape,
+                material: constructionMaterial,
+            });
+            chestBody.position.copy(position);
+            if (quaternion) {
+                chestBody.quaternion.copy(quaternion);
+            }
+            world.addBody(chestBody);
+            chestBody.userData = {
+                isDestructible: true,
+                durability: 2.0, // Durabilidade do baú
+                type: chestItemName,
+                isChest: true, // Flag para identificar como um baú
+                inventory: new Array(numChestSlots).fill(null) // NOVO: Inventário do baú
+            };
+
+            const chestMeshes = [];
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const mesh = new THREE.Mesh(chestGeometry, chestMaterialMesh);
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    mesh.userData.physicsBody = chestBody;
+                    scene.add(mesh);
+                    chestMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
+
+            placedChests.push({ body: chestBody, meshes: chestMeshes });
+            placedConstructionBodies.push(chestBody); // Adiciona aos corpos de construção para interação
+            placedConstructionMeshesArrays.push(chestMeshes);
         }
 
         // Função para criar um novo bloco físico e visual (cob ou piso)
@@ -2185,6 +2368,13 @@
                 woodenBlockMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
             });
 
+            textureLoader.load(chestTextureURL, (texture) => { // NOVO
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                chestMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
+            });
+
             textureLoader.load(stoneFloorTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
@@ -2246,6 +2436,12 @@
             backpackModal = document.getElementById('backpackModal');
             backpackSlotsContainer = document.getElementById('backpackSlotsContainer');
 
+            // NOVO: Pega elementos do baú
+            chestModal = document.getElementById('chestModal');
+            closeChestButton = document.getElementById('closeChestButton');
+            chestSlotsContainer = document.getElementById('chestSlotsContainer');
+            chestBackpackSlotsContainer = document.getElementById('chestBackpackSlotsContainer');
+
             // Inicializa o inventário
             beltItems = new Array(numBeltSlots).fill(null); // Garante que esteja vazio primeiro
             backpackItems = new Array(numBackpackSlots).fill(null);
@@ -2266,6 +2462,7 @@
             addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 20 }); // NOVO: Adiciona troncos de árvore à mochila
             addItemToInventory(backpackItems, { name: woodenPlankItemName, quantity: 10 }); // NOVO: Adiciona tábuas de madeira à mochila
             addItemToInventory(backpackItems, { name: boxItemName, quantity: 20 }); // Adiciona 20 caixas ao inventário inicial
+            addItemToInventory(backpackItems, { name: chestItemName, quantity: 5 }); // NOVO: Adiciona 5 baús ao inventário
             addItemToInventory(backpackItems, { name: stoneBlockItemName, quantity: 100 });
             addItemToInventory(backpackItems, { name: woodenBlockItemName, quantity: 100 });
             addItemToInventory(backpackItems, { name: stoneFloorItemName, quantity: 100 });
@@ -2443,6 +2640,9 @@
             renderer.domElement.addEventListener('mousedown', (event) => {
                 if (!isWorldReady || gamePaused || !document.pointerLockElement) return;
 
+                // NOVO: Impede ações de clique se o modal do baú estiver aberto
+                if (!chestModal.classList.contains('hidden')) return;
+
                 if (event.button === 0) { // Botão esquerdo
                     isAttemptingToDestroy = true; // NOVO: Define a intenção
                     const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
@@ -2503,7 +2703,7 @@
                 // O martelo foi removido temporariamente das ferramentas de destruição
                 if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName) return 'destroy';
                 // Itens de colocação
-                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName) return 'place';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === chestItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
             }
 
@@ -2691,27 +2891,31 @@
                     if (intersect.distance > pickUpDistance) continue;
 
                     const clickedBody = intersect.object.userData.physicsBody;
-                    if (!clickedBody || !clickedBody.userData.isCollectible || clickedBody.userData.type !== boxItemName) continue;
+                    if (!clickedBody || !clickedBody.userData) continue;
 
-                    // Encontra o índice da caixa na nossa lista de rastreamento
-                    const boxIndex = collectibleBoxes.findIndex(box => box.body === clickedBody);
-                    if (boxIndex > -1) {
-                        const boxToRemove = collectibleBoxes[boxIndex];
+                    // Lógica para abrir baús
+                    if (clickedBody.userData.isChest) {
+                        openChest(clickedBody);
+                        return;
+                    }
 
-                        // Remove o corpo do mundo da física
-                        world.removeBody(boxToRemove.body);
+                    if (!clickedBody.userData.isCollectible) continue;
 
-                        // Remove todas as malhas visuais da cena
-                        boxToRemove.meshes.forEach(m => scene.remove(m.mesh));
+                    const itemType = clickedBody.userData.type;
+                    const itemQuantity = clickedBody.userData.quantity || 1; // Padrão para 1 se não especificado
 
-                        // Remove a caixa da nossa lista de rastreamento
-                        collectibleBoxes.splice(boxIndex, 1);
+                    const collectibleIndex = collectibleBoxes.findIndex(box => box.body === clickedBody);
+                    if (collectibleIndex > -1) {
+                        const collectibleToRemove = collectibleBoxes[collectibleIndex];
 
-                        // Adiciona o item ao inventário
-                        addItemToInventory(backpackItems, { name: boxItemName, quantity: 1 });
+                        world.removeBody(collectibleToRemove.body);
+                        collectibleToRemove.meshes.forEach(m => scene.remove(m.mesh));
+                        collectibleBoxes.splice(collectibleIndex, 1);
+
+                        addItemToInventory(backpackItems, { name: itemType, quantity: itemQuantity });
                         updateBackpackDisplay();
 
-                        break; // Sai do loop, pois já recolhemos um objeto
+                        break;
                     }
                 }
             }
@@ -2796,11 +3000,15 @@
                     else if (currentBlockType === woodenBlockItemName && woodenBlockMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === stoneFloorItemName && stoneFloorMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === boxItemName && cubeMaterialMesh) materialLoaded = true;
+                    else if (currentBlockType === chestItemName && chestMaterialMesh) materialLoaded = true; // NOVO
 
                     if (materialLoaded) {
                         if (currentBlockType === boxItemName) {
                             createBox(ghostBlockMesh.position, ghostBlockMesh.quaternion);
-                        } else {
+                        } else if (currentBlockType === chestItemName) {
+                            createChest(ghostBlockMesh.position, ghostBlockMesh.quaternion);
+                        }
+                        else {
                             createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, currentBlockType);
                         }
                         item.quantity--;
@@ -2896,6 +3104,9 @@
             // Listeners para o botão da mochila
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
+
+            // NOVO: Listener para o botão de fechar o baú
+            closeChestButton.addEventListener('click', closeChest);
         }
 
         // Função para lidar com o redimensionamento da janela
@@ -3024,7 +3235,16 @@
                              position = destroyTargetBody.position.clone();
                             const bodyIndex = placedConstructionBodies.indexOf(destroyTargetBody);
                             if (bodyIndex !== -1) {
-                                 // ... (código de recompensa de item)
+                                 // NOVO: Lógica para dropar itens do baú
+                                if (destroyTargetBody.userData.isChest) {
+                                    const chestInventory = destroyTargetBody.userData.inventory;
+                                    chestInventory.forEach(item => {
+                                        if (item) {
+                                            // Dropar cada item stack como um único objeto no mundo
+                                            createDroppableItem(position, item);
+                                        }
+                                    });
+                                }
                                 world.removeBody(destroyTargetBody);
                                 placedConstructionBodies.splice(bodyIndex, 1);
                                 placedConstructionMeshesArrays[bodyIndex].forEach(m => scene.remove(m.mesh));
@@ -3252,7 +3472,7 @@
                 isPrimaryToolGrabbing = true;
             } else if (primaryTool.name === axeItemName || primaryTool.name === hammerItemName || primaryTool.name === stoneItemName) {
                 isPrimaryToolDestroying = true;
-            } else if (primaryTool.name === cobItemName || primaryTool.name === floorItemName || primaryTool.name === treeSaplingItemName || primaryTool.name === woodenPlankItemName || primaryTool.name === treeTrunkItemName || primaryTool.name === boxItemName || primaryTool.name === stoneBlockItemName || primaryTool.name === woodenBlockItemName || primaryTool.name === stoneFloorItemName) {
+            } else if (primaryTool.name === cobItemName || primaryTool.name === floorItemName || primaryTool.name === treeSaplingItemName || primaryTool.name === woodenPlankItemName || primaryTool.name === treeTrunkItemName || primaryTool.name === boxItemName || primaryTool.name === chestItemName || primaryTool.name === stoneBlockItemName || primaryTool.name === woodenBlockItemName || primaryTool.name === stoneFloorItemName) {
                 isPrimaryToolPlacing = true;
                 currentBlockType = primaryTool.name; // Define o tipo de bloco para o ghost mesh
             }
@@ -3321,6 +3541,11 @@
                         currentGhostDepth = trunkRadius * 2;
                         ghostBlockMesh.geometry = new THREE.CylinderGeometry(trunkRadius, trunkRadius, trunkHeight, trunkSegments);
                     } else if (currentBlockType === boxItemName) {
+                        currentGhostWidth = 1;
+                        currentGhostHeight = 1;
+                        currentGhostDepth = 1;
+                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
+                    } else if (currentBlockType === chestItemName) { // NOVO
                         currentGhostWidth = 1;
                         currentGhostHeight = 1;
                         currentGhostDepth = 1;
@@ -3748,7 +3973,7 @@
                 isPrimaryToolGrabbing = true;
             } else if (primaryToolForCrosshair.name === axeItemName || primaryToolForCrosshair.name === hammerItemName || primaryToolForCrosshair.name === stoneItemName) {
                 isPrimaryToolDestroying = true;
-            } else if (primaryToolForCrosshair.name === cobItemName || primaryToolForCrosshair.name === floorItemName || primaryToolForCrosshair.name === treeSaplingItemName || primaryToolForCrosshair.name === woodenPlankItemName || primaryToolForCrosshair.name === treeTrunkItemName || primaryToolForCrosshair.name === boxItemName || primaryToolForCrosshair.name === stoneBlockItemName || primaryToolForCrosshair.name === woodenBlockItemName || primaryToolForCrosshair.name === stoneFloorItemName) {
+            } else if (primaryToolForCrosshair.name === cobItemName || primaryToolForCrosshair.name === floorItemName || primaryToolForCrosshair.name === treeSaplingItemName || primaryToolForCrosshair.name === woodenPlankItemName || primaryToolForCrosshair.name === treeTrunkItemName || primaryToolForCrosshair.name === boxItemName || primaryToolForCrosshair.name === chestItemName || primaryToolForCrosshair.name === stoneBlockItemName || primaryToolForCrosshair.name === woodenBlockItemName || primaryToolForCrosshair.name === stoneFloorItemName) {
                 isPrimaryToolPlacing = true;
                 currentBlockType = primaryToolForCrosshair.name; // Define o tipo de bloco para o ghost mesh
             }
@@ -3797,6 +4022,10 @@
                         currentGhostHeight = trunkHeight;
                         currentGhostDepth = trunkRadius * 2;
                     } else if (currentBlockType === boxItemName) {
+                        currentGhostWidth = 1;
+                        currentGhostHeight = 1;
+                        currentGhostDepth = 1;
+                    } else if (currentBlockType === chestItemName) { // NOVO
                         currentGhostWidth = 1;
                         currentGhostHeight = 1;
                         currentGhostDepth = 1;
