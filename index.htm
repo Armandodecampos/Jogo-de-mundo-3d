@@ -580,11 +580,9 @@
         const numChestSlots = 50;
         let openedChest = null; // Guarda a referência para os dados do baú aberto
 
-        const numBackpackSlots = 50;
-
         // Inventário (agora separado para cinto e mochila)
         let beltItems = new Array(numBeltSlots).fill(null);
-        let backpackItems = new Array(numBackpackSlots).fill(null);
+        let backpackItems = [null];
 
         // Drag and drop variables
         let isDraggingItem = false;
@@ -1167,9 +1165,26 @@
 
                 if (inventoryArray[i] === null) {
                     inventoryArray[i] = { ...itemToAdd }; // Add new item
+                    if (inventoryArray === backpackItems) {
+                        updateBackpackLogic();
+                    }
                     return;
                 }
             }
+
+            // If we are here and it's the backpack, it means it's "full" (no empty slots).
+            // The logic should have already added a new slot, so we can add the item.
+            if (inventoryArray === backpackItems) {
+                // This case should ideally be handled by the empty slot check,
+                // but as a fallback, we can push the item.
+                const lastSlotIndex = inventoryArray.length - 1;
+                if(inventoryArray[lastSlotIndex] === null){
+                    inventoryArray[lastSlotIndex] = { ...itemToAdd };
+                    updateBackpackLogic();
+                    return;
+                }
+            }
+
             console.warn("Inventory is full, could not add item:", itemToAdd.name);
         }
 
@@ -1201,7 +1216,7 @@
         // Função para atualizar a exibição da mochila
         function updateBackpackDisplay() {
             backpackSlotsContainer.innerHTML = ''; // Limpa os slots existentes
-            for (let i = 0; i < numBackpackSlots; i++) {
+            for (let i = 0; i < backpackItems.length; i++) { // Usa o comprimento dinâmico
                 const item = backpackItems[i];
                 const slotDiv = renderSlot(item, i, 'backpack');
                 backpackSlotsContainer.appendChild(slotDiv);
@@ -1222,7 +1237,7 @@
 
             // Conteúdo da Mochila (na visualização do baú)
             chestBackpackSlotsContainer.innerHTML = '';
-            for (let i = 0; i < numBackpackSlots; i++) {
+            for (let i = 0; i < backpackItems.length; i++) { // Usa o comprimento dinâmico
                 const item = backpackItems[i];
                 const slotDiv = renderSlot(item, i, 'chestBackpack'); // Novo tipo de contêiner
                 chestBackpackSlotsContainer.appendChild(slotDiv);
@@ -1252,6 +1267,9 @@
 
             // Atualiza a exibição para refletir a remoção do item da origem.
             updateBeltDisplay();
+            if (containerType === 'backpack' || containerType === 'chestBackpack') {
+                updateBackpackLogic();
+            }
             updateBackpackDisplay();
             if (openedChest) {
                 updateChestDisplay();
@@ -1338,10 +1356,18 @@
             });
 
             updateBeltDisplay();
+            if (sourceLocation === 'backpack' || sourceLocation === 'chestBackpack' || (targetElement && (targetElement.dataset.containerType === 'backpack' || targetElement.dataset.containerType === 'chestBackpack'))) {
+                updateBackpackLogic();
+            }
             updateBackpackDisplay();
             if (openedChest) {
                 updateChestDisplay();
             }
+        }
+        function updateBackpackLogic() {
+            // Remove todos os slots vazios e depois adiciona um no final.
+            const nonNullItems = backpackItems.filter(item => item !== null);
+            backpackItems = [...nonNullItems, null];
         }
 
         function createMound(intersect) {
@@ -2438,7 +2464,6 @@
 
             // Inicializa o inventário
             beltItems = new Array(numBeltSlots).fill(null); // Garante que esteja vazio primeiro
-            backpackItems = new Array(numBackpackSlots).fill(null);
 
             // O inventário do jogador agora começa vazio.
 
