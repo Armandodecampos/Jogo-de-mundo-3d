@@ -281,8 +281,9 @@
             position: relative;
             cursor: grab;
         }
-        #backpackModal .slot.drag-over {
-            border-color: #4CAF50; /* Green border when dragging over */
+        #backpackModal .slot.item-selected {
+            border-color: #4CAF50; /* Green border when selected */
+             box-shadow: 0 0 8px #4CAF50;
         }
 
         #backpackModal .close-button {
@@ -297,23 +298,6 @@
         }
         #backpackModal .close-button:hover {
             background-color: #c82333;
-        }
-
-        /* Dragging ghost element style */
-        .dragging-ghost {
-            position: absolute;
-            pointer-events: none; /* Crucial to allow events to pass through to elements below */
-            z-index: 10000; /* Ensure it's on top of everything */
-            opacity: 0.7;
-            width: 60px; /* Same size as a slot */
-            height: 60px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            background-color: rgba(255, 255, 255, 0.2);
-            border: 2px dashed #FFF;
-            border-radius: 50%;
         }
 
         /* Tooltip Style */
@@ -584,10 +568,8 @@
         let beltItems = new Array(numBeltSlots).fill(null);
         let backpackItems = [null];
 
-        // Drag and drop variables
-        let isDraggingItem = false;
-        let draggedItem = null; // { item: { name, quantity }, sourceLocation: 'belt' | 'backpack', sourceIndex: number }
-        let draggingGhostElement = null;
+        // Click and move variables
+        let selectedItem = null; // { item: { name, quantity }, sourceLocation: 'belt' | 'backpack' | 'chest', sourceIndex: number }
 
         // NOVO: Variável para o elemento da dica de ferramenta
         let tooltipElement;
@@ -1115,33 +1097,33 @@
                 slotDiv.appendChild(img);
             }
 
-            // Adiciona listeners para drag and drop APENAS se o slot não for a "mão" (ou seja, se tiver um item)
-            // ou se for um slot da mochila (que pode ser vazio, mas não representa a "mão")
-            if (!(containerType === 'belt' && item === null)) {
-                slotDiv.addEventListener('mousedown', (e) => startDrag(e, item, index, containerType));
-                 slotDiv.addEventListener('mouseenter', (e) => {
-                    if (isDraggingItem) {
-                        e.currentTarget.classList.add('drag-over');
-                    } else if (item) { // Mostra a dica de ferramenta apenas se houver um item e não estiver arrastando
-                        tooltipElement.textContent = itemDisplayNames[item.name] || item.name;
-                        tooltipElement.classList.add('visible');
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        tooltipElement.style.left = `${rect.left + rect.width / 2 - tooltipElement.offsetWidth / 2}px`;
-                        tooltipElement.style.top = `${rect.top - tooltipElement.offsetHeight - 5}px`;
-                    }
-                    if (!isDraggingItem) {
-                       e.currentTarget.style.borderColor = '#FFF'; // Highlight branco no hover
-                    }
-                });
-                slotDiv.addEventListener('mouseleave', (e) => {
-                    e.currentTarget.classList.remove('drag-over');
-                    tooltipElement.classList.remove('visible');
-                     // Remove o highlight, a menos que o slot esteja selecionado
-                    if (!e.currentTarget.classList.contains('selected')) {
-                        e.currentTarget.style.borderColor = '#555';
-                    }
-                });
+            // Adiciona a classe 'item-selected' se o item estiver selecionado
+            if (selectedItem && selectedItem.sourceLocation === containerType && selectedItem.sourceIndex === index) {
+                slotDiv.classList.add('item-selected');
             }
+
+            // Adiciona o novo listener de clique
+            slotDiv.addEventListener('click', (e) => onSlotClick(e, item, index, containerType));
+
+            // Mantém a funcionalidade de tooltip e highlight no hover
+            slotDiv.addEventListener('mouseenter', (e) => {
+                if (item) {
+                    tooltipElement.textContent = itemDisplayNames[item.name] || item.name;
+                    tooltipElement.classList.add('visible');
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    tooltipElement.style.left = `${rect.left + rect.width / 2 - tooltipElement.offsetWidth / 2}px`;
+                    tooltipElement.style.top = `${rect.top - tooltipElement.offsetHeight - 5}px`;
+                }
+                e.currentTarget.style.borderColor = '#FFF';
+            });
+            slotDiv.addEventListener('mouseleave', (e) => {
+                tooltipElement.classList.remove('visible');
+                // A cor da borda será controlada pela classe 'selected' e 'item-selected',
+                // então só resetamos se nenhuma delas estiver presente.
+                if (!e.currentTarget.classList.contains('selected') && !e.currentTarget.classList.contains('item-selected')) {
+                    e.currentTarget.style.borderColor = '#555';
+                }
+            });
 
             return slotDiv;
         }
@@ -1244,121 +1226,53 @@
             }
         }
 
-        // Funções de drag and drop
-        function startDrag(e, item, index, containerType) {
-            // Se for um slot do cinto e estiver vazio (representando a mão), impede o arrasto.
-            if (containerType === 'belt' && item === null) {
-                return;
-            }
-            // Se não houver item para arrastar, impede o arrasto.
-            if (e.button !== 0 || !item) return;
-
-            isDraggingItem = true;
-            draggedItem = { item: { ...item }, sourceLocation: containerType, sourceIndex: index };
-
-            // Remove o item da origem para feedback visual.
-            if (containerType === 'belt') {
-                beltItems[index] = null;
-            } else if (containerType === 'backpack' || containerType === 'chestBackpack') {
-                backpackItems[index] = null;
-            } else if (containerType === 'chest') {
-                openedChest.userData.inventory[index] = null;
-            }
-
-            // Atualiza a exibição para refletir a remoção do item da origem.
-            updateBeltDisplay();
-            if (containerType === 'backpack' || containerType === 'chestBackpack') {
-                updateBackpackLogic();
-            }
-            updateBackpackDisplay();
-            if (openedChest) {
-                updateChestDisplay();
-            }
-
-            // Cria o elemento fantasma
-            draggingGhostElement = document.createElement('div');
-            draggingGhostElement.classList.add('dragging-ghost');
-            // Renderiza o item no fantasma
-            const ghostItemContent = renderSlot(item, -1, 'ghost'); // Use -1 for index and 'ghost' type
-            ghostItemContent.classList.remove('slot'); // Remove slot class from ghost content
-            ghostItemContent.style.cursor = 'grabbing'; // Change cursor for ghost
-            draggingGhostElement.appendChild(ghostItemContent);
-            document.body.appendChild(draggingGhostElement);
-
-            // Posiciona o fantasma
-            draggingGhostElement.style.left = `${e.clientX - draggingGhostElement.offsetWidth / 2}px`;
-            draggingGhostElement.style.top = `${e.clientY - draggingGhostElement.offsetHeight / 2}px`;
-
-            document.addEventListener('mousemove', onDragging);
-            document.addEventListener('mouseup', onDragEnd);
-        }
-
-        function onDragging(e) {
-            if (draggingGhostElement) {
-                draggingGhostElement.style.left = `${e.clientX - draggingGhostElement.offsetWidth / 2}px`;
-                draggingGhostElement.style.top = `${e.clientY - draggingGhostElement.offsetHeight / 2}px`;
-            }
-        }
-
-        function onDragEnd(e) {
-            document.removeEventListener('mousemove', onDragging);
-            document.removeEventListener('mouseup', onDragEnd);
-
-            if (!isDraggingItem) return;
-
-            isDraggingItem = false;
-            if (draggingGhostElement) {
-                draggingGhostElement.remove();
-                draggingGhostElement = null;
-            }
+        // Nova função para lidar com cliques nos slots
+        function onSlotClick(e, item, index, containerType) {
+            e.stopPropagation(); // Impede que o clique se propague para outros elementos
 
             const getInventoryByLocation = (location) => {
                 if (location === 'belt') return beltItems;
                 if (location === 'backpack' || location === 'chestBackpack') return backpackItems;
-                if (location === 'chest' && openedChest) return openedChest.userData.inventory;
+                if (location === 'chest') return openedChest?.userData.inventory;
                 return null;
             };
 
-            const targetElement = e.target.closest('.slot');
-            const sourceItem = draggedItem.item;
-            const sourceIndex = draggedItem.sourceIndex;
-            const sourceLocation = draggedItem.sourceLocation;
-            const sourceInventory = getInventoryByLocation(sourceLocation);
+            // Caso 1: Nenhum item selecionado, e o usuário clica em um slot com um item.
+            if (!selectedItem && item) {
+                // Impede a seleção de "mãos" vazias no cinto
+                if (containerType === 'belt' && item === null) return;
 
-            if (targetElement) {
-                const targetLocation = targetElement.dataset.containerType;
-                const targetIndex = parseInt(targetElement.dataset.slotIndex);
-                const targetInventory = getInventoryByLocation(targetLocation);
+                selectedItem = { item: { ...item }, sourceLocation: containerType, sourceIndex: index };
+            }
+            // Caso 2: Um item está selecionado, e o usuário clica em um slot vazio.
+            else if (selectedItem && !item) {
+                const sourceInventory = getInventoryByLocation(selectedItem.sourceLocation);
+                const targetInventory = getInventoryByLocation(containerType);
 
-                if (targetInventory) {
-                    const targetItem = targetInventory[targetIndex];
-
-                    if (targetItem && targetItem.name === sourceItem.name) {
-                        targetItem.quantity += sourceItem.quantity;
-                        if (sourceInventory) sourceInventory[sourceIndex] = null; // Limpa a origem após empilhar
-                    } else {
-                        // Troca
-                        if (sourceInventory) {
-                            sourceInventory[sourceIndex] = targetItem;
-                        }
-                        targetInventory[targetIndex] = sourceItem;
-                    }
-                } else {
-                    if (sourceInventory) sourceInventory[sourceIndex] = sourceItem; // Retorna se o destino for inválido
+                if (sourceInventory && targetInventory) {
+                    // Move o item
+                    targetInventory[index] = selectedItem.item;
+                    // Limpa o slot de origem
+                    sourceInventory[selectedItem.sourceIndex] = null;
                 }
-            } else { // Solto fora de qualquer slot
-                if (sourceInventory) sourceInventory[sourceIndex] = sourceItem; // Retorna para o slot original
+                // Limpa a seleção
+                selectedItem = null;
+            }
+            // Caso 3: Um item está selecionado, e o usuário clica no mesmo slot para desmarcar.
+            else if (selectedItem && selectedItem.sourceLocation === containerType && selectedItem.sourceIndex === index) {
+                selectedItem = null;
+            }
+            // Caso 4: Um item está selecionado e o usuário clica em outro slot ocupado (ação ignorada).
+            // Nenhuma ação é necessária, a seleção simplesmente permanece. O usuário deve clicar em um slot vazio.
+            // Apenas deselecionamos para que ele possa selecionar o outro item.
+            else if (selectedItem && item) {
+                selectedItem = null;
             }
 
-            draggedItem = null;
-            document.querySelectorAll('.slot.drag-over').forEach(slot => {
-                slot.classList.remove('drag-over');
-            });
 
+            // Atualiza todas as exibições relevantes
             updateBeltDisplay();
-            if (sourceLocation === 'backpack' || sourceLocation === 'chestBackpack' || (targetElement && (targetElement.dataset.containerType === 'backpack' || targetElement.dataset.containerType === 'chestBackpack'))) {
-                updateBackpackLogic();
-            }
+            updateBackpackLogic(); // Garante que slots vazios sejam tratados
             updateBackpackDisplay();
             if (openedChest) {
                 updateChestDisplay();
