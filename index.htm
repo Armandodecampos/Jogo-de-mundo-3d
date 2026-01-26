@@ -1333,22 +1333,15 @@
                 if (targetInventory) {
                     const targetItem = targetInventory[targetIndex];
 
-            // Se o slot de destino for o mesmo que o de origem, apenas devolva o item.
-            // Isso lida com o caso de clicar em um item sem movê-lo.
-            if (targetLocation === sourceLocation && targetIndex === sourceIndex) {
-                if (sourceInventory) {
-                    sourceInventory[sourceIndex] = sourceItem;
-                }
-            } else if (targetItem && targetItem.name === sourceItem.name) {
-                // Empilhando em outro item
+                    if (targetItem && targetItem.name === sourceItem.name) {
                         targetItem.quantity += sourceItem.quantity;
-                // O slot de origem já está nulo de startDrag, então não há mais nada a fazer.
+                        if (sourceInventory) sourceInventory[sourceIndex] = null; // Limpa a origem após empilhar
                     } else {
-                // Trocando com outro item (ou um slot vazio)
-                        targetInventory[targetIndex] = sourceItem;
+                        // Troca
                         if (sourceInventory) {
-                    sourceInventory[sourceIndex] = targetItem; // targetItem pode ser nulo
+                            sourceInventory[sourceIndex] = targetItem;
                         }
+                        targetInventory[targetIndex] = sourceItem;
                     }
                 } else {
                     if (sourceInventory) sourceInventory[sourceIndex] = sourceItem; // Retorna se o destino for inválido
