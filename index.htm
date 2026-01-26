@@ -554,7 +554,6 @@
         loadingManager.onLoad = () => {
             console.log("All resources loaded, world is ready.");
             isWorldReady = true;
-            window.isWorldReady = true;
         };
 
         // Instância do carregador de textura, agora usando o gerenciador de carregamento
@@ -1247,43 +1246,54 @@
 
         // Funções de drag and drop
         function startDrag(e, item, index, containerType) {
-            // Impede o início do arrasto se não houver item, se não for o botão esquerdo do mouse ou se já estiver arrastando
-            if (e.button !== 0 || !item || isDraggingItem) return;
-
             // Se for um slot do cinto e estiver vazio (representando a mão), impede o arrasto.
             if (containerType === 'belt' && item === null) {
                 return;
             }
+            // Se não houver item para arrastar, impede o arrasto.
+            if (e.button !== 0 || !item) return;
 
             isDraggingItem = true;
             draggedItem = { item: { ...item }, sourceLocation: containerType, sourceIndex: index };
 
-            // Fornece feedback visual na origem sem modificar os dados
-            const sourceSlotElement = document.getElementById(`${containerType}-slot-${index}`);
-            if (sourceSlotElement) {
-                sourceSlotElement.style.opacity = '0.4'; // Deixa o slot de origem semi-transparente
+            // Remove o item da origem para feedback visual.
+            if (containerType === 'belt') {
+                beltItems[index] = null;
+            } else if (containerType === 'backpack' || containerType === 'chestBackpack') {
+                backpackItems[index] = null;
+            } else if (containerType === 'chest') {
+                openedChest.userData.inventory[index] = null;
+            }
+
+            // Atualiza a exibição para refletir a remoção do item da origem.
+            updateBeltDisplay();
+            if (containerType === 'backpack' || containerType === 'chestBackpack') {
+                updateBackpackLogic();
+            }
+            updateBackpackDisplay();
+            if (openedChest) {
+                updateChestDisplay();
             }
 
             // Cria o elemento fantasma
             draggingGhostElement = document.createElement('div');
             draggingGhostElement.classList.add('dragging-ghost');
-            const ghostItemContent = renderSlot(item, -1, 'ghost');
-            ghostItemContent.classList.remove('slot');
-            ghostItemContent.style.cursor = 'grabbing';
+            // Renderiza o item no fantasma
+            const ghostItemContent = renderSlot(item, -1, 'ghost'); // Use -1 for index and 'ghost' type
+            ghostItemContent.classList.remove('slot'); // Remove slot class from ghost content
+            ghostItemContent.style.cursor = 'grabbing'; // Change cursor for ghost
             draggingGhostElement.appendChild(ghostItemContent);
             document.body.appendChild(draggingGhostElement);
 
             // Posiciona o fantasma
-            onDragging(e); // Chama onDragging para posicionar corretamente no início
+            draggingGhostElement.style.left = `${e.clientX - draggingGhostElement.offsetWidth / 2}px`;
+            draggingGhostElement.style.top = `${e.clientY - draggingGhostElement.offsetHeight / 2}px`;
 
-            // Adiciona listeners globais para o movimento e o final do arrasto
             document.addEventListener('mousemove', onDragging);
-            document.addEventListener('mouseup', onDragEnd, { once: true }); // 'once: true' para remover o listener automaticamente
+            document.addEventListener('mouseup', onDragEnd);
         }
 
-
         function onDragging(e) {
-            // Move o fantasma para seguir o cursor
             if (draggingGhostElement) {
                 draggingGhostElement.style.left = `${e.clientX - draggingGhostElement.offsetWidth / 2}px`;
                 draggingGhostElement.style.top = `${e.clientY - draggingGhostElement.offsetHeight / 2}px`;
@@ -1291,25 +1301,16 @@
         }
 
         function onDragEnd(e) {
-            // Remove os listeners e o estado de arrasto
             document.removeEventListener('mousemove', onDragging);
-            if (!isDraggingItem) return; // Se não estava arrastando nada, sai
+            document.removeEventListener('mouseup', onDragEnd);
+
+            if (!isDraggingItem) return;
 
             isDraggingItem = false;
-
-            // Limpeza visual: remove o fantasma e a opacidade do slot de origem
             if (draggingGhostElement) {
                 draggingGhostElement.remove();
                 draggingGhostElement = null;
             }
-            const sourceSlotElement = document.getElementById(`${draggedItem.sourceLocation}-slot-${draggedItem.sourceIndex}`);
-            if (sourceSlotElement) {
-                sourceSlotElement.style.opacity = '1';
-            }
-            document.querySelectorAll('.slot.drag-over').forEach(slot => {
-                slot.classList.remove('drag-over');
-            });
-
 
             const getInventoryByLocation = (location) => {
                 if (location === 'belt') return beltItems;
@@ -1318,46 +1319,46 @@
                 return null;
             };
 
-            const targetElement = document.elementFromPoint(e.clientX, e.clientY)?.closest('.slot');
+            const targetElement = e.target.closest('.slot');
             const sourceItem = draggedItem.item;
-            const sourceLocation = draggedItem.sourceLocation;
             const sourceIndex = draggedItem.sourceIndex;
+            const sourceLocation = draggedItem.sourceLocation;
+            const sourceInventory = getInventoryByLocation(sourceLocation);
 
             if (targetElement) {
                 const targetLocation = targetElement.dataset.containerType;
                 const targetIndex = parseInt(targetElement.dataset.slotIndex);
-                const sourceInventory = getInventoryByLocation(sourceLocation);
                 const targetInventory = getInventoryByLocation(targetLocation);
 
-                // Garante que ambos os inventários são válidos
-                if (sourceInventory && targetInventory) {
+                if (targetInventory) {
                     const targetItem = targetInventory[targetIndex];
 
-                    // Lógica para empilhar
                     if (targetItem && targetItem.name === sourceItem.name) {
                         targetItem.quantity += sourceItem.quantity;
-                        sourceInventory[sourceIndex] = null; // Limpa a origem
+                        if (sourceInventory) sourceInventory[sourceIndex] = null; // Limpa a origem após empilhar
                     } else {
-                        // Lógica para trocar
+                        // Troca
                         targetInventory[targetIndex] = sourceItem;
-                        sourceInventory[sourceIndex] = targetItem; // Coloca o item do alvo na origem
+                        if (sourceInventory) {
+                            sourceInventory[sourceIndex] = targetItem;
+                        }
                     }
-
-                    // Se a mochila foi modificada, atualiza a sua lógica (remove espaços vazios)
-                    if (sourceLocation.includes('backpack') || targetLocation.includes('backpack')) {
-                        updateBackpackLogic();
-                    }
+                } else {
+                    if (sourceInventory) sourceInventory[sourceIndex] = sourceItem; // Retorna se o destino for inválido
                 }
+            } else { // Solto fora de qualquer slot
+                if (sourceInventory) sourceInventory[sourceIndex] = sourceItem; // Retorna para o slot original
             }
-            // Se não soltou num alvo válido, nenhuma alteração de dados é necessária,
-            // pois os dados originais nunca foram modificados. A limpeza visual já foi feita.
 
-
-            // Reseta a variável de item arrastado
             draggedItem = null;
+            document.querySelectorAll('.slot.drag-over').forEach(slot => {
+                slot.classList.remove('drag-over');
+            });
 
-            // Atualiza sempre a exibição de todos os inventários relevantes no final
             updateBeltDisplay();
+            if (sourceLocation === 'backpack' || sourceLocation === 'chestBackpack' || (targetElement && (targetElement.dataset.containerType === 'backpack' || targetElement.dataset.containerType === 'chestBackpack'))) {
+                updateBackpackLogic();
+            }
             updateBackpackDisplay();
             if (openedChest) {
                 updateChestDisplay();
