@@ -405,6 +405,7 @@
     <div id="chestModal" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-800/90 border-2 border-stone-600 rounded-lg p-4 z-[1001] w-4/5 max-w-4xl max-h-[80%] flex flex-col text-white">
         <div class="flex justify-between items-center mb-4">
             <h2 class="text-2xl font-bold">Baú</h2>
+            <button id="transferAllButton" class="bg-blue-500 hover:bg-blue-700 text-white text-sm font-bold py-1 px-2 rounded">Transferir Tudo</button>
             <button id="closeChestButton" class="text-2xl font-bold">&times;</button>
         </div>
         <div class="flex-grow grid grid-cols-2 gap-4 overflow-y-auto">
@@ -1001,6 +1002,59 @@
                     }
                 });
             }
+        }
+
+        // NOVO: Função para transferir todos os itens para o baú
+        function transferAllItemsToChest() {
+            if (!openedChest) return;
+
+            const chestInventory = openedChest.userData.inventory;
+
+            // Função auxiliar para adicionar um item ao inventário do baú
+            const addItemToChest = (itemToAdd) => {
+                if (!itemToAdd) return true; // Considera o slot nulo como "transferido" com sucesso
+
+                // 1. Tenta empilhar com itens existentes
+                for (let i = 0; i < chestInventory.length; i++) {
+                    if (chestInventory[i] && chestInventory[i].name === itemToAdd.name) {
+                        chestInventory[i].quantity += itemToAdd.quantity;
+                        return true; // Item empilhado com sucesso
+                    }
+                }
+
+                // 2. Se não for possível empilhar, encontra um slot vazio
+                for (let i = 0; i < chestInventory.length; i++) {
+                    if (chestInventory[i] === null) {
+                        chestInventory[i] = { ...itemToAdd }; // Coloca o item no slot vazio
+                        return true; // Item colocado com sucesso
+                    }
+                }
+
+                return false; // O baú está cheio, a transferência falhou
+            };
+
+            // Itera sobre a mochila e transfere os itens
+            for (let i = 0; i < backpackItems.length; i++) {
+                if (backpackItems[i]) {
+                    if (addItemToChest(backpackItems[i])) {
+                        backpackItems[i] = null; // Limpa o slot original se a transferência for bem-sucedida
+                    }
+                }
+            }
+
+            // Itera sobre o cinto e transfere os itens (incluindo o slot da mão, se houver um item)
+            for (let i = 0; i < beltItems.length; i++) {
+                if (beltItems[i]) {
+                    if (addItemToChest(beltItems[i])) {
+                        beltItems[i] = null; // Limpa o slot original se a transferência for bem-sucedida
+                    }
+                }
+            }
+
+            // Atualiza todas as exibições relevantes
+            updateChestDisplay();
+            updateBeltDisplay();
+            updateBackpackDisplay();
         }
 
         // NOVO: Função para abrir o baú
@@ -4206,6 +4260,8 @@
             chestSlotsContainer = document.getElementById('chestSlotsContainer');
             chestBackpackSlotsContainer = document.getElementById('chestBackpackSlotsContainer');
             closeChestButton.addEventListener('click', closeChest);
+            document.getElementById('transferAllButton').addEventListener('click', transferAllItemsToChest);
+
 
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
