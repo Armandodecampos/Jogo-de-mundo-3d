@@ -398,6 +398,10 @@
 
     <!-- #messageBox foi removido -->
 
+    <div id="weightDisplay" class="absolute bottom-32 left-1/2 transform -translate-x-1/2 bg-black/50 text-white px-2 py-1 rounded-lg z-[998] text-sm font-bold border border-white/20 hidden">
+        Peso: 0.0 / 500
+    </div>
+
     <!-- Inventory Belt HTML Structure -->
     <div id="inventoryBelt">
         <!-- Slots e botão da mochila serão preenchidos dinamicamente pelo JavaScript -->
@@ -551,6 +555,9 @@
         // Referência ao elemento da mira
         let crosshairElement;
 
+        // Referência ao elemento de exibição de peso
+        let weightDisplayElement;
+
         // Referências aos elementos da barra de progresso
         let progressContainer;
         let progressBar;
@@ -648,6 +655,28 @@
             [woodenBlockItemName]: 'Bloco de Madeira',
             [stoneFloorItemName]: 'Piso de Pedra'
         };
+
+        const itemWeights = {
+            [handItemName]: 0,
+            [axeItemName]: 2.0,
+            [hammerItemName]: 2.0,
+            [stoneItemName]: 1.0,
+            [dirtItemName]: 0.2,
+            [shovelItemName]: 2.0,
+            [pickaxeItemName]: 2.0,
+            [cobItemName]: 2.0,
+            [floorItemName]: 1.0,
+            [treeSaplingItemName]: 0.1,
+            [treeTrunkItemName]: 12.0,
+            [woodenPlankItemName]: 1.5,
+            [boxItemName]: 12.0,
+            [chestItemName]: 12.0,
+            [stoneBlockItemName]: 5.0,
+            [woodenBlockItemName]: 3.0,
+            [stoneFloorItemName]: 2.0
+        };
+
+        const maxWeight = 500; // Peso máximo que o jogador aguenta levar
 
         let ghostBlockMesh; // Malha transparente para pré-visualizar a colocação
         let currentBlockType = 'cob'; // 'cob' ou 'piso'
@@ -2383,6 +2412,9 @@
             // Pega o elemento da mira
             crosshairElement = document.getElementById('crosshair');
 
+            // Pega o elemento de exibição de peso
+            weightDisplayElement = document.getElementById('weightDisplay');
+
             // Pega elementos da barra de progresso
             progressContainer = document.getElementById('progressContainer');
             progressBar = document.getElementById('progressBar');
@@ -3057,6 +3089,7 @@
                 menuIconButton.addEventListener('click', showOptionsScreen);
             }
 
+
             // Listeners para o botão da mochila
             document.getElementById('backpackButton').addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
@@ -3064,6 +3097,25 @@
         }
 
         // Função para lidar com o redimensionamento da janela
+        function calculateTotalWeight() {
+            let totalWeight = 0;
+            // Calcular peso no cinto
+            for (const item of beltItems) {
+                if (item) {
+                    const weightPerItem = itemWeights[item.name] || 0;
+                    totalWeight += weightPerItem * item.quantity;
+                }
+            }
+            // Calcular peso na mochila
+            for (const item of backpackItems) {
+                if (item) {
+                    const weightPerItem = itemWeights[item.name] || 0;
+                    totalWeight += weightPerItem * item.quantity;
+                }
+            }
+            return totalWeight;
+        }
+
         function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
@@ -3111,6 +3163,27 @@
         // Loop principal de animação do jogo
         function animate() {
             requestAnimationFrame(animate);
+
+            // Atualiza exibição de peso (mesmo se pausado, para refletir mudanças no inventário)
+            const totalWeight = calculateTotalWeight();
+            if (weightDisplayElement) {
+                weightDisplayElement.textContent = `Peso: ${totalWeight.toFixed(1)} / ${maxWeight}`;
+                // Mostra o peso apenas se o cinto estiver visível
+                if (inventoryBeltElement && inventoryBeltElement.style.visibility === 'visible') {
+                    weightDisplayElement.classList.remove('hidden');
+                } else {
+                    weightDisplayElement.classList.add('hidden');
+                }
+
+                // Muda a cor do texto se estiver pesado
+                if (totalWeight >= maxWeight) {
+                    weightDisplayElement.style.color = '#ff4444';
+                } else if (totalWeight >= maxWeight * 0.8) {
+                    weightDisplayElement.style.color = '#ffaa00';
+                } else {
+                    weightDisplayElement.style.color = 'white';
+                }
+            }
 
             if (gamePaused) {
                 // Se o jogo estiver pausado, apenas renderiza a cena, não atualiza a física ou o movimento do jogador
@@ -3660,6 +3733,11 @@
 
             // Lógica de movimento do jogador com base nas teclas pressionadas
             let currentMoveSpeed = walkSpeed;
+
+            // Aplica penalidade de peso
+            const weightFactor = Math.max(0, 1 - (totalWeight / maxWeight));
+            currentMoveSpeed *= weightFactor;
+
             if (keysPressed['shift']) {
                 currentMoveSpeed *= runSpeedMultiplier;
             }
