@@ -570,7 +570,7 @@
 
         // Inventário (agora separado para cinto e mochila)
         let beltItems = new Array(numBeltSlots).fill(null);
-        let backpackItems = [null];
+        let backpackItems = new Array(25).fill(null);
 
         // Click and move variables
         let selectedItem = null; // { item: { name, quantity }, sourceLocation: 'belt' | 'backpack' | 'chest', sourceIndex: number }
@@ -1151,22 +1151,6 @@
 
                 if (inventoryArray[i] === null) {
                     inventoryArray[i] = { ...itemToAdd }; // Add new item
-                    if (inventoryArray === backpackItems) {
-                        updateBackpackLogic();
-                    }
-                    return;
-                }
-            }
-
-            // If we are here and it's the backpack, it means it's "full" (no empty slots).
-            // The logic should have already added a new slot, so we can add the item.
-            if (inventoryArray === backpackItems) {
-                // This case should ideally be handled by the empty slot check,
-                // but as a fallback, we can push the item.
-                const lastSlotIndex = inventoryArray.length - 1;
-                if(inventoryArray[lastSlotIndex] === null){
-                    inventoryArray[lastSlotIndex] = { ...itemToAdd };
-                    updateBackpackLogic();
                     return;
                 }
             }
@@ -1232,7 +1216,7 @@
 
         // Nova função para lidar com cliques nos slots
         function onSlotClick(e, item, index, containerType) {
-            e.stopPropagation(); // Impede que o clique se propague para outros elementos
+            e.stopPropagation();
 
             const getInventoryByLocation = (location) => {
                 if (location === 'belt') return beltItems;
@@ -1241,51 +1225,32 @@
                 return null;
             };
 
-            // Caso 1: Nenhum item selecionado, e o usuário clica em um slot com um item.
-            if (!selectedItem && item) {
-                // Impede a seleção de "mãos" vazias no cinto
-                if (containerType === 'belt' && item === null) return;
-
-                selectedItem = { item: { ...item }, sourceLocation: containerType, sourceIndex: index };
+            // Case 1: Deselect if clicking the same slot
+            if (selectedItem && selectedItem.sourceLocation === containerType && selectedItem.sourceIndex === index) {
+                selectedItem = null;
             }
-            // Caso 2: Um item está selecionado, e o usuário clica em um slot vazio.
+            // Case 2: Move item if clicking an empty slot
             else if (selectedItem && !item) {
                 const sourceInventory = getInventoryByLocation(selectedItem.sourceLocation);
                 const targetInventory = getInventoryByLocation(containerType);
 
                 if (sourceInventory && targetInventory) {
-                    // Move o item
                     targetInventory[index] = selectedItem.item;
-                    // Limpa o slot de origem
                     sourceInventory[selectedItem.sourceIndex] = null;
                 }
-                // Limpa a seleção
                 selectedItem = null;
             }
-            // Caso 3: Um item está selecionado, e o usuário clica no mesmo slot para desmarcar.
-            else if (selectedItem && selectedItem.sourceLocation === containerType && selectedItem.sourceIndex === index) {
-                selectedItem = null;
+            // Case 3: Select or switch selection if clicking an occupied slot
+            else if (item) {
+                selectedItem = { item: { ...item }, sourceLocation: containerType, sourceIndex: index };
             }
-            // Caso 4: Um item está selecionado e o usuário clica em outro slot ocupado (ação ignorada).
-            // Nenhuma ação é necessária, a seleção simplesmente permanece. O usuário deve clicar em um slot vazio.
-            // Apenas deselecionamos para que ele possa selecionar o outro item.
-            else if (selectedItem && item) {
-                selectedItem = null;
-            }
-
 
             // Atualiza todas as exibições relevantes
             updateBeltDisplay();
-            updateBackpackLogic(); // Garante que slots vazios sejam tratados
             updateBackpackDisplay();
             if (openedChest) {
                 updateChestDisplay();
             }
-        }
-        function updateBackpackLogic() {
-            // Remove todos os slots vazios e depois adiciona um no final.
-            const nonNullItems = backpackItems.filter(item => item !== null);
-            backpackItems = [...nonNullItems, null];
         }
 
         function createMound(intersect) {
