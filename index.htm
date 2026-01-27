@@ -576,11 +576,13 @@
         // Variáveis de estado do jogo
         let gamePaused = false; // Novo: Flag para pausar/retomar a lógica do jogo
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
+        let isWorldReady = false; // NOVO: Flag para rastrear se o mundo está pronto para interações
 
         // NOVO: Gerenciador de carregamento para rastrear quando todos os recursos são carregados
         const loadingManager = new THREE.LoadingManager();
         loadingManager.onLoad = () => {
             console.log("All resources loaded, world is ready.");
+            isWorldReady = true;
         };
 
         // Instância do carregador de textura, agora usando o gerenciador de carregamento
@@ -1036,6 +1038,7 @@
 
         // Função para fechar a mochila
         function closeBackpack() {
+            closeSplitModal();
             returnSelectedItemToSource();
             updateUI();
             backpackModal.classList.remove('active');
@@ -1077,6 +1080,7 @@
 
         // NOVO: Função para fechar o baú
         function closeChest() {
+            closeSplitModal();
             returnSelectedItemToSource();
             updateUI();
             openedChest = null;
@@ -3123,7 +3127,18 @@
             document.addEventListener('mousemove', (event) => {
                 // Determine the primary tool for visual feedback
                 const primaryToolForVisuals = beltItems[selectedSlotIndex]; // Usa o slot selecionado
-                const isPrimaryToolPlacing = primaryToolForVisuals && (primaryToolForVisuals.name === cobItemName || primaryToolForVisuals.name === floorItemName || primaryToolForVisuals.name === treeSaplingItemName || primaryToolForVisuals.name === woodenPlankItemName || primaryToolForVisuals.name === treeTrunkItemName || primaryToolForVisuals.name === boxItemName);
+                const isPrimaryToolPlacing = primaryToolForVisuals && (
+                    primaryToolForVisuals.name === cobItemName ||
+                    primaryToolForVisuals.name === floorItemName ||
+                    primaryToolForVisuals.name === treeSaplingItemName ||
+                    primaryToolForVisuals.name === woodenPlankItemName ||
+                    primaryToolForVisuals.name === treeTrunkItemName ||
+                    primaryToolForVisuals.name === boxItemName ||
+                    primaryToolForVisuals.name === chestItemName ||
+                    primaryToolForVisuals.name === stoneBlockItemName ||
+                    primaryToolForVisuals.name === woodenBlockItemName ||
+                    primaryToolForVisuals.name === stoneFloorItemName
+                );
                 const isPrimaryToolGrabbing = primaryToolForVisuals === null; // Hand is active if slot 0 is null
 
 
