@@ -259,27 +259,50 @@
             margin-bottom: 20px;
         }
         #backpackSlotsContainer {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(60px, 1fr)); /* Responsive grid */
-            gap: 8px;
-            width: 100%;
-            max-width: 500px; /* Max width for the grid itself */
-            margin-bottom: 20px;
-        }
-        #backpackModal .slot {
-            width: 60px;
-            height: 60px;
-            border: 2px solid #555;
-            border-radius: 50%;
-            background-color: rgba(255, 255, 255, 0.1);
             display: flex;
             flex-direction: column;
-            justify-content: center;
+            gap: 4px;
+            width: 100%;
+            margin-bottom: 20px;
+        }
+        #backpackModal .slot,
+        #chestSlotsContainer .slot,
+        #chestBackpackSlotsContainer .slot {
+            width: 100%;
+            height: auto;
+            min-height: 50px;
+            border: 2px solid #555;
+            border-radius: 8px;
+            background-color: rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: row;
+            justify-content: flex-start;
             align-items: center;
             color: #bbb;
             font-size: 0.9em;
             position: relative;
             cursor: grab;
+            padding: 5px 10px;
+        }
+        .slot-name {
+            margin-left: 15px;
+            flex-grow: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            text-align: left;
+            color: white;
+            font-weight: 500;
+            min-width: 0;
+        }
+        #backpackModal .slot-icon,
+        #chestSlotsContainer .slot-icon,
+        #chestBackpackSlotsContainer .slot-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 4px;
+            object-fit: contain;
+            padding: 0;
         }
         .slot.item-selected {
             border-color: #FFD700; /* Gold border when selected to be moved */
@@ -399,14 +422,14 @@
             <!-- Painel do Baú -->
             <div>
                 <h3 class="text-xl mb-2 text-center">Conteúdo do Baú</h3>
-                <div id="chestSlotsContainer" class="grid grid-cols-5 gap-2 bg-black/30 p-2 rounded-md h-[calc(100%-2.5rem)] overflow-y-auto">
+                <div id="chestSlotsContainer" class="flex flex-col gap-1 bg-black/30 p-2 rounded-md h-[calc(100%-2.5rem)] overflow-y-auto">
                     <!-- Slots do baú serão preenchidos dinamicamente -->
                 </div>
             </div>
             <!-- Painel da Mochila -->
             <div>
                 <h3 class="text-xl mb-2 text-center">Mochila</h3>
-                <div id="chestBackpackSlotsContainer" class="grid grid-cols-5 gap-2 bg-black/30 p-2 rounded-md h-[calc(100%-2.5rem)] overflow-y-auto">
+                <div id="chestBackpackSlotsContainer" class="flex flex-col gap-1 bg-black/30 p-2 rounded-md h-[calc(100%-2.5rem)] overflow-y-auto">
                     <!-- Slots da mochila (no modo baú) serão preenchidos dinamicamente -->
                 </div>
             </div>
@@ -554,7 +577,7 @@
         let inventoryBeltElement;
         let slots = []; // Array para armazenar os elementos dos slots
         const numBeltSlots = 2; // Número total de slots do cinto (apenas 2 agora)
-        var selectedSlotIndex = 0; // NOVO: Índice do slot selecionado (0 para esquerdo, 1 para direito)
+        let selectedSlotIndex = 0; // NOVO: Índice do slot selecionado (0 para esquerdo, 1 para direito)
 
         // Variáveis para o sistema de mochila
         let backpackModal;
@@ -1025,6 +1048,7 @@
 
         // Função para renderizar um slot de inventário (cinto ou mochila)
         function renderSlot(item, index, containerType) {
+            const isList = containerType === 'backpack' || containerType === 'chest' || containerType === 'chestBackpack';
             const slotDiv = document.createElement('div');
             slotDiv.classList.add('slot');
             slotDiv.id = `${containerType}-slot-${index}`;
@@ -1085,6 +1109,14 @@
                 img.classList.add('slot-icon');
                 slotDiv.appendChild(img);
 
+                if (isList) {
+                    const nameSpan = document.createElement('span');
+                    nameSpan.classList.add('slot-name');
+                    const fullName = itemDisplayNames[item.name] || item.name;
+                    nameSpan.textContent = fullName.split('\n')[0]; // Pega apenas a primeira linha
+                    slotDiv.appendChild(nameSpan);
+                }
+
                 if (item.quantity > 1) { // Só mostra a quantidade se for maior que 1
                     quantitySpan.classList.add('slot-quantity');
                     quantitySpan.textContent = item.quantity;
@@ -1099,6 +1131,12 @@
                     img.style.transform = 'scaleX(-1)';
                 }
                 slotDiv.appendChild(img);
+            } else if (isList) {
+                const nameSpan = document.createElement('span');
+                nameSpan.classList.add('slot-name');
+                nameSpan.textContent = 'Vazio';
+                nameSpan.style.opacity = '0.5';
+                slotDiv.appendChild(nameSpan);
             }
 
             // Adiciona a classe 'item-selected' se o item estiver selecionado
