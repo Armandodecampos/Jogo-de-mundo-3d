@@ -570,7 +570,7 @@
 
         // Inventário (agora separado para cinto e mochila)
         let beltItems = new Array(numBeltSlots).fill(null);
-        let backpackItems = new Array(25).fill(null);
+        let backpackItems = [null];
 
         // Click and move variables
         let selectedItem = null; // { item: { name, quantity }, sourceLocation: 'belt' | 'backpack' | 'chest', sourceIndex: number }
@@ -1132,6 +1132,13 @@
             return slotDiv;
         }
 
+        // Helper function to maintain backpack size (always one free slot at the end)
+        function maintainBackpack() {
+            const nonNullItems = backpackItems.filter(item => item !== null);
+            backpackItems.length = 0;
+            backpackItems.push(...nonNullItems, null);
+        }
+
         // Helper function to add item to inventory (belt or backpack)
         function addItemToInventory(inventoryArray, itemToAdd) {
             // Try to stack first
@@ -1151,6 +1158,7 @@
 
                 if (inventoryArray[i] === null) {
                     inventoryArray[i] = { ...itemToAdd }; // Add new item
+                    if (inventoryArray === backpackItems) maintainBackpack();
                     return;
                 }
             }
@@ -1185,6 +1193,7 @@
 
         // Função para atualizar a exibição da mochila
         function updateBackpackDisplay() {
+            maintainBackpack();
             backpackSlotsContainer.innerHTML = ''; // Limpa os slots existentes
             for (let i = 0; i < backpackItems.length; i++) { // Usa o comprimento dinâmico
                 const item = backpackItems[i];
@@ -1237,6 +1246,9 @@
                 if (sourceInventory && targetInventory) {
                     targetInventory[index] = selectedItem.item;
                     sourceInventory[selectedItem.sourceIndex] = null;
+                    if (sourceInventory === backpackItems || targetInventory === backpackItems) {
+                        maintainBackpack();
+                    }
                 }
                 selectedItem = null;
             }
