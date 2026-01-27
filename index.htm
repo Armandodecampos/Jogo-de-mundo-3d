@@ -1940,20 +1940,6 @@
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function init() {
             console.log("init called");
-
-            // Inicializa materiais com padrões para evitar erros de undefined e falta de textura inicial
-            cubeMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xcccccc });
-            cobMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
-            floorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
-            woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xdeb887 });
-            stoneBlockMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x888888 });
-            woodenBlockMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
-            stoneFloorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x888888 });
-            chestMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
-            treeSaplingMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 });
-            treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
-            treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22, transparent: true, alphaTest: 0.5 });
-
             // Define o offset inicial do nível dos olhos da câmera como o raio da esfera
             cameraEyeLevelOffset = playerRadius;
             originalCameraEyeLevelOffset = cameraEyeLevelOffset; // Para armazenar o valor inicial
@@ -2336,15 +2322,14 @@
 
             // --- Configuração dos Cubos Interativos ---
             const cubeSize = 1;
-            // Carrega a textura para os cubos e atualiza o material
+            // Carrega a textura para os cubos, CRIA o material e SÓ ENTÃO cria as caixas.
             textureLoader.load(cubeTextureURL, (cubeTexture) => {
                 cubeTexture.wrapS = THREE.RepeatWrapping;
                 cubeTexture.wrapT = THREE.RepeatWrapping;
                 cubeTexture.repeat.set(1, 1);
-                cubeMaterialMesh.map = cubeTexture;
-                cubeMaterialMesh.needsUpdate = true;
+                cubeMaterialMesh = new THREE.MeshStandardMaterial({ map: cubeTexture });
 
-                // Cria as caixas iniciais DENTRO do callback
+                // Cria as caixas iniciais DENTRO do callback, garantindo que o material exista.
                 createBox(new THREE.Vector3(0, cubeSize / 2 + islandSurfaceHeight, -10));
                 createBox(new THREE.Vector3(5, cubeSize / 2 + islandSurfaceHeight, -10));
                 createBox(new THREE.Vector3(-5, cubeSize / 2 + islandSurfaceHeight, -10));
@@ -2395,102 +2380,100 @@
                 holeMaterial = new THREE.MeshStandardMaterial({ color: 0x3b2712 }); // Fallback marrom escuro
             });
 
-            // Load the cob texture
+            // Load the cob texture and create the material once
             textureLoader.load(cobTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                cobMaterialMesh.map = texture;
-                cobMaterialMesh.needsUpdate = true;
+                cobMaterialMesh = new THREE.MeshStandardMaterial({ map: texture }); // Create the material here
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura do cob:', error);
+                // Fallback to a plain color if texture fails to load
+                cobMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Brown color
             });
 
-            // Load the floor texture
+            // Load the floor texture and create the material once
             textureLoader.load(floorTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                floorMaterialMesh.map = texture;
-                floorMaterialMesh.needsUpdate = true;
+                floorMaterialMesh = new THREE.MeshStandardMaterial({ map: texture }); // Create the material here
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura do piso:', error);
+                // Fallback to a plain color if texture fails to load
+                floorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xAAAAAA }); // Grey color for floor
             });
 
-            // Load the wooden plank texture
+            // Load the wooden plank texture and create the material once
             textureLoader.load(woodenPlankTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                woodenPlankMaterialMesh.map = texture;
-                woodenPlankMaterialMesh.needsUpdate = true;
+                woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura da tábua de madeira:', error);
+                woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xdeb887 }); // Fallback brown
             });
 
             textureLoader.load(stoneBlockTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                stoneBlockMaterialMesh.map = texture;
-                stoneBlockMaterialMesh.needsUpdate = true;
+                stoneBlockMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
             });
 
             textureLoader.load(woodenBlockTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                woodenBlockMaterialMesh.map = texture;
-                woodenBlockMaterialMesh.needsUpdate = true;
+                woodenBlockMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
             });
 
-            textureLoader.load(chestTextureURL, (texture) => {
+            textureLoader.load(chestTextureURL, (texture) => { // NOVO
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                chestMaterialMesh.map = texture;
-                chestMaterialMesh.needsUpdate = true;
+                chestMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
             });
 
             textureLoader.load(stoneFloorTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                stoneFloorMaterialMesh.map = texture;
-                stoneFloorMaterialMesh.needsUpdate = true;
+                stoneFloorMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
             });
 
-            // Load the tree sapling texture (for icon)
+            // Load the tree sapling texture (for icon) and create the material once
             textureLoader.load(treeSaplingTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                treeSaplingMaterialMesh.map = texture;
-                treeSaplingMaterialMesh.needsUpdate = true;
+                treeSaplingMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura da muda de árvore:', error);
+                treeSaplingMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 }); // Dark green color
             });
 
-            // Load tree bark texture
+            // Load tree bark texture and create material
             textureLoader.load(treeBarkTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1); // Adjust as needed for bark
-                treeTrunkMaterialMesh.map = texture;
-                treeTrunkMaterialMesh.needsUpdate = true;
+                treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ map: texture });
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura do tronco da árvore:', error);
+                treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Fallback brown
             });
 
-            // Load tree leaves texture
+            // Load tree leaves texture and create material
             textureLoader.load(treeLeavesTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1); // Adjust as needed for leaves
-                treeLeavesMaterialMesh.map = texture;
-                treeLeavesMaterialMesh.needsUpdate = true;
+                treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ map: texture, transparent: true, alphaTest: 0.5 }); // alphaTest for transparency
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura das folhas da árvore:', error);
+                treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 }); // Fallback dark green
             });
 
             // Cria um corpo "grabber" invisível para segurar objetos
@@ -3473,9 +3456,8 @@
             // ANTES de envolver as posições. Isso é crucial para o efeito de mundo contínuo.
             const playerX = playerBody.position.x;
             const playerZ = playerBody.position.z;
-            // visualOffsetX e visualOffsetZ removidos para evitar saltos duplos no envolvimento do mundo
-            visualOffsetX = 0;
-            visualOffsetZ = 0;
+            visualOffsetX = Math.round(playerX / worldSize) * worldSize;
+            visualOffsetZ = Math.round(playerZ / worldSize) * worldSize;
 
             // Aplica o envolvimento ao corpo de física do jogador
             wrapObject(playerBody, worldSize);
