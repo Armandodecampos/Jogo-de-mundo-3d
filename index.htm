@@ -578,11 +578,9 @@
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
 
         // NOVO: Gerenciador de carregamento para rastrear quando todos os recursos são carregados
-        let isWorldReady = false;
         const loadingManager = new THREE.LoadingManager();
         loadingManager.onLoad = () => {
             console.log("All resources loaded, world is ready.");
-            isWorldReady = true;
         };
 
         // Instância do carregador de textura, agora usando o gerenciador de carregamento
@@ -1302,7 +1300,7 @@
         function showSplitModal(item, index, containerType) {
             pendingSplitData = { item, index, containerType };
             splitMaxText.textContent = `Quantidade total: ${item.quantity}`;
-            splitInput.value = Math.floor(item.quantity / 2) || 1;
+            splitInput.value = item.quantity;
             splitInput.max = item.quantity;
             splitModal.style.display = 'flex';
             splitInput.focus();
@@ -1372,7 +1370,12 @@
                     selectedItem = null;
                 }
             }
-            // Case 3: Pick up or swap item
+            // Case 3: Stack items if same type
+            else if (selectedItem && item && selectedItem.item.name === item.name) {
+                item.quantity += selectedItem.item.quantity;
+                selectedItem = null;
+            }
+            // Case 4: Pick up or swap item
             else if (item) {
                 // If already holding something, return it first
                 if (selectedItem) {
