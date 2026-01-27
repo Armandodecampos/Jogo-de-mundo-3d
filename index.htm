@@ -398,7 +398,7 @@
 
     <!-- #messageBox foi removido -->
 
-    <div id="weightDisplay" class="absolute bottom-32 left-1/2 transform -translate-x-1/2 bg-black/50 text-white px-2 py-1 rounded-lg z-[998] text-sm font-bold border border-white/20 hidden">
+    <div id="weightDisplay" class="absolute bottom-5 left-5 bg-black/50 text-white px-3 py-1.5 rounded-lg z-[998] text-base font-bold border border-white/20 hidden">
         Peso: 0.0 / 500
     </div>
 
@@ -417,6 +417,17 @@
     </div>
 
     <!-- NOVO: Modal do Baú -->
+    <!-- Modal para Divisão de Itens -->
+    <div id="splitModal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.95); padding: 25px; border: 3px solid #FFD700; border-radius: 12px; z-index: 3000; color: white; flex-direction: column; align-items: center; gap: 15px; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
+        <h3 id="splitTitle" style="margin: 0; font-size: 20px; font-weight: bold;">Dividir Item</h3>
+        <p id="splitMax" style="margin: 0; font-size: 14px; opacity: 0.8;">Quantidade total: 10</p>
+        <input type="number" id="splitInput" min="1" value="1" style="width: 100px; background: #222; color: white; border: 2px solid #555; padding: 10px; border-radius: 6px; font-size: 18px; text-align: center; outline: none;">
+        <div style="display: flex; gap: 15px; width: 100%; margin-top: 10px;">
+            <button id="confirmSplit" style="flex: 1; background: #2ecc71; border: none; padding: 12px; color: white; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px;">Pegar</button>
+            <button id="cancelSplit" style="flex: 1; background: #e74c3c; border: none; padding: 12px; color: white; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px;">Cancelar</button>
+        </div>
+    </div>
+
     <div id="chestModal" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-800/90 border-2 border-stone-600 rounded-lg p-4 z-[1001] w-4/5 max-w-4xl max-h-[80%] flex flex-col text-white">
         <div class="flex justify-between items-center mb-4">
             <h2 class="text-2xl font-bold">Baú</h2>
@@ -604,6 +615,10 @@
 
         // Click and move variables
         let selectedItem = null; // { item: { name, quantity }, sourceLocation: 'belt' | 'backpack' | 'chest', sourceIndex: number }
+
+        // Variáveis para divisão de itens
+        let splitModal, splitInput, confirmSplitBtn, cancelSplitBtn, splitMaxText;
+        let pendingSplitData = null; // { item, index, containerType }
 
         // NOVO: Variável para o elemento da dica de ferramenta
         let tooltipElement;
@@ -1023,6 +1038,8 @@
 
         // Função para fechar a mochila
         function closeBackpack() {
+            returnSelectedItemToSource();
+            updateUI();
             backpackModal.classList.remove('active');
             gamePaused = false; // Permite que o jogo continue se o ponteiro já estiver bloqueado
             pointerLockExitForBackpack = false; // Reseta a flag ao fechar a mochila
@@ -1062,6 +1079,8 @@
 
         // NOVO: Função para fechar o baú
         function closeChest() {
+            returnSelectedItemToSource();
+            updateUI();
             openedChest = null;
             chestModal.classList.add('hidden');
             gamePaused = false;
@@ -1199,6 +1218,16 @@
             return slotDiv;
         }
 
+        function dropSelectedItem() {
+            if (!selectedItem) return;
+            const dropPos = new THREE.Vector3();
+            camera.getWorldDirection(dropPos);
+            dropPos.multiplyScalar(2).add(camera.position);
+            createDroppableItem(dropPos, selectedItem.item);
+            selectedItem = null;
+            updateUI();
+        }
+
         // Helper function to maintain backpack size (always one free slot at the end)
         function maintainBackpack() {
             const nonNullItems = backpackItems.filter(item => item !== null);
@@ -1270,6 +1299,20 @@
         }
 
         // NOVO: Função para atualizar a exibição do baú
+        function showSplitModal(item, index, containerType) {
+            pendingSplitData = { item, index, containerType };
+            splitMaxText.textContent = `Quantidade total: ${item.quantity}`;
+            splitInput.value = Math.floor(item.quantity / 2) || 1;
+            splitInput.max = item.quantity;
+            splitModal.style.display = 'flex';
+            splitInput.focus();
+        }
+
+        function closeSplitModal() {
+            splitModal.style.display = 'none';
+            pendingSplitData = null;
+        }
+
         function updateChestDisplay() {
             if (!openedChest) return;
             // Conteúdo do Baú
@@ -1290,41 +1333,65 @@
             }
         }
 
+        const getInventoryByLocation = (location) => {
+            if (location === 'belt') return beltItems;
+            if (location === 'backpack' || location === 'chestBackpack') return backpackItems;
+            if (location === 'chest') return openedChest?.userData.inventory;
+            return null;
+        };
+
+        function returnSelectedItemToSource() {
+            if (!selectedItem) return;
+            const inv = getInventoryByLocation(selectedItem.sourceLocation);
+            if (inv) {
+                const idx = selectedItem.sourceIndex;
+                if (inv[idx] === null) {
+                    inv[idx] = selectedItem.item;
+                } else {
+                    // Try to stack or find another slot if original is somehow taken
+                    addItemToInventory(inv, selectedItem.item);
+                }
+            }
+            selectedItem = null;
+        }
+
         // Nova função para lidar com cliques nos slots
         function onSlotClick(e, item, index, containerType) {
             e.stopPropagation();
 
-            const getInventoryByLocation = (location) => {
-                if (location === 'belt') return beltItems;
-                if (location === 'backpack' || location === 'chestBackpack') return backpackItems;
-                if (location === 'chest') return openedChest?.userData.inventory;
-                return null;
-            };
-
-            // Case 1: Deselect if clicking the same slot
+            // Case 1: Deselect if clicking the same slot -> Return to source
             if (selectedItem && selectedItem.sourceLocation === containerType && selectedItem.sourceIndex === index) {
-                selectedItem = null;
+                returnSelectedItemToSource();
             }
             // Case 2: Move item if clicking an empty slot
             else if (selectedItem && !item) {
-                const sourceInventory = getInventoryByLocation(selectedItem.sourceLocation);
                 const targetInventory = getInventoryByLocation(containerType);
-
-                if (sourceInventory && targetInventory) {
+                if (targetInventory) {
                     targetInventory[index] = selectedItem.item;
-                    sourceInventory[selectedItem.sourceIndex] = null;
-                    if (sourceInventory === backpackItems || targetInventory === backpackItems) {
-                        maintainBackpack();
-                    }
+                    if (targetInventory === backpackItems) maintainBackpack();
+                    selectedItem = null;
                 }
-                selectedItem = null;
             }
-            // Case 3: Select or switch selection if clicking an occupied slot
+            // Case 3: Pick up or swap item
             else if (item) {
-                selectedItem = { item: { ...item }, sourceLocation: containerType, sourceIndex: index };
+                // If already holding something, return it first
+                if (selectedItem) {
+                    returnSelectedItemToSource();
+                }
+
+                if (item.quantity > 1) {
+                    showSplitModal(item, index, containerType);
+                } else {
+                    const inv = getInventoryByLocation(containerType);
+                    selectedItem = { item: { ...item }, sourceLocation: containerType, sourceIndex: index };
+                    if (inv) inv[index] = null;
+                }
             }
 
-            // Atualiza todas as exibições relevantes
+            updateUI();
+        }
+
+        function updateUI() {
             updateBeltDisplay();
             updateBackpackDisplay();
             if (openedChest) {
@@ -2426,6 +2493,12 @@
             backpackModal = document.getElementById('backpackModal');
             backpackSlotsContainer = document.getElementById('backpackSlotsContainer');
 
+            // Add drop functionality when clicking the modal background
+            backpackModal.addEventListener('click', (e) => {
+                if (e.target === backpackModal && selectedItem) {
+                    dropSelectedItem();
+                }
+            });
 
             // Inicializa o inventário
             beltItems = new Array(numBeltSlots).fill(null); // Garante que esteja vazio primeiro
@@ -2461,6 +2534,40 @@
 
             // NOVO: Pega o elemento da dica de ferramenta
             tooltipElement = document.getElementById('tooltip');
+
+            // Inicializa elementos do modal de divisão
+            splitModal = document.getElementById('splitModal');
+            splitInput = document.getElementById('splitInput');
+            confirmSplitBtn = document.getElementById('confirmSplit');
+            cancelSplitBtn = document.getElementById('cancelSplit');
+            splitMaxText = document.getElementById('splitMax');
+
+            confirmSplitBtn.addEventListener('click', () => {
+                const qty = parseInt(splitInput.value);
+                if (qty > 0 && qty <= pendingSplitData.item.quantity) {
+                    const { item, index, containerType } = pendingSplitData;
+
+                    // Prepara o item selecionado
+                    selectedItem = {
+                        item: { ...item, quantity: qty },
+                        sourceLocation: containerType,
+                        sourceIndex: index
+                    };
+
+                    // Reduz a quantidade no inventário de origem
+                    if (qty === item.quantity) {
+                        const inv = getInventoryByLocation(containerType);
+                        if (inv) inv[index] = null;
+                    } else {
+                        item.quantity -= qty;
+                    }
+
+                    closeSplitModal();
+                    updateUI();
+                }
+            });
+
+            cancelSplitBtn.addEventListener('click', closeSplitModal);
 
 
             // Configura os Listeners de Eventos para teclado e mouse
@@ -4246,6 +4353,12 @@
             chestSlotsContainer = document.getElementById('chestSlotsContainer');
             chestBackpackSlotsContainer = document.getElementById('chestBackpackSlotsContainer');
             closeChestButton.addEventListener('click', closeChest);
+
+            chestModal.addEventListener('click', (e) => {
+                if (e.target === chestModal && selectedItem) {
+                    dropSelectedItem();
+                }
+            });
 
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
