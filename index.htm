@@ -295,6 +295,14 @@
             font-weight: 500;
             min-width: 0;
         }
+        .slot-weight {
+            margin-left: auto;
+            margin-right: 10px;
+            color: #888;
+            font-size: 0.85em;
+            font-weight: normal;
+            white-space: nowrap;
+        }
         #backpackModal .slot-icon,
         #chestSlotsContainer .slot-icon,
         #chestBackpackSlotsContainer .slot-icon {
@@ -1165,6 +1173,13 @@
                     const fullName = itemDisplayNames[item.name] || item.name;
                     nameSpan.textContent = fullName.split('\n')[0]; // Pega apenas a primeira linha
                     slotDiv.appendChild(nameSpan);
+
+                    const weightSpan = document.createElement('span');
+                    weightSpan.classList.add('slot-weight');
+                    const weightPerItem = itemWeights[item.name] || 0;
+                    const totalWeight = weightPerItem * item.quantity;
+                    weightSpan.textContent = `${totalWeight.toFixed(1)}kg`;
+                    slotDiv.appendChild(weightSpan);
                 }
 
                 if (item.quantity > 1) { // Só mostra a quantidade se for maior que 1
@@ -1200,7 +1215,10 @@
             // Mantém a funcionalidade de tooltip e highlight no hover
             slotDiv.addEventListener('mouseenter', (e) => {
                 if (item) {
-                    tooltipElement.textContent = itemDisplayNames[item.name] || item.name;
+                    const fullName = itemDisplayNames[item.name] || item.name;
+                    const weightPerItem = itemWeights[item.name] || 0;
+                    const totalWeight = weightPerItem * item.quantity;
+                    tooltipElement.textContent = `${fullName}\n(Peso: ${totalWeight.toFixed(1)}kg)`;
                     tooltipElement.classList.add('visible');
                     const rect = e.currentTarget.getBoundingClientRect();
                     tooltipElement.style.left = `${rect.left + rect.width / 2 - tooltipElement.offsetWidth / 2}px`;
