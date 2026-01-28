@@ -2649,6 +2649,13 @@
                     }
                 }
 
+                if (event.key.toLowerCase() === 'f') {
+                    const interacted = interact();
+                    if (!interacted && !pickedObjectBody) {
+                        grabObject();
+                    }
+                }
+
                 // NOVO: Seleção de slots com Q e E
                 if (!gamePaused && !backpackModal.classList.contains('active')) {
                     if (event.key.toLowerCase() === 'q') {
@@ -2680,6 +2687,10 @@
             window.addEventListener('keyup', (event) => {
                 // Sempre permite que os eventos de soltar tecla desregistrem as teclas, mesmo se pausado
                 keysPressed[event.key.toLowerCase()] = false;
+
+                if (event.key.toLowerCase() === 'f') {
+                    dropObject();
+                }
             });
 
             // Adiciona um listener para bloquear o ponteiro do mouse no clique do canvas
@@ -2789,19 +2800,7 @@
 
                 if (event.button === 0) { // Botão esquerdo
                     isAttemptingToDestroy = true; // NOVO: Define a intenção
-                    const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
-
-                    if (primaryActionType === 'destroy') {
-                        startDestruction();
-                    } else if (primaryActionType === 'grab') {
-                        // Inicia o temporizador para diferenciar clique de segurar
-                        clickHoldTimer = setTimeout(() => {
-                            clickHoldTimer = null; // O temporizador disparou, então é um clique longo
-                            if (!pickedObjectBody) {
-                                grabObject();
-                            }
-                        }, CLICK_HOLD_DURATION);
-                    }
+                    startDestruction();
                 }
             });
 
@@ -2816,19 +2815,9 @@
                 const secondaryActionType = getActionType(beltItems[1]);
 
                 if (event.button === 0) { // Botão esquerdo do mouse para cima
-                    if (clickHoldTimer) { // Se o temporizador ainda existir, foi um clique curto
-                        clearTimeout(clickHoldTimer);
-                        clickHoldTimer = null;
-                        if (primaryActionType === 'grab') {
-                            if (pickedObjectBody) {
-                                dropObject(); // Clique curto enquanto segura -> largar
-                            } else {
-                                collectObject(); // Clique curto enquanto não segura -> recolher
-                            }
-                        }
+                    if (primaryActionType === 'grab') {
+                        collectObject();
                     }
-                    // Se foi um clique longo, o temporizador é nulo e a função grabObject() já foi chamada.
-
                     if (primaryActionType === 'place') {
                         placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
                     }
@@ -2845,7 +2834,7 @@
                 if (item === null) return 'grab';
                 // Ferramentas de destruição
                 // O martelo foi removido temporariamente das ferramentas de destruição
-                if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName) return 'destroy';
+                if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === branchItemName) return 'destroy';
                 // Itens de colocação
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === chestItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
@@ -2978,8 +2967,8 @@
                     // Calcula o multiplicador
                     let multiplier;
                     const strongMultiplier = 1.0; // Multiplicador para a ferramenta correta
-                    const branchMultiplier = 10.0; // NOVO: Muito mais demorado que a ferramenta correta
-                    const weakMultiplier = 20.0;   // Multiplicador de penalidade para a ferramenta errada ou mão nua
+                    const branchMultiplier = 20.0; // Bem lento
+                    const weakMultiplier = 40.0;   // Muito mais lento (Mão)
 
                     // Define a ferramenta correta para cada material
                     const isCorrectTool =
@@ -3031,6 +3020,35 @@
                 }
             }
 
+            function interact() {
+                if (!isWorldReady || gamePaused || !document.pointerLockElement) return false;
+
+                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                const intersects = raycaster.intersectObjects(scene.children, true);
+                for (const intersect of intersects) {
+                    if (intersect.distance > pickUpDistance) continue;
+
+                    const obj = intersect.object;
+                    let body = null;
+                    let current = obj;
+                    while (current) {
+                        if (current.userData && current.userData.physicsBody) {
+                            body = current.userData.physicsBody;
+                            break;
+                        }
+                        current = current.parent;
+                    }
+
+                    if (body && body.userData) {
+                        if (body.userData.isChest) {
+                            openChest(body);
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+
             function collectObject() {
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
@@ -3039,12 +3057,6 @@
 
                     const clickedBody = intersect.object.userData.physicsBody;
                     if (!clickedBody || !clickedBody.userData) continue;
-
-                    // Lógica para abrir baús
-                    if (clickedBody.userData.isChest) {
-                        openChest(clickedBody);
-                        return;
-                    }
 
                     if (!clickedBody.userData.isCollectible) continue;
 
@@ -3670,11 +3682,12 @@
             let isPrimaryToolDestroying = false;
             let isPrimaryToolGrabbing = false;
 
-            if (primaryTool === null) { // Se o slot selecionado estiver vazio, a "mão" está ativa
+            const actionType = getActionType(primaryTool);
+            if (actionType === 'grab') {
                 isPrimaryToolGrabbing = true;
-            } else if (primaryTool.name === axeItemName || primaryTool.name === hammerItemName || primaryTool.name === stoneItemName) {
+            } else if (actionType === 'destroy') {
                 isPrimaryToolDestroying = true;
-            } else if (primaryTool.name === cobItemName || primaryTool.name === floorItemName || primaryTool.name === treeSaplingItemName || primaryTool.name === woodenPlankItemName || primaryTool.name === treeTrunkItemName || primaryTool.name === boxItemName || primaryTool.name === chestItemName || primaryTool.name === stoneBlockItemName || primaryTool.name === woodenBlockItemName || primaryTool.name === stoneFloorItemName) {
+            } else if (actionType === 'place') {
                 isPrimaryToolPlacing = true;
                 currentBlockType = primaryTool.name; // Define o tipo de bloco para o ghost mesh
             }
@@ -4176,11 +4189,12 @@
             isPrimaryToolDestroying = false;
             isPrimaryToolGrabbing = false;
 
-            if (primaryToolForCrosshair === null) { // Se o slot selecionado estiver vazio, a "mão" está ativa
+            const crosshairActionType = getActionType(primaryToolForCrosshair);
+            if (crosshairActionType === 'grab') {
                 isPrimaryToolGrabbing = true;
-            } else if (primaryToolForCrosshair.name === axeItemName || primaryToolForCrosshair.name === hammerItemName || primaryToolForCrosshair.name === stoneItemName) {
+            } else if (crosshairActionType === 'destroy') {
                 isPrimaryToolDestroying = true;
-            } else if (primaryToolForCrosshair.name === cobItemName || primaryToolForCrosshair.name === floorItemName || primaryToolForCrosshair.name === treeSaplingItemName || primaryToolForCrosshair.name === woodenPlankItemName || primaryToolForCrosshair.name === treeTrunkItemName || primaryToolForCrosshair.name === boxItemName || primaryToolForCrosshair.name === chestItemName || primaryToolForCrosshair.name === stoneBlockItemName || primaryToolForCrosshair.name === woodenBlockItemName || primaryToolForCrosshair.name === stoneFloorItemName) {
+            } else if (crosshairActionType === 'place') {
                 isPrimaryToolPlacing = true;
                 currentBlockType = primaryToolForCrosshair.name; // Define o tipo de bloco para o ghost mesh
             }
@@ -4291,15 +4305,28 @@
                         let canDestroy = false;
                         for (let i = 0; i < intersects.length; i++) {
                             if (intersects[i].distance > destroyDistance) continue;
-                            let intersectedObject = intersects[i].object;
+                            let obj = intersects[i].object;
+
+                            // Check for mountain/ground
+                            const hitPoint = intersects[i].point;
+                            const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
+                            const mountainRadius = 50.0;
+                            const isMountain = islandMeshes.some(m => m.mesh === obj) && distanceToCenter < mountainRadius;
+                            const isGround = islandMeshes.some(m => m.mesh === obj) && !isMountain;
+
+                            if (isMountain || isGround) {
+                                canDestroy = true;
+                                break;
+                            }
+
                             // Check for patches
-                            if (intersectedObject.userData && intersectedObject.userData.isDestructible && intersectedObject.userData.type === 'patch') {
+                            if (obj.userData && obj.userData.isDestructible && obj.userData.type === 'patch') {
                                 canDestroy = true;
                                 break;
                             }
                             // Check for blocks with physics bodies
                             let intersectedBody = null;
-                            let currentObject = intersectedObject;
+                            let currentObject = obj;
                             while (currentObject) {
                                 if (currentObject.userData && currentObject.userData.physicsBody) {
                                     intersectedBody = currentObject.userData.physicsBody;
@@ -4318,20 +4345,38 @@
                     }
                 } else if (isPrimaryToolGrabbing) {
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                    const intersects = raycaster.intersectObjects(scene.children);
+                    const intersects = raycaster.intersectObjects(scene.children, true);
                     let objectInRange = false;
+                    let canDestroyWithHand = false;
                     const aimablePickableBodies = collectibleBoxes.map(b => b.body);
 
                     for (let i = 0; i < intersects.length; i++) {
-                        if (intersects[i].object.userData.physicsBody &&
-                            aimablePickableBodies.includes(intersects[i].object.userData.physicsBody)) {
-                            if (intersects[i].distance <= pickUpDistance) {
-                                objectInRange = true;
-                                break;
-                            }
+                        if (intersects[i].distance > destroyDistance) continue;
+
+                        const obj = intersects[i].object;
+                        const body = obj.userData.physicsBody;
+
+                        // Check for collectible
+                        if (body && aimablePickableBodies.includes(body) && intersects[i].distance <= pickUpDistance) {
+                            objectInRange = true;
+                            break;
+                        }
+
+                        // Check for mining/digging with hand
+                        const hitPoint = intersects[i].point;
+                        const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
+                        const mountainRadius = 50.0;
+                        const isMountain = islandMeshes.some(m => m.mesh === obj) && distanceToCenter < mountainRadius;
+                        const isGround = islandMeshes.some(m => m.mesh === obj) && !isMountain;
+
+                        if (isMountain || isGround) {
+                            canDestroyWithHand = true;
+                            break;
                         }
                     }
-                    crosshairColor = objectInRange ? 'gold' : 'white';
+                    if (objectInRange) crosshairColor = 'gold';
+                    else if (canDestroyWithHand) crosshairColor = 'red';
+                    else crosshairColor = 'white';
                 } else {
                     crosshairColor = 'white';
                 }
