@@ -641,6 +641,7 @@
         const dirtItemName = 'terra'; // NOVO: Nome do item de terra no inventário
         const shovelItemName = 'pá'; // NOVO: Nome do item de pá no inventário
         const pickaxeItemName = 'picareta'; // NOVO: Nome do item de picareta no inventário
+        const branchItemName = 'galho'; // NOVO: Nome do item de galho no inventário
 
         const stoneBlockItemName = 'bloco_pedra';
         const woodenBlockItemName = 'bloco_madeira';
@@ -674,6 +675,7 @@
             [woodenPlankItemName]: 'Piso de Madeira',
             [boxItemName]: 'Caixote',
             [chestItemName]: 'Baú', // NOVO
+            [branchItemName]: 'Galho',
             [stoneBlockItemName]: 'Bloco de Pedra',
             [woodenBlockItemName]: 'Bloco de Madeira',
             [stoneFloorItemName]: 'Piso de Pedra'
@@ -694,6 +696,7 @@
             [woodenPlankItemName]: 1.5,
             [boxItemName]: 12.0,
             [chestItemName]: 12.0,
+            [branchItemName]: 0.5,
             [stoneBlockItemName]: 5.0,
             [woodenBlockItemName]: 3.0,
             [stoneFloorItemName]: 2.0
@@ -778,6 +781,7 @@
         const treeBarkTextureURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // Corrected URL
         const treeLeavesTextureURL = 'https://dl.dropbox.com/s/scl/fi/gdz8f8qzmrdza0t0nntzs/textura-folhas-arvore.jpg?rlkey=efabv8qthg0fpxg1ugf7fpd3k&dl=0'; // Corrected URL
         const handImageURL = 'https://dl.dropbox.com/scl/fi/adirqfks81emnagkoljcw/m-o-direita.png?rlkey=pj17lswbeg8lene1n5ypdbmob&st=i2qtxssr&dl=0';
+        const branchImageURL = 'https://placehold.co/100x100/8B4513/FFFFFF?text=Galho'; // NOVO: Ícone para o galho
         const treeTrunkImageURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // NOVO: Ícone para o tronco de árvore (placeholder)
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
         const chestTextureURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // NOVO: URL da textura do baú
@@ -1149,6 +1153,8 @@
                     img.src = floorTextureURL;
                 } else if (item.name === treeSaplingItemName) {
                     img.src = treeSaplingTextureURL;
+                } else if (item.name === branchItemName) { // NOVO
+                    img.src = branchImageURL;
                 } else if (item.name === treeTrunkItemName) { // Ícone para tronco de árvore
                     img.src = treeTrunkImageURL;
                 } else if (item.name === woodenPlankItemName) { // Ícone para tábuas de madeira
@@ -2972,7 +2978,8 @@
                     // Calcula o multiplicador
                     let multiplier;
                     const strongMultiplier = 1.0; // Multiplicador para a ferramenta correta
-                    const weakMultiplier = 5.0;   // Multiplicador de penalidade para a ferramenta errada
+                    const branchMultiplier = 10.0; // NOVO: Muito mais demorado que a ferramenta correta
+                    const weakMultiplier = 20.0;   // Multiplicador de penalidade para a ferramenta errada ou mão nua
 
                     // Define a ferramenta correta para cada material
                     const isCorrectTool =
@@ -2982,6 +2989,8 @@
 
                     if (isCorrectTool) {
                         multiplier = strongMultiplier;
+                    } else if (heldItemName === branchItemName && (materialType === 'stone' || materialType === 'earth')) {
+                        multiplier = branchMultiplier;
                     } else {
                         multiplier = weakMultiplier; // Aplica penalidade se a ferramenta não for a correta
                     }
@@ -3432,6 +3441,10 @@
                                             createDroppableItem(position, item);
                                         }
                                     });
+                                }
+                                // NOVO: Se for uma árvore, dropa galhos
+                                if (destroyTargetBody.userData.growthStage) {
+                                    addItemToInventory(backpackItems, { name: branchItemName, quantity: 3 });
                                 }
                                 world.removeBody(destroyTargetBody);
                                 placedConstructionBodies.splice(bodyIndex, 1);
