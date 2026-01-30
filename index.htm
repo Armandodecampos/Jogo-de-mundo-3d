@@ -2204,6 +2204,17 @@
             const islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
 
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
+            // Adiciona várias montanhas de terra por toda a ilha
+            const dirtMountains = [
+                { x: 120, z: 120, r: 50, h: 30 },
+                { x: -160, z: 80, r: 70, h: 40 },
+                { x: 60, z: -200, r: 45, h: 25 },
+                { x: -120, z: -150, r: 60, h: 35 },
+                { x: 220, z: -60, r: 40, h: 20 },
+                { x: -50, z: 220, r: 55, h: 28 },
+                { x: 180, z: 180, r: 40, h: 22 }
+            ];
+
             const hfMatrix = [];
             for (let i = 0; i < hfGridSize; i++) {
                 hfMatrix.push([]);
@@ -2224,13 +2235,24 @@
                         height = seabedLevel;
                     }
 
-                    // Adiciona uma montanha no centro
-                    const mountainRadius = 60;
-                    const mountainHeight = 40;
-                    if (distance < mountainRadius) {
-                        const mountainT = 1 - (distance / mountainRadius);
-                        height += mountainHeight * mountainT * mountainT;
+                    // Adiciona uma montanha no centro (Pedreira)
+                    const centralMountainRadius = 60;
+                    const centralMountainHeight = 40;
+                    if (distance < centralMountainRadius) {
+                        const mountainT = 1 - (distance / centralMountainRadius);
+                        height += centralMountainHeight * mountainT * mountainT;
                     }
+
+                    dirtMountains.forEach(m => {
+                        const dx = x - m.x;
+                        const dz = z - m.z;
+                        const dist = Math.sqrt(dx * dx + dz * dz);
+                        if (dist < m.r) {
+                            const t = 1 - (dist / m.r);
+                            height += m.h * t * t;
+                        }
+                    });
+
                     hfMatrix[i][j] = height;
                 }
             }
@@ -3247,7 +3269,6 @@
                     primaryToolForVisuals.name === chestItemName ||
                     primaryToolForVisuals.name === stoneBlockItemName ||
                     primaryToolForVisuals.name === woodenBlockItemName ||
-                    primaryToolForVisuals.name === chestItemName ||
                     primaryToolForVisuals.name === stoneItemName
                 );
                 const isPrimaryToolGrabbing = primaryToolForVisuals === null; // Hand is active if slot 0 is null
@@ -3761,6 +3782,7 @@
                     // Define as dimensões do bloco atual para o ghost mesh
                     let currentGhostWidth, currentGhostHeight, currentGhostDepth;
                     ghostBlockMesh.scale.set(1, 1, 1); // Reset scale
+                    if (ghostBlockMesh.geometry) ghostBlockMesh.geometry.dispose();
                     if (currentBlockType === 'cob') {
                         currentGhostWidth = cobWidth;
                         currentGhostHeight = cobHeight;
