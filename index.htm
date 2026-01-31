@@ -1693,10 +1693,10 @@
         }
 
         function createStone(position, quaternion) {
-            const stoneSize = { width: 0.6, height: 0.3, depth: 0.8 };
+            const stoneSize = { width: 1, height: 0.5, depth: 1.2 };
             const stoneShape = new CANNON.Box(new CANNON.Vec3(stoneSize.width / 2, stoneSize.height / 2, stoneSize.depth / 2));
-            const stoneGeometry = new THREE.SphereGeometry(0.5, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-            stoneGeometry.center();
+            const stoneGeometry = new THREE.SphereGeometry(0.5, 16, 16);
+            const stoneMaterial = new THREE.MeshLambertMaterial({ color: 0x808080 });
 
             const stoneBody = new CANNON.Body({
                 mass: 5,
@@ -1723,8 +1723,8 @@
             const stoneMeshes = [];
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(stoneGeometry, stoneBlockMaterialMesh);
-                    mesh.scale.set(0.6, 0.6, 0.8);
+                    const mesh = new THREE.Mesh(stoneGeometry, stoneMaterial);
+                    mesh.scale.set(1, 0.5, 1.2);
                     mesh.castShadow = true;
                     mesh.receiveShadow = true;
                     mesh.userData.physicsBody = stoneBody;
@@ -2206,16 +2206,14 @@
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
             // Adiciona várias montanhas de terra por toda a ilha
             const dirtMountains = [
-                { x: 120, z: 120, r: 90, h: 30 },
-                { x: -160, z: 80, r: 110, h: 40 },
-                { x: 60, z: -200, r: 80, h: 25 },
-                { x: -120, z: -150, r: 100, h: 35 },
-                { x: 220, z: -60, r: 70, h: 20 },
-                { x: -50, z: 220, r: 95, h: 28 },
-                { x: 180, z: 180, r: 70, h: 22 }
+                { x: 120, z: 120, r: 50, h: 30 },
+                { x: -160, z: 80, r: 70, h: 40 },
+                { x: 60, z: -200, r: 45, h: 25 },
+                { x: -120, z: -150, r: 60, h: 35 },
+                { x: 220, z: -60, r: 40, h: 20 },
+                { x: -50, z: 220, r: 55, h: 28 },
+                { x: 180, z: 180, r: 40, h: 22 }
             ];
-
-            const plateauRatio = 0.4;
 
             const hfMatrix = [];
             for (let i = 0; i < hfGridSize; i++) { // i é o índice X local do Cannon
@@ -2239,12 +2237,11 @@
                     }
 
                     // Adiciona uma montanha no centro (Pedreira)
-                    const centralMountainRadius = 120;
+                    const centralMountainRadius = 60;
                     const centralMountainHeight = 40;
                     if (distance < centralMountainRadius) {
-                        const t = Math.max(0, Math.min(1, (1 - distance / centralMountainRadius) / (1 - plateauRatio)));
-                        const smoothT = t * t * (3 - 2 * t);
-                        height += centralMountainHeight * smoothT;
+                        const mountainT = 1 - (distance / centralMountainRadius);
+                        height += centralMountainHeight * mountainT * mountainT;
                     }
 
                     dirtMountains.forEach(m => {
@@ -2252,9 +2249,8 @@
                         const dz = z - m.z;
                         const dist = Math.sqrt(dx * dx + dz * dz);
                         if (dist < m.r) {
-                            const t = Math.max(0, Math.min(1, (1 - dist / m.r) / (1 - plateauRatio)));
-                            const smoothT = t * t * (3 - 2 * t);
-                            height += m.h * smoothT;
+                            const t = 1 - (dist / m.r);
+                            height += m.h * t * t;
                         }
                     });
 
@@ -3843,13 +3839,11 @@
                         currentGhostDepth = 1;
                         ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
                     } else if (currentBlockType === stoneItemName) {
-                        currentGhostWidth = 0.6;
-                        currentGhostHeight = 0.3;
-                        currentGhostDepth = 0.8;
-                        const g = new THREE.SphereGeometry(0.5, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
-                        g.center();
-                        ghostBlockMesh.geometry = g;
-                        ghostBlockMesh.scale.set(0.6, 0.6, 0.8);
+                        currentGhostWidth = 1;
+                        currentGhostHeight = 0.5;
+                        currentGhostDepth = 1.2;
+                        ghostBlockMesh.geometry = new THREE.SphereGeometry(0.5, 16, 16);
+                        ghostBlockMesh.scale.set(1, 0.5, 1.2);
                     }
                     // Update ghost block geometry
                     // ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth); // Removido para lidar individualmente
