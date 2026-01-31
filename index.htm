@@ -2216,12 +2216,13 @@
             ];
 
             const hfMatrix = [];
-            for (let i = 0; i < hfGridSize; i++) {
-                hfMatrix.push([]);
-                for (let j = 0; j < hfGridSize; j++) {
+            for (let i = 0; i < hfGridSize; i++) { // i é o índice X local do Cannon
+                hfMatrix[i] = [];
+                for (let j = 0; j < hfGridSize; j++) { // j é o índice Y local do Cannon
                     // Mapeia os índices da grelha para coordenadas do mundo
-                    const x = (j / (hfGridSize - 1) - 0.5) * worldSize;
-                    const z = (i / (hfGridSize - 1) - 0.5) * worldSize;
+                    // No Cannon, com a rotação e posição atuais, i mapeia para X e j mapeia para -Z
+                    const x = (i / (hfGridSize - 1) - 0.5) * worldSize;
+                    const z = (0.5 - j / (hfGridSize - 1)) * worldSize;
                     const distance = Math.sqrt(x * x + z * z);
                     let height;
 
@@ -2263,10 +2264,11 @@
 
             // Define a altura de cada vértice na geometria para corresponder à matriz do Heightfield.
             const vertices = islandGeometry.attributes.position.array;
-            for (let i = 0; i < hfGridSize; i++) {
-                for (let j = 0; j < hfGridSize; j++) {
-                    const height = hfMatrix[i][j];
-                    const index = (i * hfGridSize + j) * 3;
+            for (let j = 0; j < hfGridSize; j++) { // j é o índice da linha do Three.js (Z de -W/2 a W/2)
+                const j_cannon = (hfGridSize - 1) - j; // Inverte para alinhar com o mapeamento do Cannon
+                for (let i = 0; i < hfGridSize; i++) { // i é o índice da coluna do Three.js (X de -W/2 a W/2)
+                    const height = hfMatrix[i][j_cannon];
+                    const index = (j * hfGridSize + i) * 3;
                     vertices[index + 1] = height; // Atualiza a coordenada Y
                 }
             }
