@@ -2206,13 +2206,13 @@
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
             // Adiciona várias montanhas de terra por toda a ilha
             const dirtMountains = [
-                { x: 120, z: 120, r: 100, h: 60 },
-                { x: -160, z: 80, r: 140, h: 80 },
-                { x: 60, z: -200, r: 90, h: 50 },
-                { x: -120, z: -150, r: 120, h: 70 },
-                { x: 220, z: -60, r: 80, h: 40 },
-                { x: -50, z: 220, r: 110, h: 56 },
-                { x: 180, z: 180, r: 80, h: 44 }
+                { x: 120, z: 120, r: 50, h: 30 },
+                { x: -160, z: 80, r: 70, h: 40 },
+                { x: 60, z: -200, r: 45, h: 25 },
+                { x: -120, z: -150, r: 60, h: 35 },
+                { x: 220, z: -60, r: 40, h: 20 },
+                { x: -50, z: 220, r: 55, h: 28 },
+                { x: 180, z: 180, r: 40, h: 22 }
             ];
 
             const hfMatrix = [];
@@ -2237,12 +2237,10 @@
                     }
 
                     // Adiciona uma montanha no centro (Pedreira)
-                    const centralMountainRadius = 120;
-                    const centralMountainHeight = 80;
-                    const centralPlateauRatio = 0.4; // 40% of peak area is flat
+                    const centralMountainRadius = 60;
+                    const centralMountainHeight = 40;
                     if (distance < centralMountainRadius) {
-                        const effectiveDist = Math.max(distance, centralMountainRadius * centralPlateauRatio);
-                        const mountainT = (1 - (effectiveDist / centralMountainRadius)) / (1 - centralPlateauRatio);
+                        const mountainT = 1 - (distance / centralMountainRadius);
                         height += centralMountainHeight * mountainT * mountainT;
                     }
 
@@ -2251,18 +2249,10 @@
                         const dz = z - m.z;
                         const dist = Math.sqrt(dx * dx + dz * dz);
                         if (dist < m.r) {
-                            const plateauRatio = 0.4;
-                            const effectiveDist = Math.max(dist, m.r * plateauRatio);
-                            const t = (1 - (effectiveDist / m.r)) / (1 - plateauRatio);
+                            const t = 1 - (dist / m.r);
                             height += m.h * t * t;
                         }
                     });
-
-                    // Adiciona ondulações por todo o terreno
-                    const undulation = (Math.sin(x * 0.05) * Math.cos(z * 0.05) * 6) +
-                                       (Math.sin(x * 0.12) * Math.sin(z * 0.12) * 3) +
-                                       (Math.cos(x * 0.02) * Math.sin(z * 0.02) * 4);
-                    height += undulation;
 
                     hfMatrix[i][j] = height;
                 }
