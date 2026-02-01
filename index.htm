@@ -1452,7 +1452,7 @@
             const volcanoInnerRadius = 1.0;
             const volcanoOuterRadiusAtTop = 1.0;
             const volcanoOuterRadiusAtBottom = 1.5;
-            const mountainRadius = 50.0;
+            const mountainRadius = 100.0;
             const volcanoHeight = 0.1;
             const volcanoRadialSegments = 32;
 
@@ -2206,13 +2206,13 @@
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
             // Adiciona várias montanhas de terra por toda a ilha
             const dirtMountains = [
-                { x: 120, z: 120, r: 50, h: 30 },
-                { x: -160, z: 80, r: 70, h: 40 },
-                { x: 60, z: -200, r: 45, h: 25 },
-                { x: -120, z: -150, r: 60, h: 35 },
-                { x: 220, z: -60, r: 40, h: 20 },
-                { x: -50, z: 220, r: 55, h: 28 },
-                { x: 180, z: 180, r: 40, h: 22 }
+                { x: 120, z: 120, r: 100, h: 60 },
+                { x: -160, z: 80, r: 140, h: 80 },
+                { x: 60, z: -200, r: 90, h: 50 },
+                { x: -120, z: -150, r: 120, h: 70 },
+                { x: 220, z: -60, r: 80, h: 40 },
+                { x: -50, z: 220, r: 110, h: 56 },
+                { x: 180, z: 180, r: 80, h: 44 }
             ];
 
             const hfMatrix = [];
@@ -2237,19 +2237,26 @@
                     }
 
                     // Adiciona uma montanha no centro (Pedreira)
-                    const centralMountainRadius = 60;
-                    const centralMountainHeight = 40;
-                    if (distance < centralMountainRadius) {
-                        const mountainT = 1 - (distance / centralMountainRadius);
-                        height += centralMountainHeight * mountainT * mountainT;
+                    const centralMountainRadius = 120;
+                    const centralMountainHeight = 80;
+                    const plateauRatio = 0.4;
+                    const centralPlateauRadius = centralMountainRadius * plateauRatio;
+                    if (distance < centralPlateauRadius) {
+                        height += centralMountainHeight;
+                    } else if (distance < centralMountainRadius) {
+                        const t = 1 - (distance - centralPlateauRadius) / (centralMountainRadius - centralPlateauRadius);
+                        height += centralMountainHeight * t * t;
                     }
 
                     dirtMountains.forEach(m => {
                         const dx = x - m.x;
                         const dz = z - m.z;
                         const dist = Math.sqrt(dx * dx + dz * dz);
-                        if (dist < m.r) {
-                            const t = 1 - (dist / m.r);
+                        const plateauRadius = m.r * plateauRatio;
+                        if (dist < plateauRadius) {
+                            height += m.h;
+                        } else if (dist < m.r) {
+                            const t = 1 - (dist - plateauRadius) / (m.r - plateauRadius);
                             height += m.h * t * t;
                         }
                     });
@@ -2347,7 +2354,7 @@
                                     vec3 terrainMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
 
                                     // Lógica da Pedreira
-                                    float quarryRadius = 50.0;
+                                    float quarryRadius = 100.0;
                                     float distanceToCenter = length(vWorldPosition.xz);
 
                                     vec4 finalColor;
@@ -2936,7 +2943,7 @@
                     const isIslandMesh = islandMeshes.some(m => m.mesh === intersectedObject);
                     if (isIslandMesh) {
                         const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
-                        const mountainRadius = 50.0;
+                        const mountainRadius = 100.0;
                         if (distanceToCenter < mountainRadius) {
                             target = { body: null, mesh: intersectedObject, isMountain: true, position: hitPoint.clone() };
                             break;
@@ -2989,7 +2996,7 @@
                         const intersect = target.intersect;
                         const hitPoint = intersect.point;
                         const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
-                        const mountainRadius = 50.0;
+                        const mountainRadius = 100.0;
                         const volcanoOuterRadiusAtBottom = 1.5;
 
                         if (distanceToCenter < mountainRadius + volcanoOuterRadiusAtBottom) {
@@ -4393,7 +4400,7 @@
                             // Check for mountain/ground
                             const hitPoint = intersects[i].point;
                             const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
-                            const mountainRadius = 50.0;
+                            const mountainRadius = 100.0;
                             const isMountain = islandMeshes.some(m => m.mesh === obj) && distanceToCenter < mountainRadius;
                             const isGround = islandMeshes.some(m => m.mesh === obj) && !isMountain;
 
@@ -4448,7 +4455,7 @@
                         // Check for mining/digging with hand
                         const hitPoint = intersects[i].point;
                         const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
-                        const mountainRadius = 50.0;
+                        const mountainRadius = 100.0;
                         const isMountain = islandMeshes.some(m => m.mesh === obj) && distanceToCenter < mountainRadius;
                         const isGround = islandMeshes.some(m => m.mesh === obj) && !isMountain;
 
