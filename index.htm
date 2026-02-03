@@ -1966,7 +1966,7 @@
 
 
         function updateIslandGeometry() {
-            const hfGridSize = 128;
+            const hfGridSize = 256;
             const hfMatrix = JSON.parse(JSON.stringify(baseMatrix));
 
             for (const mound of mounds) {
@@ -1995,9 +1995,13 @@
             if (islandMeshes.length > 0) {
                 const mainIslandMesh = islandMeshes[0].mesh;
                 const vertices = mainIslandMesh.geometry.attributes.position.array;
-                for (let i = 0; i < hfGridSize; i++) {
-                    for (let j = 0; j < hfGridSize; j++) {
-                        vertices[(i * hfGridSize + j) * 3 + 1] = hfMatrix[i][j];
+                // Sincroniza os vértices da malha visual com a matriz do Heightfield usando o mesmo mapeamento do init()
+                for (let j = 0; j < hfGridSize; j++) {
+                    const j_cannon = (hfGridSize - 1) - j;
+                    for (let i = 0; i < hfGridSize; i++) {
+                        const height = hfMatrix[i][j_cannon];
+                        const index = (j * hfGridSize + i) * 3;
+                        vertices[index + 1] = height;
                     }
                 }
                 mainIslandMesh.geometry.attributes.position.needsUpdate = true;
@@ -2200,7 +2204,7 @@
 
             // Cria o Terreno (Ilha Redonda)
             // A geometria visual é agora um plano segmentado cujos vértices correspondem ao Heightfield.
-            const hfGridSize = 128; // A resolução DEVE corresponder à do Heightfield
+            const hfGridSize = 256; // A resolução DEVE corresponder à do Heightfield
             const islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
 
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
@@ -2371,18 +2375,12 @@
                                     float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
                                     vec3 terrainMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
 
-                                    // Lógica da Pedreira
-                                    float quarryRadius = 160.0;
-                                    float distanceToCenter = length(vWorldPosition.xz);
+                                    // Lógica de Pedreira (Montanhas) baseada em altura
+                                    float stoneThreshold = 2.0;
+                                    float stoneBlend = smoothstep(stoneThreshold - 1.0, stoneThreshold + 1.0, vWorldPosition.y);
 
                                     vec4 finalColor;
-                                    if (distanceToCenter < quarryRadius) {
-                                        // Dentro da pedreira, usa a textura de pedra
-                                        finalColor = stoneColor;
-                                    } else {
-                                        // Fora da pedreira, usa a mistura de terreno
-                                        finalColor = vec4(terrainMix, 1.0);
-                                    }
+                                    finalColor = vec4(mix(terrainMix, stoneColor.rgb, stoneBlend), 1.0);
 
                                     diffuseColor *= finalColor;
                                 #endif
@@ -2647,7 +2645,7 @@
             // O inventário do jogador agora começa vazio.
 
             // Cria e preenche o baú inicial
-            const startingChestPosition = new THREE.Vector3(65, islandSurfaceHeight + 0.5, 0);
+            const startingChestPosition = new THREE.Vector3(5, 101.3, 0);
             createChest(startingChestPosition, null);
             const startingChestBody = placedChests[placedChests.length - 1].body;
             const startingChestInventory = startingChestBody.userData.inventory;
@@ -2960,9 +2958,9 @@
                     // Lógica 1: Atingiu a Montanha ou Chão
                     const isIslandMesh = islandMeshes.some(m => m.mesh === intersectedObject);
                     if (isIslandMesh) {
-                        const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
-                        const mountainRadius = 160.0;
-                        if (distanceToCenter < mountainRadius) {
+                        const hitPoint = intersects[i].point;
+                        // Identifica montanha (pedra) pela altura em vez de raio
+                        if (hitPoint.y > islandSurfaceHeight + 2.0) {
                             target = { body: null, mesh: intersectedObject, isMountain: true, position: hitPoint.clone() };
                             break;
                         } else {
@@ -3013,12 +3011,11 @@
                     if (target.isDigging) {
                         const intersect = target.intersect;
                         const hitPoint = intersect.point;
-                        const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
-                        const mountainRadius = 160.0;
                         const volcanoOuterRadiusAtBottom = 1.5;
 
-                        if (distanceToCenter < mountainRadius + volcanoOuterRadiusAtBottom) {
-                            return; // Sai se estiver muito perto da montanha
+                        // Se estiver na base da montanha (onde já é pedra), não permite cavar
+                        if (hitPoint.y > islandSurfaceHeight + 1.0) {
+                            return;
                         }
 
                         let targetMound = null;
@@ -3628,6 +3625,11 @@
             });
 
             // Atualiza as posições das malhas do terreno com base na posição envolvida do jogador
+            // Sincroniza a posição do corpo de física da ilha com o tile atual do jogador
+            const currentTileX = Math.round(playerBody.position.x / worldSize) * worldSize;
+            const currentTileZ = Math.round(playerBody.position.z / worldSize) * worldSize;
+            islandBody.position.set(currentTileX - worldSize / 2, 0, currentTileZ + worldSize / 2);
+
             islandMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.y = 0; // O plano está agora centrado em Y=0
@@ -4417,9 +4419,7 @@
 
                             // Check for mountain/ground
                             const hitPoint = intersects[i].point;
-                            const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
-                            const mountainRadius = 160.0;
-                            const isMountain = islandMeshes.some(m => m.mesh === obj) && distanceToCenter < mountainRadius;
+                            const isMountain = islandMeshes.some(m => m.mesh === obj) && hitPoint.y > islandSurfaceHeight + 2.0;
                             const isGround = islandMeshes.some(m => m.mesh === obj) && !isMountain;
 
                             if (isMountain || isGround) {
@@ -4472,9 +4472,7 @@
 
                         // Check for mining/digging with hand
                         const hitPoint = intersects[i].point;
-                        const distanceToCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
-                        const mountainRadius = 160.0;
-                        const isMountain = islandMeshes.some(m => m.mesh === obj) && distanceToCenter < mountainRadius;
+                        const isMountain = islandMeshes.some(m => m.mesh === obj) && hitPoint.y > islandSurfaceHeight + 2.0;
                         const isGround = islandMeshes.some(m => m.mesh === obj) && !isMountain;
 
                         if (isMountain || isGround) {
