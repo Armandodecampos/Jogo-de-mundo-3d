@@ -2032,6 +2032,7 @@
 
             // Configuração da Cena Three.js
             scene = new THREE.Scene();
+            window.scene = scene;
             skyColor = new THREE.Color(0x87CEEB);
             underwaterColor = new THREE.Color(0x001e3d);
             scene.background = skyColor; // Começa com a cor do céu
@@ -2044,6 +2045,7 @@
 
             // Configuração da Câmera Three.js
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
+            window.camera = camera;
             camera.rotation.order = 'YXZ'; // Define a ordem de rotação para guinada (Y), inclinação (X), rolagem (Z)
 
             // Configuração do Renderizador Three.js
@@ -2210,20 +2212,20 @@
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
             // Adiciona várias montanhas de terra por toda a ilha com tamanhos e formatos variados
             const dirtMountains = [];
-            const numDirtMountains = 8 + Math.floor(Math.random() * 5); // 8 a 12 montanhas aleatórias
+            const numDirtMountains = 18 + Math.floor(Math.random() * 10); // 18 a 28 montanhas
             for (let i = 0; i < numDirtMountains; i++) {
                 let x, z, distToCenter;
                 do {
-                    x = (Math.random() - 0.5) * 500;
-                    z = (Math.random() - 0.5) * 500;
+                    x = (Math.random() - 0.5) * 840;
+                    z = (Math.random() - 0.5) * 840;
                     distToCenter = Math.sqrt(x * x + z * z);
-                } while (distToCenter < 120 || distToCenter > 280); // Evita o centro e as bordas submersas
+                } while (distToCenter > 420); // Espalha por toda a ilha até perto da areia
 
                 dirtMountains.push({
                     x: x,
                     z: z,
-                    r: 80 + Math.random() * 80, // Raio entre 80 e 160 (dobro)
-                    h: 5 + Math.random() * 5    // Altura muito baixa (5 a 10)
+                    r: 60 + Math.random() * 100, // 60 a 160 (dobro do tamanho anterior)
+                    h: 8 + Math.random() * 12    // 8 a 20 (dobro da altura anterior)
                 });
             }
 
@@ -2248,25 +2250,24 @@
                         height = seabedLevel;
                     }
 
-                    // Adiciona uma montanha no centro (Pedreira)
-                    const centralMountainRadius = 160;
-                    const centralMountainHeight = 10; // Muito baixa
+                    // Montanha central removida para distribuição aleatória
                     let mountainHeight = 0;
-
-                    if (distance < centralMountainRadius) {
-                        const t = distance / centralMountainRadius;
-                        // Use cosine for a smooth rounded dome from base to peak
-                        mountainHeight = centralMountainHeight * Math.cos(t * Math.PI / 2);
-                    }
 
                     dirtMountains.forEach(m => {
                         const dx = x - m.x;
                         const dz = z - m.z;
                         const d = Math.sqrt(dx * dx + dz * dz);
                         if (d < m.r) {
+                            const plateauRatio = 0.4;
                             const t = d / m.r;
-                            // Use cosine for a smooth rounded dome
-                            const hVal = m.h * Math.cos(t * Math.PI / 2);
+                            let hVal;
+                            if (t < plateauRatio) {
+                                hVal = m.h; // Parte de cima plana
+                            } else {
+                                // t ajustado para a inclinação após o platô
+                                const t_adj = (t - plateauRatio) / (1 - plateauRatio);
+                                hVal = m.h * Math.cos(t_adj * Math.PI / 2);
+                            }
                             mountainHeight = Math.max(mountainHeight, hVal);
                         }
                     });
@@ -2368,16 +2369,9 @@
                                     float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
                                     vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
                                     float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
-                                    vec3 terrainMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
+                                    vec3 terrainMix = mix(seabedSandMix, grassColor.rgb, sandToGrassBlend);
 
-                                    // Lógica de Montanhas (agora com textura de grama)
-                                    float mountainThreshold = 1.0;
-                                    float grassBlend = smoothstep(mountainThreshold - 1.0, mountainThreshold + 1.0, vWorldPosition.y);
-
-                                    vec4 finalColor;
-                                    finalColor = vec4(mix(terrainMix, grassColor.rgb, grassBlend), 1.0);
-
-                                    diffuseColor *= finalColor;
+                                    diffuseColor *= vec4(terrainMix, 1.0);
                                 #endif
                                 `
                             );
