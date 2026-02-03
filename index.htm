@@ -590,13 +590,34 @@
         const loadingManager = new THREE.LoadingManager();
         loadingManager.onLoad = () => {
             console.log("All resources loaded, world is ready.");
-            isWorldReady = true;
-            if (playerBody) {
-                playerBody.mass = 80;
-                playerBody.updateMassProperties();
-                playerBody.wakeUp();
+            if (!isWorldReady) {
+                isWorldReady = true;
+                if (playerBody) {
+                    playerBody.mass = 80;
+                    playerBody.updateMassProperties();
+                    playerBody.wakeUp();
+                }
             }
         };
+
+        loadingManager.onError = (url) => {
+            console.error("Error loading resource: " + url);
+            // Mesmo com erro, tentamos dar seguimento após um timeout ou se for crítico
+            // Para garantir que o jogador não fique preso, podemos forçar o início após alguns segundos
+        };
+
+        // Força a prontidão do mundo após 10 segundos, mesmo que os recursos não tenham carregado totalmente
+        setTimeout(() => {
+            if (!isWorldReady) {
+                console.warn("Loading timeout reached. Forcing isWorldReady = true");
+                isWorldReady = true;
+                if (playerBody) {
+                    playerBody.mass = 80;
+                    playerBody.updateMassProperties();
+                    playerBody.wakeUp();
+                }
+            }
+        }, 10000); // 10 segundos de timeout
 
         // Instância do carregador de textura, agora usando o gerenciador de carregamento
         const textureLoader = new THREE.TextureLoader(loadingManager);
@@ -2434,7 +2455,7 @@
                 mass: 0,
                 shape: originalPlayerShape, // Começa com a forma original
                 material: playerMaterial,
-                linearDamping: 0.9, // Reverted to a higher damping for better stop-on-a-dime feel
+                linearDamping: 0.5, // Reduzido de 0.9 para melhor movimentação
                 angularDamping: 0.9,
                 fixedRotation: true, // Mantém rotação fixa para a câmera
                 allowSleep: true, // Permite que o jogador entre em modo de "sono"
@@ -4557,6 +4578,13 @@
             console.log("startGame called");
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
+
+            // Solicita o bloqueio do ponteiro imediatamente ao iniciar
+            if (renderer && renderer.domElement) {
+                renderer.domElement.requestPointerLock().catch(() => {
+                    console.warn("Pointer lock request failed on startGame. User might need to click canvas.");
+                });
+            }
 
             // NOVO: Pega elementos do baú e adiciona listeners aqui, após o DOM estar pronto
             chestModal = document.getElementById('chestModal');
