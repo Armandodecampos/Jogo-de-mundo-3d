@@ -2223,12 +2223,11 @@
                     x: x,
                     z: z,
                     r: 80 + Math.random() * 80, // Raio entre 80 e 160 (dobro)
-                    h: 60 + Math.random() * 40  // Altura dobrada (60 a 100)
+                    h: 5 + Math.random() * 5    // Altura muito baixa (5 a 10)
                 });
             }
 
             const hfMatrix = [];
-            const plateauRatio = 0.4;
             for (let i = 0; i < hfGridSize; i++) { // i é o índice X local do Cannon
                 hfMatrix[i] = [];
                 for (let j = 0; j < hfGridSize; j++) { // j é o índice Y local do Cannon
@@ -2250,18 +2249,14 @@
                     }
 
                     // Adiciona uma montanha no centro (Pedreira)
-                    const centralMountainRadius = 160; // Dobro de 80
-                    const centralMountainHeight = 240; // Dobro de 120
+                    const centralMountainRadius = 160;
+                    const centralMountainHeight = 10; // Muito baixa
                     let mountainHeight = 0;
 
                     if (distance < centralMountainRadius) {
-                        if (distance < centralMountainRadius * plateauRatio) {
-                            mountainHeight = centralMountainHeight;
-                        } else {
-                            const t = (distance - centralMountainRadius * plateauRatio) / (centralMountainRadius * (1 - plateauRatio));
-                            // Use cosine for a rounded dome transition from the plateau to the base
-                            mountainHeight = centralMountainHeight * Math.cos(t * Math.PI / 2);
-                        }
+                        const t = distance / centralMountainRadius;
+                        // Use cosine for a smooth rounded dome from base to peak
+                        mountainHeight = centralMountainHeight * Math.cos(t * Math.PI / 2);
                     }
 
                     dirtMountains.forEach(m => {
@@ -2269,14 +2264,9 @@
                         const dz = z - m.z;
                         const d = Math.sqrt(dx * dx + dz * dz);
                         if (d < m.r) {
-                            let hVal;
-                            if (d < m.r * plateauRatio) {
-                                hVal = m.h;
-                            } else {
-                                const t = (d - m.r * plateauRatio) / (m.r * (1 - plateauRatio));
-                                // Use cosine for a rounded dome transition from the plateau to the base
-                                hVal = m.h * Math.cos(t * Math.PI / 2);
-                            }
+                            const t = d / m.r;
+                            // Use cosine for a smooth rounded dome
+                            const hVal = m.h * Math.cos(t * Math.PI / 2);
                             mountainHeight = Math.max(mountainHeight, hVal);
                         }
                     });
@@ -2381,7 +2371,7 @@
                                     vec3 terrainMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
 
                                     // Lógica de Montanhas (agora com textura de grama)
-                                    float mountainThreshold = 2.0;
+                                    float mountainThreshold = 1.0;
                                     float grassBlend = smoothstep(mountainThreshold - 1.0, mountainThreshold + 1.0, vWorldPosition.y);
 
                                     vec4 finalColor;
@@ -2442,7 +2432,7 @@
                 sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer"
             });
             // Posição inicial: centro da esfera em playerRadius + islandSurfaceHeight
-            playerBody.position.set(0, 250, 0); // Spawns player on top of the central plateau
+            playerBody.position.set(0, 15, 0); // Spawns player on top of the central low hill
             world.addBody(playerBody);
 
             // Reintroduz o listener de colisão para canJump, mas com uma verificação adicional
@@ -2651,7 +2641,7 @@
             // O inventário do jogador agora começa vazio.
 
             // Cria e preenche o baú inicial
-            const startingChestPosition = new THREE.Vector3(5, 241.3, 0);
+            const startingChestPosition = new THREE.Vector3(5, 10.3, 0);
             createChest(startingChestPosition, null);
             const startingChestBody = placedChests[placedChests.length - 1].body;
             const startingChestInventory = startingChestBody.userData.inventory;
