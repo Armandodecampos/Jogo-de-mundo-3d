@@ -2223,7 +2223,7 @@
                     x: x,
                     z: z,
                     r: 80 + Math.random() * 80, // Raio entre 80 e 160 (dobro)
-                    h: 40 + Math.random() * 40  // Altura entre 40 e 80 (dobro)
+                    h: 60 + Math.random() * 40  // Altura dobrada (60 a 100)
                 });
             }
 
@@ -2251,7 +2251,7 @@
 
                     // Adiciona uma montanha no centro (Pedreira)
                     const centralMountainRadius = 160; // Dobro de 80
-                    const centralMountainHeight = 100; // Dobro de 50
+                    const centralMountainHeight = 240; // Dobro de 120
                     let mountainHeight = 0;
 
                     if (distance < centralMountainRadius) {
@@ -2317,14 +2317,16 @@
             world.addBody(islandBody);
             const groundTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=0";
             const sandTextureURL = "https://dl.dropbox.com/scl/fi/2ediqx91o54kqrua9l4jk/Textura-de-areia.png?rlkey=pale1g1zkjqlrkjhpz4kr3ypw&st=fbuzn6iu&dl=0";
+            const grassTextureURL = "https://threejs.org/examples/textures/terrain/grasslight-big.jpg";
             const seabedTextureURL = sandTextureURL;
 
             textureLoader.load(groundTextureURL, (groundTexture) => {
                 textureLoader.load(seabedTextureURL, (seabedTexture) => {
                     textureLoader.load(sandTextureURL, (sandTexture) => {
                         textureLoader.load(stoneTextureURL, (stoneTexture) => {
-                        // Todas as quatro texturas estão carregadas
-                        [groundTexture, seabedTexture, sandTexture, stoneTexture].forEach(texture => {
+                            textureLoader.load(grassTextureURL, (grassTexture) => {
+                        // Todas as texturas estão carregadas
+                        [groundTexture, seabedTexture, sandTexture, stoneTexture, grassTexture].forEach(texture => {
                             texture.wrapS = THREE.RepeatWrapping;
                             texture.wrapT = THREE.RepeatWrapping;
                         });
@@ -2332,6 +2334,7 @@
                         seabedTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
                         sandTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
                         stoneTexture.repeat.set(islandRadiusTop / 16, islandRadiusTop / 16);
+                        grassTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
 
                         const islandMeshMaterial = new THREE.MeshStandardMaterial({
                             map: groundTexture,
@@ -2341,6 +2344,7 @@
                             shader.uniforms.uSeabedTexture = { value: seabedTexture };
                             shader.uniforms.uSandTexture = { value: sandTexture };
                             shader.uniforms.uStoneTexture = { value: stoneTexture };
+                            shader.uniforms.uGrassTexture = { value: grassTexture };
                             shader.uniforms.uWaterLevel = { value: waterLevel };
 
                             shader.vertexShader = `
@@ -2358,6 +2362,7 @@
                                 uniform sampler2D uSeabedTexture;
                                 uniform sampler2D uSandTexture;
                                 uniform sampler2D uStoneTexture;
+                                uniform sampler2D uGrassTexture;
                                 uniform float uWaterLevel;
                                 varying vec3 vWorldPosition;
                                 ${shader.fragmentShader}
@@ -2368,19 +2373,19 @@
                                     vec4 groundColor = texture2D(map, vUv);
                                     vec4 seabedColor = texture2D(uSeabedTexture, vUv);
                                     vec4 sandColor = texture2D(uSandTexture, vUv);
-                                    vec4 stoneColor = texture2D(uStoneTexture, vUv);
+                                    vec4 grassColor = texture2D(uGrassTexture, vUv);
 
                                     float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
                                     vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
                                     float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
                                     vec3 terrainMix = mix(seabedSandMix, groundColor.rgb, sandToGrassBlend);
 
-                                    // Lógica de Pedreira (Montanhas) baseada em altura
-                                    float stoneThreshold = 2.0;
-                                    float stoneBlend = smoothstep(stoneThreshold - 1.0, stoneThreshold + 1.0, vWorldPosition.y);
+                                    // Lógica de Montanhas (agora com textura de grama)
+                                    float mountainThreshold = 2.0;
+                                    float grassBlend = smoothstep(mountainThreshold - 1.0, mountainThreshold + 1.0, vWorldPosition.y);
 
                                     vec4 finalColor;
-                                    finalColor = vec4(mix(terrainMix, stoneColor.rgb, stoneBlend), 1.0);
+                                    finalColor = vec4(mix(terrainMix, grassColor.rgb, grassBlend), 1.0);
 
                                     diffuseColor *= finalColor;
                                 #endif
@@ -2398,7 +2403,8 @@
                             }
                         }
                         islandMeshMaterial.needsUpdate = true;
-                        });
+                        }, undefined, (error) => console.error('Falha ao carregar a textura de grama:', error));
+                        }, undefined, (error) => console.error('Falha ao carregar a textura de pedra:', error));
                     }, undefined, (error) => console.error('Falha ao carregar a textura de areia:', error));
                 }, undefined, (error) => console.error('Falha ao carregar a textura do fundo do mar:', error));
             }, undefined, (error) => console.error('Falha ao carregar a textura do solo:', error));
@@ -2436,7 +2442,7 @@
                 sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer"
             });
             // Posição inicial: centro da esfera em playerRadius + islandSurfaceHeight
-            playerBody.position.set(0, 110, 0); // Spawns player on top of the central plateau
+            playerBody.position.set(0, 250, 0); // Spawns player on top of the central plateau
             world.addBody(playerBody);
 
             // Reintroduz o listener de colisão para canJump, mas com uma verificação adicional
@@ -2645,7 +2651,7 @@
             // O inventário do jogador agora começa vazio.
 
             // Cria e preenche o baú inicial
-            const startingChestPosition = new THREE.Vector3(5, 101.3, 0);
+            const startingChestPosition = new THREE.Vector3(5, 241.3, 0);
             createChest(startingChestPosition, null);
             const startingChestBody = placedChests[placedChests.length - 1].body;
             const startingChestInventory = startingChestBody.userData.inventory;
@@ -2955,18 +2961,11 @@
                     let intersectedObject = intersects[i].object;
                     const hitPoint = intersects[i].point;
 
-                    // Lógica 1: Atingiu a Montanha ou Chão
+                    // Lógica 1: Atingiu a Montanha ou Chão (Tudo tratado como terra/grama agora)
                     const isIslandMesh = islandMeshes.some(m => m.mesh === intersectedObject);
                     if (isIslandMesh) {
-                        const hitPoint = intersects[i].point;
-                        // Identifica montanha (pedra) pela altura em vez de raio
-                        if (hitPoint.y > islandSurfaceHeight + 2.0) {
-                            target = { body: null, mesh: intersectedObject, isMountain: true, position: hitPoint.clone() };
-                            break;
-                        } else {
-                            target = { body: null, mesh: intersectedObject, isDigging: true, intersect: intersects[i] };
-                            break;
-                        }
+                        target = { body: null, mesh: intersectedObject, isDigging: true, intersect: intersects[i] };
+                        break;
                     }
 
                     // Lógica 2: Atingiu um objeto destrutível
@@ -3013,11 +3012,6 @@
                         const hitPoint = intersect.point;
                         const volcanoOuterRadiusAtBottom = 1.5;
 
-                        // Se estiver na base da montanha (onde já é pedra), não permite cavar
-                        if (hitPoint.y > islandSurfaceHeight + 1.0) {
-                            return;
-                        }
-
                         let targetMound = null;
                         for (const mound of visualMounds) {
                             if (mound.position.distanceTo(hitPoint) < volcanoOuterRadiusAtBottom && mound.growthStage < moundGrowthStages.length - 1) {
@@ -3063,8 +3057,8 @@
                     // Calcula o multiplicador
                     let multiplier;
                     const strongMultiplier = 1.0; // Multiplicador para a ferramenta correta
-                    const branchMultiplier = 20.0; // Bem lento
-                    const weakMultiplier = 40.0;   // Muito mais lento (Mão)
+                    const branchMultiplier = 3.0; // Bem lento
+                    const weakMultiplier = 5.0;   // Mais lento (Mão) - Reduzido para facilitar testes e gameplay
 
                     // Define a ferramenta correta para cada material
                     const isCorrectTool =
@@ -4418,11 +4412,9 @@
                             let obj = intersects[i].object;
 
                             // Check for mountain/ground
-                            const hitPoint = intersects[i].point;
-                            const isMountain = islandMeshes.some(m => m.mesh === obj) && hitPoint.y > islandSurfaceHeight + 2.0;
-                            const isGround = islandMeshes.some(m => m.mesh === obj) && !isMountain;
+                            const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
 
-                            if (isMountain || isGround) {
+                            if (isIslandMesh) {
                                 canDestroy = true;
                                 break;
                             }
@@ -4471,11 +4463,9 @@
                         }
 
                         // Check for mining/digging with hand
-                        const hitPoint = intersects[i].point;
-                        const isMountain = islandMeshes.some(m => m.mesh === obj) && hitPoint.y > islandSurfaceHeight + 2.0;
-                        const isGround = islandMeshes.some(m => m.mesh === obj) && !isMountain;
+                        const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
 
-                        if (isMountain || isGround) {
+                        if (isIslandMesh) {
                             canDestroyWithHand = true;
                             break;
                         }
