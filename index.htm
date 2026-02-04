@@ -590,34 +590,11 @@
         const loadingManager = new THREE.LoadingManager();
         loadingManager.onLoad = () => {
             console.log("All resources loaded, world is ready.");
-            if (!isWorldReady) {
-                isWorldReady = true;
-                if (playerBody) {
-                    playerBody.mass = 80;
-                    playerBody.updateMassProperties();
-                    playerBody.wakeUp();
-                }
-            }
         };
 
         loadingManager.onError = (url) => {
             console.error("Error loading resource: " + url);
-            // Mesmo com erro, tentamos dar seguimento após um timeout ou se for crítico
-            // Para garantir que o jogador não fique preso, podemos forçar o início após alguns segundos
         };
-
-        // Força a prontidão do mundo após 10 segundos, mesmo que os recursos não tenham carregado totalmente
-        setTimeout(() => {
-            if (!isWorldReady) {
-                console.warn("Loading timeout reached. Forcing isWorldReady = true");
-                isWorldReady = true;
-                if (playerBody) {
-                    playerBody.mass = 80;
-                    playerBody.updateMassProperties();
-                    playerBody.wakeUp();
-                }
-            }
-        }, 10000); // 10 segundos de timeout
 
         // Instância do carregador de textura, agora usando o gerenciador de carregamento
         const textureLoader = new THREE.TextureLoader(loadingManager);
@@ -2023,9 +2000,8 @@
                 const vertices = mainIslandMesh.geometry.attributes.position.array;
                 // Sincroniza os vértices da malha visual com a matriz do Heightfield usando o mesmo mapeamento do init()
                 for (let j = 0; j < hfGridSize; j++) {
-                    const j_cannon = (hfGridSize - 1) - j;
                     for (let i = 0; i < hfGridSize; i++) {
-                        const height = hfMatrix[i][j_cannon];
+                        const height = hfMatrix[i][j];
                         const index = (j * hfGridSize + i) * 3;
                         vertices[index + 1] = height;
                     }
@@ -2235,7 +2211,7 @@
 
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
             // Adiciona várias montanhas de terra por toda a ilha com tamanhos e formatos variados
-            const stoneMountain = { x: 0, z: 0, r: 160, h: 20 }; // Doubled from 80/10
+            const stoneMountain = { x: 0, z: 0, r: 160, h: 30 };
             const dirtMountains = [];
             const numDirtMountains = 18 + Math.floor(Math.random() * 10); // 18 a 28 montanhas
             for (let i = 0; i < numDirtMountains; i++) {
@@ -2249,8 +2225,8 @@
                 dirtMountains.push({
                     x: x,
                     z: z,
-                    r: 60 + Math.random() * 100, // 60 a 160 (dobro do tamanho anterior)
-                    h: 10 + Math.random() * 15   // 10 a 25 (clara percepção de "o dobro")
+                    r: 60 + Math.random() * 100, // 60 a 160
+                    h: 20 + Math.random() * 20   // 20 a 40 (clara percepção de montanha)
                 });
             }
 
@@ -2322,9 +2298,8 @@
             // Define a altura de cada vértice na geometria para corresponder à matriz do Heightfield.
             const vertices = islandGeometry.attributes.position.array;
             for (let j = 0; j < hfGridSize; j++) { // j é o índice da linha do Three.js (Z de -W/2 a W/2)
-                const j_cannon = (hfGridSize - 1) - j; // Inverte para alinhar com o mapeamento do Cannon
                 for (let i = 0; i < hfGridSize; i++) { // i é o índice da coluna do Three.js (X de -W/2 a W/2)
-                    const height = hfMatrix[i][j_cannon];
+                    const height = hfMatrix[i][j];
                     const index = (j * hfGridSize + i) * 3;
                     vertices[index + 1] = height; // Atualiza a coordenada Y
                 }
@@ -2348,6 +2323,18 @@
             const grassTextureURL = "https://threejs.org/examples/textures/terrain/grasslight-big.jpg";
             const seabedTextureURL = sandTextureURL;
 
+            const islandMeshMaterial = new THREE.MeshStandardMaterial({ color: 0x3d5a2d }); // Grass color placeholder
+
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
+                    islandMesh.receiveShadow = true;
+                    islandMesh.userData.physicsBody = islandBody;
+                    scene.add(islandMesh);
+                    islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
+
             textureLoader.load(groundTextureURL, (groundTexture) => {
                 textureLoader.load(seabedTextureURL, (seabedTexture) => {
                     textureLoader.load(sandTextureURL, (sandTexture) => {
@@ -2364,10 +2351,7 @@
                         stoneTexture.repeat.set(islandRadiusTop / 16, islandRadiusTop / 16);
                         grassTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
 
-                        const islandMeshMaterial = new THREE.MeshStandardMaterial({
-                            map: groundTexture,
-                        });
-
+                        islandMeshMaterial.map = groundTexture;
                         islandMeshMaterial.onBeforeCompile = (shader) => {
                             shader.uniforms.uSeabedTexture = { value: seabedTexture };
                             shader.uniforms.uSandTexture = { value: sandTexture };
@@ -2413,16 +2397,6 @@
                                 `
                             );
                         };
-
-                        for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                                const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
-                                islandMesh.receiveShadow = true;
-                                islandMesh.userData.physicsBody = islandBody;
-                                scene.add(islandMesh);
-                                islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                            }
-                        }
                         islandMeshMaterial.needsUpdate = true;
                         }, undefined, (error) => console.error('Falha ao carregar a textura de grama:', error));
                         }, undefined, (error) => console.error('Falha ao carregar a textura de pedra:', error));
@@ -2452,7 +2426,8 @@
             crouchPlayerShape = new CANNON.Sphere(crouchRadius);   // Esfera agachada
 
             playerBody = new CANNON.Body({
-                mass: 0,
+                mass: 80,
+                type: CANNON.Body.DYNAMIC,
                 shape: originalPlayerShape, // Começa com a forma original
                 material: playerMaterial,
                 linearDamping: 0.5, // Reduzido de 0.9 para melhor movimentação
@@ -2672,9 +2647,9 @@
 
             // O inventário do jogador agora começa vazio.
 
-            // Cria e preenche o baú inicial
-            const startingChestHeight = getSurfaceHeight(5, 0);
-            const startingChestPosition = new THREE.Vector3(5, startingChestHeight + 0.5, 0); // 0.5 is half of chestSize (1)
+            // Cria e preenche o baú inicial (Logo em frente ao jogador)
+            const startingChestHeight = getSurfaceHeight(0, -5);
+            const startingChestPosition = new THREE.Vector3(0, startingChestHeight + 0.5, -5); // 0.5 is half of chestSize (1)
             createChest(startingChestPosition, null);
             const startingChestBody = placedChests[placedChests.length - 1].body;
             const startingChestInventory = startingChestBody.userData.inventory;
@@ -4609,6 +4584,7 @@
                 inventoryBeltElement.style.opacity = '1';
             }
 
+            isWorldReady = true;
         }
 
         // Listener de evento para o botão "Jogar"
