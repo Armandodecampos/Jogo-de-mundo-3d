@@ -377,6 +377,84 @@
             transition: width 0.1s linear;
         }
 
+        /* Camera Modal Styles */
+        #cameraModal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(30, 30, 30, 0.95);
+            border: 2px solid #555;
+            border-radius: 10px;
+            padding: 20px;
+            z-index: 1005;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            width: 90%;
+            max-width: 500px;
+            max-height: 70%;
+            color: white;
+        }
+        #cameraModal.active {
+            display: flex;
+        }
+        #cameraPresetsList {
+            width: 100%;
+            margin-top: 20px;
+            overflow-y: auto;
+            max-height: 300px;
+        }
+        .camera-preset-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px;
+            margin-bottom: 5px;
+            border-radius: 5px;
+        }
+        .camera-preset-item:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .camera-preset-name {
+            flex-grow: 1;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .camera-preset-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .camera-preset-actions button {
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            border: none;
+            font-size: 0.8em;
+        }
+        .rename-preset-btn {
+            background-color: #f39c12;
+            color: white;
+        }
+        .delete-preset-btn {
+            background-color: #e74c3c;
+            color: white;
+        }
+        #saveCurrentCameraBtn {
+            background-color: #2ecc71;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            width: 100%;
+        }
+        #saveCurrentCameraBtn:hover {
+            background-color: #27ae60;
+        }
+
     </style>
 </head>
 <body>
@@ -395,6 +473,7 @@
     <div id="optionsScreen">
         <h2>Opções do Jogo</h2>
         <button id="resumeButton">Voltar ao Jogo</button>
+        <button id="cameraPresetsButton">Câmeras</button>
         <button id="exitGameButton">Sair do Jogo</button>
     </div>
 
@@ -456,6 +535,17 @@
                     <!-- Slots da mochila (no modo baú) serão preenchidos dinamicamente -->
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div id="cameraModal">
+        <div class="flex justify-between items-center w-full mb-4">
+            <h2 class="text-2xl font-bold">Predefinições de Câmera</h2>
+            <button id="closeCameraModalButton" class="text-2xl font-bold">&times;</button>
+        </div>
+        <button id="saveCurrentCameraBtn">Salvar Câmera Atual</button>
+        <div id="cameraPresetsList">
+            <!-- Presets will be added here -->
         </div>
     </div>
 
@@ -619,6 +709,13 @@
         let chestBackpackSlotsContainer;
         const numChestSlots = 50;
         let openedChest = null; // Guarda a referência para os dados do baú aberto
+
+        // NOVO: Variáveis para o sistema de predefinições de câmera
+        let cameraModal;
+        let closeCameraModalButton;
+        let cameraPresetsList;
+        let saveCurrentCameraBtn;
+        let cameraPresets = [];
 
         // Inventário (agora separado para cinto e mochila)
         let beltItems = new Array(numBeltSlots).fill(null);
@@ -3366,6 +3463,138 @@
             }
 
 
+        // NOVO: Funções para gerenciamento do modal de predefinições de câmera
+        function openCameraModal() {
+            gamePaused = true;
+            cameraModal.classList.add('active');
+            document.getElementById('crosshair').style.display = 'none';
+            document.body.style.cursor = 'default';
+            if (renderer && renderer.domElement) {
+                renderer.domElement.style.cursor = 'default';
+            }
+            if (menuIconButton) {
+                menuIconButton.style.display = 'none';
+            }
+            if (ghostBlockMesh) {
+                ghostBlockMesh.visible = false;
+            }
+            pointerLockExitForBackpack = true; // Reutiliza a flag para evitar abrir o menu de opções ao sair do pointer lock
+            document.exitPointerLock();
+            updateCameraPresetsUI();
+        }
+
+        function closeCameraModal() {
+            cameraModal.classList.remove('active');
+            gamePaused = false;
+            pointerLockExitForBackpack = false;
+            if (renderer && renderer.domElement) {
+                renderer.domElement.requestPointerLock().catch(() => {});
+            }
+        }
+
+        function updateCameraPresetsUI() {
+            cameraPresetsList.innerHTML = '';
+            cameraPresets.forEach((preset, index) => {
+                const item = document.createElement('div');
+                item.className = 'camera-preset-item';
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'camera-preset-name';
+                nameSpan.textContent = preset.name;
+                nameSpan.onclick = () => loadCameraPreset(index);
+                item.appendChild(nameSpan);
+
+                const actions = document.createElement('div');
+                actions.className = 'camera-preset-actions';
+
+                const renameBtn = document.createElement('button');
+                renameBtn.className = 'rename-preset-btn';
+                renameBtn.textContent = 'Renomear';
+                renameBtn.onclick = () => renameCameraPreset(index);
+                actions.appendChild(renameBtn);
+
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'delete-preset-btn';
+                deleteBtn.textContent = 'Deletar';
+                deleteBtn.onclick = () => deleteCameraPreset(index);
+                actions.appendChild(deleteBtn);
+
+                item.appendChild(actions);
+                cameraPresetsList.appendChild(item);
+            });
+        }
+
+        function saveCameraPreset() {
+            const name = prompt("Nome da predefinição:");
+            if (name) {
+                const preset = {
+                    name: name,
+                    position: {
+                        x: playerBody.position.x,
+                        y: playerBody.position.y,
+                        z: playerBody.position.z
+                    },
+                    rotation: {
+                        x: camera.rotation.x,
+                        y: camera.rotation.y,
+                        z: camera.rotation.z
+                    }
+                };
+                cameraPresets.push(preset);
+                savePresetsToLocalStorage();
+                updateCameraPresetsUI();
+            }
+        }
+
+        function loadCameraPreset(index) {
+            const preset = cameraPresets[index];
+            if (preset) {
+                // Teleporta o jogador
+                playerBody.position.set(preset.position.x, preset.position.y, preset.position.z);
+                playerBody.velocity.set(0, 0, 0);
+                playerBody.angularVelocity.set(0, 0, 0);
+
+                // Define a rotação da câmera
+                camera.rotation.set(preset.rotation.x, preset.rotation.y, preset.rotation.z);
+
+                closeCameraModal();
+            }
+        }
+
+        function renameCameraPreset(index) {
+            const newName = prompt("Novo nome para a predefinição:", cameraPresets[index].name);
+            if (newName) {
+                cameraPresets[index].name = newName;
+                savePresetsToLocalStorage();
+                updateCameraPresetsUI();
+            }
+        }
+
+        function deleteCameraPreset(index) {
+            if (confirm(`Deseja deletar a predefinição "${cameraPresets[index].name}"?`)) {
+                cameraPresets.splice(index, 1);
+                savePresetsToLocalStorage();
+                updateCameraPresetsUI();
+            }
+        }
+
+        // NOVO: Funções para persistência de predefinições de câmera
+        function savePresetsToLocalStorage() {
+            localStorage.setItem('smallWorld_cameraPresets', JSON.stringify(cameraPresets));
+        }
+
+        function loadPresetsFromLocalStorage() {
+            const saved = localStorage.getItem('smallWorld_cameraPresets');
+            if (saved) {
+                try {
+                    cameraPresets = JSON.parse(saved);
+                } catch (e) {
+                    console.error("Erro ao carregar predefinições de câmera:", e);
+                    cameraPresets = [];
+                }
+            }
+        }
+
         // Função para lidar com o redimensionamento da janela
         function calculateTotalWeight() {
             let totalWeight = 0;
@@ -4576,6 +4805,27 @@
                     dropSelectedItem();
                 }
             });
+
+            // NOVO: Pega elementos do modal de câmeras e adiciona listeners
+            cameraModal = document.getElementById('cameraModal');
+            closeCameraModalButton = document.getElementById('closeCameraModalButton');
+            cameraPresetsList = document.getElementById('cameraPresetsList');
+            saveCurrentCameraBtn = document.getElementById('saveCurrentCameraBtn');
+
+            document.getElementById('cameraPresetsButton').addEventListener('click', () => {
+                hideOptionsScreen();
+                openCameraModal();
+            });
+            closeCameraModalButton.addEventListener('click', closeCameraModal);
+            saveCurrentCameraBtn.addEventListener('click', saveCameraPreset);
+
+            cameraModal.addEventListener('click', (e) => {
+                if (e.target === cameraModal && selectedItem) {
+                    dropSelectedItem();
+                }
+            });
+
+            loadPresetsFromLocalStorage();
 
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
