@@ -2212,22 +2212,23 @@
 
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
             // Adiciona várias montanhas de terra por toda a ilha com tamanhos e formatos variados
-            const stoneMountain = { x: 0, z: 0, r: 160, h: 30 };
+            const stoneMountain = { x: 0, z: 0, r: 160, h: 18 }; // Mais rasa
             const dirtMountains = [];
-            const numDirtMountains = 18 + Math.floor(Math.random() * 10); // 18 a 28 montanhas
+            const numDirtMountains = 20 + Math.floor(Math.random() * 10); // 20 a 30 montanhas
             for (let i = 0; i < numDirtMountains; i++) {
-                let x, z, distToCenter;
+                let x, z, distToCenter, r;
                 do {
-                    x = (Math.random() - 0.5) * 840;
-                    z = (Math.random() - 0.5) * 840;
+                    r = 40 + Math.random() * 80; // Raio um pouco menor
+                    x = (Math.random() - 0.5) * 800;
+                    z = (Math.random() - 0.5) * 800;
                     distToCenter = Math.sqrt(x * x + z * z);
-                } while (distToCenter > 420); // Espalha por toda a ilha até perto da areia
+                } while (distToCenter + r > 440); // Garante que não ultrapasse a margem da praia (limite grama ~450)
 
                 dirtMountains.push({
                     x: x,
                     z: z,
-                    r: 60 + Math.random() * 100, // 60 a 160
-                    h: 20 + Math.random() * 20   // 20 a 40 (clara percepção de montanha)
+                    r: r,
+                    h: 8 + Math.random() * 12   // 8 a 20 (mais rasas)
                 });
             }
 
@@ -2322,7 +2323,7 @@
             world.addBody(islandBody);
             const groundTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=0";
             const sandTextureURL = "https://dl.dropbox.com/scl/fi/2ediqx91o54kqrua9l4jk/Textura-de-areia.png?rlkey=pale1g1zkjqlrkjhpz4kr3ypw&st=fbuzn6iu&dl=0";
-            const grassTextureURL = "https://threejs.org/examples/textures/terrain/grasslight-big.jpg";
+            const grassTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=0";
             const seabedTextureURL = sandTextureURL;
 
             const islandMeshMaterial = new THREE.MeshStandardMaterial({ color: 0x3d5a2d }); // Grass color placeholder
