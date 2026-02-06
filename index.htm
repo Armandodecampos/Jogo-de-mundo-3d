@@ -2214,21 +2214,36 @@
             // Adiciona várias montanhas de terra por toda a ilha com tamanhos e formatos variados
             const stoneMountain = { x: 0, z: 0, r: 150, h: 40 }; // Reduzido o raio para espalhar melhor as outras montanhas
             const dirtMountains = [];
-            const numDirtMountains = 5 + Math.floor(Math.random() * 5); // 5 a 10 montanhas (menor quantidade)
+            const numDirtMountains = 4; // Quantidade fixa e menor conforme solicitado
             for (let i = 0; i < numDirtMountains; i++) {
-                let x, z, distToCenter, r;
-                do {
-                    r = 80 + Math.random() * 80; // Raio dobrado
-                    x = (Math.random() - 0.5) * 800;
-                    z = (Math.random() - 0.5) * 800;
-                    distToCenter = Math.sqrt(x * x + z * z);
-                } while (distToCenter + r > 480); // Ajustado para espalhar sem cair no mar
+                let x, z, r;
+                let attempts = 0;
+                while (attempts < 100) {
+                    r = 40 + Math.random() * 30; // Montanhas menores (raio 40-70)
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = 160 + Math.random() * 100; // Espalhadas entre raio 160 e 260 (longe do centro)
+                    x = Math.cos(angle) * dist;
+                    z = Math.sin(angle) * dist;
+
+                    let tooClose = false;
+                    const minDist = 150; // Distância mínima entre centros das montanhas de terra
+                    for (const m of dirtMountains) {
+                        const dx = x - m.x;
+                        const dz = z - m.z;
+                        if (Math.sqrt(dx * dx + dz * dz) < minDist) {
+                            tooClose = true;
+                            break;
+                        }
+                    }
+                    if (!tooClose) break;
+                    attempts++;
+                }
 
                 dirtMountains.push({
                     x: x,
                     z: z,
                     r: r,
-                    h: 20 + Math.random() * 20   // Altura dobrada (20 a 40)
+                    h: 20 + Math.random() * 20
                 });
             }
 
@@ -2361,8 +2376,8 @@
                             shader.uniforms.uStoneTexture = { value: stoneTexture };
                             shader.uniforms.uGrassTexture = { value: grassTexture };
                             shader.uniforms.uWaterLevel = { value: waterLevel };
-                            shader.uniforms.uGrassRadius = { value: 280.0 };
-                            shader.uniforms.uBeachRadius = { value: 310.0 };
+                            shader.uniforms.uGrassRadius = { value: 250.0 };
+                            shader.uniforms.uBeachRadius = { value: 300.0 };
 
                             shader.vertexShader = `
                                 varying vec3 vWorldPosition;
@@ -4603,9 +4618,6 @@
             }
 
             isWorldReady = true;
-            window.isWorldReady = true;
-            window.camera = camera;
-            window.scene = scene;
         }
 
         // Listener de evento para o botão "Jogar"
