@@ -2212,27 +2212,27 @@
 
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
             // Adiciona várias montanhas de terra por toda a ilha com tamanhos e formatos variados
-            const stoneMountain = { x: 0, z: 0, r: 160, h: 18 }; // Mais rasa
+            const stoneMountain = { x: 0, z: 0, r: 250, h: 40 }; // Dobro maior
             const dirtMountains = [];
             const numDirtMountains = 20 + Math.floor(Math.random() * 10); // 20 a 30 montanhas
             for (let i = 0; i < numDirtMountains; i++) {
                 let x, z, distToCenter, r;
                 do {
-                    r = 40 + Math.random() * 80; // Raio um pouco menor
+                    r = 80 + Math.random() * 80; // Raio dobrado
                     x = (Math.random() - 0.5) * 800;
                     z = (Math.random() - 0.5) * 800;
                     distToCenter = Math.sqrt(x * x + z * z);
-                } while (distToCenter + r > 440); // Garante que não ultrapasse a margem da praia (limite grama ~450)
+                } while (distToCenter + r > 440); // Garante que não ultrapasse a margem da praia
 
                 dirtMountains.push({
                     x: x,
                     z: z,
                     r: r,
-                    h: 8 + Math.random() * 12   // 8 a 20 (mais rasas)
+                    h: 20 + Math.random() * 20   // Altura dobrada (20 a 40)
                 });
             }
 
-            function getSurfaceHeight(x, z) {
+            window.getSurfaceHeight = function(x, z) {
                 const distance = Math.sqrt(x * x + z * z);
                 let height;
 
@@ -2361,6 +2361,8 @@
                             shader.uniforms.uStoneTexture = { value: stoneTexture };
                             shader.uniforms.uGrassTexture = { value: grassTexture };
                             shader.uniforms.uWaterLevel = { value: waterLevel };
+                            shader.uniforms.uGrassRadius = { value: 220.0 };
+                            shader.uniforms.uBeachRadius = { value: 420.0 };
 
                             shader.vertexShader = `
                                 varying vec3 vWorldPosition;
@@ -2369,7 +2371,7 @@
                                 `#include <worldpos_vertex>`,
                                 `
                                 #include <worldpos_vertex>
-                                vWorldPosition = worldPosition.xyz;
+                                vWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;
                                 `
                             );
 
@@ -2379,6 +2381,8 @@
                                 uniform sampler2D uStoneTexture;
                                 uniform sampler2D uGrassTexture;
                                 uniform float uWaterLevel;
+                                uniform float uGrassRadius;
+                                uniform float uBeachRadius;
                                 varying vec3 vWorldPosition;
                                 ${shader.fragmentShader}
                             `.replace(
@@ -2389,11 +2393,22 @@
                                     vec4 seabedColor = texture2D(uSeabedTexture, vUv);
                                     vec4 sandColor = texture2D(uSandTexture, vUv);
                                     vec4 grassColor = texture2D(uGrassTexture, vUv);
+                                    vec4 stoneColor = texture2D(uStoneTexture, vUv * 4.0);
 
+                                    float dist = length(vWorldPosition.xz);
+
+                                    // Mistura entre areia e grama baseada no raio (praia larga)
+                                    float sandToGrassBlend = 1.0 - smoothstep(uGrassRadius, uBeachRadius, dist);
+
+                                    // Mistura fundo do mar baseada na altura
                                     float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
+
+                                    // Mistura pedra para montanhas altas
+                                    float stoneBlend = smoothstep(20.0, 35.0, vWorldPosition.y);
+
                                     vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
-                                    float sandToGrassBlend = smoothstep(uWaterLevel, 0.4, vWorldPosition.y);
-                                    vec3 terrainMix = mix(seabedSandMix, grassColor.rgb, sandToGrassBlend);
+                                    vec3 grassStoneMix = mix(grassColor.rgb, stoneColor.rgb, stoneBlend);
+                                    vec3 terrainMix = mix(seabedSandMix, grassStoneMix, sandToGrassBlend);
 
                                     diffuseColor *= vec4(terrainMix, 1.0);
                                 #endif
@@ -4588,6 +4603,9 @@
             }
 
             isWorldReady = true;
+            window.isWorldReady = true;
+            window.camera = camera;
+            window.scene = scene;
         }
 
         // Listener de evento para o botão "Jogar"
