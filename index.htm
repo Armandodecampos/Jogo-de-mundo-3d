@@ -638,6 +638,7 @@
 
         // NOVO: Variáveis para o sistema de agarrar objetos (Mão)
         const handItemName = 'mao'; // Nome do item de mão no inventário
+        const capimItemName = 'capim';
 
         // NOVO: Variáveis para o sistema de destruição de blocos (Machado e Martelo)
         const axeItemName = 'machado'; // Nome do item de machado no inventário
@@ -667,6 +668,7 @@
         // NOVO: Mapeamento de nomes de itens para exibição
         const itemDisplayNames = {
             [handItemName]: 'Mão',
+            [capimItemName]: 'Capim',
             [axeItemName]: 'Machado\nEspecialidade: Madeira',
             [hammerItemName]: 'Martelo\nSem uso',
             [stoneItemName]: 'Pedra',
@@ -688,6 +690,7 @@
 
         const itemWeights = {
             [handItemName]: 0,
+            [capimItemName]: 0.1,
             [axeItemName]: 2.0,
             [hammerItemName]: 2.0,
             [stoneItemName]: 1.0,
@@ -777,6 +780,7 @@
         const cobTextureURL = 'https://dl.dropbox.com/scl/fi/cp3ueclujrd32o6hv8d73/Cob-2.png?rlkey=5x29w33xvgol1aoxqk3p9jdkm&st=1kahc5pq&dl=0';
         const floorTextureURL = 'https://dl.dropbox.com/scl/fi/cp3ueclujrd32o6hv8d73/Cob-2.png?rlkey=5x29w33xvgol1aoxqk3p9jdkm&st=1kahc5pq&dl=0'; // Nova textura para pisos (exemplo)
         const treeSaplingTextureURL = 'https://dl.dropbox.com/scl/fi/pjdpuxo189igkd5wyvp0z/icone-de-muda-de-arvore.png?rlkey=9bvfgukhymi4qo02965pt3zl4&st=xs4n6qwo&dl=0'; // Dark green placeholder for tree icon
+        const capimImageURL = 'https://placehold.co/100x100/2d5a27/FFFFFF?text=Capim';
         const axeImageURL = 'https://dl.dropbox.com/scl/fi/6td6rpc8n54j6sz62w383/icone-de-machado.png?rlkey=zepycmnfyohef27tp7f5urnx0&st=7kbd3no2&dl=0'; // Placeholder for axe image
         const hammerImageURL = 'https://dl.dropbox.com/scl/fi/vadd8ztbnmzfqi18ml1cl/icone-de-martelo.png?rlkey=45l4k78t728fh4w4fkd4tvlef&st=cbi6paz9&dl=0'; // Placeholder for hammer image
         const stoneImageURL = 'https://dl.dropbox.com/scl/fi/m1fkx9ccbjxlwyvcrdbio/Textura-de-pedra.png?rlkey=vlbwqpy001vcjqiedh1wrdo53&st=sy0pevfr&dl=1'; // NOVO: Imagem para a pedra
@@ -795,6 +799,10 @@
         const stoneBlockTextureURL = 'https://dl.dropbox.com/scl/fi/m1fkx9ccbjxlwyvcrdbio/Textura-de-pedra.png?rlkey=vlbwqpy001vcjqiedh1wrdo53&st=sy0pevfr&dl=1';
         const woodenBlockTextureURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0';
         const stoneFloorTextureURL = 'https://dl.dropbox.com/scl/fi/m1fkx9ccbjxlwyvcrdbio/Textura-de-pedra.png?rlkey=vlbwqpy001vcjqiedh1wrdo53&st=sy0pevfr&dl=1';
+
+        // Geometrias e materiais compartilhados
+        const capimSharedGeometry = new THREE.CylinderGeometry(0.2, 1.0, 1.0, 5);
+        const capimSharedMaterial = new THREE.MeshStandardMaterial({ color: 0x2d5a27 }); // Verde escuro
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -1142,6 +1150,8 @@
                 // Define o ícone com base no nome do item
                 if (item.name === axeItemName) {
                     img.src = axeImageURL;
+                } else if (item.name === capimItemName) {
+                    img.src = capimImageURL;
                 } else if (item.name === hammerItemName) {
                     img.src = hammerImageURL;
                 } else if (item.name === stoneItemName) { // NOVO
@@ -1739,6 +1749,64 @@
             }
 
             collectibleBoxes.push({ body: stoneBody, meshes: stoneMeshes });
+        }
+
+        function createCapim(position) {
+            const capimHeight = 2.0 + Math.random() * 2.0;
+            const capimWidth = 0.1;
+
+            const blockBody = new CANNON.Body({
+                mass: 0,
+                type: CANNON.Body.STATIC,
+                material: constructionMaterial,
+                allowSleep: true,
+                sleepSpeedLimit: 0.01,
+                sleepTimeLimit: 1.0
+            });
+            // Posiciona o centro do corpo de modo que a base esteja na posição y fornecida
+            blockBody.position.set(position.x, position.y + capimHeight / 2, position.z);
+            const blockShape = new CANNON.Box(new CANNON.Vec3(capimWidth / 2, capimHeight / 2, capimWidth / 2));
+            blockBody.addShape(blockShape);
+
+            world.addBody(blockBody);
+            blockBody.userData = {
+                isDestructible: true,
+                durability: 0.2, // Fácil de destruir
+                type: capimItemName,
+                dimensions: { width: capimWidth, height: capimHeight, depth: capimWidth }
+            };
+            placedConstructionBodies.push(blockBody);
+
+            const blockMeshes = [];
+            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
+                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
+                    const mesh = new THREE.Mesh(capimSharedGeometry, capimSharedMaterial);
+                    mesh.scale.set(capimWidth, capimHeight, capimWidth); // radiusBottom = 1.0 * 0.1 = 0.1
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    mesh.userData.physicsBody = blockBody;
+                    scene.add(mesh);
+                    blockMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                }
+            }
+            placedConstructionMeshesArrays.push(blockMeshes);
+        }
+
+        function populateCapim() {
+            const grassRadius = 280.0;
+            const numCapim = 1500;
+            for (let i = 0; i < numCapim; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * grassRadius;
+                const x = Math.cos(angle) * dist;
+                const z = Math.sin(angle) * dist;
+                const y = window.getSurfaceHeight(x, z);
+
+                // Coloca capim apenas se estiver acima do nível da água e na zona de terra
+                if (y > waterLevel + 0.5 && y < 25) {
+                     createCapim(new THREE.Vector3(x, y, z));
+                }
+            }
         }
 
         // Função para criar um novo bloco físico e visual (cob ou piso)
@@ -3579,9 +3647,13 @@
                                 if (destroyTargetBody.userData.growthStage) {
                                     addItemToInventory(backpackItems, { name: branchItemName, quantity: 3 });
                                 }
+                                if (destroyTargetBody.userData.type === capimItemName) {
+                                    addItemToInventory(backpackItems, { name: capimItemName, quantity: 1 });
+                                }
                                 world.removeBody(destroyTargetBody);
-                                placedConstructionBodies.splice(bodyIndex, 1);
+                                // IMPORTANTE: Remove as malhas ANTES de remover do array de corpos para manter o índice correto
                                 placedConstructionMeshesArrays[bodyIndex].forEach(m => scene.remove(m.mesh));
+                                placedConstructionBodies.splice(bodyIndex, 1);
                                 placedConstructionMeshesArrays.splice(bodyIndex, 1);
                             }
                         }
@@ -4589,6 +4661,7 @@
             console.log("startGame called");
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
+            populateCapim(); // NOVO: Popula a ilha com capim
 
             // Solicita o bloqueio do ponteiro imediatamente ao iniciar
             if (renderer && renderer.domElement) {
