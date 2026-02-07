@@ -128,8 +128,25 @@
             opacity: 1;
         }
         #optionsScreen h2 {
-            font-size: 2.5em;
-            margin-bottom: 30px;
+            font-size: 2em;
+            margin-bottom: 20px;
+        }
+        .option-item {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .option-item label {
+            color: white;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+        .option-item input[type="range"] {
+            width: 100%;
+            cursor: pointer;
         }
         #optionsScreen button {
             background-color: #4CAF50;
@@ -395,6 +412,10 @@
 
     <div id="optionsScreen">
         <h2>Opções do Jogo</h2>
+        <div class="option-item">
+            <label for="renderDistanceSlider">Distância de Visão: <span id="renderDistanceValue">120</span></label>
+            <input type="range" id="renderDistanceSlider" min="40" max="400" value="120">
+        </div>
         <button id="resumeButton">Voltar ao Jogo</button>
         <button id="exitGameButton">Sair do Jogo</button>
     </div>
@@ -551,7 +572,7 @@
         const islandRadiusBottom = 600; // NOVO: Raio da base da ilha
         const waterLevel = -9.6; // NOVO: Nível da água
         const seabedLevel = -20; // NOVO: Nível do fundo do mar
-        const renderDistance = 120; // Distância de renderização para objetos
+        let renderDistance = 120; // Distância de renderização para objetos
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
         const islandSurfaceHeight = 0.8; // A altura da superfície visível da ilha
@@ -1752,8 +1773,8 @@
         }
 
         function createCapim(position) {
-            const capimHeight = 2.0 + Math.random() * 2.0;
-            const capimWidth = 0.1;
+            const capimHeight = 3.5 + Math.random() * 2.5; // Bem alto, como solicitado
+            const capimWidth = 0.4; // Área do cluster
 
             const blockBody = new CANNON.Body({
                 mass: 0,
@@ -1780,13 +1801,22 @@
             const blockMeshes = [];
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(capimSharedGeometry, capimSharedMaterial);
-                    mesh.scale.set(capimWidth, capimHeight, capimWidth); // radiusBottom = 1.0 * 0.1 = 0.1
-                    mesh.castShadow = true;
-                    mesh.receiveShadow = true;
-                    mesh.userData.physicsBody = blockBody;
-                    scene.add(mesh);
-                    blockMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                    const group = new THREE.Group();
+                    // Criar um cluster de 5 lâminas de capim para cada instância
+                    for (let k = 0; k < 5; k++) {
+                        const mesh = new THREE.Mesh(capimSharedGeometry, capimSharedMaterial);
+                        const angle = Math.random() * Math.PI * 2;
+                        const dist = Math.random() * 0.25;
+                        mesh.position.set(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
+                        mesh.rotation.y = Math.random() * Math.PI;
+                        // Altura individual variada baseada na altura base do cluster
+                        const h = capimHeight * (0.7 + Math.random() * 0.6);
+                        mesh.scale.set(0.1, h, 0.1);
+                        group.add(mesh);
+                    }
+                    group.userData.physicsBody = blockBody;
+                    scene.add(group);
+                    blockMeshes.push({ mesh: group, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
             }
             placedConstructionMeshesArrays.push(blockMeshes);
@@ -1794,7 +1824,7 @@
 
         function populateCapim() {
             const grassRadius = 280.0;
-            const numCapim = 1500;
+            const numCapim = 3000; // Aumentado para maior densidade
             for (let i = 0; i < numCapim; i++) {
                 const angle = Math.random() * Math.PI * 2;
                 const dist = Math.random() * grassRadius;
@@ -3461,6 +3491,28 @@
                 location.reload(); // Recarrega a página para sair do jogo
             });
 
+            // NOVO: Listener para o slider de distância de renderização
+            const renderDistanceSlider = document.getElementById('renderDistanceSlider');
+            const renderDistanceValue = document.getElementById('renderDistanceValue');
+            if (renderDistanceSlider && renderDistanceValue) {
+                renderDistanceSlider.addEventListener('input', () => {
+                    renderDistance = parseInt(renderDistanceSlider.value);
+                    renderDistanceValue.textContent = renderDistance;
+
+                    // Atualizar o fog
+                    if (typeof skyFog !== 'undefined' && skyFog) {
+                        skyFog.near = renderDistance * 0.33;
+                        skyFog.far = renderDistance;
+                    }
+
+                    // Atualizar a câmera
+                    if (typeof camera !== 'undefined' && camera) {
+                        camera.far = renderDistance;
+                        camera.updateProjectionMatrix();
+                    }
+                });
+            }
+
             // Adiciona o listener para o novo botão de ícone do menu
             if (menuIconButton) {
                 menuIconButton.addEventListener('click', showOptionsScreen);
@@ -3734,22 +3786,30 @@
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.y = 0; // O plano está agora centrado em Y=0
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                // A rotação da malha é definida uma vez na inicialização e não precisa de ser atualizada.
+
+                // NOVO: Visibilidade baseada na distância (com margem para o tamanho do tile)
+                const dist = camera.position.distanceTo(tile.mesh.position);
+                tile.mesh.visible = dist <= renderDistance + worldSize/1.5;
             });
-            // A rua foi removida, então não há necessidade de atualizar roadMeshes.
 
             // NOVO: Atualiza as posições das malhas de água para o efeito de envolvimento
             waterMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                // A posição Y é estática, por isso não precisa de ser atualizada no loop.
+
+                // NOVO: Visibilidade baseada na distância
+                const dist = camera.position.distanceTo(tile.mesh.position);
+                tile.mesh.visible = dist <= renderDistance + worldSize/1.5;
             });
 
             // NOVO: Atualiza as posições das malhas do fundo do mar para o efeito de envolvimento
             seabedMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-                // A posição Y é estática, por isso não precisa de ser atualizada no loop.
+
+                // NOVO: Visibilidade baseada na distância
+                const dist = camera.position.distanceTo(tile.mesh.position);
+                tile.mesh.visible = dist <= renderDistance + worldSize/1.5;
             });
 
             // Atualiza as posições de todas as malhas visuais dos cubos/caixas
