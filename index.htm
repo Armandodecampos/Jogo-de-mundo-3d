@@ -3561,15 +3561,6 @@
         }
 
         // Função para atualizar as posições de todas as malhas visuais para um dado corpo de cubo/bloco
-        function updateObjectVisuals(body, meshesArray, visualOffsetX, visualOffsetZ) {
-            meshesArray.forEach(item => { // item is now { mesh: THREE.Mesh | THREE.Group, offsetX, offsetZ }
-                const visualObject = item.mesh; // This is the THREE.Group or a single Mesh
-                visualObject.position.x = body.position.x + item.offsetX - visualOffsetX;
-                visualObject.position.y = body.position.y;
-                visualObject.position.z = body.position.z + item.offsetZ - visualOffsetZ;
-                visualObject.quaternion.copy(body.quaternion); // Apply the body's rotation to the group/mesh
-            });
-        }
 
         // NOVO: Função para calcular a distância em um mundo que se envolve (toroidal)
         function calculateWrappedDistance(pos1, pos2) {
@@ -3812,53 +3803,102 @@
                 tile.mesh.visible = dist <= renderDistance + worldSize/1.5;
             });
 
+            // Otimização: Cache do quadrado da distância de renderização para evitar Math.sqrt
+            const renderDistSq = renderDistance * renderDistance;
+            const halfWorldSize = worldSize / 2;
+
             // Atualiza as posições de todas as malhas visuais dos cubos/caixas
             collectibleBoxes.forEach(box => {
-                // Primeiro, atualiza as posições de todas as malhas para lidar com o envolvimento do mundo,
-                // garantindo que o efeito de mundo infinito funcione corretamente.
-                updateObjectVisuals(box.body, box.meshes, visualOffsetX, visualOffsetZ);
+                const body = box.body;
+                const dx = Math.abs(body.position.x - playerBody.position.x);
+                const dz = Math.abs(body.position.z - playerBody.position.z);
+                const wrappedDx = dx > halfWorldSize ? worldSize - dx : dx;
+                const wrappedDz = dz > halfWorldSize ? worldSize - dz : dz;
+                const dy = body.position.y - playerBody.position.y;
+                const distSq = wrappedDx*wrappedDx + dy*dy + wrappedDz*wrappedDz;
 
-                // Em seguida, itera sobre cada malha individual para verificar se ela está dentro
-                // da distância de renderização da câmera. Isso corrige o problema de objetos
-                // distantes aparecerem no horizonte.
+                if (distSq > renderDistSq) {
+                    box.meshes.forEach(m => { if(m.mesh.visible) m.mesh.visible = false; });
+                    return;
+                }
+
+                const targetOffsetX = dx > halfWorldSize ? (body.position.x > playerBody.position.x ? -worldSize : worldSize) : 0;
+                const targetOffsetZ = dz > halfWorldSize ? (body.position.z > playerBody.position.z ? -worldSize : worldSize) : 0;
+
                 box.meshes.forEach(m => {
-                    const distance = camera.position.distanceTo(m.mesh.position);
-                    m.mesh.visible = distance <= renderDistance;
+                    if (m.offsetX === targetOffsetX && m.offsetZ === targetOffsetZ) {
+                        m.mesh.position.x = body.position.x + m.offsetX - visualOffsetX;
+                        m.mesh.position.y = body.position.y;
+                        m.mesh.position.z = body.position.z + m.offsetZ - visualOffsetZ;
+                        m.mesh.quaternion.copy(body.quaternion); // NOVO: Copiar rotação
+                        m.mesh.visible = true;
+                    } else {
+                        if(m.mesh.visible) m.mesh.visible = false;
+                    }
                 });
             });
 
-
-
-            // Atualiza as posições de todas as malhas visuais dos blocos colocados
+            // Atualiza as posições de todas as malhas visuais dos blocos colocados (incluindo Capim e Árvores)
             placedConstructionBodies.forEach((body, index) => {
                 const meshesArray = placedConstructionMeshesArrays[index];
+                const dx = Math.abs(body.position.x - playerBody.position.x);
+                const dz = Math.abs(body.position.z - playerBody.position.z);
+                const wrappedDx = dx > halfWorldSize ? worldSize - dx : dx;
+                const wrappedDz = dz > halfWorldSize ? worldSize - dz : dz;
+                const dy = body.position.y - playerBody.position.y;
+                const distSq = wrappedDx*wrappedDx + dy*dy + wrappedDz*wrappedDz;
 
-                // Primeiro, atualiza as posições de todas as malhas para lidar com o envolvimento do mundo.
-                updateObjectVisuals(body, meshesArray, visualOffsetX, visualOffsetZ);
+                if (distSq > renderDistSq) {
+                    meshesArray.forEach(m => { if(m.mesh.visible) m.mesh.visible = false; });
+                    return;
+                }
 
-                // Em seguida, itera sobre cada malha individual para verificar a distância e definir a visibilidade.
+                const targetOffsetX = dx > halfWorldSize ? (body.position.x > playerBody.position.x ? -worldSize : worldSize) : 0;
+                const targetOffsetZ = dz > halfWorldSize ? (body.position.z > playerBody.position.z ? -worldSize : worldSize) : 0;
+
                 meshesArray.forEach(m => {
-                    const distance = camera.position.distanceTo(m.mesh.position);
-                    m.mesh.visible = distance <= renderDistance;
+                    if (m.offsetX === targetOffsetX && m.offsetZ === targetOffsetZ) {
+                        m.mesh.position.x = body.position.x + m.offsetX - visualOffsetX;
+                        m.mesh.position.y = body.position.y;
+                        m.mesh.position.z = body.position.z + m.offsetZ - visualOffsetZ;
+                        m.mesh.quaternion.copy(body.quaternion); // NOVO: Copiar rotação
+                        m.mesh.visible = true;
+                    } else {
+                        if(m.mesh.visible) m.mesh.visible = false;
+                    }
                 });
             });
 
             moundDomes.forEach((dome, index) => {
                 const mound = mounds[index];
                 if (!mound || mound.flattened) {
-                    dome.meshes.forEach(item => item.mesh.visible = false);
+                    dome.meshes.forEach(item => { if(item.mesh.visible) item.mesh.visible = false; });
                     return;
                 }
 
-                const distance = calculateWrappedDistance(playerBody.position, dome.position);
-                const isVisible = distance <= renderDistance;
+                const dx = Math.abs(dome.position.x - playerBody.position.x);
+                const dz = Math.abs(dome.position.z - playerBody.position.z);
+                const wrappedDx = dx > halfWorldSize ? worldSize - dx : dx;
+                const wrappedDz = dz > halfWorldSize ? worldSize - dz : dz;
+                const dy = dome.position.y - playerBody.position.y;
+                const distSq = wrappedDx*wrappedDx + dy*dy + wrappedDz*wrappedDz;
+
+                if (distSq > renderDistSq) {
+                    dome.meshes.forEach(item => { if(item.mesh.visible) item.mesh.visible = false; });
+                    return;
+                }
+
+                const targetOffsetX = dx > halfWorldSize ? (dome.position.x > playerBody.position.x ? -worldSize : worldSize) : 0;
+                const targetOffsetZ = dz > halfWorldSize ? (dome.position.z > playerBody.position.z ? -worldSize : worldSize) : 0;
 
                 dome.meshes.forEach(item => {
-                    item.mesh.visible = isVisible;
-                    if (isVisible) {
+                    if (item.offsetX === targetOffsetX && item.offsetZ === targetOffsetZ) {
                         item.mesh.position.copy(dome.position);
                         item.mesh.position.x += item.offsetX - visualOffsetX;
                         item.mesh.position.z += item.offsetZ - visualOffsetZ;
+                        item.mesh.visible = true;
+                    } else {
+                        if(item.mesh.visible) item.mesh.visible = false;
                     }
                 });
             });
