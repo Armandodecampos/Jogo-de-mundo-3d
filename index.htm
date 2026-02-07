@@ -500,6 +500,9 @@
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
 
+        // NOVO: Array para rastrear o capim (performance otimizada)
+        let capimClusters = [];
+
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
         let collectibleBoxes = [];
 
@@ -534,6 +537,7 @@
         let destroyTargetPatchObject = null;
         let destroyTargetMountainInfo = null;
         let destroyTargetDigInfo = null; // NOVO: Para unificar a escavação
+        let destroyTargetCapimInfo = null; // NOVO: Para destruição de capim sem física
         let destroyTargetPosition = null;
         let destructionComplete = false; // NOVO: Flag para gerenciar o estado de destruição
         let currentMound = null; // NOVO: Referência ao buraco que está sendo cavado
@@ -822,8 +826,9 @@
         const stoneFloorTextureURL = 'https://dl.dropbox.com/scl/fi/m1fkx9ccbjxlwyvcrdbio/Textura-de-pedra.png?rlkey=vlbwqpy001vcjqiedh1wrdo53&st=sy0pevfr&dl=1';
 
         // Geometrias e materiais compartilhados
-        const capimSharedGeometry = new THREE.CylinderGeometry(0.2, 1.0, 1.0, 5);
-        const capimSharedMaterial = new THREE.MeshStandardMaterial({ color: 0x2d5a27 }); // Verde escuro
+        const capimSharedGeometry = new THREE.PlaneGeometry(1, 1);
+        capimSharedGeometry.translate(0, 0.5, 0); // Alinha a base da geometria no ponto de origem
+        const capimSharedMaterial = new THREE.MeshLambertMaterial({ color: 0x2d5a27, side: THREE.DoubleSide }); // Verde escuro
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -1773,58 +1778,31 @@
         }
 
         function createCapim(position) {
-            const capimHeight = 3.5 + Math.random() * 2.5; // Bem alto, como solicitado
-            const capimWidth = 0.4; // Área do cluster
+            const capimHeight = 3.5 + Math.random() * 2.5; // Bem alto
+            const capimWidth = 0.8 + Math.random() * 0.4; // Largura do billboard
 
-            const blockBody = new CANNON.Body({
-                mass: 0,
-                type: CANNON.Body.STATIC,
-                material: constructionMaterial,
-                allowSleep: true,
-                sleepSpeedLimit: 0.01,
-                sleepTimeLimit: 1.0
-            });
-            // Posiciona o centro do corpo de modo que a base esteja na posição y fornecida
-            blockBody.position.set(position.x, position.y + capimHeight / 2, position.z);
-            const blockShape = new CANNON.Box(new CANNON.Vec3(capimWidth / 2, capimHeight / 2, capimWidth / 2));
-            blockBody.addShape(blockShape);
-
-            world.addBody(blockBody);
-            blockBody.userData = {
-                isDestructible: true,
-                durability: 0.2, // Fácil de destruir
-                type: capimItemName,
-                dimensions: { width: capimWidth, height: capimHeight, depth: capimWidth }
+            const cluster = {
+                position: position.clone(),
+                health: 1.0,
+                meshes: []
             };
-            placedConstructionBodies.push(blockBody);
 
-            const blockMeshes = [];
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const group = new THREE.Group();
-                    // Criar um cluster de 5 lâminas de capim para cada instância
-                    for (let k = 0; k < 5; k++) {
-                        const mesh = new THREE.Mesh(capimSharedGeometry, capimSharedMaterial);
-                        const angle = Math.random() * Math.PI * 2;
-                        const dist = Math.random() * 0.25;
-                        mesh.position.set(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
-                        mesh.rotation.y = Math.random() * Math.PI;
-                        // Altura individual variada baseada na altura base do cluster
-                        const h = capimHeight * (0.7 + Math.random() * 0.6);
-                        mesh.scale.set(0.1, h, 0.1);
-                        group.add(mesh);
-                    }
-                    group.userData.physicsBody = blockBody;
-                    scene.add(group);
-                    blockMeshes.push({ mesh: group, offsetX: i * worldSize, offsetZ: j * worldSize });
+                    const mesh = new THREE.Mesh(capimSharedGeometry, capimSharedMaterial);
+                    mesh.scale.set(capimWidth, capimHeight, 1.0);
+                    mesh.userData.isCapim = true;
+                    mesh.userData.cluster = cluster;
+                    scene.add(mesh);
+                    cluster.meshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
             }
-            placedConstructionMeshesArrays.push(blockMeshes);
+            capimClusters.push(cluster);
         }
 
         function populateCapim() {
             const grassRadius = 280.0;
-            const numCapim = 3000; // Aumentado para maior densidade
+            const numCapim = 5000; // Aumentado para maior densidade (otimização permite mais)
             for (let i = 0; i < numCapim; i++) {
                 const angle = Math.random() * Math.PI * 2;
                 const dist = Math.random() * grassRadius;
@@ -3100,6 +3078,12 @@
                         break;
                     }
 
+                    // Lógica: Atingiu Capim (Sem física)
+                    if (intersectedObject.userData.isCapim) {
+                        target = { body: null, mesh: intersectedObject, isCapim: true, cluster: intersectedObject.userData.cluster };
+                        break;
+                    }
+
                     // Lógica 2: Atingiu um objeto destrutível
                     let mainObject = null, intersectedBody = null;
                     let currentObject = intersectedObject;
@@ -3124,6 +3108,8 @@
                         destroyTargetPosition = target.intersect.point.clone();
                     } else if (target.isMountain) {
                         destroyTargetPosition = target.position.clone();
+                    } else if (target.isCapim) {
+                        destroyTargetPosition = target.cluster.position.clone();
                     } else if (target.body) {
                         const pos = target.body.position;
                         destroyTargetPosition = new THREE.Vector3(pos.x, pos.y, pos.z);
@@ -3134,6 +3120,7 @@
                     destroyTargetPatchObject = target.patchObject || null;
                     destroyTargetMountainInfo = target.isMountain ? { position: target.position } : null;
                     destroyTargetDigInfo = null;
+                    destroyTargetCapimInfo = target.isCapim ? { cluster: target.cluster } : null;
 
                     // Determina o tipo de material e a durabilidade base
                     let baseDurability;
@@ -3181,6 +3168,9 @@
                         else if (isStone) materialType = 'stone';
                         else if (isEarth) materialType = 'earth';
                         else materialType = 'other';
+                    } else if (target.isCapim) {
+                        baseDurability = 0.2;
+                        materialType = 'other';
                     } else {
                         isDestroying = false;
                         return;
@@ -3237,6 +3227,7 @@
                     destroyTargetPatchObject = null;
                     destroyTargetMountainInfo = null;
                     destroyTargetDigInfo = null; // Limpa a informação de escavação
+                    destroyTargetCapimInfo = null;
                     destructionComplete = false;
                     destroyTargetPosition = null;
                 }
@@ -3669,6 +3660,21 @@
                         updateBackpackDisplay();
                         destroyProgress = 0; // Reset mining progress to allow for continuous mining
                     }
+                    // Lógica para Capim (Billboard)
+                    else if (destroyTargetCapimInfo) {
+                        const cluster = destroyTargetCapimInfo.cluster;
+                        const clusterIndex = capimClusters.indexOf(cluster);
+                        if (clusterIndex !== -1) {
+                            cluster.meshes.forEach(m => scene.remove(m.mesh));
+                            capimClusters.splice(clusterIndex, 1);
+                            addItemToInventory(backpackItems, { name: capimItemName, quantity: 1 });
+                            updateBackpackDisplay();
+                            createSmokeEffect(cluster.position);
+                        }
+                        destructionComplete = true;
+                        isDestroying = false;
+                        progressContainer.style.display = 'none';
+                    }
                     // Lógica para outros objetos destrutíveis (depósitos, blocos)
                     else {
                         let position;
@@ -3689,9 +3695,6 @@
                                 // NOVO: Se for uma árvore, dropa galhos
                                 if (destroyTargetBody.userData.growthStage) {
                                     addItemToInventory(backpackItems, { name: branchItemName, quantity: 3 });
-                                }
-                                if (destroyTargetBody.userData.type === capimItemName) {
-                                    addItemToInventory(backpackItems, { name: capimItemName, quantity: 1 });
                                 }
                                 world.removeBody(destroyTargetBody);
                                 // IMPORTANTE: Remove as malhas ANTES de remover do array de corpos para manter o índice correto
@@ -3862,6 +3865,39 @@
                         m.mesh.position.y = body.position.y;
                         m.mesh.position.z = body.position.z + m.offsetZ - visualOffsetZ;
                         m.mesh.quaternion.copy(body.quaternion); // NOVO: Copiar rotação
+                        m.mesh.visible = true;
+                    } else {
+                        if(m.mesh.visible) m.mesh.visible = false;
+                    }
+                });
+            });
+
+            // Otimização: Capim (Billboard)
+            capimClusters.forEach(cluster => {
+                const dx = Math.abs(cluster.position.x - playerBody.position.x);
+                const dz = Math.abs(cluster.position.z - playerBody.position.z);
+                const wrappedDx = dx > halfWorldSize ? worldSize - dx : dx;
+                const wrappedDz = dz > halfWorldSize ? worldSize - dz : dz;
+                const dy = cluster.position.y - playerBody.position.y;
+                const distSq = wrappedDx*wrappedDx + dy*dy + wrappedDz*wrappedDz;
+
+                if (distSq > renderDistSq) {
+                    cluster.meshes.forEach(m => { if(m.mesh.visible) m.mesh.visible = false; });
+                    return;
+                }
+
+                const targetOffsetX = dx > halfWorldSize ? (cluster.position.x > playerBody.position.x ? -worldSize : worldSize) : 0;
+                const targetOffsetZ = dz > halfWorldSize ? (cluster.position.z > playerBody.position.z ? -worldSize : worldSize) : 0;
+
+                cluster.meshes.forEach(m => {
+                    if (m.offsetX === targetOffsetX && m.offsetZ === targetOffsetZ) {
+                        m.mesh.position.x = cluster.position.x + m.offsetX - visualOffsetX;
+                        m.mesh.position.y = cluster.position.y;
+                        m.mesh.position.z = cluster.position.z + m.offsetZ - visualOffsetZ;
+
+                        // Billboard: Girar para olhar para o jogador (apenas no eixo Y)
+                        m.mesh.lookAt(camera.position.x, m.mesh.position.y, camera.position.z);
+
                         m.mesh.visible = true;
                     } else {
                         if(m.mesh.visible) m.mesh.visible = false;
@@ -4630,6 +4666,11 @@
                                 canDestroy = true;
                                 break;
                             }
+                            // Check for Capim (sem física)
+                            if (obj.userData && obj.userData.isCapim) {
+                                canDestroy = true;
+                                break;
+                            }
                             // Check for blocks with physics bodies
                             let intersectedBody = null;
                             let currentObject = obj;
@@ -4671,7 +4712,7 @@
                         // Check for mining/digging with hand
                         const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
 
-                        if (isIslandMesh) {
+                        if (isIslandMesh || obj.userData.isCapim) {
                             canDestroyWithHand = true;
                             break;
                         }
