@@ -826,9 +826,9 @@
         const stoneFloorTextureURL = 'https://dl.dropbox.com/scl/fi/m1fkx9ccbjxlwyvcrdbio/Textura-de-pedra.png?rlkey=vlbwqpy001vcjqiedh1wrdo53&st=sy0pevfr&dl=1';
 
         // Geometrias e materiais compartilhados
-        const capimSharedGeometry = new THREE.PlaneGeometry(1, 1);
+        const capimSharedGeometry = new THREE.CylinderGeometry(0, 0.1, 1, 4);
         capimSharedGeometry.translate(0, 0.5, 0); // Alinha a base da geometria no ponto de origem
-        const capimSharedMaterial = new THREE.MeshLambertMaterial({ color: 0x2d5a27, side: THREE.DoubleSide }); // Verde escuro
+        const capimSharedMaterial = new THREE.MeshStandardMaterial({ color: 0x2d5a27 }); // Verde escuro
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -1778,9 +1778,6 @@
         }
 
         function createCapim(position) {
-            const capimHeight = 3.5 + Math.random() * 2.5; // Bem alto
-            const capimWidth = 0.8 + Math.random() * 0.4; // Largura do billboard
-
             const cluster = {
                 position: position.clone(),
                 health: 1.0,
@@ -1789,20 +1786,64 @@
 
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(capimSharedGeometry, capimSharedMaterial);
-                    mesh.scale.set(capimWidth, capimHeight, 1.0);
-                    mesh.userData.isCapim = true;
-                    mesh.userData.cluster = cluster;
-                    scene.add(mesh);
-                    cluster.meshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+                    const group = new THREE.Group();
+                    const numBlades = 3 + Math.floor(Math.random() * 3);
+                    for (let k = 0; k < numBlades; k++) {
+                        const blade = new THREE.Mesh(capimSharedGeometry, capimSharedMaterial);
+                        const angle = Math.random() * Math.PI * 2;
+                        const dist = Math.random() * 0.2;
+                        blade.position.set(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
+                        // Altura até o joelho (~0.5 - 0.7)
+                        const h = 0.5 + Math.random() * 0.3;
+                        const w = 0.5 + Math.random() * 0.5; // Escala do raio base (original é 0.1)
+                        blade.scale.set(w, h, w);
+                        blade.rotation.y = Math.random() * Math.PI;
+                        blade.userData.isCapim = true;
+                        blade.userData.cluster = cluster;
+                        group.add(blade);
+                    }
+                    scene.add(group);
+                    cluster.meshes.push({ mesh: group, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
             }
             capimClusters.push(cluster);
         }
 
+        function isPositionOccupied(x, z, radius = 2.0) {
+            for (const body of placedConstructionBodies) {
+                const dx = body.position.x - x;
+                const dz = body.position.z - z;
+                // Verificação de distância simples com envolvimento do mundo
+                const distSq = calculateWrappedDistance(new THREE.Vector3(x, body.position.y, z), body.position);
+                if (distSq < radius) return true;
+            }
+            return false;
+        }
+
+        function respawnCapim() {
+            const grassRadius = 280.0;
+            let spawned = false;
+            let attempts = 0;
+            while (!spawned && attempts < 20) {
+                attempts++;
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * grassRadius;
+                const x = Math.cos(angle) * dist;
+                const z = Math.sin(angle) * dist;
+                const y = window.getSurfaceHeight(x, z);
+
+                if (y > waterLevel + 0.5 && y < 25) {
+                    if (!isPositionOccupied(x, z, 2.0)) {
+                        createCapim(new THREE.Vector3(x, y, z));
+                        spawned = true;
+                    }
+                }
+            }
+        }
+
         function populateCapim() {
             const grassRadius = 280.0;
-            const numCapim = 5000; // Aumentado para maior densidade (otimização permite mais)
+            const numCapim = 400; // Aumentado para compensar falhas (mirando ~300)
             for (let i = 0; i < numCapim; i++) {
                 const angle = Math.random() * Math.PI * 2;
                 const dist = Math.random() * grassRadius;
@@ -3670,6 +3711,7 @@
                             addItemToInventory(backpackItems, { name: capimItemName, quantity: 1 });
                             updateBackpackDisplay();
                             createSmokeEffect(cluster.position);
+                            respawnCapim(); // NOVO: Respawn quando um é cortado
                         }
                         destructionComplete = true;
                         isDestroying = false;
@@ -3895,9 +3937,7 @@
                         m.mesh.position.y = cluster.position.y;
                         m.mesh.position.z = cluster.position.z + m.offsetZ - visualOffsetZ;
 
-                        // Billboard: Girar para olhar para o jogador (apenas no eixo Y)
-                        m.mesh.lookAt(camera.position.x, m.mesh.position.y, camera.position.z);
-
+                        // Não há necessidade de Billboard pois os cilindros são 3D
                         m.mesh.visible = true;
                     } else {
                         if(m.mesh.visible) m.mesh.visible = false;
