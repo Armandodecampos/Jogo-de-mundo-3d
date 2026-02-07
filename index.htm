@@ -472,6 +472,7 @@
         let skyColor, underwaterColor; // NOVO: Para as cores do ambiente
         // Variáveis para corpos e malhas de jogador, terreno (rua), estrada e cubo
         let playerBody;
+
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
 
@@ -550,7 +551,7 @@
         const islandRadiusBottom = 600; // NOVO: Raio da base da ilha
         const waterLevel = -9.6; // NOVO: Nível da água
         const seabedLevel = -20; // NOVO: Nível do fundo do mar
-        const renderDistance = 200; // Distância de renderização para objetos
+        const renderDistance = 120; // Distância de renderização para objetos
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
         const islandSurfaceHeight = 0.8; // A altura da superfície visível da ilha
@@ -2041,13 +2042,13 @@
             scene.background = skyColor; // Começa com a cor do céu
 
             // Inicializa ambos os nevoeiros
-            skyFog = new THREE.Fog(skyColor, 100, 200);
+            skyFog = new THREE.Fog(skyColor, 40, 120);
             underwaterFog = new THREE.Fog(underwaterColor, 1, 30); // Nevoeiro denso para debaixo d'água
 
             scene.fog = skyFog; // Começa com o nevoeiro do céu
 
             // Configuração da Câmera Three.js
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 200);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 120);
             camera.rotation.order = 'YXZ'; // Define a ordem de rotação para guinada (Y), inclinação (X), rolagem (Z)
 
             // Configuração do Renderizador Three.js
@@ -2213,14 +2214,14 @@
 
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
             // Adiciona várias montanhas de terra por toda a ilha com tamanhos e formatos variados
-            const stoneMountain = { x: 0, z: 0, r: 150, h: 40 }; // Reduzido o raio para espalhar melhor as outras montanhas
+            const stoneMountain = { x: 0, z: 0, r: 100, h: 40 }; // Reduzido o raio para espalhar melhor as outras montanhas
             const dirtMountains = [];
             const numDirtMountains = 4; // Quantidade fixa e menor conforme solicitado
             for (let i = 0; i < numDirtMountains; i++) {
                 let x, z, r;
                 let attempts = 0;
                 while (attempts < 100) {
-                    r = 40 + Math.random() * 30; // Montanhas menores (raio 40-70)
+                    r = 20 + Math.random() * 20; // Montanhas menores (raio 20-40)
                     const angle = Math.random() * Math.PI * 2;
                     const dist = 160 + Math.random() * 100; // Espalhadas entre raio 160 e 260 (longe do centro)
                     x = Math.cos(angle) * dist;
@@ -2378,8 +2379,8 @@
                             shader.uniforms.uStoneTexture = { value: stoneTexture };
                             shader.uniforms.uGrassTexture = { value: grassTexture };
                             shader.uniforms.uWaterLevel = { value: waterLevel };
-                            shader.uniforms.uGrassRadius = { value: 250.0 };
-                            shader.uniforms.uBeachRadius = { value: 300.0 };
+                            shader.uniforms.uGrassRadius = { value: 280.0 };
+                            shader.uniforms.uBeachRadius = { value: 305.0 };
 
                             shader.vertexShader = `
                                 varying vec3 vWorldPosition;
