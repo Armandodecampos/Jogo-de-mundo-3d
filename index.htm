@@ -508,7 +508,7 @@
 
         // Variáveis para blocos de construção colocáveis pelo jogador (tijolos e pisos)
         let placedConstructionBodies = []; // Corpos de blocos colocados pelo jogador
-        let placedConstructionMeshesArrays = []; // Malhas de blocos colocados pelo jogador
+        let placedConstructionMeshes = []; // Malhas de blocos colocados pelo jogador
         let visualOffsetX = 0;
         let visualOffsetZ = 0;
 
@@ -1479,7 +1479,7 @@
 
             // NOVO: Remove todos os buracos existentes antes de criar um novo
             visualMounds.forEach(mound => {
-                mound.meshes.forEach(item => scene.remove(item.mesh));
+                scene.remove(mound.mesh);
             });
             visualMounds.length = 0; // Limpa o array
 
@@ -1574,19 +1574,11 @@
             holeGroup.scale.set(initialScale, initialScale, initialScale);
 
 
-            // Clona o grupo do buraco para criar o efeito de mundo infinito
-            const visualMoundMeshes = [];
-            for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                for (let k = -Math.floor(numTiles / 2); k <= Math.floor(numTiles / 2); k++) {
-                    const groupClone = holeGroup.clone(true);
-                    scene.add(groupClone);
-                    visualMoundMeshes.push({ mesh: groupClone, offsetX: j * worldSize, offsetZ: k * worldSize });
-                }
-            }
+            scene.add(holeGroup);
 
             const newMound = {
                 position: hitPoint.clone(),
-                meshes: visualMoundMeshes,
+                mesh: holeGroup,
                 createdAt: world.time,
                 quaternion: finalQuaternion,
                 growthStage: 0, // Inicia no primeiro estágio
@@ -1627,20 +1619,14 @@
                 initialPosition: new CANNON.Vec3().copy(boxBody.position)
             };
 
-            const boxMeshes = [];
-            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh); // Usa o material global
-                    mesh.castShadow = true;
-                    mesh.receiveShadow = true;
-                    mesh.userData.physicsBody = boxBody;
-                    scene.add(mesh);
-                    boxMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                }
-            }
+            const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.userData.physicsBody = boxBody;
+            scene.add(mesh);
 
             // Adiciona a nova caixa à lista de caixas colecionáveis
-            collectibleBoxes.push({ body: boxBody, meshes: boxMeshes });
+            collectibleBoxes.push({ body: boxBody, mesh: mesh });
         }
 
         // NOVO: Função genérica para dropar itens
@@ -1678,18 +1664,12 @@
                 quantity: item.quantity
             };
 
-            const itemMeshes = [];
-            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(itemGeometry, itemMaterial);
-                    mesh.castShadow = true;
-                    mesh.receiveShadow = true;
-                    mesh.userData.physicsBody = itemBody;
-                    scene.add(mesh);
-                    itemMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                }
-            }
-            collectibleBoxes.push({ body: itemBody, meshes: itemMeshes });
+            const mesh = new THREE.Mesh(itemGeometry, itemMaterial);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.userData.physicsBody = itemBody;
+            scene.add(mesh);
+            collectibleBoxes.push({ body: itemBody, mesh: mesh });
         }
 
         // NOVO: Função para criar um novo baú
@@ -1716,21 +1696,15 @@
                 inventory: new Array(numChestSlots).fill(null) // NOVO: Inventário do baú
             };
 
-            const chestMeshes = [];
-            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(chestGeometry, chestMaterialMesh);
-                    mesh.castShadow = true;
-                    mesh.receiveShadow = true;
-                    mesh.userData.physicsBody = chestBody;
-                    scene.add(mesh);
-                    chestMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                }
-            }
+            const mesh = new THREE.Mesh(chestGeometry, chestMaterialMesh);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.userData.physicsBody = chestBody;
+            scene.add(mesh);
 
-            placedChests.push({ body: chestBody, meshes: chestMeshes });
+            placedChests.push({ body: chestBody, mesh: mesh });
             placedConstructionBodies.push(chestBody); // Adiciona aos corpos de construção para interação
-            placedConstructionMeshesArrays.push(chestMeshes);
+            placedConstructionMeshes.push(mesh);
         }
 
         function createStone(position, quaternion) {
@@ -1761,51 +1735,42 @@
                 initialPosition: new CANNON.Vec3().copy(stoneBody.position)
             };
 
-            const stoneMeshes = [];
-            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const mesh = new THREE.Mesh(stoneGeometry, stoneMaterial);
-                    mesh.scale.set(1, 0.5, 1.2);
-                    mesh.castShadow = true;
-                    mesh.receiveShadow = true;
-                    mesh.userData.physicsBody = stoneBody;
-                    scene.add(mesh);
-                    stoneMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
-                }
-            }
+            const stoneMesh = new THREE.Mesh(stoneGeometry, stoneMaterial);
+            stoneMesh.scale.set(1, 0.5, 1.2);
+            stoneMesh.castShadow = true;
+            stoneMesh.receiveShadow = true;
+            stoneMesh.userData.physicsBody = stoneBody;
+            scene.add(stoneMesh);
 
-            collectibleBoxes.push({ body: stoneBody, meshes: stoneMeshes });
+            collectibleBoxes.push({ body: stoneBody, mesh: stoneMesh });
         }
 
         function createCapim(position) {
             const cluster = {
                 position: position.clone(),
                 health: 1.0,
-                meshes: []
+                mesh: null
             };
 
-            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    const group = new THREE.Group();
-                    const numBlades = 3 + Math.floor(Math.random() * 3);
-                    for (let k = 0; k < numBlades; k++) {
-                        const blade = new THREE.Mesh(capimSharedGeometry, capimSharedMaterial);
-                        const angle = Math.random() * Math.PI * 2;
-                        const dist = Math.random() * 0.2;
-                        blade.position.set(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
-                        // Altura até o joelho (~0.5 - 0.7)
-                        const h = 0.5 + Math.random() * 0.3;
-                        const w = 0.5 + Math.random() * 0.5; // Escala do raio base (original é 0.1)
-                        blade.scale.set(w, h, w);
-                        blade.rotation.y = Math.random() * Math.PI;
-                        blade.userData.isCapim = true;
-                        blade.userData.cluster = cluster;
-                        group.add(blade);
-                    }
-                    scene.add(group);
-                    cluster.meshes.push({ mesh: group, offsetX: i * worldSize, offsetZ: j * worldSize });
-                }
+            const group = new THREE.Group();
+            const numBlades = 3 + Math.floor(Math.random() * 3);
+            for (let k = 0; k < numBlades; k++) {
+                const blade = new THREE.Mesh(capimSharedGeometry, capimSharedMaterial);
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * 0.2;
+                blade.position.set(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
+                // Altura: O dobro da anterior (~1.0 - 1.6)
+                const h = 1.0 + Math.random() * 0.6;
+                const w = 0.7 + Math.random() * 0.5; // Um pouco mais largo também
+                blade.scale.set(w, h, w);
+                blade.rotation.y = Math.random() * Math.PI;
+                blade.userData.isCapim = true;
+                blade.userData.cluster = cluster;
+                group.add(blade);
             }
+            scene.add(group);
+            cluster.mesh = group;
+
             capimClusters.push(cluster);
         }
 
@@ -1843,7 +1808,7 @@
 
         function populateCapim() {
             const grassRadius = 280.0;
-            const numCapim = 400; // Aumentado para compensar falhas (mirando ~300)
+            const numCapim = 800; // Dobro da quantidade
             for (let i = 0; i < numCapim; i++) {
                 const angle = Math.random() * Math.PI * 2;
                 const dist = Math.random() * grassRadius;
@@ -1994,17 +1959,9 @@
             placedConstructionBodies.push(blockBody);
             console.log("Bloco colocado. Corpos de construção colocados:", placedConstructionBodies); // Log para depuração
 
-            const blockMeshes = [];
-            for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
-                for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
-                    // We clone the visual object (whether it's a mesh or a group) for each tile.
-                    const visualObject = mesh.clone();
-                    visualObject.userData.physicsBody = blockBody; // Link the clone back to the single physics body
-                    scene.add(visualObject);
-                    blockMeshes.push({ mesh: visualObject, offsetX: i * worldSize, offsetZ: j * worldSize });
-                }
-            }
-            placedConstructionMeshesArrays.push(blockMeshes);
+            mesh.userData.physicsBody = blockBody;
+            scene.add(mesh);
+            placedConstructionMeshes.push(mesh);
         }
 
         // Function to create a smoke effect at a given position
@@ -3322,7 +3279,7 @@
                         const collectibleToRemove = collectibleBoxes[collectibleIndex];
 
                         world.removeBody(collectibleToRemove.body);
-                        collectibleToRemove.meshes.forEach(m => scene.remove(m.mesh));
+                        scene.remove(collectibleToRemove.mesh);
                         collectibleBoxes.splice(collectibleIndex, 1);
 
                         addItemToInventory(backpackItems, { name: itemType, quantity: itemQuantity });
@@ -3689,9 +3646,7 @@
                             currentMound = null;
                         } else {
                             const newScale = moundGrowthStages[mound.growthStage];
-                            mound.meshes.forEach(item => {
-                                item.mesh.scale.set(newScale, newScale, newScale);
-                            });
+                            mound.mesh.scale.set(newScale, newScale, newScale);
                             destroyProgress = 0; // Reinicia para o próximo estágio
                         }
                     } else if (destroyTargetMountainInfo) {
@@ -3706,7 +3661,7 @@
                         const cluster = destroyTargetCapimInfo.cluster;
                         const clusterIndex = capimClusters.indexOf(cluster);
                         if (clusterIndex !== -1) {
-                            cluster.meshes.forEach(m => scene.remove(m.mesh));
+                            scene.remove(cluster.mesh);
                             capimClusters.splice(clusterIndex, 1);
                             addItemToInventory(backpackItems, { name: capimItemName, quantity: 1 });
                             updateBackpackDisplay();
@@ -3740,9 +3695,9 @@
                                 }
                                 world.removeBody(destroyTargetBody);
                                 // IMPORTANTE: Remove as malhas ANTES de remover do array de corpos para manter o índice correto
-                                placedConstructionMeshesArrays[bodyIndex].forEach(m => scene.remove(m.mesh));
+                                scene.remove(placedConstructionMeshes[bodyIndex]);
                                 placedConstructionBodies.splice(bodyIndex, 1);
-                                placedConstructionMeshesArrays.splice(bodyIndex, 1);
+                                placedConstructionMeshes.splice(bodyIndex, 1);
                             }
                         }
                         updateBackpackDisplay();
@@ -3820,163 +3775,126 @@
 
             islandMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
-                tile.mesh.position.y = 0; // O plano está agora centrado em Y=0
+                tile.mesh.position.y = 0;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
-                // NOVO: Visibilidade baseada na distância (com margem para o tamanho do tile)
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + worldSize/1.5;
+                // Culling mais agressivo para o terreno
+                tile.mesh.visible = dist <= renderDistance + 400;
             });
 
-            // NOVO: Atualiza as posições das malhas de água para o efeito de envolvimento
             waterMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
-                // NOVO: Visibilidade baseada na distância
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + worldSize/1.5;
+                tile.mesh.visible = dist <= renderDistance + 400;
             });
 
-            // NOVO: Atualiza as posições das malhas do fundo do mar para o efeito de envolvimento
             seabedMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
-                // NOVO: Visibilidade baseada na distância
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + worldSize/1.5;
+                tile.mesh.visible = dist <= renderDistance + 400;
             });
 
-            // Otimização: Cache do quadrado da distância de renderização para evitar Math.sqrt
             const renderDistSq = renderDistance * renderDistance;
             const halfWorldSize = worldSize / 2;
 
-            // Atualiza as posições de todas as malhas visuais dos cubos/caixas
+            // Otimização: Wrapping de instância única para todos os objetos
             collectibleBoxes.forEach(box => {
                 const body = box.body;
-                const dx = Math.abs(body.position.x - playerBody.position.x);
-                const dz = Math.abs(body.position.z - playerBody.position.z);
-                const wrappedDx = dx > halfWorldSize ? worldSize - dx : dx;
-                const wrappedDz = dz > halfWorldSize ? worldSize - dz : dz;
-                const dy = body.position.y - playerBody.position.y;
-                const distSq = wrappedDx*wrappedDx + dy*dy + wrappedDz*wrappedDz;
+                const mesh = box.mesh;
+                const dx = body.position.x - playerBody.position.x;
+                const dz = body.position.z - playerBody.position.z;
+
+                let wrappedX = body.position.x;
+                let wrappedZ = body.position.z;
+                if (Math.abs(dx) > halfWorldSize) wrappedX += (dx > 0 ? -worldSize : worldSize);
+                if (Math.abs(dz) > halfWorldSize) wrappedZ += (dz > 0 ? -worldSize : worldSize);
+
+                const fDx = wrappedX - playerBody.position.x;
+                const fDz = wrappedZ - playerBody.position.z;
+                const fDy = body.position.y - playerBody.position.y;
+                const distSq = fDx*fDx + fDy*fDy + fDz*fDz;
 
                 if (distSq > renderDistSq) {
-                    box.meshes.forEach(m => { if(m.mesh.visible) m.mesh.visible = false; });
-                    return;
+                    if (mesh.visible) mesh.visible = false;
+                } else {
+                    mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
+                    mesh.quaternion.copy(body.quaternion);
+                    if (!mesh.visible) mesh.visible = true;
                 }
-
-                const targetOffsetX = dx > halfWorldSize ? (body.position.x > playerBody.position.x ? -worldSize : worldSize) : 0;
-                const targetOffsetZ = dz > halfWorldSize ? (body.position.z > playerBody.position.z ? -worldSize : worldSize) : 0;
-
-                box.meshes.forEach(m => {
-                    if (m.offsetX === targetOffsetX && m.offsetZ === targetOffsetZ) {
-                        m.mesh.position.x = body.position.x + m.offsetX - visualOffsetX;
-                        m.mesh.position.y = body.position.y;
-                        m.mesh.position.z = body.position.z + m.offsetZ - visualOffsetZ;
-                        m.mesh.quaternion.copy(body.quaternion); // NOVO: Copiar rotação
-                        m.mesh.visible = true;
-                    } else {
-                        if(m.mesh.visible) m.mesh.visible = false;
-                    }
-                });
             });
 
-            // Atualiza as posições de todas as malhas visuais dos blocos colocados (incluindo Capim e Árvores)
             placedConstructionBodies.forEach((body, index) => {
-                const meshesArray = placedConstructionMeshesArrays[index];
-                const dx = Math.abs(body.position.x - playerBody.position.x);
-                const dz = Math.abs(body.position.z - playerBody.position.z);
-                const wrappedDx = dx > halfWorldSize ? worldSize - dx : dx;
-                const wrappedDz = dz > halfWorldSize ? worldSize - dz : dz;
-                const dy = body.position.y - playerBody.position.y;
-                const distSq = wrappedDx*wrappedDx + dy*dy + wrappedDz*wrappedDz;
+                const mesh = placedConstructionMeshes[index];
+                const dx = body.position.x - playerBody.position.x;
+                const dz = body.position.z - playerBody.position.z;
+
+                let wrappedX = body.position.x;
+                let wrappedZ = body.position.z;
+                if (Math.abs(dx) > halfWorldSize) wrappedX += (dx > 0 ? -worldSize : worldSize);
+                if (Math.abs(dz) > halfWorldSize) wrappedZ += (dz > 0 ? -worldSize : worldSize);
+
+                const fDx = wrappedX - playerBody.position.x;
+                const fDz = wrappedZ - playerBody.position.z;
+                const fDy = body.position.y - playerBody.position.y;
+                const distSq = fDx*fDx + fDy*fDy + fDz*fDz;
 
                 if (distSq > renderDistSq) {
-                    meshesArray.forEach(m => { if(m.mesh.visible) m.mesh.visible = false; });
-                    return;
+                    if (mesh.visible) mesh.visible = false;
+                } else {
+                    mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
+                    mesh.quaternion.copy(body.quaternion);
+                    if (!mesh.visible) mesh.visible = true;
                 }
-
-                const targetOffsetX = dx > halfWorldSize ? (body.position.x > playerBody.position.x ? -worldSize : worldSize) : 0;
-                const targetOffsetZ = dz > halfWorldSize ? (body.position.z > playerBody.position.z ? -worldSize : worldSize) : 0;
-
-                meshesArray.forEach(m => {
-                    if (m.offsetX === targetOffsetX && m.offsetZ === targetOffsetZ) {
-                        m.mesh.position.x = body.position.x + m.offsetX - visualOffsetX;
-                        m.mesh.position.y = body.position.y;
-                        m.mesh.position.z = body.position.z + m.offsetZ - visualOffsetZ;
-                        m.mesh.quaternion.copy(body.quaternion); // NOVO: Copiar rotação
-                        m.mesh.visible = true;
-                    } else {
-                        if(m.mesh.visible) m.mesh.visible = false;
-                    }
-                });
             });
 
-            // Otimização: Capim (Billboard)
             capimClusters.forEach(cluster => {
-                const dx = Math.abs(cluster.position.x - playerBody.position.x);
-                const dz = Math.abs(cluster.position.z - playerBody.position.z);
-                const wrappedDx = dx > halfWorldSize ? worldSize - dx : dx;
-                const wrappedDz = dz > halfWorldSize ? worldSize - dz : dz;
-                const dy = cluster.position.y - playerBody.position.y;
-                const distSq = wrappedDx*wrappedDx + dy*dy + wrappedDz*wrappedDz;
+                const dx = cluster.position.x - playerBody.position.x;
+                const dz = cluster.position.z - playerBody.position.z;
+
+                let wrappedX = cluster.position.x;
+                let wrappedZ = cluster.position.z;
+                if (Math.abs(dx) > halfWorldSize) wrappedX += (dx > 0 ? -worldSize : worldSize);
+                if (Math.abs(dz) > halfWorldSize) wrappedZ += (dz > 0 ? -worldSize : worldSize);
+
+                const fDx = wrappedX - playerBody.position.x;
+                const fDz = wrappedZ - playerBody.position.z;
+                const fDy = cluster.position.y - playerBody.position.y;
+                const distSq = fDx*fDx + fDy*fDy + fDz*fDz;
 
                 if (distSq > renderDistSq) {
-                    cluster.meshes.forEach(m => { if(m.mesh.visible) m.mesh.visible = false; });
-                    return;
+                    if (cluster.mesh.visible) cluster.mesh.visible = false;
+                } else {
+                    cluster.mesh.position.set(wrappedX - visualOffsetX, cluster.position.y, wrappedZ - visualOffsetZ);
+                    if (!cluster.mesh.visible) cluster.mesh.visible = true;
                 }
-
-                const targetOffsetX = dx > halfWorldSize ? (cluster.position.x > playerBody.position.x ? -worldSize : worldSize) : 0;
-                const targetOffsetZ = dz > halfWorldSize ? (cluster.position.z > playerBody.position.z ? -worldSize : worldSize) : 0;
-
-                cluster.meshes.forEach(m => {
-                    if (m.offsetX === targetOffsetX && m.offsetZ === targetOffsetZ) {
-                        m.mesh.position.x = cluster.position.x + m.offsetX - visualOffsetX;
-                        m.mesh.position.y = cluster.position.y;
-                        m.mesh.position.z = cluster.position.z + m.offsetZ - visualOffsetZ;
-
-                        // Não há necessidade de Billboard pois os cilindros são 3D
-                        m.mesh.visible = true;
-                    } else {
-                        if(m.mesh.visible) m.mesh.visible = false;
-                    }
-                });
             });
 
-            moundDomes.forEach((dome, index) => {
-                const mound = mounds[index];
-                if (!mound || mound.flattened) {
-                    dome.meshes.forEach(item => { if(item.mesh.visible) item.mesh.visible = false; });
-                    return;
-                }
+            visualMounds.forEach(mound => {
+                const dx = mound.position.x - playerBody.position.x;
+                const dz = mound.position.z - playerBody.position.z;
 
-                const dx = Math.abs(dome.position.x - playerBody.position.x);
-                const dz = Math.abs(dome.position.z - playerBody.position.z);
-                const wrappedDx = dx > halfWorldSize ? worldSize - dx : dx;
-                const wrappedDz = dz > halfWorldSize ? worldSize - dz : dz;
-                const dy = dome.position.y - playerBody.position.y;
-                const distSq = wrappedDx*wrappedDx + dy*dy + wrappedDz*wrappedDz;
+                let wrappedX = mound.position.x;
+                let wrappedZ = mound.position.z;
+                if (Math.abs(dx) > halfWorldSize) wrappedX += (dx > 0 ? -worldSize : worldSize);
+                if (Math.abs(dz) > halfWorldSize) wrappedZ += (dz > 0 ? -worldSize : worldSize);
+
+                const fDx = wrappedX - playerBody.position.x;
+                const fDz = wrappedZ - playerBody.position.z;
+                const fDy = mound.position.y - playerBody.position.y;
+                const distSq = fDx*fDx + fDy*fDy + fDz*fDz;
 
                 if (distSq > renderDistSq) {
-                    dome.meshes.forEach(item => { if(item.mesh.visible) item.mesh.visible = false; });
-                    return;
+                    if (mound.mesh.visible) mound.mesh.visible = false;
+                } else {
+                    mound.mesh.position.set(wrappedX - visualOffsetX, mound.position.y, wrappedZ - visualOffsetZ);
+                    mound.mesh.quaternion.copy(mound.quaternion);
+                    if (!mound.mesh.visible) mound.mesh.visible = true;
                 }
-
-                const targetOffsetX = dx > halfWorldSize ? (dome.position.x > playerBody.position.x ? -worldSize : worldSize) : 0;
-                const targetOffsetZ = dz > halfWorldSize ? (dome.position.z > playerBody.position.z ? -worldSize : worldSize) : 0;
-
-                dome.meshes.forEach(item => {
-                    if (item.offsetX === targetOffsetX && item.offsetZ === targetOffsetZ) {
-                        item.mesh.position.copy(dome.position);
-                        item.mesh.position.x += item.offsetX - visualOffsetX;
-                        item.mesh.position.z += item.offsetZ - visualOffsetZ;
-                        item.mesh.visible = true;
-                    } else {
-                        if(item.mesh.visible) item.mesh.visible = false;
-                    }
-                });
             });
 
             // NOVO: Lógica para fechar buracos inativos
@@ -4006,34 +3924,15 @@
 
                     if (mound.growthStage < 0) {
                         // Remove the mound completely
-                        mound.meshes.forEach(item => scene.remove(item.mesh));
+                        scene.remove(mound.mesh);
                         closingMounds.splice(i, 1);
                     } else {
                         // Set the scale to the previous stage
                         const newScale = moundGrowthStages[mound.growthStage];
-                        mound.meshes.forEach(item => {
-                            // This logic now only applies to visualMounds, so no isCrack check needed
-                            item.mesh.scale.set(newScale, newScale, newScale)
-                        });
+                        mound.mesh.scale.set(newScale, newScale, newScale);
                     }
                 }
             }
-
-
-            visualMounds.forEach(mound => {
-                const distance = calculateWrappedDistance(playerBody.position, mound.position);
-                const isVisible = distance <= renderDistance;
-
-                mound.meshes.forEach(item => {
-                    item.mesh.visible = isVisible;
-                    if (isVisible) {
-                        item.mesh.position.copy(mound.position);
-                        item.mesh.position.x += item.offsetX - visualOffsetX;
-                        item.mesh.position.z += item.offsetZ - visualOffsetZ;
-                        item.mesh.quaternion.copy(mound.quaternion); // Aplica a orientação
-                    }
-                });
-            });
 
             // Se um objeto estiver sendo segurado, atualiza sua posição para ficar na frente da câmera
             if (pickedObjectBody) {
