@@ -4358,8 +4358,7 @@
             // Lógica de crescimento da muda de árvore
             for (let i = placedConstructionBodies.length - 1; i >= 0; i--) {
                 const blockBody = placedConstructionBodies[i];
-                const blockMeshArray = placedConstructionMeshesArrays[i];
-                const treeGroup = blockMeshArray[0].mesh; // This is the THREE.Group
+                const treeMesh = placedConstructionMeshes[i];
 
                 if (blockBody.userData.type === 'muda_arvore' && !blockBody.userData.isFullyGrown) {
                     const currentGrowthStageName = blockBody.userData.growthStage;
@@ -4399,46 +4398,42 @@
                         const newOverallPhysicsHeight = nextRandomizedData.overallPhysicsHeight;
                         blockBody.position.y += (newOverallPhysicsHeight - oldOverallPhysicsHeight) / 2;
 
-                        // Itera sobre cada malha visual espelhada para esta árvore para substituí-la
-                        blockMeshArray.forEach(item => {
-                            const oldVisualObject = item.mesh;
-
-                            // Remove e descarta o objeto antigo da cena
-                            if (oldVisualObject) {
-                                if (oldVisualObject.isGroup) {
-                                    oldVisualObject.children.forEach(child => {
-                                        if (child.geometry) child.geometry.dispose();
-                                        if (child.material) child.material.dispose();
-                                    });
-                                } else { // é uma Malha
-                                    if (oldVisualObject.geometry) oldVisualObject.geometry.dispose();
-                                    if (oldVisualObject.material) oldVisualObject.material.dispose();
-                                }
-                                scene.remove(oldVisualObject);
+                        // Remove e descarta o objeto antigo da cena
+                        const oldVisualObject = treeMesh;
+                        if (oldVisualObject) {
+                            if (oldVisualObject.isGroup) {
+                                oldVisualObject.children.forEach(child => {
+                                    if (child.geometry) child.geometry.dispose();
+                                    if (child.material) child.material.dispose();
+                                });
+                            } else { // é uma Malha
+                                if (oldVisualObject.geometry) oldVisualObject.geometry.dispose();
+                                if (oldVisualObject.material) oldVisualObject.material.dispose();
                             }
+                            scene.remove(oldVisualObject);
+                        }
 
-                            // Cria o novo objeto visual (sempre um grupo para estágios de árvore)
-                            const newTreeGroup = new THREE.Group();
-                            const trunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
-                            const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
-                            trunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
-                            trunkMesh.castShadow = true;
-                            trunkMesh.receiveShadow = true;
-                            newTreeGroup.add(trunkMesh);
+                        // Cria o novo objeto visual (sempre um grupo para estágios de árvore)
+                        const newTreeGroup = new THREE.Group();
+                        const trunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
+                        const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
+                        trunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
+                        trunkMesh.castShadow = true;
+                        trunkMesh.receiveShadow = true;
+                        newTreeGroup.add(trunkMesh);
 
-                            const leavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
-                            const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
-                            leavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
-                            leavesMesh.castShadow = true;
-                            leavesMesh.receiveShadow = true;
-                            newTreeGroup.add(leavesMesh);
+                        const leavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
+                        const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
+                        leavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
+                        leavesMesh.castShadow = true;
+                        leavesMesh.receiveShadow = true;
+                        newTreeGroup.add(leavesMesh);
 
-                            newTreeGroup.userData.physicsBody = blockBody;
-                            scene.add(newTreeGroup);
+                        newTreeGroup.userData.physicsBody = blockBody;
+                        scene.add(newTreeGroup);
 
-                            // Atualiza a referência no array para o novo objeto
-                            item.mesh = newTreeGroup;
-                        });
+                        // Atualiza a referência no array para o novo objeto
+                        placedConstructionMeshes[i] = newTreeGroup;
 
                         // Update userData
                         blockBody.userData.dimensions = {
