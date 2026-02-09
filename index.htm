@@ -413,8 +413,8 @@
     <div id="optionsScreen">
         <h2>Opções do Jogo</h2>
         <div class="option-item">
-            <label for="renderDistanceSlider">Distância de Visão: <span id="renderDistanceValue">120</span></label>
-            <input type="range" id="renderDistanceSlider" min="40" max="400" value="120">
+            <label for="renderDistanceSlider">Distância de Visão: <span id="renderDistanceValue">100</span></label>
+            <input type="range" id="renderDistanceSlider" min="40" max="400" value="100">
         </div>
         <button id="resumeButton">Voltar ao Jogo</button>
         <button id="exitGameButton">Sair do Jogo</button>
@@ -486,6 +486,8 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
         import * as CANNON from 'cannon-es';
+
+        const hfGridSize = 128; // Resolução global do terreno
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -576,7 +578,7 @@
         const islandRadiusBottom = 600; // NOVO: Raio da base da ilha
         const waterLevel = -9.6; // NOVO: Nível da água
         const seabedLevel = -20; // NOVO: Nível do fundo do mar
-        let renderDistance = 120; // Distância de renderização para objetos
+        let renderDistance = 100; // Distância de renderização para objetos
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
         const islandSurfaceHeight = 0.8; // A altura da superfície visível da ilha
@@ -2045,7 +2047,6 @@
 
 
         function updateIslandGeometry() {
-            const hfGridSize = 256;
             const hfMatrix = JSON.parse(JSON.stringify(baseMatrix));
 
             for (const mound of mounds) {
@@ -2116,13 +2117,13 @@
             scene.background = skyColor; // Começa com a cor do céu
 
             // Inicializa ambos os nevoeiros
-            skyFog = new THREE.Fog(skyColor, 40, 120);
+            skyFog = new THREE.Fog(skyColor, renderDistance * 0.5, renderDistance);
             underwaterFog = new THREE.Fog(underwaterColor, 1, 30); // Nevoeiro denso para debaixo d'água
 
             scene.fog = skyFog; // Começa com o nevoeiro do céu
 
             // Configuração da Câmera Three.js
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 120);
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, renderDistance);
             camera.rotation.order = 'YXZ'; // Define a ordem de rotação para guinada (Y), inclinação (X), rolagem (Z)
 
             // Configuração do Renderizador Three.js
@@ -2134,7 +2135,7 @@
             // Configuração do Mundo Cannon-es (física)
             world = new CANNON.World();
             world.gravity.set(0, -30, 0); // Define a gravidade (para baixo), aumentada para -30
-            world.solver.iterations = 40; // Aumenta as iterações do solver para melhor estabilidade (de 20 para 40)
+            world.solver.iterations = 20; // Reduzido para performance
 
             // Inicializa os materiais de física
             playerMaterial = new CANNON.Material('playerMaterial');
@@ -2283,26 +2284,25 @@
 
             // Cria o Terreno (Ilha Redonda)
             // A geometria visual é agora um plano segmentado cujos vértices correspondem ao Heightfield.
-            const hfGridSize = 256; // A resolução DEVE corresponder à do Heightfield
             const islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
 
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
             // Adiciona várias montanhas de terra por toda a ilha com tamanhos e formatos variados
-            const stoneMountain = { x: 0, z: 0, r: 100, h: 40 }; // Reduzido o raio para espalhar melhor as outras montanhas
+            const stoneMountain = { x: 0, z: 0, r: 60, h: 40 }; // Montanha central menos larga
             const dirtMountains = [];
-            const numDirtMountains = 4; // Quantidade fixa e menor conforme solicitado
+            const numDirtMountains = 10; // Mais montanhas
             for (let i = 0; i < numDirtMountains; i++) {
                 let x, z, r;
                 let attempts = 0;
                 while (attempts < 100) {
-                    r = 20 + Math.random() * 20; // Montanhas menores (raio 20-40)
+                    r = 15 + Math.random() * 40; // Raio entre 15 e 55
                     const angle = Math.random() * Math.PI * 2;
-                    const dist = 160 + Math.random() * 100; // Espalhadas entre raio 160 e 260 (longe do centro)
+                    const dist = 140 + Math.random() * 140; // Mais espalhadas
                     x = Math.cos(angle) * dist;
                     z = Math.sin(angle) * dist;
 
                     let tooClose = false;
-                    const minDist = 150; // Distância mínima entre centros das montanhas de terra
+                    const minDist = 100; // Distância mínima reduzida para acomodar mais montanhas
                     for (const m of dirtMountains) {
                         const dx = x - m.x;
                         const dz = z - m.z;
@@ -2319,7 +2319,8 @@
                     x: x,
                     z: z,
                     r: r,
-                    h: 20 + Math.random() * 20
+                    h: 10 + Math.random() * 35, // Altura entre 10 e 45
+                    plateauRatio: 0.1 + Math.random() * 0.5 // PlateauRatio entre 0.1 e 0.6
                 });
             }
 
@@ -2341,7 +2342,7 @@
                 // Central Stone Mountain
                 const dStone = Math.sqrt(x * x + z * z);
                 if (dStone < stoneMountain.r) {
-                    const plateauRatio = 0.4;
+                    const plateauRatio = 0.4; // Mantém fixo para a central ou pode randomizar também
                     const t = dStone / stoneMountain.r;
                     if (t < plateauRatio) {
                         mountainHeight = stoneMountain.h;
@@ -2357,7 +2358,7 @@
                     const dz = z - m.z;
                     const d = Math.sqrt(dx * dx + dz * dz);
                     if (d < m.r) {
-                        const plateauRatio = 0.4;
+                        const plateauRatio = m.plateauRatio;
                         const t = d / m.r;
                         let hVal;
                         if (t < plateauRatio) {
@@ -3490,7 +3491,7 @@
 
                     // Atualizar o fog
                     if (typeof skyFog !== 'undefined' && skyFog) {
-                        skyFog.near = renderDistance * 0.33;
+                        skyFog.near = renderDistance * 0.5;
                         skyFog.far = renderDistance;
                     }
 
