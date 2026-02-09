@@ -504,6 +504,8 @@
 
         // NOVO: Array para rastrear o capim (performance otimizada)
         let capimClusters = [];
+        const targetCapimCount = 100;
+        const targetTreeCount = 100;
 
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
         let collectibleBoxes = [];
@@ -1776,10 +1778,19 @@
             capimClusters.push(cluster);
         }
 
+        function isAreaOccupiedByConstruction(x, z, radius = 2.0) {
+            for (const body of placedConstructionBodies) {
+                // Ignore trees/nature for the "construction" check
+                if (body.userData && body.userData.growthStage) continue;
+
+                const distSq = calculateWrappedDistance(new THREE.Vector3(x, body.position.y, z), body.position);
+                if (distSq < radius) return true;
+            }
+            return false;
+        }
+
         function isPositionOccupied(x, z, radius = 2.0) {
             for (const body of placedConstructionBodies) {
-                const dx = body.position.x - x;
-                const dz = body.position.z - z;
                 // Verificação de distância simples com envolvimento do mundo
                 const distSq = calculateWrappedDistance(new THREE.Vector3(x, body.position.y, z), body.position);
                 if (distSq < radius) return true;
@@ -1788,6 +1799,7 @@
         }
 
         function respawnCapim() {
+            if (capimClusters.length >= targetCapimCount) return;
             const grassRadius = 280.0;
             let spawned = false;
             let attempts = 0;
@@ -1800,7 +1812,7 @@
                 const y = window.getSurfaceHeight(x, z);
 
                 if (y > waterLevel + 0.5 && y < 25) {
-                    if (!isPositionOccupied(x, z, 2.0)) {
+                    if (!isAreaOccupiedByConstruction(x, z, 2.0)) {
                         createCapim(new THREE.Vector3(x, y, z));
                         spawned = true;
                     }
@@ -1810,8 +1822,9 @@
 
         function populateCapim() {
             const grassRadius = 280.0;
-            const numCapim = 800; // Dobro da quantidade
-            for (let i = 0; i < numCapim; i++) {
+            let attempts = 0;
+            while (capimClusters.length < targetCapimCount && attempts < targetCapimCount * 5) {
+                attempts++;
                 const angle = Math.random() * Math.PI * 2;
                 const dist = Math.random() * grassRadius;
                 const x = Math.cos(angle) * dist;
@@ -1820,7 +1833,54 @@
 
                 // Coloca capim apenas se estiver acima do nível da água e na zona de terra
                 if (y > waterLevel + 0.5 && y < 25) {
-                     createCapim(new THREE.Vector3(x, y, z));
+                    if (!isAreaOccupiedByConstruction(x, z, 2.0)) {
+                        createCapim(new THREE.Vector3(x, y, z));
+                    }
+                }
+            }
+        }
+
+        function respawnTree() {
+            const currentTreeCount = placedConstructionBodies.filter(body => body.userData.growthStage).length;
+            if (currentTreeCount >= targetTreeCount) return;
+
+            let spawned = false;
+            let attempts = 0;
+            while (!spawned && attempts < 50) {
+                attempts++;
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * 280.0;
+                const x = Math.cos(angle) * dist;
+                const z = Math.sin(angle) * dist;
+                const y = window.getSurfaceHeight(x, z);
+
+                if (y > waterLevel + 1.0 && y < 25) {
+                    // Check for constructions and OTHER trees (don't spawn too close to each other)
+                    if (!isAreaOccupiedByConstruction(x, z, 4.0) && !isPositionOccupied(x, z, 6.0)) {
+                        createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), 'muda_arvore');
+                        spawned = true;
+                    }
+                }
+            }
+        }
+
+        function populateTrees() {
+            let attempts = 0;
+            while (attempts < targetTreeCount * 10) {
+                const currentTreeCount = placedConstructionBodies.filter(body => body.userData.growthStage).length;
+                if (currentTreeCount >= targetTreeCount) break;
+
+                attempts++;
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * 280.0;
+                const x = Math.cos(angle) * dist;
+                const z = Math.sin(angle) * dist;
+                const y = window.getSurfaceHeight(x, z);
+
+                if (y > waterLevel + 1.0 && y < 25) {
+                    if (!isAreaOccupiedByConstruction(x, z, 2.0) && !isPositionOccupied(x, z, 6.0)) {
+                        createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), 'muda_arvore');
+                    }
                 }
             }
         }
@@ -3693,6 +3753,7 @@
                                 // NOVO: Se for uma árvore, dropa galhos
                                 if (destroyTargetBody.userData.growthStage) {
                                     addItemToInventory(backpackItems, { name: branchItemName, quantity: 3 });
+                                    setTimeout(respawnTree, 100); // Agenda o renascimento
                                 }
                                 world.removeBody(destroyTargetBody);
                                 // IMPORTANTE: Remove as malhas ANTES de remover do array de corpos para manter o índice correto
@@ -4738,6 +4799,7 @@
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
             populateCapim(); // NOVO: Popula a ilha com capim
+            populateTrees(); // NOVO: Popula a ilha com árvores
 
             // Solicita o bloqueio do ponteiro imediatamente ao iniciar
             if (renderer && renderer.domElement) {
@@ -4770,6 +4832,7 @@
             }
 
             isWorldReady = true;
+            window.isWorldReady = true;
         }
 
         // Listener de evento para o botão "Jogar"
