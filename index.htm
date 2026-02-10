@@ -504,7 +504,7 @@
 
         // NOVO: Array para rastrear o capim (performance otimizada)
         let capimClusters = [];
-        const targetCapimCount = 100;
+        const targetCapimCount = 300;
         const targetTreeCount = 100;
 
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
@@ -1779,13 +1779,29 @@
         }
 
         function isAreaOccupiedByConstruction(x, z, radius = 2.0) {
+            const pos = new THREE.Vector3(x, 0, z);
+
+            // Check placed constructions (blocks, floors, chests)
             for (const body of placedConstructionBodies) {
                 // Ignore trees/nature for the "construction" check
                 if (body.userData && body.userData.growthStage) continue;
 
-                const distSq = calculateWrappedDistance(new THREE.Vector3(x, body.position.y, z), body.position);
-                if (distSq < radius) return true;
+                const dist = calculateWrappedDistance(new THREE.Vector3(x, body.position.y, z), body.position);
+                if (dist < radius) return true;
             }
+
+            // Check collectible boxes (user can place them)
+            for (const box of collectibleBoxes) {
+                const dist = calculateWrappedDistance(new THREE.Vector3(x, box.body.position.y, z), box.body.position);
+                if (dist < radius) return true;
+            }
+
+            // Check player position
+            if (playerBody) {
+                const dist = calculateWrappedDistance(new THREE.Vector3(x, playerBody.position.y, z), playerBody.position);
+                if (dist < radius + playerRadius) return true;
+            }
+
             return false;
         }
 
@@ -1799,12 +1815,10 @@
         }
 
         function respawnCapim() {
-            if (capimClusters.length >= targetCapimCount) return;
             const grassRadius = 280.0;
-            let spawned = false;
-            let attempts = 0;
-            while (!spawned && attempts < 20) {
-                attempts++;
+            let totalAttempts = 0;
+            while (capimClusters.length < targetCapimCount && totalAttempts < 100) {
+                totalAttempts++;
                 const angle = Math.random() * Math.PI * 2;
                 const dist = Math.random() * grassRadius;
                 const x = Math.cos(angle) * dist;
@@ -1814,7 +1828,6 @@
                 if (y > waterLevel + 0.5 && y < 25) {
                     if (!isAreaOccupiedByConstruction(x, z, 2.0)) {
                         createCapim(new THREE.Vector3(x, y, z));
-                        spawned = true;
                     }
                 }
             }
@@ -1841,13 +1854,11 @@
         }
 
         function respawnTree() {
-            const currentTreeCount = placedConstructionBodies.filter(body => body.userData.growthStage).length;
-            if (currentTreeCount >= targetTreeCount) return;
+            let totalAttempts = 0;
+            let currentTreeCount = placedConstructionBodies.filter(body => body.userData.growthStage).length;
 
-            let spawned = false;
-            let attempts = 0;
-            while (!spawned && attempts < 50) {
-                attempts++;
+            while (currentTreeCount < targetTreeCount && totalAttempts < 100) {
+                totalAttempts++;
                 const angle = Math.random() * Math.PI * 2;
                 const dist = Math.random() * 280.0;
                 const x = Math.cos(angle) * dist;
@@ -1855,10 +1866,10 @@
                 const y = window.getSurfaceHeight(x, z);
 
                 if (y > waterLevel + 1.0 && y < 25) {
-                    // Check for constructions and OTHER trees (don't spawn too close to each other)
                     if (!isAreaOccupiedByConstruction(x, z, 4.0) && !isPositionOccupied(x, z, 6.0)) {
-                        createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), 'muda_arvore');
-                        spawned = true;
+                        // Respawn as 'muda' stage as per user request
+                        createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), 'muda_arvore', 'muda');
+                        currentTreeCount++; // Increment local count for the loop
                     }
                 }
             }
@@ -1879,14 +1890,60 @@
 
                 if (y > waterLevel + 1.0 && y < 25) {
                     if (!isAreaOccupiedByConstruction(x, z, 2.0) && !isPositionOccupied(x, z, 6.0)) {
-                        createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), 'muda_arvore');
+                        createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), 'muda_arvore', 'arvore_adulta');
                     }
                 }
             }
         }
 
+        // Função auxiliar para atualizar visuals e física de uma árvore baseado no estágio
+        function setupTreeVisualsAndPhysics(blockBody, stageData) {
+            // Remove shapes antigos
+            while (blockBody.shapes.length > 0) {
+                blockBody.removeShape(blockBody.shapes[0]);
+            }
+
+            let mesh;
+            if (blockBody.userData.growthStage === 'semente') {
+                const seedMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+                const seedGeometry = new THREE.SphereGeometry(stageData.visual.sphere.radius, 8, 8);
+                const seedMesh = new THREE.Mesh(seedGeometry, seedMaterial);
+                seedMesh.castShadow = true;
+                mesh = seedMesh;
+            } else {
+                const treeGroup = new THREE.Group();
+                const trunkGeometry = new THREE.CylinderGeometry(stageData.visual.trunk.radius, stageData.visual.trunk.radius, stageData.visual.trunk.height, 8);
+                const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
+                trunkMesh.position.y = stageData.visual.trunk.yOffsetInGroup;
+                trunkMesh.castShadow = true;
+                trunkMesh.receiveShadow = true;
+                treeGroup.add(trunkMesh);
+
+                const leavesGeometry = new THREE.SphereGeometry(stageData.visual.leaves.radius, 16, 16);
+                const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
+                leavesMesh.position.y = stageData.visual.leaves.yOffsetInGroup;
+                leavesMesh.castShadow = true;
+                leavesMesh.receiveShadow = true;
+                treeGroup.add(leavesMesh);
+                mesh = treeGroup;
+            }
+
+            // Adiciona shapes de física
+            const trunkPhysics = stageData.physics.trunk;
+            const trunkShape = new CANNON.Box(new CANNON.Vec3(trunkPhysics.width / 2, trunkPhysics.height / 2, trunkPhysics.depth / 2));
+            blockBody.addShape(trunkShape, new CANNON.Vec3(0, trunkPhysics.yOffset, 0));
+
+            const leavesPhysics = stageData.physics.leaves;
+            if (leavesPhysics.width > 0) {
+                const leavesShape = new CANNON.Box(new CANNON.Vec3(leavesPhysics.width / 2, leavesPhysics.height / 2, leavesPhysics.depth / 2));
+                blockBody.addShape(leavesShape, new CANNON.Vec3(0, leavesPhysics.yOffset, 0));
+            }
+
+            return mesh;
+        }
+
         // Função para criar um novo bloco físico e visual (cob ou piso)
-        function createPlaceableBlock(position, quaternion, type) {
+        function createPlaceableBlock(position, quaternion, type, initialStage = null) {
             let blockShape, initialMass;
             let width, height, depth;
             let mesh; // This will hold either a THREE.Mesh or a THREE.Group
@@ -1907,6 +1964,7 @@
             if (quaternion) {
                 blockBody.quaternion.copy(quaternion);
             }
+            blockBody.userData = {};
 
             if (type === 'cob') {
                 width = cobWidth;
@@ -1927,30 +1985,21 @@
                 initialMass = initialFloorMass;
                 durability = floorDurability;
             } else if (type === 'muda_arvore') {
-                // Ao colocar uma 'muda', na verdade começamos com o estágio 'semente'
-                randomizedTreeDimensions = randomizeTreeDimensions(treeStages['semente']);
-                const stageData = randomizedTreeDimensions; // Usa dados randomizados
+                const stageToUse = initialStage || 'semente';
+                blockBody.userData.growthStage = stageToUse; // Define antes de configurar visuals
 
-                // Ajusta a posição Y para a semente ficar semi-enterrada.
-                // A 'position' que chega aqui é o centro da esfera fantasma, que está a 'radius' acima do chão.
-                // Para que fique semi-enterrada, o centro deve estar no nível do chão.
-                position.y -= stageData.visual.sphere.radius;
+                randomizedTreeDimensions = randomizeTreeDimensions(treeStages[stageToUse]);
+                const stageData = randomizedTreeDimensions;
+
+                if (stageToUse === 'semente') {
+                    position.y -= stageData.visual.sphere.radius;
+                    blockBody.position.y = position.y; // Sincroniza corpo
+                }
+
+                mesh = setupTreeVisualsAndPhysics(blockBody, stageData);
 
                 initialMass = initialTreeSaplingMass;
-                durability = stageData.durability; // CORREÇÃO: Usar a durabilidade do estágio 'semente'
-
-                // Adiciona a forma de física (caixa minúscula para a semente)
-                const trunkPhysics = stageData.physics.trunk;
-                const trunkShape = new CANNON.Box(new CANNON.Vec3(trunkPhysics.width / 2, trunkPhysics.height / 2, trunkPhysics.depth / 2));
-                blockBody.addShape(trunkShape, new CANNON.Vec3(0, trunkPhysics.yOffset, 0));
-
-                // O visual da semente é agora uma única esfera
-                const seedMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Cor de terra/marrom
-                const seedGeometry = new THREE.SphereGeometry(stageData.visual.sphere.radius, 8, 8);
-                const seedMesh = new THREE.Mesh(seedGeometry, seedMaterial);
-                seedMesh.castShadow = true;
-
-                mesh = seedMesh; // A malha é a esfera, não um grupo
+                durability = stageData.durability || treeSaplingDurability;
                 width = stageData.overallPhysicsHeight;
                 height = stageData.overallPhysicsHeight;
                 depth = stageData.overallPhysicsHeight;
@@ -2006,7 +2055,7 @@
             }
 
             world.addBody(blockBody);
-            blockBody.userData = {
+            Object.assign(blockBody.userData, {
                 isDestructible: true,
                 durability: durability,
                 originalMass: initialMass, // Mantém a massa original para referência, mas o corpo é estático
@@ -2014,12 +2063,12 @@
                 type: type, // Armazena o tipo de bloco
                 dimensions: { width, height, depth }, // Armazena as dimensões para referência (overall for trees)
                 initialDimensions: { width, height, depth }, // Store initial dimensions for growth
-                growthStage: (type === 'muda_arvore') ? 'semente' : null, // O estágio de crescimento inicial para árvores é 'semente'
+                growthStage: (type === 'muda_arvore') ? blockBody.userData.growthStage : null,
                 growthStartTime: (type === 'muda_arvore') ? world.time : null, // Time when placed for trees
+                isFullyGrown: (initialStage === 'arvore_adulta'),
                 randomizedDimensions: randomizedTreeDimensions // Store randomized dimensions for trees
-            };
+            });
             placedConstructionBodies.push(blockBody);
-            console.log("Bloco colocado. Corpos de construção colocados:", placedConstructionBodies); // Log para depuração
 
             mesh.userData.physicsBody = blockBody;
             scene.add(mesh);
@@ -2151,8 +2200,6 @@
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function init() {
-            console.log("init called");
-
             // Inicializa materiais com padrões para evitar erros de undefined e falta de textura inicial
             cubeMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xcccccc });
             cobMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
@@ -3727,7 +3774,7 @@
                             addItemToInventory(backpackItems, { name: capimItemName, quantity: 1 });
                             updateBackpackDisplay();
                             createSmokeEffect(cluster.position);
-                            respawnCapim(); // NOVO: Respawn quando um é cortado
+                            respawnCapim(); // Respawn trigger to maintain population
                         }
                         destructionComplete = true;
                         isDestroying = false;
@@ -4437,7 +4484,6 @@
                     }
 
                     if (nextGrowthStageName) {
-                        console.log(`Árvore crescendo de ${currentGrowthStageName} para ${nextGrowthStageName} no tempo do mundo: ${world.time.toFixed(2)}`);
                         const nextBaseStageData = treeStages[nextGrowthStageName];
                         const nextRandomizedData = randomizeTreeDimensions(nextBaseStageData);
 
@@ -4459,6 +4505,7 @@
 
                         const newOverallPhysicsHeight = nextRandomizedData.overallPhysicsHeight;
                         blockBody.position.y += (newOverallPhysicsHeight - oldOverallPhysicsHeight) / 2;
+                        blockBody.userData.growthStage = nextGrowthStageName;
 
                         // Remove e descarta o objeto antigo da cena
                         const oldVisualObject = treeMesh;
@@ -4475,27 +4522,13 @@
                             scene.remove(oldVisualObject);
                         }
 
-                        // Cria o novo objeto visual (sempre um grupo para estágios de árvore)
-                        const newTreeGroup = new THREE.Group();
-                        const trunkGeometry = new THREE.CylinderGeometry(nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.radius, nextRandomizedData.visual.trunk.height, 8);
-                        const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
-                        trunkMesh.position.y = nextRandomizedData.visual.trunk.yOffsetInGroup;
-                        trunkMesh.castShadow = true;
-                        trunkMesh.receiveShadow = true;
-                        newTreeGroup.add(trunkMesh);
-
-                        const leavesGeometry = new THREE.SphereGeometry(nextRandomizedData.visual.leaves.radius, 16, 16);
-                        const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
-                        leavesMesh.position.y = nextRandomizedData.visual.leaves.yOffsetInGroup;
-                        leavesMesh.castShadow = true;
-                        leavesMesh.receiveShadow = true;
-                        newTreeGroup.add(leavesMesh);
-
-                        newTreeGroup.userData.physicsBody = blockBody;
-                        scene.add(newTreeGroup);
+                        // Cria o novo objeto visual e física usando o helper
+                        const newTreeMesh = setupTreeVisualsAndPhysics(blockBody, nextRandomizedData);
+                        newTreeMesh.userData.physicsBody = blockBody;
+                        scene.add(newTreeMesh);
 
                         // Atualiza a referência no array para o novo objeto
-                        placedConstructionMeshes[i] = newTreeGroup;
+                        placedConstructionMeshes[i] = newTreeMesh;
 
                         // Update userData
                         blockBody.userData.dimensions = {
@@ -4503,13 +4536,11 @@
                             height: newOverallPhysicsHeight, // Store the new overall height
                             depth: nextRandomizedData.physics.trunk.depth // Store trunk depth as a representative
                         };
-                        blockBody.userData.growthStage = nextGrowthStageName;
                         blockBody.userData.growthStartTime = world.time;
                         blockBody.userData.randomizedDimensions = nextRandomizedData; // Update randomized dimensions
 
                         if (nextGrowthStageName === 'arvore_adulta') {
                             blockBody.userData.isFullyGrown = true;
-                            console.log('Árvore totalmente crescida!');
                         }
                         blockBody.wakeUp(); // Ensure the body is active after shape changes
                     }
@@ -4795,7 +4826,6 @@
 
         // Função para iniciar o jogo
         function startGame() {
-            console.log("startGame called");
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
             populateCapim(); // NOVO: Popula a ilha com capim
