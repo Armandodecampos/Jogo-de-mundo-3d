@@ -512,6 +512,7 @@
 
         // Variáveis para blocos de construção colocáveis pelo jogador (tijolos e pisos)
         let placedConstructionBodies = []; // Corpos de blocos colocados pelo jogador
+        window.placedConstructionBodies = placedConstructionBodies;
         let placedConstructionMeshes = []; // Malhas de blocos colocados pelo jogador
         let visualOffsetX = 0;
         let visualOffsetZ = 0;
@@ -952,28 +953,29 @@
             const trunkHeightVisual = randomized.visual.trunk.height;
             const leavesRadiusVisual = randomized.visual.leaves.radius;
 
-            // The visual group's total height is the trunk plus the leaves' diameter.
-            const groupHeightVisual = trunkHeightVisual + (leavesRadiusVisual * 2);
+            // A altura total visual para o novo estilo (cones empilhados)
+            // Altura de um cone = leavesRadiusVisual * 1.8. Total de 3 cones com overlap de 0.4.
+            // Topo do terceiro cone = trunkTop + coneHeight + 2*(0.4*coneHeight)
+            // groupHeightVisual = trunkHeight + 1.8 * (leavesRadiusVisual * 1.8) = trunkHeight + 3.24 * leavesRadiusVisual
+            const groupHeightVisual = trunkHeightVisual + (3.24 * leavesRadiusVisual);
+            randomized.overallPhysicsHeight = groupHeightVisual;
 
-            // Position the trunk so its bottom aligns with the group's bottom.
-            // The group is centered, so its bottom is at -groupHeight/2. The trunk's center
-            // is then placed at -groupHeight/2 + trunkHeight/2.
+            // Posiciona o tronco para que a base alinhe com o fundo do grupo (-groupHeightVisual/2)
             randomized.visual.trunk.yOffsetInGroup = (trunkHeightVisual / 2) - (groupHeightVisual / 2);
 
-            // Position the leaves so their center is on top of the trunk's top.
-            // The trunk's top is at trunk.yOffset + trunk.height/2.
-            // The leaves' center should be at that position, plus their radius.
+            // Posiciona as folhas para que o primeiro cone comece no topo do tronco
+            const coneHeight = leavesRadiusVisual * 1.8;
             const trunkTopY = randomized.visual.trunk.yOffsetInGroup + (trunkHeightVisual / 2);
-            randomized.visual.leaves.yOffsetInGroup = trunkTopY + leavesRadiusVisual;
+            randomized.visual.leaves.yOffsetInGroup = trunkTopY + (coneHeight / 2);
 
-            // For physics, approximate the overall height for positioning
-            const trunkTopPhysics = randomized.physics.trunk.height / 2;
-            const leavesBottomPhysics = trunkTopPhysics;
-            randomized.overallPhysicsHeight = randomized.physics.trunk.height + (randomized.physics.leaves.height); // Sum of trunk and leaves physics height
+            // Ajusta offsets de física para serem relativos ao centro da overallPhysicsHeight
+            randomized.physics.trunk.yOffset = randomized.visual.trunk.yOffsetInGroup;
 
-            // Adjust physics yOffsets to be relative to the new overallPhysicsHeight center
-            randomized.physics.trunk.yOffset = (randomized.physics.trunk.height / 2) - (randomized.overallPhysicsHeight / 2);
-            randomized.physics.leaves.yOffset = (leavesBottomPhysics + randomized.physics.leaves.height / 2) - (randomized.overallPhysicsHeight / 2);
+            // Ocupa a área das folhas com física aproximada
+            const treeTopY = groupHeightVisual / 2;
+            const leavesPhysicsHeight = treeTopY - trunkTopY;
+            randomized.physics.leaves.height = leavesPhysicsHeight;
+            randomized.physics.leaves.yOffset = trunkTopY + (leavesPhysicsHeight / 2);
 
             return randomized;
         }
@@ -2001,8 +2003,8 @@
                 const stageData = randomizedTreeDimensions;
 
                 if (stageToUse === 'semente') {
-                    position.y -= stageData.visual.sphere.radius;
-                    blockBody.position.y = position.y; // Sincroniza corpo
+                    // Posiciona a semente sobre o chão
+                    blockBody.position.y = position.y + stageData.visual.sphere.radius;
                 } else {
                     // Garante que a árvore não fique enterrada (base no chão)
                     blockBody.position.y = position.y + stageData.overallPhysicsHeight / 2;
@@ -2242,7 +2244,7 @@
             scene.fog = skyFog; // Começa com o nevoeiro do céu
 
             // Configuração da Câmera Three.js
-            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, renderDistance);
+            window.camera = camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, renderDistance);
             camera.rotation.order = 'YXZ'; // Define a ordem de rotação para guinada (Y), inclinação (X), rolagem (Z)
 
             // Configuração do Renderizador Three.js
@@ -2655,7 +2657,7 @@
             originalPlayerShape = new CANNON.Sphere(playerRadius); // Esfera com raio baseado na altura
             crouchPlayerShape = new CANNON.Sphere(crouchRadius);   // Esfera agachada
 
-            playerBody = new CANNON.Body({
+            window.playerBody = playerBody = new CANNON.Body({
                 mass: 80,
                 type: CANNON.Body.DYNAMIC,
                 shape: originalPlayerShape, // Começa com a forma original
