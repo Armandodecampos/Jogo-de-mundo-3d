@@ -581,6 +581,7 @@
         const waterLevel = -9.6; // NOVO: Nível da água
         const seabedLevel = -20; // NOVO: Nível do fundo do mar
         let renderDistance = 100; // Distância de renderização para objetos
+        let frameCount = 0;
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
         const islandSurfaceHeight = 0.8; // A altura da superfície visível da ilha
@@ -895,27 +896,27 @@
             },
             'media': {
                 physics: {
-                    trunk: { width: cobWidth, height: 2.0, depth: cobWidth, yOffset: -0.8 },
-                    leaves: { width: cobWidth * 4, height: cobWidth * 4, depth: cobWidth * 4, yOffset: 0.8 }
+                    trunk: { width: cobWidth, height: 4.0, depth: cobWidth, yOffset: -1.0 },
+                    leaves: { width: cobWidth * 6, height: 4.0, depth: cobWidth * 6, yOffset: 2.0 }
                 },
                 visual: {
-                    trunk: { radius: cobWidth / 2, height: 2.0, yOffsetInGroup: (2.0 / 2) - (3.6 / 2) },
-                    leaves: { radius: cobWidth * 2, yOffsetInGroup: (2.0 + 0.8) - (3.6 / 2) }
+                    trunk: { radius: cobWidth / 2, height: 4.0, yOffsetInGroup: (4.0 / 2) - (6.0 / 2) },
+                    leaves: { radius: cobWidth * 3, yOffsetInGroup: (4.0 + 1.0) - (6.0 / 2) }
                 },
-                overallPhysicsHeight: 3.6, // Will be recalculated by randomizeTreeDimensions
+                overallPhysicsHeight: 6.0,
                 growthTime: 10
             },
             'arvore_adulta': {
                 physics: {
-                    trunk: { width: cobWidth, height: 5.0, depth: cobWidth, yOffset: -2.0 },
-                    leaves: { width: cobWidth * 8, height: cobWidth * 8, depth: cobWidth * 8, yOffset: 2.0 }
+                    trunk: { width: cobWidth * 1.5, height: 10.0, depth: cobWidth * 1.5, yOffset: -2.5 },
+                    leaves: { width: cobWidth * 10, height: 8.0, depth: cobWidth * 10, yOffset: 4.0 }
                 },
                 visual: {
-                    trunk: { radius: cobWidth / 2, height: 5.0, yOffsetInGroup: (5.0 / 2) - (9.0 / 2) },
-                    leaves: { radius: cobWidth * 4, yOffsetInGroup: (5.0 + 2.0) - (9.0 / 2) }
+                    trunk: { radius: cobWidth * 0.75, height: 10.0, yOffsetInGroup: (10.0 / 2) - (15.0 / 2) },
+                    leaves: { radius: cobWidth * 5, yOffsetInGroup: (10.0 + 2.0) - (15.0 / 2) }
                 },
-                overallPhysicsHeight: 9.0, // Will be recalculated by randomizeTreeDimensions
-                growthTime: Infinity // Fully grown
+                overallPhysicsHeight: 15.0,
+                growthTime: Infinity
             }
         };
 
@@ -1817,7 +1818,7 @@
         function respawnCapim() {
             const grassRadius = 280.0;
             let totalAttempts = 0;
-            while (capimClusters.length < targetCapimCount && totalAttempts < 100) {
+            while (capimClusters.length < targetCapimCount && totalAttempts < 20) {
                 totalAttempts++;
                 const angle = Math.random() * Math.PI * 2;
                 const dist = Math.random() * grassRadius;
@@ -1826,7 +1827,7 @@
                 const y = window.getSurfaceHeight(x, z);
 
                 if (y > waterLevel + 0.5 && y < 25) {
-                    if (!isAreaOccupiedByConstruction(x, z, 2.0)) {
+                    if (!isAreaOccupiedByConstruction(x, z, 2.0) && !isPositionOccupied(x, z, 4.0)) {
                         createCapim(new THREE.Vector3(x, y, z));
                     }
                 }
@@ -1855,9 +1856,9 @@
 
         function respawnTree() {
             let totalAttempts = 0;
-            let currentTreeCount = placedConstructionBodies.filter(body => body.userData.growthStage).length;
+            let currentTreeCount = placedConstructionBodies.filter(body => body.userData && body.userData.growthStage).length;
 
-            while (currentTreeCount < targetTreeCount && totalAttempts < 100) {
+            while (currentTreeCount < targetTreeCount && totalAttempts < 20) {
                 totalAttempts++;
                 const angle = Math.random() * Math.PI * 2;
                 const dist = Math.random() * 280.0;
@@ -1866,10 +1867,10 @@
                 const y = window.getSurfaceHeight(x, z);
 
                 if (y > waterLevel + 1.0 && y < 25) {
-                    if (!isAreaOccupiedByConstruction(x, z, 4.0) && !isPositionOccupied(x, z, 6.0)) {
+                    if (!isAreaOccupiedByConstruction(x, z, 5.0) && !isPositionOccupied(x, z, 8.0)) {
                         // Respawn as 'muda' stage as per user request
                         createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), 'muda_arvore', 'muda');
-                        currentTreeCount++; // Increment local count for the loop
+                        currentTreeCount++;
                     }
                 }
             }
@@ -1919,12 +1920,20 @@
                 trunkMesh.receiveShadow = true;
                 treeGroup.add(trunkMesh);
 
-                const leavesGeometry = new THREE.SphereGeometry(stageData.visual.leaves.radius, 16, 16);
-                const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
-                leavesMesh.position.y = stageData.visual.leaves.yOffsetInGroup;
-                leavesMesh.castShadow = true;
-                leavesMesh.receiveShadow = true;
-                treeGroup.add(leavesMesh);
+                // Várias partes pontiagudas (stacked cones)
+                const leavesRadius = stageData.visual.leaves.radius;
+                const numCones = 3;
+                for (let i = 0; i < numCones; i++) {
+                    const coneRadius = leavesRadius * (1 - i * 0.3);
+                    const coneHeight = leavesRadius * 1.8;
+                    const coneGeometry = new THREE.ConeGeometry(coneRadius, coneHeight, 8);
+                    const coneMesh = new THREE.Mesh(coneGeometry, treeLeavesMaterialMesh);
+                    // Empilha os cones verticalmente
+                    coneMesh.position.y = stageData.visual.leaves.yOffsetInGroup + (i * coneHeight * 0.4);
+                    coneMesh.castShadow = true;
+                    coneMesh.receiveShadow = true;
+                    treeGroup.add(coneMesh);
+                }
                 mesh = treeGroup;
             }
 
@@ -1994,6 +2003,9 @@
                 if (stageToUse === 'semente') {
                     position.y -= stageData.visual.sphere.radius;
                     blockBody.position.y = position.y; // Sincroniza corpo
+                } else {
+                    // Garante que a árvore não fique enterrada (base no chão)
+                    blockBody.position.y = position.y + stageData.overallPhysicsHeight / 2;
                 }
 
                 mesh = setupTreeVisualsAndPhysics(blockBody, stageData);
@@ -3865,6 +3877,13 @@
             // visualOffsetX e visualOffsetZ removidos para evitar saltos duplos no envolvimento do mundo
             visualOffsetX = 0;
             visualOffsetZ = 0;
+
+            // Nature population maintenance
+            frameCount++;
+            if (frameCount % 60 === 0) {
+                respawnCapim();
+                respawnTree();
+            }
 
             // Aplica o envolvimento ao corpo de física do jogador
             wrapObject(playerBody, worldSize);
