@@ -398,6 +398,9 @@
     </style>
 </head>
 <body>
+    <button id="testDestroyAll" class="fixed top-4 right-4 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg z-[2000]">
+        Destruir Natureza (Teste)
+    </button>
     <div id="tooltip"></div>
     <div id="startScreen">
         <h1>Small World</h1>
@@ -4890,6 +4893,32 @@
         document.getElementById('startButton').addEventListener('click', startGame);
 
         // Não há necessidade de window.onload aqui, pois startGame será chamado pelo clique do botão
+
+        document.getElementById('testDestroyAll').addEventListener('click', () => {
+            // Destruir todas as árvores (aquelas com growthStage)
+            for (let i = placedConstructionBodies.length - 1; i >= 0; i--) {
+                const body = placedConstructionBodies[i];
+                if (body.userData && body.userData.growthStage) {
+                    world.removeBody(body);
+                    if (placedConstructionMeshes[i]) {
+                        scene.remove(placedConstructionMeshes[i]);
+                    }
+                    placedConstructionBodies.splice(i, 1);
+                    placedConstructionMeshes.splice(i, 1);
+                }
+            }
+
+            // Destruir toda a grama (capim)
+            for (let i = capimClusters.length - 1; i >= 0; i--) {
+                const cluster = capimClusters[i];
+                if (cluster.mesh) {
+                    scene.remove(cluster.mesh);
+                }
+            }
+            capimClusters.length = 0;
+
+            console.log("Natureza destruída para testes.");
+        });
     </script>
 </body>
 </html>
