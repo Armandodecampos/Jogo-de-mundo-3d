@@ -564,6 +564,7 @@
         let placedConstructionBodies = []; // Corpos de blocos colocados pelo jogador
         window.placedConstructionBodies = placedConstructionBodies;
         let placedConstructionMeshes = []; // Malhas de blocos colocados pelo jogador
+        window.placedConstructionMeshes = placedConstructionMeshes;
         let visualOffsetX = 0;
         let visualOffsetZ = 0;
 
@@ -706,6 +707,7 @@
         // Inventário (agora separado para cinto e mochila)
         let beltItems = new Array(numBeltSlots).fill(null);
         let backpackItems = [null];
+        window.backpackItems = backpackItems;
 
         // Click and move variables
         let selectedItem = null; // { item: { name, quantity }, sourceLocation: 'belt' | 'backpack' | 'chest', sourceIndex: number }
@@ -854,7 +856,7 @@
         // Novo: Limiar para o efeito de "imã" (snapping)
         const snappingThreshold = 0.7; // Distância máxima para o bloco fantasma "grudar"
         // NOVO: Distância mínima para colocar árvores (para evitar sobreposição)
-        const minTreePlacementDistance = 6.0; // Aumentado para 6.0 para maior espaçamento
+        const minTreePlacementDistance = 0.1; // Reduzido para permitir colocar árvores próximas
 
         // URLs das texturas
         const cubeTextureURL = 'https://dl.dropbox.com/scl/fi/gj6zul0y5tl74dbyysnz8/caixote.jpg?rlkey=4v81yak0nb08mllkfh1eceijw&st=lqj60d8g&dl=0';
@@ -1935,7 +1937,7 @@
                 const y = window.getSurfaceHeight(x, z);
 
                 if (y > waterLevel + 1.0 && y < 25) {
-                    if (!isAreaOccupiedByConstruction(x, z, 5.0) && !isPositionOccupied(x, z, 8.0)) {
+                    if (!isAreaOccupiedByConstruction(x, z, 5.0) && !isPositionOccupied(x, z, 0.1)) {
                         // Respawn as 'muda' stage as per user request
                         createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), 'muda_arvore', 'muda');
                         currentTreeCount++;
@@ -1958,7 +1960,7 @@
                 const y = window.getSurfaceHeight(x, z);
 
                 if (y > waterLevel + 1.0 && y < 25) {
-                    if (!isAreaOccupiedByConstruction(x, z, 2.0) && !isPositionOccupied(x, z, 6.0)) {
+                    if (!isAreaOccupiedByConstruction(x, z, 2.0) && !isPositionOccupied(x, z, 0.1)) {
                         createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), 'muda_arvore', 'arvore_adulta');
                     }
                 }
@@ -2299,6 +2301,7 @@
 
             // Configuração da Cena Three.js
             scene = new THREE.Scene();
+            window.scene = scene;
             skyColor = new THREE.Color(0x87CEEB);
             underwaterColor = new THREE.Color(0x001e3d);
             scene.background = skyColor; // Começa com a cor do céu
@@ -2321,6 +2324,7 @@
 
             // Configuração do Mundo Cannon-es (física)
             world = new CANNON.World();
+            window.world = world;
             world.gravity.set(0, -30, 0); // Define a gravidade (para baixo), aumentada para -30
             world.solver.iterations = 20; // Reduzido para performance
 
