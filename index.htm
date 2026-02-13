@@ -457,14 +457,14 @@
                     <span>Densidade de Grama</span>
                     <span id="grassDensityValue">300</span>
                 </label>
-                <input type="range" id="grassDensitySlider" min="0" max="1000" value="300" class="w-full">
+                <input type="range" id="grassDensitySlider" min="1" max="10000" value="300" class="w-full">
             </div>
             <div class="option-item">
                 <label for="treeDensitySlider" class="flex justify-between w-full">
                     <span>Densidade de Árvores</span>
                     <span id="treeDensityValue">100</span>
                 </label>
-                <input type="range" id="treeDensitySlider" min="0" max="300" value="100" class="w-full">
+                <input type="range" id="treeDensitySlider" min="1" max="10000" value="100" class="w-full">
             </div>
         </div>
         <button id="backToMenuButton" class="mt-8 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-10 rounded-lg transition-colors">Voltar</button>
@@ -554,7 +554,7 @@
 
         // NOVO: Array para rastrear o capim (performance otimizada)
         let capimClusters = [];
-        let targetCapimCount = parseInt(localStorage.getItem('targetCapimCount')) || 300;
+        let targetCapimCount = parseInt(localStorage.getItem('targetCapimCount')) || 1000;
         let targetTreeCount = parseInt(localStorage.getItem('targetTreeCount')) || 100;
 
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
@@ -3704,6 +3704,7 @@
             if (grassDensitySlider && grassDensityValue) {
                 grassDensitySlider.value = targetCapimCount;
                 grassDensityValue.textContent = targetCapimCount;
+                document.getElementById('grassDensityValue').textContent = targetCapimCount;
                 grassDensitySlider.addEventListener('input', () => {
                     const newVal = parseInt(grassDensitySlider.value);
                     if (newVal > targetCapimCount) {
@@ -3736,24 +3737,23 @@
                         if (isWorldReady) respawnTree();
                     } else {
                         targetTreeCount = newVal;
-                        // Remoção imediata se diminuir a densidade
+                        // Remoção imediata otimizada se diminuir a densidade
                         if (isWorldReady) {
-                            let trees = placedConstructionBodies
-                                .map((body, index) => ({ body, index }))
-                                .filter(item => item.body.userData && item.body.userData.growthStage);
+                            let treeIndices = [];
+                            for (let i = placedConstructionBodies.length - 1; i >= 0; i--) {
+                                if (placedConstructionBodies[i].userData && placedConstructionBodies[i].userData.growthStage) {
+                                    treeIndices.push(i);
+                                }
+                            }
 
-                            while (trees.length > targetTreeCount) {
-                                const lastTree = trees.pop();
-                                const idx = lastTree.index;
-                                world.removeBody(lastTree.body);
+                            let countToRemove = treeIndices.length - targetTreeCount;
+                            for (let i = 0; i < countToRemove; i++) {
+                                const idx = treeIndices[i];
+                                const body = placedConstructionBodies[idx];
+                                world.removeBody(body);
                                 scene.remove(placedConstructionMeshes[idx]);
                                 placedConstructionBodies.splice(idx, 1);
                                 placedConstructionMeshes.splice(idx, 1);
-
-                                // Re-mapear índices após splice
-                                trees = placedConstructionBodies
-                                    .map((body, index) => ({ body, index }))
-                                    .filter(item => item.body.userData && item.body.userData.growthStage);
                             }
                         }
                     }
