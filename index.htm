@@ -127,6 +127,28 @@
             visibility: visible;
             opacity: 1;
         }
+        #settingsScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+            display: flex;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1003;
+            color: white;
+            text-align: center;
+        }
+        #settingsScreen.active {
+            visibility: visible;
+            opacity: 1;
+        }
         #optionsScreen h2 {
             font-size: 2em;
             margin-bottom: 20px;
@@ -401,7 +423,10 @@
     <div id="tooltip"></div>
     <div id="startScreen">
         <h1>Small World</h1>
-        <button id="startButton">Jogar</button>
+        <div class="flex flex-col gap-4">
+            <button id="startButton">Jogar</button>
+            <button id="startSettingsButton" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg transition-colors">Configurações</button>
+        </div>
     </div>
 
     <!-- Novo botão de menu no canto superior esquerdo -->
@@ -411,13 +436,38 @@
     </button>
 
     <div id="optionsScreen">
-        <h2>Opções do Jogo</h2>
-        <div class="option-item">
-            <label for="renderDistanceSlider">Distância de Visão: <span id="renderDistanceValue">100</span></label>
-            <input type="range" id="renderDistanceSlider" min="40" max="400" value="100">
-        </div>
+        <h2>Menu</h2>
         <button id="resumeButton">Voltar ao Jogo</button>
+        <button id="pauseSettingsButton">Configurações</button>
         <button id="exitGameButton">Sair do Jogo</button>
+    </div>
+
+    <div id="settingsScreen">
+        <h2 class="text-3xl font-bold mb-8">Configurações</h2>
+        <div class="flex flex-col gap-6 w-full max-w-md px-8">
+            <div class="option-item">
+                <label for="renderDistanceSlider" class="flex justify-between w-full">
+                    <span>Distância de Visão</span>
+                    <span id="renderDistanceValue">100</span>
+                </label>
+                <input type="range" id="renderDistanceSlider" min="40" max="400" value="100" class="w-full">
+            </div>
+            <div class="option-item">
+                <label for="grassDensitySlider" class="flex justify-between w-full">
+                    <span>Densidade de Grama</span>
+                    <span id="grassDensityValue">300</span>
+                </label>
+                <input type="range" id="grassDensitySlider" min="0" max="1000" value="300" class="w-full">
+            </div>
+            <div class="option-item">
+                <label for="treeDensitySlider" class="flex justify-between w-full">
+                    <span>Densidade de Árvores</span>
+                    <span id="treeDensityValue">100</span>
+                </label>
+                <input type="range" id="treeDensitySlider" min="0" max="300" value="100" class="w-full">
+            </div>
+        </div>
+        <button id="backToMenuButton" class="mt-8 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-10 rounded-lg transition-colors">Voltar</button>
     </div>
 
     <div id="progressContainer">
@@ -504,8 +554,8 @@
 
         // NOVO: Array para rastrear o capim (performance otimizada)
         let capimClusters = [];
-        const targetCapimCount = 300;
-        const targetTreeCount = 100;
+        let targetCapimCount = parseInt(localStorage.getItem('targetCapimCount')) || 300;
+        let targetTreeCount = parseInt(localStorage.getItem('targetTreeCount')) || 100;
 
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
         let collectibleBoxes = [];
@@ -581,7 +631,7 @@
         const islandRadiusBottom = 600; // NOVO: Raio da base da ilha
         const waterLevel = -9.6; // NOVO: Nível da água
         const seabedLevel = -20; // NOVO: Nível do fundo do mar
-        let renderDistance = 100; // Distância de renderização para objetos
+        let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 100; // Distância de renderização para objetos
         let frameCount = 0;
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
@@ -1053,6 +1103,7 @@
         // Função para ocultar a tela de opções e retomar o jogo
         function hideOptionsScreen() {
             document.getElementById('optionsScreen').classList.remove('active'); // Remove a classe 'active'
+            document.getElementById('settingsScreen').classList.remove('active'); // Garante que as configurações também fechem
             document.getElementById('crosshair').style.display = 'flex'; // Mostra a mira
             document.body.style.cursor = 'none'; // Esconde o cursor do corpo
             if (renderer && renderer.domElement) {
@@ -1112,6 +1163,21 @@
                         console.error('Erro ao solicitar bloqueio do ponteiro:', error);
                     }
                 });
+            }
+        }
+
+        function showSettingsScreen() {
+            document.getElementById('settingsScreen').classList.add('active');
+            document.getElementById('optionsScreen').classList.remove('active');
+            document.getElementById('startScreen').style.display = 'none';
+        }
+
+        function hideSettingsScreen() {
+            document.getElementById('settingsScreen').classList.remove('active');
+            if (isWorldReady) {
+                document.getElementById('optionsScreen').classList.add('active');
+            } else {
+                document.getElementById('startScreen').style.display = 'flex';
             }
         }
 
@@ -2952,7 +3018,9 @@
                 if (event.key === 'Escape') {
                     event.preventDefault(); // IMPEDE O COMPORTAMENTO PADRÃO DO NAVEGADOR (sair do pointer lock)
 
-                    if (gamePaused) {
+                    if (document.getElementById('settingsScreen').classList.contains('active')) {
+                        hideSettingsScreen();
+                    } else if (gamePaused) {
                         hideOptionsScreen(); // Se o menu estiver aberto, fecha-o
                     } else if (document.pointerLockElement === renderer.domElement) {
                         // Se o jogo estiver a correr e o ponteiro estiver bloqueado,
@@ -3602,13 +3670,20 @@
                 location.reload(); // Recarrega a página para sair do jogo
             });
 
+            document.getElementById('startSettingsButton').addEventListener('click', showSettingsScreen);
+            document.getElementById('pauseSettingsButton').addEventListener('click', showSettingsScreen);
+            document.getElementById('backToMenuButton').addEventListener('click', hideSettingsScreen);
+
             // NOVO: Listener para o slider de distância de renderização
             const renderDistanceSlider = document.getElementById('renderDistanceSlider');
             const renderDistanceValue = document.getElementById('renderDistanceValue');
             if (renderDistanceSlider && renderDistanceValue) {
+                renderDistanceSlider.value = renderDistance;
+                renderDistanceValue.textContent = renderDistance;
                 renderDistanceSlider.addEventListener('input', () => {
                     renderDistance = parseInt(renderDistanceSlider.value);
                     renderDistanceValue.textContent = renderDistance;
+                    localStorage.setItem('renderDistance', renderDistance);
 
                     // Atualizar o fog
                     if (typeof skyFog !== 'undefined' && skyFog) {
@@ -3621,6 +3696,69 @@
                         camera.far = renderDistance;
                         camera.updateProjectionMatrix();
                     }
+                });
+            }
+
+            const grassDensitySlider = document.getElementById('grassDensitySlider');
+            const grassDensityValue = document.getElementById('grassDensityValue');
+            if (grassDensitySlider && grassDensityValue) {
+                grassDensitySlider.value = targetCapimCount;
+                grassDensityValue.textContent = targetCapimCount;
+                grassDensitySlider.addEventListener('input', () => {
+                    const newVal = parseInt(grassDensitySlider.value);
+                    if (newVal > targetCapimCount) {
+                        targetCapimCount = newVal;
+                        if (isWorldReady) respawnCapim();
+                    } else {
+                        targetCapimCount = newVal;
+                        // Remoção imediata se diminuir a densidade
+                        while (isWorldReady && capimClusters.length > targetCapimCount) {
+                            const cluster = capimClusters.pop();
+                            if (cluster && cluster.mesh) {
+                                scene.remove(cluster.mesh);
+                            }
+                        }
+                    }
+                    grassDensityValue.textContent = targetCapimCount;
+                    localStorage.setItem('targetCapimCount', targetCapimCount);
+                });
+            }
+
+            const treeDensitySlider = document.getElementById('treeDensitySlider');
+            const treeDensityValue = document.getElementById('treeDensityValue');
+            if (treeDensitySlider && treeDensityValue) {
+                treeDensitySlider.value = targetTreeCount;
+                treeDensityValue.textContent = targetTreeCount;
+                treeDensitySlider.addEventListener('input', () => {
+                    const newVal = parseInt(treeDensitySlider.value);
+                    if (newVal > targetTreeCount) {
+                        targetTreeCount = newVal;
+                        if (isWorldReady) respawnTree();
+                    } else {
+                        targetTreeCount = newVal;
+                        // Remoção imediata se diminuir a densidade
+                        if (isWorldReady) {
+                            let trees = placedConstructionBodies
+                                .map((body, index) => ({ body, index }))
+                                .filter(item => item.body.userData && item.body.userData.growthStage);
+
+                            while (trees.length > targetTreeCount) {
+                                const lastTree = trees.pop();
+                                const idx = lastTree.index;
+                                world.removeBody(lastTree.body);
+                                scene.remove(placedConstructionMeshes[idx]);
+                                placedConstructionBodies.splice(idx, 1);
+                                placedConstructionMeshes.splice(idx, 1);
+
+                                // Re-mapear índices após splice
+                                trees = placedConstructionBodies
+                                    .map((body, index) => ({ body, index }))
+                                    .filter(item => item.body.userData && item.body.userData.growthStage);
+                            }
+                        }
+                    }
+                    treeDensityValue.textContent = targetTreeCount;
+                    localStorage.setItem('targetTreeCount', targetTreeCount);
                 });
             }
 
