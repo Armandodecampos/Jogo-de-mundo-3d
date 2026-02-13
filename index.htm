@@ -553,7 +553,13 @@
         let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
 
         // NOVO: Array para rastrear o capim (performance otimizada)
+
         let capimClusters = [];
+        let appleTrees = [];
+        window.appleTrees = appleTrees;
+
+        let appleTrees = [];
+        window.appleTrees = appleTrees;
         let targetCapimCount = parseInt(localStorage.getItem('targetCapimCount')) || 1000;
         let targetTreeCount = parseInt(localStorage.getItem('targetTreeCount')) || 100;
 
@@ -668,7 +674,7 @@
         // Variáveis de estado do jogo
         let gamePaused = false; // Novo: Flag para pausar/retomar a lógica do jogo
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
-        let isWorldReady = false; // NOVO: Flag para rastrear se o mundo está pronto para interações
+        let isWorldReady = false; window.isWorldReady = isWorldReady; // NOVO: Flag para rastrear se o mundo está pronto para interações
 
         // NOVO: Gerenciador de carregamento para rastrear quando todos os recursos são carregados
         const loadingManager = new THREE.LoadingManager();
@@ -721,7 +727,13 @@
 
         // NOVO: Variáveis para o sistema de agarrar objetos (Mão)
         const handItemName = 'mao'; // Nome do item de mão no inventário
+
         const capimItemName = 'capim';
+        const appleSeedItemName = 'semente_macieira';
+        const appleItemName = 'maca';
+
+        const appleSeedItemName = 'semente_macieira';
+        const appleItemName = 'maca';
 
         // NOVO: Variáveis para o sistema de destruição de blocos (Machado e Martelo)
         const axeItemName = 'machado'; // Nome do item de machado no inventário
@@ -751,7 +763,13 @@
         // NOVO: Mapeamento de nomes de itens para exibição
         const itemDisplayNames = {
             [handItemName]: 'Mão',
+
             [capimItemName]: 'Capim',
+            [appleSeedItemName]: 'Semente de Macieira',
+            [appleItemName]: 'Maçã',
+
+            [appleSeedItemName]: 'Semente de Macieira',
+            [appleItemName]: 'Maçã',
             [axeItemName]: 'Machado\nEspecialidade: Madeira',
             [hammerItemName]: 'Martelo\nSem uso',
             [stoneItemName]: 'Pedra',
@@ -773,7 +791,13 @@
 
         const itemWeights = {
             [handItemName]: 0,
+
             [capimItemName]: 0.1,
+            [appleSeedItemName]: 0.1,
+            [appleItemName]: 0.2,
+
+            [appleSeedItemName]: 0.1,
+            [appleItemName]: 0.2,
             [axeItemName]: 2.0,
             [hammerItemName]: 2.0,
             [stoneItemName]: 1.0,
@@ -968,68 +992,68 @@
                     trunk: { radius: cobWidth * 0.75, height: 10.0, yOffsetInGroup: (10.0 / 2) - (15.0 / 2) },
                     leaves: { radius: cobWidth * 5, yOffsetInGroup: (10.0 + 2.0) - (15.0 / 2) }
                 },
-                overallPhysicsHeight: 15.0,
+                overallPhysicsHeight: 15.0, durability: 3.0,
                 growthTime: Infinity
             }
         };
 
         // Function to randomize tree dimensions based on a base stage data
-        function randomizeTreeDimensions(baseStageData) {
+        // Function to get tree dimensions based on a base stage data and optional multipliers for consistency
+        function getTreeDimensions(baseStageData, treeType = 'normal', multipliers = null) {
             // Adiciona uma cláusula de guarda para o estágio 'semente', que não precisa de randomização
             if (!baseStageData.visual.trunk) {
-                return JSON.parse(JSON.stringify(baseStageData)); // Retorna uma cópia profunda para segurança
+                return { data: JSON.parse(JSON.stringify(baseStageData)), multipliers: null };
             }
-            const randomFactor = (min, max) => min + (Math.random() * (max - min));
 
-            // Apply random factors (e.g., +/- 20% variation)
-            const trunkHeightFactor = randomFactor(0.8, 1.2);
-            const trunkRadiusFactor = randomFactor(0.8, 1.2);
-            const leavesRadiusFactor = randomFactor(0.8, 1.2);
+            const m = multipliers || {
+                trunkHeight: 0.8 + Math.random() * 0.4,
+                trunkRadius: 0.8 + Math.random() * 0.4,
+                leavesRadius: 0.8 + Math.random() * 0.4
+            };
 
             const randomized = JSON.parse(JSON.stringify(baseStageData)); // Deep copy
 
-            // Randomize trunk dimensions
-            randomized.physics.trunk.height *= trunkHeightFactor;
-            randomized.physics.trunk.width *= trunkRadiusFactor;
-            randomized.physics.trunk.depth *= trunkRadiusFactor;
-            randomized.visual.trunk.height *= trunkHeightFactor;
-            randomized.visual.trunk.radius *= trunkRadiusFactor;
+            // Apply factors
+            randomized.physics.trunk.height *= m.trunkHeight;
+            randomized.physics.trunk.width *= m.trunkRadius;
+            randomized.physics.trunk.depth *= m.trunkRadius;
+            randomized.visual.trunk.height *= m.trunkHeight;
+            randomized.visual.trunk.radius *= m.trunkRadius;
 
-            // Randomize leaves dimensions
-            randomized.physics.leaves.width *= leavesRadiusFactor;
-            randomized.physics.leaves.height *= leavesRadiusFactor;
-            randomized.physics.leaves.depth *= leavesRadiusFactor;
-            randomized.visual.leaves.radius *= leavesRadiusFactor;
+            // Apply factors to leaves
+            randomized.physics.leaves.width *= m.leavesRadius;
+            randomized.physics.leaves.height *= m.leavesRadius;
+            randomized.physics.leaves.depth *= m.leavesRadius;
+            randomized.visual.leaves.radius *= m.leavesRadius;
 
             // Recalculate yOffsets and overallPhysicsHeight based on randomized dimensions
             const trunkHeightVisual = randomized.visual.trunk.height;
             const leavesRadiusVisual = randomized.visual.leaves.radius;
 
-            // A altura total visual para o novo estilo (cones empilhados)
-            // Altura de um cone = leavesRadiusVisual * 1.8. Total de 3 cones com overlap de 0.4.
-            // Topo do terceiro cone = trunkTop + coneHeight + 2*(0.4*coneHeight)
-            // groupHeightVisual = trunkHeight + 1.8 * (leavesRadiusVisual * 1.8) = trunkHeight + 3.24 * leavesRadiusVisual
-            const groupHeightVisual = trunkHeightVisual + (3.24 * leavesRadiusVisual);
+            let groupHeightVisual;
+            if (treeType === 'apple') {
+                groupHeightVisual = trunkHeightVisual + (2.5 * leavesRadiusVisual);
+            } else {
+                groupHeightVisual = trunkHeightVisual + (3.24 * leavesRadiusVisual);
+            }
             randomized.overallPhysicsHeight = groupHeightVisual;
 
             // Posiciona o tronco para que a base alinhe com o fundo do grupo (-groupHeightVisual/2)
             randomized.visual.trunk.yOffsetInGroup = (trunkHeightVisual / 2) - (groupHeightVisual / 2);
 
-            // Posiciona as folhas para que o primeiro cone comece no topo do tronco
-            const coneHeight = leavesRadiusVisual * 1.8;
+            // Posiciona as folhas
+            const leavesHeight = (treeType === 'apple') ? (leavesRadiusVisual * 2) : (leavesRadiusVisual * 1.8);
             const trunkTopY = randomized.visual.trunk.yOffsetInGroup + (trunkHeightVisual / 2);
-            randomized.visual.leaves.yOffsetInGroup = trunkTopY + (coneHeight / 2);
+            randomized.visual.leaves.yOffsetInGroup = trunkTopY + (leavesHeight / 2);
 
-            // Ajusta offsets de física para serem relativos ao centro da overallPhysicsHeight
+            // Ajusta offsets de física
             randomized.physics.trunk.yOffset = randomized.visual.trunk.yOffsetInGroup;
-
-            // Ocupa a área das folhas com física aproximada
             const treeTopY = groupHeightVisual / 2;
             const leavesPhysicsHeight = treeTopY - trunkTopY;
             randomized.physics.leaves.height = leavesPhysicsHeight;
             randomized.physics.leaves.yOffset = trunkTopY + (leavesPhysicsHeight / 2);
 
-            return randomized;
+            return { data: randomized, multipliers: m };
         }
 
         // Global array to hold active smoke particles
@@ -1939,7 +1963,7 @@
                 if (y > waterLevel + 1.0 && y < 25) {
                     if (!isAreaOccupiedByConstruction(x, z, 5.0) && !isPositionOccupied(x, z, 0.1)) {
                         // Respawn as 'muda' stage as per user request
-                        createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), 'muda_arvore', 'muda');
+                        const type = (Math.random() < 0.03) ? appleSeedItemName : 'muda_arvore'; createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), type, 'muda');
                         currentTreeCount++;
                     }
                 }
@@ -1961,7 +1985,7 @@
 
                 if (y > waterLevel + 1.0 && y < 25) {
                     if (!isAreaOccupiedByConstruction(x, z, 2.0) && !isPositionOccupied(x, z, 0.1)) {
-                        createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), 'muda_arvore', 'arvore_adulta');
+                        const type = (Math.random() < 0.03) ? appleSeedItemName : 'muda_arvore'; createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), type, 'arvore_adulta');
                     }
                 }
             }
@@ -1969,11 +1993,9 @@
 
         // Função auxiliar para atualizar visuals e física de uma árvore baseado no estágio
         function setupTreeVisualsAndPhysics(blockBody, stageData) {
-            // Remove shapes antigos
             while (blockBody.shapes.length > 0) {
                 blockBody.removeShape(blockBody.shapes[0]);
             }
-
             let mesh;
             if (blockBody.userData.growthStage === 'semente') {
                 const seedMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
@@ -1983,41 +2005,73 @@
                 mesh = seedMesh;
             } else {
                 const treeGroup = new THREE.Group();
+                treeGroup.userData.treeBody = blockBody;
                 const trunkGeometry = new THREE.CylinderGeometry(stageData.visual.trunk.radius, stageData.visual.trunk.radius, stageData.visual.trunk.height, 8);
                 const trunkMesh = new THREE.Mesh(trunkGeometry, treeTrunkMaterialMesh);
                 trunkMesh.position.y = stageData.visual.trunk.yOffsetInGroup;
                 trunkMesh.castShadow = true;
                 trunkMesh.receiveShadow = true;
                 treeGroup.add(trunkMesh);
-
-                // Várias partes pontiagudas (stacked cones)
                 const leavesRadius = stageData.visual.leaves.radius;
-                const numCones = 3;
-                for (let i = 0; i < numCones; i++) {
-                    const coneRadius = leavesRadius * (1 - i * 0.3);
-                    const coneHeight = leavesRadius * 1.8;
-                    const coneGeometry = new THREE.ConeGeometry(coneRadius, coneHeight, 8);
-                    const coneMesh = new THREE.Mesh(coneGeometry, treeLeavesMaterialMesh);
-                    // Empilha os cones verticalmente
-                    coneMesh.position.y = stageData.visual.leaves.yOffsetInGroup + (i * coneHeight * 0.4);
-                    coneMesh.castShadow = true;
-                    coneMesh.receiveShadow = true;
-                    treeGroup.add(coneMesh);
+                const treeType = blockBody.userData.treeType || 'normal';
+                if (treeType === 'apple') {
+                    const leavesGeometry = new THREE.IcosahedronGeometry(leavesRadius, 1);
+                    const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
+                    leavesMesh.position.y = stageData.visual.leaves.yOffsetInGroup;
+                    leavesMesh.castShadow = true;
+                    leavesMesh.receiveShadow = true;
+                    treeGroup.add(leavesMesh);
+                    if (blockBody.userData.growthStage === 'arvore_adulta') {
+                        const appleGeometry = new THREE.SphereGeometry(leavesRadius * 0.15, 8, 8);
+                        const appleMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+                        if (!blockBody.userData.apples) {
+                            blockBody.userData.apples = [];
+                            for (let i = 0; i < 8; i++) {
+                                const phi = Math.random() * Math.PI * 2;
+                                const theta = Math.random() * Math.PI;
+                                blockBody.userData.apples.push({ picked: false, lastPickedTime: 0, phi: phi, theta: theta });
+                            }
+                        }
+                        for (let i = 0; i < 8; i++) {
+                            const appleData = blockBody.userData.apples[i];
+                            const apple = new THREE.Mesh(appleGeometry, appleMaterial);
+                            const r = leavesRadius * 0.95;
+                            apple.position.set(
+                                r * Math.sin(appleData.theta) * Math.cos(appleData.phi),
+                                stageData.visual.leaves.yOffsetInGroup + r * Math.sin(appleData.theta) * Math.sin(appleData.phi),
+                                r * Math.cos(appleData.theta)
+                            );
+                            apple.castShadow = true;
+                            apple.userData.isApple = true;
+                            apple.userData.appleIndex = i;
+                            apple.userData.treeBody = blockBody;
+                            if (appleData.picked) apple.visible = false;
+                            treeGroup.add(apple);
+                        }
+                    }
+                } else {
+                    const numCones = 3;
+                    for (let i = 0; i < numCones; i++) {
+                        const coneRadius = leavesRadius * (1 - i * 0.3);
+                        const coneHeight = leavesRadius * 1.8;
+                        const coneGeometry = new THREE.ConeGeometry(coneRadius, coneHeight, 8);
+                        const coneMesh = new THREE.Mesh(coneGeometry, treeLeavesMaterialMesh);
+                        coneMesh.position.y = stageData.visual.leaves.yOffsetInGroup + (i * coneHeight * 0.4);
+                        coneMesh.castShadow = true;
+                        coneMesh.receiveShadow = true;
+                        treeGroup.add(coneMesh);
+                    }
                 }
                 mesh = treeGroup;
             }
-
-            // Adiciona shapes de física
             const trunkPhysics = stageData.physics.trunk;
             const trunkShape = new CANNON.Box(new CANNON.Vec3(trunkPhysics.width / 2, trunkPhysics.height / 2, trunkPhysics.depth / 2));
             blockBody.addShape(trunkShape, new CANNON.Vec3(0, trunkPhysics.yOffset, 0));
-
             const leavesPhysics = stageData.physics.leaves;
             if (leavesPhysics.width > 0) {
                 const leavesShape = new CANNON.Box(new CANNON.Vec3(leavesPhysics.width / 2, leavesPhysics.height / 2, leavesPhysics.depth / 2));
                 blockBody.addShape(leavesShape, new CANNON.Vec3(0, leavesPhysics.yOffset, 0));
             }
-
             return mesh;
         }
 
@@ -2063,11 +2117,15 @@
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), floorMaterialMesh);
                 initialMass = initialFloorMass;
                 durability = floorDurability;
-            } else if (type === 'muda_arvore') {
-                const stageToUse = initialStage || 'semente';
+            } else if (type === 'muda_arvore' || type === appleSeedItemName) {
+                const treeType = (type === appleSeedItemName) ? 'apple' : 'normal';
+                const stageToUse = initialStage || ((type === appleSeedItemName) ? 'semente' : 'muda');
                 blockBody.userData.growthStage = stageToUse; // Define antes de configurar visuals
+                blockBody.userData.treeType = treeType;
 
-                randomizedTreeDimensions = randomizeTreeDimensions(treeStages[stageToUse]);
+                const treeResult = getTreeDimensions(treeStages[stageToUse], treeType);
+                randomizedTreeDimensions = treeResult.data;
+                blockBody.userData.multipliers = treeResult.multipliers;
                 const stageData = randomizedTreeDimensions;
 
                 if (stageToUse === 'semente') {
@@ -2140,16 +2198,22 @@
             Object.assign(blockBody.userData, {
                 isDestructible: true,
                 durability: durability,
-                originalMass: initialMass, // Mantém a massa original para referência, mas o corpo é estático
+                originalMass: initialMass,
                 initialPosition: new CANNON.Vec3().copy(blockBody.position),
-                type: type, // Armazena o tipo de bloco
-                dimensions: { width, height, depth }, // Armazena as dimensões para referência (overall for trees)
-                initialDimensions: { width, height, depth }, // Store initial dimensions for growth
-                growthStage: (type === 'muda_arvore') ? blockBody.userData.growthStage : null,
-                growthStartTime: (type === 'muda_arvore') ? world.time : null, // Time when placed for trees
+                type: type,
+                dimensions: { width, height, depth },
+                initialDimensions: { width, height, depth },
+                growthStage: (type === 'muda_arvore' || type === appleSeedItemName) ? blockBody.userData.growthStage : null,
+                growthStartTime: (type === 'muda_arvore' || type === appleSeedItemName) ? world.time : null,
                 isFullyGrown: (initialStage === 'arvore_adulta'),
-                randomizedDimensions: randomizedTreeDimensions // Store randomized dimensions for trees
+                randomizedDimensions: randomizedTreeDimensions,
+                treeType: blockBody.userData.treeType || 'normal',
+                multipliers: blockBody.userData.multipliers
             });
+            // NOVO: Adiciona ao array de macieiras se for uma macieira adulta inicial
+            if (blockBody.userData.treeType === 'apple' && blockBody.userData.growthStage === 'arvore_adulta') {
+                appleTrees.push(blockBody);
+            }
             placedConstructionBodies.push(blockBody);
 
             mesh.userData.physicsBody = blockBody;
@@ -3434,6 +3498,18 @@
                     if (intersect.distance > pickUpDistance) continue;
 
                     const obj = intersect.object;
+                    if (obj.userData.isApple && obj.visible) {
+                        const body = obj.userData.treeBody;
+                        const appleIndex = obj.userData.appleIndex;
+                        if (body && body.userData.apples && body.userData.apples[appleIndex]) {
+                            body.userData.apples[appleIndex].picked = true;
+                            body.userData.apples[appleIndex].lastPickedTime = world.time;
+                            obj.visible = false;
+                            addItemToInventory(backpackItems, { name: appleItemName, quantity: 1 });
+                            updateBackpackDisplay();
+                            return true;
+                        }
+                    }
                     let body = null;
                     let current = obj;
                     while (current) {
@@ -3558,7 +3634,7 @@
                     if (currentBlockType === 'cob' && cobMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === 'piso' && floorMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === 'tábuas' && woodenPlankMaterialMesh) materialLoaded = true;
-                    else if (currentBlockType === 'muda_arvore' && treeTrunkMaterialMesh && treeLeavesMaterialMesh) materialLoaded = true;
+                    else if ((currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName) && treeTrunkMaterialMesh && treeLeavesMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === 'tronco_arvore' && treeTrunkMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === stoneBlockItemName && stoneBlockMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === woodenBlockItemName && woodenBlockMaterialMesh) materialLoaded = true;
@@ -3955,8 +4031,21 @@
                                 }
                                 // NOVO: Se for uma árvore, dropa galhos
                                 if (destroyTargetBody.userData.growthStage) {
+                                    const treeType = destroyTargetBody.userData.treeType || 'normal';
                                     addItemToInventory(backpackItems, { name: branchItemName, quantity: 3 });
-                                    setTimeout(respawnTree, 100); // Agenda o renascimento
+                                    if (treeType === 'apple') {
+                                        addItemToInventory(backpackItems, { name: appleSeedItemName, quantity: 1 });
+                                        if (destroyTargetBody.userData.apples) {
+                                            destroyTargetBody.userData.apples.forEach(appleData => {
+                                                if (!appleData.picked) {
+                                                    addItemToInventory(backpackItems, { name: appleItemName, quantity: 1 });
+                                                }
+                                            });
+                                        }
+                                        const appleTreeIndex = appleTrees.indexOf(destroyTargetBody);
+                                        if (appleTreeIndex !== -1) appleTrees.splice(appleTreeIndex, 1);
+                                    }
+                                    setTimeout(respawnTree, 100);
                                 }
                                 world.removeBody(destroyTargetBody);
                                 // IMPORTANTE: Remove as malhas ANTES de remover do array de corpos para manter o índice correto
@@ -4021,6 +4110,25 @@
             // visualOffsetX e visualOffsetZ removidos para evitar saltos duplos no envolvimento do mundo
             visualOffsetX = 0;
             visualOffsetZ = 0;
+
+
+            // NOVO: Respawn de maçãs nas macieiras adultas
+            if (frameCount % 60 === 0) {
+                appleTrees.forEach(body => {
+                    if (body.userData.apples) {
+                        body.userData.apples.forEach((appleData, index) => {
+                            if (appleData.picked && world.time - appleData.lastPickedTime > 30) {
+                                appleData.picked = false;
+                                const mesh = placedConstructionMeshes[placedConstructionBodies.indexOf(body)];
+                                if (mesh && mesh.children) {
+                                    const appleMesh = mesh.children.find(child => child.userData.isApple && child.userData.appleIndex === index);
+                                    if (appleMesh) appleMesh.visible = true;
+                                }
+                            }
+                        });
+                    }
+                });
+            }
 
             // Nature population maintenance
             frameCount++;
@@ -4289,7 +4397,13 @@
                         currentGhostHeight = stoneFloorHeight;
                         currentGhostDepth = stoneFloorDepth;
                         ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
-                    } else if (currentBlockType === 'muda_arvore') {
+                                        } else if (currentBlockType === appleSeedItemName) {
+                        const seedBaseData = treeStages['semente'];
+                        currentGhostWidth = seedBaseData.visual.sphere.radius * 2;
+                        currentGhostDepth = seedBaseData.visual.sphere.radius * 2;
+                        currentGhostHeight = seedBaseData.visual.sphere.radius * 2;
+                        ghostBlockMesh.geometry = new THREE.SphereGeometry(seedBaseData.visual.sphere.radius, 8, 8);
+                    } else if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName) {
                         // O ghost block para 'muda_arvore' deve corresponder ao estágio inicial 'semente'
                         const seedBaseData = treeStages['semente'];
                         currentGhostWidth = seedBaseData.visual.sphere.radius * 2;
@@ -4361,7 +4475,7 @@
                                 // NOVO: Alinha a posição Y na grade, considerando a altura da superfície da ilha como a base.
                                 // Isso garante que os blocos se encaixem verticalmente.
                                 // CORREÇÃO: As sementes não devem se encaixar na grade vertical, elas devem ser colocadas no chão.
-                                if (currentBlockType === 'muda_arvore') {
+                                if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName) {
                                     placementPosition.y = basePosition.y;
                                 } else {
                                     const n_y = Math.round((basePosition.y - islandSurfaceHeight) / currentGhostHeight - 0.5);
@@ -4382,7 +4496,7 @@
                                 if (distanceToPlayer > minPlayerDistance) {
                                     canPlace = true;
                                     // Se for uma muda de árvore, verifica a distância das outras árvores
-                                    if (currentBlockType === 'muda_arvore') {
+                                    if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName) {
                                         for (const existingBody of placedConstructionBodies) {
                                             // Verifica se o corpo existente é uma árvore em qualquer estágio de crescimento
                                             // (muda, media ou arvore_adulta)
@@ -4632,10 +4746,12 @@
                 const blockBody = placedConstructionBodies[i];
                 const treeMesh = placedConstructionMeshes[i];
 
-                if (blockBody.userData.type === 'muda_arvore' && !blockBody.userData.isFullyGrown) {
+                if ((blockBody.userData.type === 'muda_arvore' || blockBody.userData.type === appleSeedItemName) && !blockBody.userData.isFullyGrown) {
+                    const treeType = blockBody.userData.treeType || 'normal';
                     const currentGrowthStageName = blockBody.userData.growthStage;
                     const currentBaseStageData = treeStages[currentGrowthStageName];
                     const currentRandomizedData = blockBody.userData.randomizedDimensions;
+                    const multipliers = blockBody.userData.multipliers;
 
                     let nextGrowthStageName = null;
                     if (currentGrowthStageName === 'semente' && world.time - blockBody.userData.growthStartTime >= currentBaseStageData.growthTime) {
@@ -4648,23 +4764,11 @@
 
                     if (nextGrowthStageName) {
                         const nextBaseStageData = treeStages[nextGrowthStageName];
-                        const nextRandomizedData = randomizeTreeDimensions(nextBaseStageData);
+                        const nextTreeResult = getTreeDimensions(nextBaseStageData, treeType, multipliers);
+                        const nextRandomizedData = nextTreeResult.data;
+                        blockBody.userData.multipliers = nextTreeResult.multipliers;
 
                         const oldOverallPhysicsHeight = currentRandomizedData.overallPhysicsHeight;
-
-                        while (blockBody.shapes.length > 0) {
-                            blockBody.removeShape(blockBody.shapes[0]);
-                        }
-
-                        const trunkPhysics = nextRandomizedData.physics.trunk;
-                        const trunkShape = new CANNON.Box(new CANNON.Vec3(trunkPhysics.width / 2, trunkPhysics.height / 2, trunkPhysics.depth / 2));
-                        blockBody.addShape(trunkShape, new CANNON.Vec3(0, trunkPhysics.yOffset, 0));
-
-                        const leavesPhysics = nextRandomizedData.physics.leaves;
-                        if (leavesPhysics.width > 0) {
-                            const leavesShape = new CANNON.Box(new CANNON.Vec3(leavesPhysics.width / 2, leavesPhysics.height / 2, leavesPhysics.depth / 2));
-                            blockBody.addShape(leavesShape, new CANNON.Vec3(0, leavesPhysics.yOffset, 0));
-                        }
 
                         const newOverallPhysicsHeight = nextRandomizedData.overallPhysicsHeight;
                         blockBody.position.y += (newOverallPhysicsHeight - oldOverallPhysicsHeight) / 2;
@@ -4694,6 +4798,7 @@
                         placedConstructionMeshes[i] = newTreeMesh;
 
                         // Update userData
+                        blockBody.userData.isDestructible = true;
                         blockBody.userData.dimensions = {
                             width: nextRandomizedData.physics.trunk.width, // Store trunk width as a representative
                             height: newOverallPhysicsHeight, // Store the new overall height
@@ -4704,6 +4809,7 @@
 
                         if (nextGrowthStageName === 'arvore_adulta') {
                             blockBody.userData.isFullyGrown = true;
+                            if (treeType === 'apple') appleTrees.push(blockBody);
                         }
                         blockBody.wakeUp(); // Ensure the body is active after shape changes
                     }
@@ -4765,7 +4871,13 @@
                         currentGhostWidth = stoneFloorWidth;
                         currentGhostHeight = stoneFloorHeight;
                         currentGhostDepth = stoneFloorDepth;
-                    } else if (currentBlockType === 'muda_arvore') {
+                                        } else if (currentBlockType === appleSeedItemName) {
+                        const seedBaseData = treeStages['semente'];
+                        currentGhostWidth = seedBaseData.visual.sphere.radius * 2;
+                        currentGhostDepth = seedBaseData.visual.sphere.radius * 2;
+                        currentGhostHeight = seedBaseData.visual.sphere.radius * 2;
+                        ghostBlockMesh.geometry = new THREE.SphereGeometry(seedBaseData.visual.sphere.radius, 8, 8);
+                    } else if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName) {
                         const seedBaseData = treeStages['semente'];
                         currentGhostWidth = seedBaseData.visual.sphere.radius * 2;
                         currentGhostDepth = seedBaseData.visual.sphere.radius * 2;
@@ -4813,7 +4925,7 @@
                                 if (distanceToPlayer > minPlayerDistance) {
                                     canPlace = true;
                                     // Se for uma muda de árvore, verifica a distância das outras árvores (incluindo as adultas)
-                                    if (currentBlockType === 'muda_arvore') {
+                                    if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName) {
                                         for (const existingBody of placedConstructionBodies) {
                                             // Verifica se o corpo existente é uma árvore em qualquer estágio de crescimento
                                             // (muda, media ou arvore_adulta)
@@ -4906,6 +5018,21 @@
                             canDestroyWithHand = true;
                             break;
                         }
+
+                        // NOVO: Permite destruir árvores e blocos com a mão
+                        let intersectedBodyWithHand = null;
+                        let currentObjHand = obj;
+                        while (currentObjHand) {
+                            if (currentObjHand.userData && currentObjHand.userData.physicsBody) {
+                                intersectedBodyWithHand = currentObjHand.userData.physicsBody;
+                                if (intersectedBodyWithHand && intersectedBodyWithHand.userData && intersectedBodyWithHand.userData.isDestructible) {
+                                    canDestroyWithHand = true;
+                                }
+                                break;
+                            }
+                            currentObjHand = currentObjHand.parent;
+                        }
+                        if (canDestroyWithHand) break;
                     }
                     if (objectInRange) crosshairColor = 'gold';
                     else if (canDestroyWithHand) crosshairColor = 'red';
@@ -5024,8 +5151,7 @@
                 inventoryBeltElement.style.opacity = '1';
             }
 
-            isWorldReady = true;
-            window.isWorldReady = true;
+            isWorldReady = true; window.isWorldReady = true;
         }
 
         // Listener de evento para o botão "Jogar"
