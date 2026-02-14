@@ -553,11 +553,7 @@
         let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
 
         // NOVO: Array para rastrear o capim (performance otimizada)
-
         let capimClusters = [];
-        let appleTrees = [];
-        window.appleTrees = appleTrees;
-
         let appleTrees = [];
         window.appleTrees = appleTrees;
         let targetCapimCount = parseInt(localStorage.getItem('targetCapimCount')) || 1000;
@@ -727,11 +723,7 @@
 
         // NOVO: Variáveis para o sistema de agarrar objetos (Mão)
         const handItemName = 'mao'; // Nome do item de mão no inventário
-
         const capimItemName = 'capim';
-        const appleSeedItemName = 'semente_macieira';
-        const appleItemName = 'maca';
-
         const appleSeedItemName = 'semente_macieira';
         const appleItemName = 'maca';
 
@@ -763,11 +755,7 @@
         // NOVO: Mapeamento de nomes de itens para exibição
         const itemDisplayNames = {
             [handItemName]: 'Mão',
-
             [capimItemName]: 'Capim',
-            [appleSeedItemName]: 'Semente de Macieira',
-            [appleItemName]: 'Maçã',
-
             [appleSeedItemName]: 'Semente de Macieira',
             [appleItemName]: 'Maçã',
             [axeItemName]: 'Machado\nEspecialidade: Madeira',
@@ -791,11 +779,7 @@
 
         const itemWeights = {
             [handItemName]: 0,
-
             [capimItemName]: 0.1,
-            [appleSeedItemName]: 0.1,
-            [appleItemName]: 0.2,
-
             [appleSeedItemName]: 0.1,
             [appleItemName]: 0.2,
             [axeItemName]: 2.0,
@@ -4032,13 +4016,15 @@
                                 // NOVO: Se for uma árvore, dropa galhos
                                 if (destroyTargetBody.userData.growthStage) {
                                     const treeType = destroyTargetBody.userData.treeType || 'normal';
-                                    addItemToInventory(backpackItems, { name: branchItemName, quantity: 3 });
+                                    // Dropa os itens no chão em vez de ir direto pro inventário
+                                    createDroppableItem(position, { name: branchItemName, quantity: 3 });
+
                                     if (treeType === 'apple') {
-                                        addItemToInventory(backpackItems, { name: appleSeedItemName, quantity: 1 });
+                                        createDroppableItem(position, { name: appleSeedItemName, quantity: 1 });
                                         if (destroyTargetBody.userData.apples) {
                                             destroyTargetBody.userData.apples.forEach(appleData => {
                                                 if (!appleData.picked) {
-                                                    addItemToInventory(backpackItems, { name: appleItemName, quantity: 1 });
+                                                    createDroppableItem(position, { name: appleItemName, quantity: 1 });
                                                 }
                                             });
                                         }
@@ -4112,8 +4098,10 @@
             visualOffsetZ = 0;
 
 
-            // NOVO: Respawn de maçãs nas macieiras adultas
+            // Nature population maintenance
+            frameCount++;
             if (frameCount % 60 === 0) {
+                // NOVO: Respawn de maçãs nas macieiras adultas
                 appleTrees.forEach(body => {
                     if (body.userData.apples) {
                         body.userData.apples.forEach((appleData, index) => {
@@ -4128,11 +4116,6 @@
                         });
                     }
                 });
-            }
-
-            // Nature population maintenance
-            frameCount++;
-            if (frameCount % 60 === 0) {
                 respawnCapim();
                 respawnTree();
             }
@@ -5152,6 +5135,9 @@
             }
 
             isWorldReady = true; window.isWorldReady = true;
+            window.addItemToInventory = addItemToInventory;
+            window.openBackpack = openBackpack;
+            window.closeBackpack = closeBackpack;
         }
 
         // Listener de evento para o botão "Jogar"
