@@ -537,6 +537,9 @@
         import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
         import * as CANNON from 'cannon-es';
 
+        window.THREE = THREE;
+        window.CANNON = CANNON;
+
         const hfGridSize = 128; // Resolução global do terreno
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
@@ -996,6 +999,13 @@
             };
 
             const randomized = JSON.parse(JSON.stringify(baseStageData)); // Deep copy
+
+            // Aplica escala da macieira: tronco menor, copa maior relativa ao tronco
+            if (treeType === 'apple') {
+                m.trunkHeight *= 0.6;
+                m.trunkRadius *= 0.7;
+                m.leavesRadius *= 1.2;
+            }
 
             // Apply factors
             randomized.physics.trunk.height *= m.trunkHeight;
@@ -1999,12 +2009,27 @@
                 const leavesRadius = stageData.visual.leaves.radius;
                 const treeType = blockBody.userData.treeType || 'normal';
                 if (treeType === 'apple') {
-                    const leavesGeometry = new THREE.IcosahedronGeometry(leavesRadius, 1);
-                    const leavesMesh = new THREE.Mesh(leavesGeometry, treeLeavesMaterialMesh);
-                    leavesMesh.position.y = stageData.visual.leaves.yOffsetInGroup;
-                    leavesMesh.castShadow = true;
-                    leavesMesh.receiveShadow = true;
-                    treeGroup.add(leavesMesh);
+                    // Cria uma copa em formato de "nuvem" com várias esferas arredondadas
+                    const cloudGroup = new THREE.Group();
+                    const numSpheres = 8;
+                    for (let i = 0; i < numSpheres; i++) {
+                        const sRadius = leavesRadius * (0.6 + Math.random() * 0.4);
+                        const sphereGeom = new THREE.SphereGeometry(sRadius, 12, 12);
+                        const sphereMesh = new THREE.Mesh(sphereGeom, treeLeavesMaterialMesh);
+
+                        // Posicionamento para criar o formato de nuvem cheio de "bolas"
+                        sphereMesh.position.set(
+                            (Math.random() - 0.5) * leavesRadius * 1.5,
+                            (Math.random() - 0.5) * leavesRadius * 1.0,
+                            (Math.random() - 0.5) * leavesRadius * 1.5
+                        );
+                        sphereMesh.castShadow = true;
+                        sphereMesh.receiveShadow = true;
+                        cloudGroup.add(sphereMesh);
+                    }
+                    cloudGroup.position.y = stageData.visual.leaves.yOffsetInGroup;
+                    treeGroup.add(cloudGroup);
+
                     if (blockBody.userData.growthStage === 'arvore_adulta') {
                         const appleGeometry = new THREE.SphereGeometry(leavesRadius * 0.15, 8, 8);
                         const appleMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
@@ -3337,7 +3362,7 @@
                     }
 
                     if (mainObject && intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible) {
-                        target = { body: intersectedBody, mesh: mainObject };
+                        target = { body: intersectedBody, mesh: mainObject, hitPoint: intersects[i].point.clone() };
                         break;
                     }
                 }
@@ -3351,9 +3376,9 @@
                     } else if (target.isCapim) {
                         destroyTargetPosition = target.cluster.position.clone();
                     } else if (target.body) {
-                        const pos = target.body.position;
-                        destroyTargetPosition = new THREE.Vector3(pos.x, pos.y, pos.z);
+                        destroyTargetPosition = target.hitPoint;
                     }
+                    window.destroyTargetPosition = destroyTargetPosition;
                     destroyProgress = 0;
                     destroyTargetBody = target.body;
                     destroyTargetMesh = target.mesh;
@@ -5135,9 +5160,15 @@
             }
 
             isWorldReady = true; window.isWorldReady = true;
+            window.THREE = THREE;
             window.addItemToInventory = addItemToInventory;
             window.openBackpack = openBackpack;
             window.closeBackpack = closeBackpack;
+            window.createPlaceableBlock = createPlaceableBlock;
+            window.startDestruction = startDestruction;
+            window.beltItems = beltItems;
+            window.updateUI = updateUI;
+            window.selectedSlotIndex = selectedSlotIndex;
         }
 
         // Listener de evento para o botão "Jogar"
