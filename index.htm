@@ -628,6 +628,7 @@
         const crouchBodyHeight = playerBodyHeight - crouchHeightReduction; // Calcula a nova altura
         const crouchRadius = crouchBodyHeight / 2;   // Raio da esfera agachada
 
+        const playerHalfWidth = 0.3; // Largura horizontal do jogador (0.6m total)
         let originalPlayerShape; // Para armazenar a forma inicial
         let crouchPlayerShape;   // Para armazenar a forma agachada
 
@@ -2796,9 +2797,9 @@
 
             // A rua foi removida, então o código relacionado a ela foi excluído.
 
-            // Cria o Corpo de Física do Jogador (esfera)
-            originalPlayerShape = new CANNON.Sphere(playerRadius); // Esfera com raio baseado na altura
-            crouchPlayerShape = new CANNON.Sphere(crouchRadius);   // Esfera agachada
+            // Cria o Corpo de Física do Jogador (caixa para permitir passagens estreitas)
+            originalPlayerShape = new CANNON.Box(new CANNON.Vec3(playerHalfWidth, playerRadius, playerHalfWidth));
+            crouchPlayerShape = new CANNON.Box(new CANNON.Vec3(playerHalfWidth, crouchRadius, playerHalfWidth));
 
             window.playerBody = playerBody = new CANNON.Body({
                 mass: 80,
@@ -3251,10 +3252,10 @@
                     // Lida com o estado de agachamento se o bloqueio do ponteiro for perdido
                     if (isCrouching) {
                         isCrouching = false;
-                        playerBody.removeShape(originalPlayerShape);
-                        playerBody.addShape(crouchPlayerShape);
-                        playerBody.position.y += (originalPlayerShape.radius - crouchPlayerShape.radius);
-                        cameraEyeLevelOffset = originalPlayerShape.radius;
+                        playerBody.removeShape(crouchPlayerShape);
+                        playerBody.addShape(originalPlayerShape);
+                        playerBody.position.y += (playerRadius - crouchRadius);
+                        cameraEyeLevelOffset = playerRadius;
                         playerBody.velocity.y = 0;
                         playerBody.wakeUp();
                     }
