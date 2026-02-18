@@ -4699,7 +4699,13 @@
             const stepClimbHeight = 1.1;
             const rayLength = playerHalfWidth + 0.1;
 
-            const playerHorizontalForwardCannon = new CANNON.Vec3(playerBody.velocity.x, 0, playerBody.velocity.z);
+            let playerHorizontalForwardCannon = new CANNON.Vec3(playerBody.velocity.x, 0, playerBody.velocity.z);
+            // Se o jogador estiver tentando se mover, usa a direção desejada para o raycast de degraus.
+            // Isso permite detectar degraus mesmo quando o jogador está bloqueado (velocidade zero).
+            if (movementVector.lengthSq() > 0) {
+                playerHorizontalForwardCannon.set(movementVector.x, 0, movementVector.z);
+            }
+
             if (playerHorizontalForwardCannon.length() > 0) {
                 playerHorizontalForwardCannon.normalize();
             }
