@@ -4695,9 +4695,9 @@
             }
 
 
-            // Lógica de subida de degraus (mantida, mas pode precisar de ajustes finos com o novo movimento)
-            const stepClimbHeight = 0.3;
-            const rayLength = currentPlayerRadius + 0.1;
+            // Lógica de subida de degraus (ajustada para permitir subir blocos de 0.4 de altura)
+            const stepClimbHeight = 0.5;
+            const rayLength = playerHalfWidth + 0.1;
 
             const playerHorizontalForwardCannon = new CANNON.Vec3(playerBody.velocity.x, 0, playerBody.velocity.z);
             if (playerHorizontalForwardCannon.length() > 0) {
@@ -4706,47 +4706,49 @@
 
             const rayOriginLow = new CANNON.Vec3(
                 playerBody.position.x + playerHorizontalForwardCannon.x * rayLength,
-                playerBody.position.y - currentPlayerRadius + 0.05, // Ajusta para a base da esfera
+                playerBody.position.y - currentPlayerRadius + stepClimbHeight,
                 playerBody.position.z + playerHorizontalForwardCannon.z * rayLength
             );
             const rayTargetLow = new CANNON.Vec3(
                 rayOriginLow.x,
-                rayOriginLow.y - 0.1,
+                playerBody.position.y - currentPlayerRadius,
                 rayOriginLow.z
             );
 
             let hitLow = false;
-            const rayResultStep = new CANNON.RaycastResult(); // Usar uma nova variável para evitar conflito
-            // Verifica colisão com terreno (rua), estrada, cubos e blocos
-            world.raycastAny(rayOriginLow, rayTargetLow, {}, rayResultStep);
-            // A lista de corpos "chão" para subida de degraus
+            const rayResultStep = new CANNON.RaycastResult();
+            // Verifica colisão com terreno, blocos e construções - varre de cima para baixo até o nível dos pés
+            world.raycastClosest(rayOriginLow, rayTargetLow, {}, rayResultStep);
             const stepClimbGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
             if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
                 hitLow = true;
             }
 
             const rayOriginHigh = new CANNON.Vec3(
-                playerBody.position.x + playerHorizontalForwardCannon.x * rayLength,
-                playerBody.position.y - currentPlayerRadius + stepClimbHeight + 0.05, // Ajusta para a base da esfera
-                rayOriginLow.z + playerHorizontalForwardCannon.z * rayLength
+                rayOriginLow.x,
+                playerBody.position.y - currentPlayerRadius + stepClimbHeight + 0.1,
+                rayOriginLow.z
             );
             const rayTargetHigh = new CANNON.Vec3(
                 rayOriginHigh.x,
-                rayOriginHigh.y - 0.1,
+                rayOriginHigh.y - 0.05,
                 rayOriginHigh.z
             );
 
             let hitHigh = false;
-            rayResultStep.reset(); // Resetar para o próximo raycast
-            world.raycastAny(rayOriginHigh, rayTargetHigh, {}, rayResultStep);
-            if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
+            const rayResultHigh = new CANNON.RaycastResult();
+            world.raycastAny(rayOriginHigh, rayTargetHigh, {}, rayResultHigh);
+            if (rayResultHigh.hasHit && stepClimbGroundBodies.includes(rayResultHigh.body)) {
                 hitHigh = true;
             }
 
             if (hitLow && !hitHigh && Math.abs(playerBody.velocity.y) < 0.1) {
-                const obstacleHeight = rayOriginLow.y - rayResultStep.hitPointWorld.y;
-                if (obstacleHeight > 0.01 && obstacleHeight <= stepClimbHeight) {
-                    playerBody.velocity.y = 2;
+                const playerBottomY = playerBody.position.y - currentPlayerRadius;
+                const obstacleTopY = rayResultStep.hitPointWorld.y;
+                const stepHeight = obstacleTopY - playerBottomY;
+
+                if (stepHeight > 0.02 && stepHeight <= stepClimbHeight) {
+                    playerBody.velocity.y = 7; // Impulso para subir o degrau (g = -30)
                 }
             }
 
