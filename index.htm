@@ -2809,6 +2809,7 @@
                 linearDamping: 0.5, // Reduzido de 0.9 para melhor movimentação
                 angularDamping: 0.9,
                 fixedRotation: true, // Mantém rotação fixa para a câmera
+                collisionFilterGroup: 2, // Grupo 2 para o jogador (para ser ignorado em raycasts de degraus)
                 allowSleep: true, // Permite que o jogador entre em modo de "sono"
                 sleepSpeedLimit: 0.01, // Velocidade linear mínima para "acordar"
                 sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer"
@@ -4615,6 +4616,10 @@
 
             camera.getWorldDirection(forward);
             forward.y = 0;
+            if (forward.lengthSq() < 0.01) {
+                // Fallback se estiver olhando diretamente para cima ou para baixo: usa a rotação Y da câmera
+                forward.set(-Math.sin(camera.rotation.y), 0, -Math.cos(camera.rotation.y));
+            }
             forward.normalize();
             right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
@@ -4697,64 +4702,109 @@
 
             // Lógica de subida de degraus (ajustada para permitir subir troncos e baús de 1.0 de altura)
             const stepClimbHeight = 1.1;
-            const rayLength = playerHalfWidth + 0.1;
+            const rayLength = playerHalfWidth + 0.15; // Ligeiramente mais longo para detecção antecipada
 
             let playerHorizontalForwardCannon = new CANNON.Vec3(playerBody.velocity.x, 0, playerBody.velocity.z);
-            // Se o jogador estiver tentando se mover, usa a direção desejada para o raycast de degraus.
-            // Isso permite detectar degraus mesmo quando o jogador está bloqueado (velocidade zero).
             if (movementVector.lengthSq() > 0) {
                 playerHorizontalForwardCannon.set(movementVector.x, 0, movementVector.z);
             }
 
             if (playerHorizontalForwardCannon.length() > 0) {
                 playerHorizontalForwardCannon.normalize();
-            }
 
-            const rayOriginLow = new CANNON.Vec3(
-                playerBody.position.x + playerHorizontalForwardCannon.x * rayLength,
-                playerBody.position.y - currentPlayerRadius + stepClimbHeight,
-                playerBody.position.z + playerHorizontalForwardCannon.z * rayLength
-            );
-            const rayTargetLow = new CANNON.Vec3(
-                rayOriginLow.x,
-                playerBody.position.y - currentPlayerRadius,
-                rayOriginLow.z
-            );
-
-            let hitLow = false;
-            const rayResultStep = new CANNON.RaycastResult();
-            // Verifica colisão com terreno, blocos e construções - varre de cima para baixo até o nível dos pés
-            world.raycastClosest(rayOriginLow, rayTargetLow, {}, rayResultStep);
-            const stepClimbGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
-            if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
-                hitLow = true;
-            }
-
-            const rayOriginHigh = new CANNON.Vec3(
-                rayOriginLow.x,
-                playerBody.position.y - currentPlayerRadius + stepClimbHeight + 0.1,
-                rayOriginLow.z
-            );
-            const rayTargetHigh = new CANNON.Vec3(
-                rayOriginHigh.x,
-                rayOriginHigh.y - 0.05,
-                rayOriginHigh.z
-            );
-
-            let hitHigh = false;
-            const rayResultHigh = new CANNON.RaycastResult();
-            world.raycastAny(rayOriginHigh, rayTargetHigh, {}, rayResultHigh);
-            if (rayResultHigh.hasHit && stepClimbGroundBodies.includes(rayResultHigh.body)) {
-                hitHigh = true;
-            }
-
-            if (hitLow && !hitHigh && Math.abs(playerBody.velocity.y) < 0.1) {
                 const playerBottomY = playerBody.position.y - currentPlayerRadius;
-                const obstacleTopY = rayResultStep.hitPointWorld.y;
-                const stepHeight = obstacleTopY - playerBottomY;
+                const stepClimbGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
 
-                if (stepHeight > 0.02 && stepHeight <= stepClimbHeight) {
-                    playerBody.velocity.y = 11; // Impulso para subir o degrau (g = -30)
+                // 1. Raycast HORIZONTAL para detectar a face do obstáculo
+                // Começa do centro do jogador e ignora o próprio corpo usando máscaras de colisão
+                const faceRayOrigin = new CANNON.Vec3(playerBody.position.x, playerBottomY + 0.1, playerBody.position.z);
+                const faceRayTarget = new CANNON.Vec3(
+                    faceRayOrigin.x + playerHorizontalForwardCannon.x * rayLength,
+                    faceRayOrigin.y,
+                    faceRayOrigin.z + playerHorizontalForwardCannon.z * rayLength
+                );
+                let faceRayHit = null;
+                world.raycastAll(faceRayOrigin, faceRayTarget, {}, (result) => {
+                    if (result.body !== playerBody && stepClimbGroundBodies.includes(result.body)) {
+                        if (!faceRayHit || result.distance < faceRayHit.distance) {
+                            faceRayHit = {
+                                body: result.body,
+                                hitPointWorld: new CANNON.Vec3().copy(result.hitPointWorld),
+                                distance: result.distance
+                            };
+                        }
+                    }
+                });
+
+                if (faceRayHit) {
+                    // 2. Obstáculo detectado. Agora encontra o topo com um raycast VERTICAL de cima para baixo.
+                    const topRayOrigin = new CANNON.Vec3(
+                        faceRayHit.hitPointWorld.x + playerHorizontalForwardCannon.x * 0.05, // 5cm adentro do obstáculo
+                        playerBottomY + 3.0, // Começa 3m acima dos pés
+                        faceRayHit.hitPointWorld.z + playerHorizontalForwardCannon.z * 0.05
+                    );
+                    const topRayTarget = new CANNON.Vec3(
+                        topRayOrigin.x,
+                        playerBottomY, // Vai até o nível dos pés
+                        topRayOrigin.z
+                    );
+                    let topRayHit = null;
+                    world.raycastAll(topRayOrigin, topRayTarget, {}, (result) => {
+                        if (result.body !== playerBody && stepClimbGroundBodies.includes(result.body)) {
+                            if (!topRayHit || result.distance < topRayHit.distance) {
+                                topRayHit = {
+                                    body: result.body,
+                                    hitPointWorld: new CANNON.Vec3().copy(result.hitPointWorld),
+                                    distance: result.distance
+                                };
+                            }
+                        }
+                    });
+
+                    if (topRayHit) {
+                        const obstacleTopY = topRayHit.hitPointWorld.y;
+                        const stepHeight = obstacleTopY - playerBottomY;
+
+                        if (stepHeight > 0.02 && stepHeight <= stepClimbHeight) {
+                            // 3. Verificação de espaço livre (cabeça e corpo)
+                            const headRayOrigin = new CANNON.Vec3(playerBody.position.x, playerBottomY + 1.6, playerBody.position.z);
+                            const headRayTarget = new CANNON.Vec3(
+                                headRayOrigin.x + playerHorizontalForwardCannon.x * rayLength,
+                                headRayOrigin.y,
+                                headRayOrigin.z + playerHorizontalForwardCannon.z * rayLength
+                            );
+                            let hitHigh = false;
+                            world.raycastAll(headRayOrigin, headRayTarget, {}, (result) => {
+                                if (result.body !== playerBody && stepClimbGroundBodies.includes(result.body)) {
+                                    hitHigh = true;
+                                }
+                            });
+
+                            // 4. Verificação de espaço sobre o degrau
+                            const clearanceRayOrigin = new CANNON.Vec3(
+                                topRayHit.hitPointWorld.x,
+                                obstacleTopY + 0.1,
+                                topRayHit.hitPointWorld.z
+                            );
+                            const clearanceRayTarget = new CANNON.Vec3(
+                                clearanceRayOrigin.x,
+                                obstacleTopY + playerBodyHeight,
+                                clearanceRayOrigin.z
+                            );
+                            let noSpaceOnStep = false;
+                            world.raycastAll(clearanceRayOrigin, clearanceRayTarget, {}, (result) => {
+                                if (result.body !== playerBody && stepClimbGroundBodies.includes(result.body)) {
+                                    noSpaceOnStep = true;
+                                }
+                            });
+
+                            // Mantém o impulso enquanto o degrau for detectado e não houver bloqueio superior.
+                            // Isso supera o "engasgo" (snagging) da colisão de caixas no Cannon.js.
+                            if (!hitHigh && !noSpaceOnStep && playerBody.velocity.y < 5) {
+                                playerBody.velocity.y = 11; // Impulso persistente para subir o degrau
+                            }
+                        }
+                    }
                 }
             }
 
@@ -5169,16 +5219,21 @@
             }
 
             isWorldReady = true; window.isWorldReady = true;
-            window.THREE = THREE;
-            window.addItemToInventory = addItemToInventory;
-            window.openBackpack = openBackpack;
-            window.closeBackpack = closeBackpack;
-            window.createPlaceableBlock = createPlaceableBlock;
-            window.startDestruction = startDestruction;
+            window.playerBody = playerBody;
+            window.camera = camera;
             window.beltItems = beltItems;
-            window.updateUI = updateUI;
             window.selectedSlotIndex = selectedSlotIndex;
         }
+
+        // Expor para testes
+        window.THREE = THREE;
+        window.addItemToInventory = addItemToInventory;
+        window.openBackpack = openBackpack;
+        window.closeBackpack = closeBackpack;
+        window.createPlaceableBlock = createPlaceableBlock;
+        window.startDestruction = startDestruction;
+        window.createChest = createChest;
+        window.createBox = createBox;
 
         // Listener de evento para o botão "Jogar"
         document.getElementById('startButton').addEventListener('click', startGame);
