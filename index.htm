@@ -616,6 +616,7 @@
 
         // Variável para controlar se o personagem pode pular
         let canJump = true;
+        let wasGrounded = true;
         let isWaterJumping = false; // NOVO: Para controlar o salto a partir da água
 
         // Variáveis globais para dimensões do jogador e vetor de direção horizontal
@@ -688,6 +689,203 @@
 
         // Instância do carregador de textura, agora usando o gerenciador de carregamento
         const textureLoader = new THREE.TextureLoader(loadingManager);
+
+        // --- SISTEMA DE ÁUDIO PROCEDURAL ---
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.masterGain = null;
+            }
+
+            init() {
+                if (this.ctx) return;
+                this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                this.masterGain = this.ctx.createGain();
+                this.masterGain.connect(this.ctx.destination);
+                this.masterGain.gain.value = 0.3;
+            }
+
+            resume() {
+                this.init();
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            playFootstep() {
+                this.resume();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
+                osc.connect(gain);
+                gain.connect(this.masterGain);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.1);
+            }
+
+            playJump() {
+                this.resume();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(100, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(300, this.ctx.currentTime + 0.2);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 0.2);
+                osc.connect(gain);
+                gain.connect(this.masterGain);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.2);
+            }
+
+            playLand() {
+                this.resume();
+                const bufferSize = this.ctx.sampleRate * 0.1;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = 200;
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.2, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.masterGain);
+                noise.start();
+            }
+
+            playDestruction() {
+                this.resume();
+                const bufferSize = this.ctx.sampleRate * 0.2;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const data = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+                const noise = this.ctx.createBufferSource();
+                noise.buffer = buffer;
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = 800;
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2);
+                noise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.masterGain);
+                noise.start();
+            }
+
+            playPickup() {
+                this.resume();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1200, this.ctx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
+                osc.connect(gain);
+                gain.connect(this.masterGain);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.1);
+            }
+
+            playPlace() {
+                this.resume();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+                gain.gain.setValueAtTime(0.03, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.05);
+                osc.connect(gain);
+                gain.connect(this.masterGain);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.05);
+            }
+
+            playHit() {
+                this.resume();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+                osc.frequency.linearRampToValueAtTime(50, this.ctx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.1, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
+                osc.connect(gain);
+                gain.connect(this.masterGain);
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.1);
+            }
+        }
+        const sounds = new SoundEngine();
+
+        // --- SISTEMA DE PARTÍCULAS ---
+        class ParticleSystem {
+            constructor(scene) {
+                this.scene = scene;
+                this.particles = [];
+                this.pool = [];
+            }
+
+            emit(position, color, count = 15) {
+                for (let i = 0; i < count; i++) {
+                    let particle;
+                    if (this.pool.length > 0) {
+                        particle = this.pool.pop();
+                    } else {
+                        const geometry = new THREE.BoxGeometry(0.15, 0.15, 0.15);
+                        const material = new THREE.MeshLambertMaterial();
+                        particle = new THREE.Mesh(geometry, material);
+                    }
+                    particle.material.color.set(color);
+                    particle.position.copy(position);
+                    particle.position.x += (Math.random() - 0.5) * 0.5;
+                    particle.position.y += (Math.random() - 0.5) * 0.5;
+                    particle.position.z += (Math.random() - 0.5) * 0.5;
+                    particle.visible = true;
+
+                    const velocity = new THREE.Vector3(
+                        (Math.random() - 0.5) * 5,
+                        Math.random() * 6,
+                        (Math.random() - 0.5) * 5
+                    );
+
+                    this.particles.push({
+                        mesh: particle,
+                        velocity: velocity,
+                        life: 0.8 + Math.random() * 0.4
+                    });
+                    this.scene.add(particle);
+                }
+            }
+
+            update(dt) {
+                for (let i = this.particles.length - 1; i >= 0; i--) {
+                    const p = this.particles[i];
+                    p.mesh.position.addScaledVector(p.velocity, dt);
+                    p.velocity.y -= 20 * dt; // Gravidade das partículas
+                    p.life -= dt;
+
+                    if (p.life <= 0) {
+                        p.mesh.visible = false;
+                        this.pool.push(p.mesh);
+                        this.particles.splice(i, 1);
+                    } else {
+                        p.mesh.scale.setScalar(p.life); // Encolhe ao morrer
+                    }
+                }
+            }
+        }
+        let particles;
 
         // Referência ao botão de ícone do menu
         let menuIconButton;
@@ -1686,6 +1884,7 @@
 
         // NOVO: Função para criar uma nova caixa dinâmica
         function createBox(position, quaternion) {
+            if (typeof sounds !== 'undefined') sounds.playPlace();
             const cubeSize = 1;
             const initialCubeMass = 200;
             const cubeShape = new CANNON.Box(new CANNON.Vec3(cubeSize / 2, cubeSize / 2, cubeSize / 2));
@@ -1768,6 +1967,7 @@
 
         // NOVO: Função para criar um novo baú
         function createChest(position, quaternion) {
+            if (typeof sounds !== 'undefined') sounds.playPlace();
             const chestSize = 1;
             const chestShape = new CANNON.Box(new CANNON.Vec3(chestSize / 2, chestSize / 2, chestSize / 2));
             const chestGeometry = new THREE.BoxGeometry(chestSize, chestSize, chestSize);
@@ -2375,6 +2575,7 @@
 
             // Configuração da Cena Three.js
             scene = new THREE.Scene();
+            particles = new ParticleSystem(scene);
             window.scene = scene;
             skyColor = new THREE.Color(0x87CEEB);
             underwaterColor = new THREE.Color(0x001e3d);
@@ -3149,6 +3350,7 @@
                             const jumpImpulse = isInWater ? 600 * 3 : 400 * 3;
                             playerBody.applyImpulse(new CANNON.Vec3(0, jumpImpulse, 0));
                             canJump = false; // Impede pulos múltiplos
+                            sounds.playJump();
                             if (isInWater) {
                                 isWaterJumping = true;
                                 // Desativa temporariamente as forças de flutuação para permitir que o salto tenha efeito
@@ -3542,6 +3744,7 @@
             }
 
             function collectObject() {
+                if (typeof sounds !== 'undefined') sounds.playPickup();
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(scene.children, true);
                 for (const intersect of intersects) {
@@ -3572,6 +3775,7 @@
             }
 
             function grabObject() {
+                sounds.playPickup();
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(scene.children, true); // Search recursively
                 const allPickableBodies = collectibleBoxes.map(b => b.body);
@@ -3970,6 +4174,17 @@
                 // Se estiver na mira, continua o progresso
                 destroyProgress += 1 / 60;
 
+                if (frameCount % 15 === 0) {
+                    sounds.playHit();
+                    if (destroyTargetPosition) {
+                        let pColor = 0x8b4513; // Terra
+                        const tType = getActionType(destroyTarget);
+                        if (tType === 'capim') pColor = 0x228b22;
+                        else if (tType === stoneItemName) pColor = 0x808080;
+                        particles.emit(destroyTargetPosition, pColor, 3);
+                    }
+                }
+
                 // Efeitos de partículas unificados
                 if (destroyTargetDigInfo && Math.random() < 0.5) {
                     createDebris(destroyTargetDigInfo.mound.position, 2, false);
@@ -3981,6 +4196,7 @@
 
 
                 if (destroyProgress >= targetDestroyTime) {
+                     sounds.playDestruction();
                      if (destroyTargetDigInfo) {
                         const mound = destroyTargetDigInfo.mound;
                         createDustCloud(mound.position, false);
@@ -4089,6 +4305,7 @@
 
             // Atualiza o mundo da física
             world.step(1 / 60);
+            if (particles) particles.update(1 / 60);
 
             // Lógica para os cubos e blocos: sempre dinâmicos e com massa original, a menos que sejam segurados
             // Apenas os cubos são pickable agora
@@ -4570,6 +4787,7 @@
                 playerBody.wakeUp();
             }
 
+
             // Atualiza a posição da câmera para a posição do corpo de física do jogador
             camera.position.copy(playerBody.position);
             camera.position.y += cameraEyeLevelOffset;
@@ -4699,6 +4917,16 @@
                 }
             }
 
+            // Efeitos de áudio de movimento (Passos e Pouso)
+            const isGrounded = canJump;
+            if (isGrounded && !wasGrounded && playerBody.velocity.y < -0.1) {
+                sounds.playLand();
+            }
+            if (isGrounded && movementVector.lengthSq() > 0 && frameCount % 20 === 0 && !isInWater) {
+                sounds.playFootstep();
+            }
+            wasGrounded = isGrounded;
+
 
             // Lógica de subida de degraus (ajustada para permitir subir troncos e baús de 1.0 de altura)
             const stepClimbHeight = 1.1;
@@ -4800,8 +5028,8 @@
 
                             // Mantém o impulso enquanto o degrau for detectado e não houver bloqueio superior.
                             // Isso supera o "engasgo" (snagging) da colisão de caixas no Cannon.js.
-                            if (!hitHigh && !noSpaceOnStep && playerBody.velocity.y < 5) {
-                                playerBody.velocity.y = 11; // Impulso persistente para subir o degrau
+                            if (!hitHigh && !noSpaceOnStep && playerBody.velocity.y < 0.1 && movementVector.lengthSq() > 0) {
+                                playerBody.velocity.y = 8; // Impulso para subir o degrau
                             }
                         }
                     }
@@ -5183,6 +5411,7 @@
 
         // Função para iniciar o jogo
         function startGame() {
+            if (typeof sounds !== 'undefined') sounds.init();
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             init(); // Inicializa os componentes do jogo
             populateCapim(); // NOVO: Popula a ilha com capim
