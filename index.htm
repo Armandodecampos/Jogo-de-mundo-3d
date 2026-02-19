@@ -1774,9 +1774,15 @@
 
             const chestBody = new CANNON.Body({
                 mass: 0, // Estático
-                shape: chestShape,
+                type: CANNON.Body.STATIC, // Explicitamente estático
                 material: constructionMaterial,
+                linearDamping: 0.99,
+                angularDamping: 0.99,
+                allowSleep: true,
+                sleepSpeedLimit: 0.01,
+                sleepTimeLimit: 1.0
             });
+            chestBody.addShape(chestShape); // Adiciona a forma separadamente para consistência
             chestBody.position.copy(position);
             if (quaternion) {
                 chestBody.quaternion.copy(quaternion);
@@ -4699,9 +4705,16 @@
             const stepClimbHeight = 1.1;
             const rayLength = playerHalfWidth + 0.1;
 
-            const playerHorizontalForwardCannon = new CANNON.Vec3(playerBody.velocity.x, 0, playerBody.velocity.z);
-            if (playerHorizontalForwardCannon.length() > 0) {
+            // Usa a direção do movimento (teclas) se disponível, senão usa a velocidade atual
+            const playerHorizontalForwardCannon = new CANNON.Vec3(0, 0, 0);
+            if (movementVector.lengthSq() > 0) {
+                playerHorizontalForwardCannon.set(movementVector.x, 0, movementVector.z);
                 playerHorizontalForwardCannon.normalize();
+            } else {
+                playerHorizontalForwardCannon.set(playerBody.velocity.x, 0, playerBody.velocity.z);
+                if (playerHorizontalForwardCannon.length() > 0) {
+                    playerHorizontalForwardCannon.normalize();
+                }
             }
 
             const rayOriginLow = new CANNON.Vec3(
@@ -4719,7 +4732,7 @@
             const rayResultStep = new CANNON.RaycastResult();
             // Verifica colisão com terreno, blocos e construções - varre de cima para baixo até o nível dos pés
             world.raycastClosest(rayOriginLow, rayTargetLow, {}, rayResultStep);
-            const stepClimbGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+            const stepClimbGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies, ...placedChests.map(c => c.body)];
             if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
                 hitLow = true;
             }
@@ -4748,7 +4761,7 @@
                 const stepHeight = obstacleTopY - playerBottomY;
 
                 if (stepHeight > 0.02 && stepHeight <= stepClimbHeight) {
-                    playerBody.velocity.y = 11; // Impulso para subir o degrau (g = -30)
+                    playerBody.velocity.y = 12; // Impulso para subir o degrau (g = -30)
                 }
             }
 
