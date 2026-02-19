@@ -917,6 +917,7 @@
         let dirtTextureForHole; // NOVO: Textura de terra para o buraco
 
         let mounds = [];
+        let dirtMountains = []; // Exposto globalmente
         let visualMounds = []; // NOVO: Para os montes de terra visuais
         let closingMounds = []; // NOVO: Para animar o fechamento dos buracos
         let moundDomes = [];
@@ -2586,7 +2587,7 @@
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
             // Adiciona várias montanhas de terra por toda a ilha com tamanhos e formatos variados
             const stoneMountain = { x: 0, z: 0, r: 60, h: 40 }; // Montanha central menos larga
-            const dirtMountains = [];
+            dirtMountains = [];
             const numDirtMountains = 10; // Mais montanhas
             for (let i = 0; i < numDirtMountains; i++) {
                 let x, z, r;
@@ -2616,8 +2617,7 @@
                     x: x,
                     z: z,
                     r: r,
-                    h: 10 + Math.random() * 35, // Altura entre 10 e 45
-                    plateauRatio: 0.1 + Math.random() * 0.5 // PlateauRatio entre 0.1 e 0.6
+                    h: 5 + 45 * Math.pow(Math.random(), 2) // Altura variando, maioria rasa
                 });
             }
 
@@ -2636,34 +2636,20 @@
 
                 let mountainHeight = 0;
 
-                // Central Stone Mountain
+                // Central Stone Mountain (Meia esfera)
                 const dStone = Math.sqrt(x * x + z * z);
                 if (dStone < stoneMountain.r) {
-                    const plateauRatio = 0.4; // Mantém fixo para a central ou pode randomizar também
-                    const t = dStone / stoneMountain.r;
-                    if (t < plateauRatio) {
-                        mountainHeight = stoneMountain.h;
-                    } else {
-                        const t_adj = (t - plateauRatio) / (1 - plateauRatio);
-                        mountainHeight = stoneMountain.h * Math.cos(t_adj * Math.PI / 2);
-                    }
+                    const hVal = stoneMountain.h * Math.sqrt(1 - Math.pow(dStone / stoneMountain.r, 2));
+                    mountainHeight = hVal;
                 }
 
-                // Random Dirt Mountains
+                // Random Dirt Mountains (Meias esferas)
                 dirtMountains.forEach(m => {
                     const dx = x - m.x;
                     const dz = z - m.z;
                     const d = Math.sqrt(dx * dx + dz * dz);
                     if (d < m.r) {
-                        const plateauRatio = m.plateauRatio;
-                        const t = d / m.r;
-                        let hVal;
-                        if (t < plateauRatio) {
-                            hVal = m.h;
-                        } else {
-                            const t_adj = (t - plateauRatio) / (1 - plateauRatio);
-                            hVal = m.h * Math.cos(t_adj * Math.PI / 2);
-                        }
+                        const hVal = m.h * Math.sqrt(1 - Math.pow(d / m.r, 2));
                         mountainHeight = Math.max(mountainHeight, hVal);
                     }
                 });
