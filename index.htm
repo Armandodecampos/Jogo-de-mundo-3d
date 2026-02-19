@@ -540,7 +540,7 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 128; // Resolução global do terreno
+        const hfGridSize = 256; // Resolução global do terreno
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -1670,7 +1670,16 @@
 
             scene.add(holeGroup);
 
+            // Calcula os índices do heightfield para o ponto de impacto (coordenadas locais do heightfield)
+            const mx = Math.floor((hitPoint.x + worldSize / 2) / (worldSize / (hfGridSize - 1)));
+            const mz = Math.floor((worldSize / 2 - hitPoint.z) / (worldSize / (hfGridSize - 1)));
+
             const newMound = {
+                x: mx,
+                z: mz,
+                radius: 2.0 * (hfGridSize / worldSize), // Raio em unidades de índice (aprox 2 metros)
+                height: -1.0, // Altura do buraco (negativa para cavar)
+                flattened: false,
                 position: hitPoint.clone(),
                 mesh: holeGroup,
                 createdAt: world.time,
@@ -1679,8 +1688,10 @@
                 lastDugAt: world.time // NOVO: Rastreia a última vez que foi cavado
             };
 
-            // Adiciona o novo monte à lista de montes visuais e o retorna
+            // Adiciona o novo monte às listas e o retorna
             visualMounds.push(newMound);
+            mounds.push(newMound);
+            updateIslandGeometry();
             return newMound;
         }
 
@@ -2322,10 +2333,16 @@
 
             for (const mound of mounds) {
                 if (mound.flattened) continue;
-                for (let i = 0; i < hfGridSize; i++) {
-                    for (let j = 0; j < hfGridSize; j++) {
-                        const dx = j - mound.x;
-                        const dz = i - mound.z;
+                // Otimização: percorre apenas a área afetada pelo mound
+                const startI = Math.max(0, Math.floor(mound.x - mound.radius));
+                const endI = Math.min(hfGridSize - 1, Math.ceil(mound.x + mound.radius));
+                const startJ = Math.max(0, Math.floor(mound.z - mound.radius));
+                const endJ = Math.min(hfGridSize - 1, Math.ceil(mound.z + mound.radius));
+
+                for (let i = startI; i <= endI; i++) { // X
+                    for (let j = startJ; j <= endJ; j++) { // Y (Cannon)
+                        const dx = i - mound.x;
+                        const dz = j - mound.z;
                         const distSq = dx * dx + dz * dz;
                         const radiusSq = mound.radius * mound.radius;
 
@@ -2341,6 +2358,7 @@
                 const newHfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
                 islandBody.removeShape(islandBody.shapes[0]);
                 islandBody.addShape(newHfShape);
+                islandBody.updateAABB();
             }
 
             if (islandMeshes.length > 0) {
@@ -2357,6 +2375,14 @@
                 }
                 mainIslandMesh.geometry.attributes.position.needsUpdate = true;
                 mainIslandMesh.geometry.computeVertexNormals();
+
+                // Sincroniza os outros tiles (opcional, mas bom para consistência visual em mundos pequenos)
+                for (let k = 1; k < islandMeshes.length; k++) {
+                    const otherMesh = islandMeshes[k].mesh;
+                    otherMesh.geometry.attributes.position.array.set(vertices);
+                    otherMesh.geometry.attributes.position.needsUpdate = true;
+                    otherMesh.geometry.computeVertexNormals();
+                }
             }
         }
 
@@ -4005,6 +4031,9 @@
                             mound.mesh.scale.set(newScale, newScale, newScale);
                             destroyProgress = 0; // Reinicia para o próximo estágio
                         }
+                        // Atualiza a física do terreno para refletir o crescimento do buraco
+                        mound.height = -1.0 * (mound.growthStage + 1) / moundGrowthStages.length;
+                        updateIslandGeometry();
                     } else if (destroyTargetMountainInfo) {
                         createDustCloud(destroyTargetMountainInfo.position, true);
                         createDebris(destroyTargetMountainInfo.position, 5, true);
@@ -4167,6 +4196,7 @@
             const currentTileX = Math.round(playerBody.position.x / worldSize) * worldSize;
             const currentTileZ = Math.round(playerBody.position.z / worldSize) * worldSize;
             islandBody.position.set(currentTileX - worldSize / 2, 0, currentTileZ + worldSize / 2);
+            islandBody.updateAABB();
 
             islandMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
@@ -4320,12 +4350,15 @@
                     if (mound.growthStage < 0) {
                         // Remove the mound completely
                         scene.remove(mound.mesh);
+                        const mIndex = mounds.indexOf(mound);
+                        if (mIndex !== -1) mounds.splice(mIndex, 1);
                         closingMounds.splice(i, 1);
                     } else {
                         // Set the scale to the previous stage
                         const newScale = moundGrowthStages[mound.growthStage];
                         mound.mesh.scale.set(newScale, newScale, newScale);
                     }
+                    updateIslandGeometry();
                 }
             }
 
