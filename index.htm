@@ -1566,26 +1566,26 @@
             }
         }
 
-        function createMound(intersect) {
+        function createMound(intersect, isPositive = false) {
             // Garante que os modelos e materiais necessários estejam carregados
             if (!holeGeometryTemplate || !holeMaterial) {
                 return null;
             }
 
-            // NOVO: Remove todos os buracos existentes antes de criar um novo
-            visualMounds.forEach(mound => {
-                scene.remove(mound.mesh);
-            });
-            visualMounds.length = 0; // Limpa o array
-
             const hitPoint = intersect.point;
-
-            // Cria um grupo para conter todos os objetos do buraco
             const holeGroup = new THREE.Group();
             holeGroup.position.copy(hitPoint);
+            let finalQuaternion = new THREE.Quaternion();
 
-            // Define as dimensões e segmentos do vulcão
-            const volcanoInnerRadius = 1.0;
+            if (!isPositive) {
+                // NOVO: Remove todos os buracos existentes antes de criar um novo
+                visualMounds.forEach(mound => {
+                    scene.remove(mound.mesh);
+                });
+                visualMounds.length = 0; // Limpa o array
+
+                // Define as dimensões e segmentos do vulcão
+                const volcanoInnerRadius = 1.0;
             const volcanoOuterRadiusAtTop = 1.0;
             const volcanoOuterRadiusAtBottom = 1.5;
             const mountainRadius = 160.0;
@@ -1661,15 +1661,15 @@
             // Aplica uma rotação adicional para alinhar corretamente o modelo
             holeGroup.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2));
 
-            // Salva o quaternion final para uso posterior
-            const finalQuaternion = holeGroup.quaternion.clone();
+                // Salva o quaternion final para uso posterior
+                finalQuaternion.copy(holeGroup.quaternion);
 
-            // Define a escala inicial para a animação
-            const initialScale = moundGrowthStages[0];
-            holeGroup.scale.set(initialScale, initialScale, initialScale);
+                // Define a escala inicial para a animação
+                const initialScale = moundGrowthStages[0];
+                holeGroup.scale.set(initialScale, initialScale, initialScale);
 
-
-            scene.add(holeGroup);
+                scene.add(holeGroup);
+            }
 
             // Calcula os índices do heightfield para o ponto de impacto (coordenadas locais do heightfield)
             const mx = Math.floor((hitPoint.x + worldSize / 2) / (worldSize / (hfGridSize - 1)));
@@ -1679,7 +1679,7 @@
                 x: mx,
                 z: mz,
                 radius: 2.0 * (hfGridSize / worldSize), // Raio em unidades de índice (aprox 2 metros)
-                height: -1.0, // Altura do buraco (negativa para cavar)
+                height: isPositive ? 0 : -1.0, // Altura do buraco ou monte
                 flattened: false,
                 position: hitPoint.clone(),
                 mesh: holeGroup,
@@ -1690,7 +1690,7 @@
             };
 
             // Adiciona o novo monte às listas e o retorna
-            visualMounds.push(newMound);
+            if (!isPositive) visualMounds.push(newMound);
             mounds.push(newMound);
             updateIslandGeometry(newMound);
             return newMound;
@@ -3351,9 +3351,9 @@
 
             function getActionType(item) {
                 if (item === null) return 'grab';
-                // Ferramentas de destruição
+                // Ferramentas de destruição e modificação de terreno
                 // O martelo foi removido temporariamente das ferramentas de destruição
-                if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === branchItemName) return 'destroy';
+                if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === branchItemName || item.name === dirtItemName) return 'destroy';
                 // Itens de colocação
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === chestItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === stoneItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
@@ -3365,7 +3365,12 @@
                 const intersects = raycaster.intersectObjects(scene.children, true);
                 let target = null;
 
-                const heldItemName = beltItems[selectedSlotIndex]?.name;
+                const heldItem = beltItems[selectedSlotIndex];
+                const heldItemName = heldItem?.name;
+                const heldItemQuantity = heldItem?.quantity || 0;
+
+                // Se estiver com terra equipada, precisa ter quantidade maior que zero
+                if (heldItemName === dirtItemName && heldItemQuantity <= 0) return;
 
                 // Impede a destruição com o martelo, mas permite com outras ferramentas ou de mão vazia
                 if (heldItemName === hammerItemName) {
@@ -3436,24 +3441,40 @@
                         const intersect = target.intersect;
                         const hitPoint = intersect.point;
                         const volcanoOuterRadiusAtBottom = 1.5;
+                        const isBuilding = (heldItemName === dirtItemName);
 
                         let targetMound = null;
-                        for (const mound of visualMounds) {
-                            if (mound.position.distanceTo(hitPoint) < volcanoOuterRadiusAtBottom && mound.growthStage < moundGrowthStages.length - 1) {
-                                targetMound = mound;
-                                break;
+                        // Ao construir, procuramos em todos os mounds ativos, não apenas nos visuais recentes
+                        const moundsToSearch = isBuilding ? mounds.filter(m => !m.flattened) : visualMounds;
+
+                        for (const mound of moundsToSearch) {
+                            const dist = mound.position.distanceTo(hitPoint);
+                            if (dist < volcanoOuterRadiusAtBottom) {
+                                if (isBuilding) {
+                                    // Se estiver construindo, aceita qualquer mound que possa crescer em altura
+                                    if (mound.height < 1.0) {
+                                        targetMound = mound;
+                                        break;
+                                    }
+                                } else {
+                                    // Se estiver cavando, usa a lógica original de estágios
+                                    if (mound.growthStage < moundGrowthStages.length - 1) {
+                                        targetMound = mound;
+                                        break;
+                                    }
+                                }
                             }
                         }
 
                         if (targetMound) {
                             currentMound = targetMound;
                         } else {
-                            currentMound = createMound(intersect);
+                            currentMound = createMound(intersect, isBuilding);
                         }
 
                         if (currentMound) {
-                            destroyTargetDigInfo = { mound: currentMound };
-                            baseDurability = 1.0;
+                            destroyTargetDigInfo = { mound: currentMound, isBuilding: isBuilding };
+                            baseDurability = isBuilding ? 0.5 : 1.0; // Adicionar terra é mais rápido que cavar
                             materialType = 'earth';
                         } else {
                             isDestroying = false;
@@ -3956,6 +3977,9 @@
         // Loop principal de animação do jogo
         function animate() {
             requestAnimationFrame(animate);
+            window.isDestroying = isDestroying;
+            window.destroyProgress = destroyProgress;
+            window.targetDestroyTime = targetDestroyTime;
 
             // Atualiza exibição de peso (mesmo se pausado, para refletir mudanças no inventário)
             const totalWeight = calculateTotalWeight();
@@ -4022,25 +4046,79 @@
                 if (destroyProgress >= targetDestroyTime) {
                      if (destroyTargetDigInfo) {
                         const mound = destroyTargetDigInfo.mound;
-                        createDustCloud(mound.position, false);
-                        mound.growthStage++;
-                        addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
-                        updateBackpackDisplay();
+                        const isBuilding = destroyTargetDigInfo.isBuilding;
 
-                        if (mound.growthStage >= moundGrowthStages.length) {
-                            mound.growthStage = moundGrowthStages.length - 1;
-                            destructionComplete = true;
-                            isDestroying = false;
-                            progressContainer.style.display = 'none';
-                            mound.lastDugAt = world.time;
-                            currentMound = null;
+                        if (isBuilding) {
+                            // Lógica de adicionar terra
+                            if (mound.height < 0) {
+                                // Preenchendo um buraco
+                                mound.growthStage--;
+                                if (mound.growthStage < 0) {
+                                    mound.height = 0;
+                                    mound.flattened = true;
+                                    if (mound.mesh) scene.remove(mound.mesh);
+                                    const vIndex = visualMounds.indexOf(mound);
+                                    if (vIndex !== -1) visualMounds.splice(vIndex, 1);
+
+                                    destructionComplete = true;
+                                    isDestroying = false;
+                                    progressContainer.style.display = 'none';
+                                } else {
+                                    mound.height = -1.0 * (mound.growthStage + 1) / moundGrowthStages.length;
+                                    if (mound.mesh) {
+                                        const newScale = moundGrowthStages[mound.growthStage];
+                                        mound.mesh.scale.set(newScale, newScale, newScale);
+                                    }
+                                    destroyProgress = 0;
+                                }
+                            } else {
+                                // Criando um monte (positivo)
+                                mound.height += 0.25;
+                                if (mound.height >= 1.0) {
+                                    mound.height = 1.0;
+                                    destructionComplete = true;
+                                    isDestroying = false;
+                                    progressContainer.style.display = 'none';
+                                } else {
+                                    destroyProgress = 0;
+                                }
+                            }
+
+                            // Consome o item Terra
+                            const heldItem = beltItems[selectedSlotIndex];
+                            if (heldItem && heldItem.name === dirtItemName) {
+                                heldItem.quantity--;
+                                if (heldItem.quantity <= 0) {
+                                    beltItems[selectedSlotIndex] = null;
+                                }
+                            }
+                            updateBeltDisplay();
+                            updateBackpackDisplay();
+                            sounds.playPlace();
+                            createSmokeEffect(mound.position);
                         } else {
-                            const newScale = moundGrowthStages[mound.growthStage];
-                            mound.mesh.scale.set(newScale, newScale, newScale);
-                            destroyProgress = 0; // Reinicia para o próximo estágio
+                            // Lógica original de cavar
+                            createDustCloud(mound.position, false);
+                            mound.growthStage++;
+                            addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
+                            updateBackpackDisplay();
+
+                            if (mound.growthStage >= moundGrowthStages.length) {
+                                mound.growthStage = moundGrowthStages.length - 1;
+                                destructionComplete = true;
+                                isDestroying = false;
+                                progressContainer.style.display = 'none';
+                                mound.lastDugAt = world.time;
+                                currentMound = null;
+                            } else {
+                                const newScale = moundGrowthStages[mound.growthStage];
+                                if (mound.mesh) mound.mesh.scale.set(newScale, newScale, newScale);
+                                destroyProgress = 0; // Reinicia para o próximo estágio
+                            }
+                            // Atualiza a física do terreno para refletir o crescimento do buraco
+                            mound.height = -1.0 * (mound.growthStage + 1) / moundGrowthStages.length;
                         }
-                        // Atualiza a física do terreno para refletir o crescimento do buraco
-                        mound.height = -1.0 * (mound.growthStage + 1) / moundGrowthStages.length;
+
                         updateIslandGeometry(mound);
                     } else if (destroyTargetMountainInfo) {
                         createDustCloud(destroyTargetMountainInfo.position, true);
@@ -5221,6 +5299,12 @@
             }
 
             isWorldReady = true; window.isWorldReady = true;
+            window.mounds = mounds;
+            window.islandMeshes = islandMeshes;
+            window.visualMounds = visualMounds;
+            window.isDestroying = isDestroying;
+            window.destroyProgress = destroyProgress;
+            window.targetDestroyTime = targetDestroyTime;
             window.THREE = THREE;
             window.addItemToInventory = addItemToInventory;
             window.openBackpack = openBackpack;
