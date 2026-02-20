@@ -3355,7 +3355,7 @@
                 // O martelo foi removido temporariamente das ferramentas de destruição
                 if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === branchItemName || item.name === dirtItemName) return 'destroy';
                 // Itens de colocação
-                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === chestItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === stoneItemName) return 'place';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === chestItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === stoneItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
             }
 
@@ -3369,10 +3369,20 @@
                 const heldItemName = heldItem?.name;
                 const heldItemQuantity = heldItem?.quantity || 0;
 
+                // NOVO: Verifica se o item é uma ferramenta permitida para destruição/cavagem ou se é Terra para construção
+                const isAllowedTool = heldItem === null ||
+                                     heldItemName === axeItemName ||
+                                     heldItemName === pickaxeItemName ||
+                                     heldItemName === shovelItemName ||
+                                     heldItemName === branchItemName ||
+                                     heldItemName === dirtItemName;
+
+                if (!isAllowedTool) return;
+
                 // Se estiver com terra equipada, precisa ter quantidade maior que zero
                 if (heldItemName === dirtItemName && heldItemQuantity <= 0) return;
 
-                // Impede a destruição com o martelo, mas permite com outras ferramentas ou de mão vazia
+                // Impede a destruição com o martelo (já coberto pelo isAllowedTool, mas mantido por clareza)
                 if (heldItemName === hammerItemName) {
                     return;
                 }
@@ -3474,7 +3484,7 @@
 
                         if (currentMound) {
                             destroyTargetDigInfo = { mound: currentMound, isBuilding: isBuilding };
-                            baseDurability = isBuilding ? 0.5 : 1.0; // Adicionar terra é mais rápido que cavar
+                            baseDurability = isBuilding ? 0.02 : 1.0; // Adicionar terra é MUITO mais rápido (quase instantâneo no clique)
                             materialType = 'earth';
                         } else {
                             isDestroying = false;
