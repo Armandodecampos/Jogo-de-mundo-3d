@@ -540,7 +540,7 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 256; // Resolução global do terreno
+        const hfGridSize = 256; // Resolução global do terreno equilibrada
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -1692,7 +1692,7 @@
             // Adiciona o novo monte às listas e o retorna
             visualMounds.push(newMound);
             mounds.push(newMound);
-            updateIslandGeometry();
+            updateIslandGeometry(newMound);
             return newMound;
         }
 
@@ -2329,61 +2329,77 @@
         }
 
 
-        function updateIslandGeometry() {
-            const hfMatrix = JSON.parse(JSON.stringify(baseMatrix));
+        let currentHfMatrix = null;
+        function updateIslandGeometry(affectedMound = null) {
+            // Recalcula a matriz a partir da base + todos os mounds ativos
+            currentHfMatrix = baseMatrix.map(row => [...row]);
 
             for (const mound of mounds) {
                 if (mound.flattened) continue;
-                // Otimização: percorre apenas a área afetada pelo mound
                 const startI = Math.max(0, Math.floor(mound.x - mound.radius));
                 const endI = Math.min(hfGridSize - 1, Math.ceil(mound.x + mound.radius));
                 const startJ = Math.max(0, Math.floor(mound.z - mound.radius));
                 const endJ = Math.min(hfGridSize - 1, Math.ceil(mound.z + mound.radius));
+                const radiusSq = mound.radius * mound.radius;
 
-                for (let i = startI; i <= endI; i++) { // X
-                    for (let j = startJ; j <= endJ; j++) { // Y (Cannon)
+                for (let i = startI; i <= endI; i++) {
+                    for (let j = startJ; j <= endJ; j++) {
                         const dx = i - mound.x;
                         const dz = j - mound.z;
                         const distSq = dx * dx + dz * dz;
-                        const radiusSq = mound.radius * mound.radius;
-
                         if (distSq < radiusSq) {
-                            const heightOffset = Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
-                            hfMatrix[i][j] += heightOffset;
+                            currentHfMatrix[i][j] += Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
                         }
                     }
                 }
             }
 
-            if (islandBody && islandBody.shapes.length > 0) {
-                const newHfShape = new CANNON.Heightfield(hfMatrix, { elementSize: worldSize / (hfGridSize - 1) });
-                islandBody.removeShape(islandBody.shapes[0]);
-                islandBody.addShape(newHfShape);
-                islandBody.updateAABB();
-            }
+            // Atualiza a física de todos os 9 tiles do terreno
+            const newHfShape = new CANNON.Heightfield(currentHfMatrix, {
+                elementSize: worldSize / (hfGridSize - 1)
+            });
 
+            islandMeshes.forEach(tile => {
+                if (tile.body.shapes.length > 0) {
+                    tile.body.removeShape(tile.body.shapes[0]);
+                }
+                tile.body.addShape(newHfShape);
+                tile.body.updateAABB();
+            });
+
+            // Atualiza a malha visual (geometria compartilhada)
             if (islandMeshes.length > 0) {
-                const mainIslandMesh = islandMeshes[0].mesh;
-                const vertices = mainIslandMesh.geometry.attributes.position.array;
-                // Sincroniza os vértices da malha visual com a matriz do Heightfield usando o mesmo mapeamento do init()
-                for (let j = 0; j < hfGridSize; j++) {
-                    const j_cannon = (hfGridSize - 1) - j;
-                    for (let i = 0; i < hfGridSize; i++) {
-                        const height = hfMatrix[i][j_cannon];
-                        const index = (j * hfGridSize + i) * 3;
-                        vertices[index + 1] = height;
+                const geom = islandMeshes[0].mesh.geometry;
+                const vertices = geom.attributes.position.array;
+
+                if (affectedMound) {
+                    // Otimização: Atualiza apenas a região afetada pelo mound modificado
+                    const startI = Math.max(0, Math.floor(affectedMound.x - affectedMound.radius));
+                    const endI = Math.min(hfGridSize - 1, Math.ceil(affectedMound.x + affectedMound.radius));
+                    const startJ_cannon = Math.max(0, Math.floor(affectedMound.z - affectedMound.radius));
+                    const endJ_cannon = Math.min(hfGridSize - 1, Math.ceil(affectedMound.z + affectedMound.radius));
+
+                    for (let i = startI; i <= endI; i++) {
+                        for (let cannonJ = startJ_cannon; cannonJ <= endJ_cannon; cannonJ++) {
+                            const j = (hfGridSize - 1) - cannonJ;
+                            const height = currentHfMatrix[i][cannonJ];
+                            const index = (j * hfGridSize + i) * 3;
+                            vertices[index + 1] = height;
+                        }
+                    }
+                } else {
+                    // Sincronização completa
+                    for (let j = 0; j < hfGridSize; j++) {
+                        const cannonJ = (hfGridSize - 1) - j;
+                        for (let i = 0; i < hfGridSize; i++) {
+                            const height = currentHfMatrix[i][cannonJ];
+                            const index = (j * hfGridSize + i) * 3;
+                            vertices[index + 1] = height;
+                        }
                     }
                 }
-                mainIslandMesh.geometry.attributes.position.needsUpdate = true;
-                mainIslandMesh.geometry.computeVertexNormals();
-
-                // Sincroniza os outros tiles (opcional, mas bom para consistência visual em mundos pequenos)
-                for (let k = 1; k < islandMeshes.length; k++) {
-                    const otherMesh = islandMeshes[k].mesh;
-                    otherMesh.geometry.attributes.position.array.set(vertices);
-                    otherMesh.geometry.attributes.position.needsUpdate = true;
-                    otherMesh.geometry.computeVertexNormals();
-                }
+                geom.attributes.position.needsUpdate = true;
+                geom.computeVertexNormals();
             }
         }
 
@@ -2617,7 +2633,7 @@
                     x: x,
                     z: z,
                     r: r,
-                    h: 5 + 45 * Math.pow(Math.random(), 2) // Altura variando, maioria rasa
+                    h: 2 + 20 * Math.pow(Math.random(), 3) // Altura rasa, a maioria sendo bem baixa
                 });
             }
 
@@ -2636,20 +2652,20 @@
 
                 let mountainHeight = 0;
 
-                // Central Stone Mountain (Meia esfera)
+                // Central Stone Mountain (Formato suave de sino/cosseno para evitar bordas serrilhadas)
                 const dStone = Math.sqrt(x * x + z * z);
                 if (dStone < stoneMountain.r) {
-                    const hVal = stoneMountain.h * Math.sqrt(1 - Math.pow(dStone / stoneMountain.r, 2));
+                    const hVal = stoneMountain.h * 0.5 * (1 + Math.cos(Math.PI * dStone / stoneMountain.r));
                     mountainHeight = hVal;
                 }
 
-                // Random Dirt Mountains (Meias esferas)
+                // Random Dirt Mountains (Formato suave de sino/cosseno)
                 dirtMountains.forEach(m => {
                     const dx = x - m.x;
                     const dz = z - m.z;
                     const d = Math.sqrt(dx * dx + dz * dz);
                     if (d < m.r) {
-                        const hVal = m.h * Math.sqrt(1 - Math.pow(d / m.r, 2));
+                        const hVal = m.h * 0.5 * (1 + Math.cos(Math.PI * d / m.r));
                         mountainHeight = Math.max(mountainHeight, hVal);
                     }
                 });
@@ -2675,9 +2691,9 @@
             // Define a altura de cada vértice na geometria para corresponder à matriz do Heightfield.
             const vertices = islandGeometry.attributes.position.array;
             for (let j = 0; j < hfGridSize; j++) { // j é o índice da linha do Three.js (Z de -W/2 a W/2)
-                const j_cannon = (hfGridSize - 1) - j; // Inverte para alinhar com o mapeamento do Cannon
+                const cannonJ = (hfGridSize - 1) - j; // Inversão necessária para alinhar com Cannon-es
                 for (let i = 0; i < hfGridSize; i++) { // i é o índice da coluna do Three.js (X de -W/2 a W/2)
-                    const height = hfMatrix[i][j_cannon];
+                    const height = hfMatrix[i][cannonJ];
                     const index = (j * hfGridSize + i) * 3;
                     vertices[index + 1] = height; // Atualiza a coordenada Y
                 }
@@ -2689,13 +2705,6 @@
                 elementSize: worldSize / (hfGridSize - 1)
             });
 
-            islandBody = new CANNON.Body({ mass: 0, material: islandMaterial });
-            islandBody.addShape(hfShape);
-            // Os Heightfields são criados no plano XY, por isso rodamos para o plano XZ.
-            islandBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-            // Posiciona o corpo no canto do mundo para alinhar a grelha.
-            islandBody.position.set(-worldSize / 2, 0, worldSize / 2);
-            world.addBody(islandBody);
             const groundTextureURL = "https://dl.dropbox.com/scl/fi/9vs85irmh6wxvcybemvc6/textura-de-terra.png?rlkey=oidjt8wp9dkf5vsxh1r3xaec9&st=wn7x7au3&dl=0";
             const sandTextureURL = "https://dl.dropbox.com/scl/fi/glmbudn8mnv7b7hrc41zp/Textura-de-areia.png?rlkey=gag1m2x82xv99kejun0f6f86t&st=iff4jjst&dl=0";
             const grassTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=0"; // Textura de grama atualizada conforme solicitado
@@ -2703,16 +2712,29 @@
 
             const islandMeshMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff }); // Grass color placeholder
 
-
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                     const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
                     islandMesh.receiveShadow = true;
-                    islandMesh.userData.physicsBody = islandBody;
                     scene.add(islandMesh);
-                    islandMeshes.push({ mesh: islandMesh, offsetX: i * worldSize, offsetZ: j * worldSize });
+
+                    // Cria um corpo de física para cada tile para garantir colisão contínua
+                    const tileBody = new CANNON.Body({ mass: 0, material: islandMaterial });
+                    tileBody.addShape(hfShape);
+                    tileBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+                    world.addBody(tileBody);
+                    islandMesh.userData.physicsBody = tileBody;
+
+                    islandMeshes.push({
+                        mesh: islandMesh,
+                        body: tileBody,
+                        offsetX: i * worldSize,
+                        offsetZ: j * worldSize
+                    });
                 }
             }
+            // Define islandBody como o tile central para compatibilidade
+            window.islandBody = islandBody = islandMeshes[4].body;
 
             textureLoader.load(groundTextureURL, (groundTexture) => {
                 textureLoader.load(seabedTextureURL, (seabedTexture) => {
@@ -4019,7 +4041,7 @@
                         }
                         // Atualiza a física do terreno para refletir o crescimento do buraco
                         mound.height = -1.0 * (mound.growthStage + 1) / moundGrowthStages.length;
-                        updateIslandGeometry();
+                        updateIslandGeometry(mound);
                     } else if (destroyTargetMountainInfo) {
                         createDustCloud(destroyTargetMountainInfo.position, true);
                         createDebris(destroyTargetMountainInfo.position, 5, true);
@@ -4107,13 +4129,32 @@
             // Define currentPlayerRadius no início da função animate
             const currentPlayerRadius = isCrouching ? crouchRadius : playerRadius;
 
+            // --- SINCRONIZAÇÃO E WRAPPING ANTES DO STEP DE FÍSICA ---
+            // Aplica o envolvimento ao corpo de física do jogador
+            wrapObject(playerBody, worldSize);
+
+            // Aplica o envolvimento aos corpos de física dos cubos e blocos
+            const allPickableBodies = collectibleBoxes.map(b => b.body);
+            const allStaticBodies = [...placedConstructionBodies];
+            [...allPickableBodies, ...allStaticBodies].forEach(body => {
+                if (body !== pickedObjectBody) { // Apenas se não estiver sendo segurado
+                    wrapObject(body, worldSize);
+                }
+            });
+
+            // Sincroniza a posição de todos os 9 corpos de física da ilha com o tile atual do jogador
+            const currentTileX = Math.round(playerBody.position.x / worldSize) * worldSize;
+            const currentTileZ = Math.round(playerBody.position.z / worldSize) * worldSize;
+            islandMeshes.forEach(tile => {
+                tile.body.position.set(currentTileX + tile.offsetX - worldSize / 2, 0, currentTileZ + tile.offsetZ + worldSize / 2);
+                tile.body.updateAABB();
+            });
+
             // Atualiza o mundo da física
             world.step(1 / 60);
 
             // Lógica para os cubos e blocos: sempre dinâmicos e com massa original, a menos que sejam segurados
             // Apenas os cubos são pickable agora
-            const allPickableBodies = collectibleBoxes.map(b => b.body);
-            const allStaticBodies = [...placedConstructionBodies]; // Apenas blocos colocados são estáticos
 
             allPickableBodies.forEach(body => {
                 // Ignora o objeto que está sendo segurado
@@ -4167,23 +4208,8 @@
                 respawnTree();
             }
 
-            // Aplica o envolvimento ao corpo de física do jogador
-            wrapObject(playerBody, worldSize);
-
-            // Aplica o envolvimento aos corpos de física dos cubos e blocos
-            [...allPickableBodies, ...allStaticBodies].forEach(body => {
-                if (body !== pickedObjectBody) { // Apenas se não estiver sendo segurado
-                    wrapObject(body, worldSize);
-                }
-            });
-
             // Atualiza as posições das malhas do terreno com base na posição envolvida do jogador
-            // Sincroniza a posição do corpo de física da ilha com o tile atual do jogador
-            const currentTileX = Math.round(playerBody.position.x / worldSize) * worldSize;
-            const currentTileZ = Math.round(playerBody.position.z / worldSize) * worldSize;
-            islandBody.position.set(currentTileX - worldSize / 2, 0, currentTileZ + worldSize / 2);
-            islandBody.updateAABB();
-
+            // Sincronização dos corpos de física movida para antes do world.step
             islandMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.y = 0;
@@ -4344,7 +4370,7 @@
                         const newScale = moundGrowthStages[mound.growthStage];
                         mound.mesh.scale.set(newScale, newScale, newScale);
                     }
-                    updateIslandGeometry();
+                    updateIslandGeometry(mound);
                 }
             }
 
@@ -5204,6 +5230,7 @@
             window.beltItems = beltItems;
             window.updateUI = updateUI;
             window.selectedSlotIndex = selectedSlotIndex;
+            window.dirtMountains = dirtMountains;
         }
 
         // Listener de evento para o botão "Jogar"
