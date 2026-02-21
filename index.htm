@@ -2331,23 +2331,6 @@
 
 
         let currentHfMatrix = null;
-        function applyTerrainChange(position, heightChange) {
-            const mx = Math.floor((position.x + worldSize / 2) / (worldSize / (hfGridSize - 1)));
-            const mz = Math.floor((worldSize / 2 - position.z) / (worldSize / (hfGridSize - 1)));
-            const newMound = {
-                x: mx,
-                z: mz,
-                radius: 2.0 * (hfGridSize / worldSize),
-                height: heightChange,
-                flattened: false,
-                position: position.clone(),
-                createdAt: world.time,
-                lastDugAt: world.time
-            };
-            mounds.push(newMound);
-            updateIslandGeometry(newMound);
-        }
-
         function updateIslandGeometry(affectedMound = null) {
             // Recalcula a matriz a partir da base + todos os mounds ativos
             currentHfMatrix = baseMatrix.map(row => [...row]);
@@ -2414,7 +2397,13 @@
                             const dist = Math.sqrt(vx * vx + vz * vz);
                             if (dist < 280.0) { // uGrassRadius = 280.0
                                 colors[index] = 0.0; // Red channel = 0 (ativa textura inferior no shader)
-                                modifiedVertices.push({ index: vIdx, time: now });
+                                // Evita duplicatas no array de modificação
+                                const existingIdx = modifiedVertices.findIndex(mv => mv.index === vIdx);
+                                if (existingIdx !== -1) {
+                                    modifiedVertices[existingIdx].time = now;
+                                } else {
+                                    modifiedVertices.push({ index: vIdx, time: now });
+                                }
                                 geom.attributes.color.needsUpdate = true;
                             }
                         }
@@ -2746,7 +2735,7 @@
             const groundTextureURL = "https://dl.dropbox.com/scl/fi/9vs85irmh6wxvcybemvc6/textura-de-terra.png?rlkey=oidjt8wp9dkf5vsxh1r3xaec9&st=wn7x7au3&dl=0";
             const sandTextureURL = "https://dl.dropbox.com/scl/fi/glmbudn8mnv7b7hrc41zp/Textura-de-areia.png?rlkey=gag1m2x82xv99kejun0f6f86t&st=iff4jjst&dl=0";
             const grassTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=0"; // Textura de grama atualizada conforme solicitado
-            const inferiorDirtTextureURL = "https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=1eo8aek1&dl=0";
+            const inferiorDirtTextureURL = holeTextureURL; // Usar a textura de terra 2 solicitada
             const seabedTextureURL = sandTextureURL;
 
             const islandMeshMaterial = new THREE.MeshStandardMaterial({
@@ -2838,10 +2827,7 @@
                                     vec4 sandColor = texture2D(uSandTexture, vUv);
                                     vec4 grassColor = texture2D(uGrassTexture, vUv);
                                     vec4 stoneColor = texture2D(uStoneTexture, vUv * 4.0);
-
-                                    // Textura inferior com tiling corrigido e supressão de verde
-                                    vec4 inferiorColor = texture2D(uInferiorTexture, vUv * 75.0);
-                                    inferiorColor.g = min(inferiorColor.g, inferiorColor.r * 0.9);
+                                    vec4 inferiorColor = texture2D(uInferiorTexture, vUv);
 
                                     float dist = length(vWorldPosition.xz);
 
@@ -2855,22 +2841,32 @@
                                     float stoneBlend = smoothstep(20.0, 35.0, vWorldPosition.y);
 
                                     vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
-                                    vec3 grassStoneMix = mix(grassColor.rgb, stoneColor.rgb, stoneBlend);
+                                    // Tintamos a textura de terra da grama para verde
+                                    vec3 grassTinted = grassColor.rgb * vec3(0.7, 1.0, 0.4);
+                                    vec3 grassStoneMix = mix(grassTinted, stoneColor.rgb, stoneBlend);
                                     vec3 terrainMix = mix(seabedSandMix, grassStoneMix, sandToGrassBlend);
 
-                                    // Aplica a textura inferior se vColor.r < 1.0 (sinalizado por modificação)
-                                    // Apenas se NÃO for areia
+                                    // NOVO: Aplica a textura inferior provisória se vColor.r < 1.0 (sinalizado por modificação)
+                                    // Apenas se NÃO for areia (sandToGrassBlend próximo de 1.0 significa grama/pedra)
                                     #ifdef USE_COLOR
-                                        float inferiorFactor = (1.0 - vColor.r) * sandToGrassBlend;
+                                        float inferiorFactor = clamp(1.0 - vColor.r, 0.0, 1.0) * sandToGrassBlend;
                                         terrainMix = mix(terrainMix, inferiorColor.rgb, inferiorFactor);
                                     #endif
 
-                                    diffuseColor = vec4(terrainMix, 1.0);
+                                    diffuseColor.rgb = terrainMix;
                                 #endif
                                 `
-                            ).replace(
+                            );
+
+                            shader.fragmentShader = shader.fragmentShader.replace(
                                 '#include <color_fragment>',
-                                '' // Remove a coloração direta do vértice para evitar o tom verde indesejado
+                                `
+                                #ifdef USE_COLOR
+                                    // Bypassa a multiplicação por vColor para evitar o tom esverdeado na terra mexida
+                                    // O vColor.r agora é usado apenas como máscara no passo anterior
+                                    diffuseColor.rgb *= vec3(1.0);
+                                #endif
+                                `
                             );
                         };
                         islandMeshMaterial.needsUpdate = true;
@@ -5277,17 +5273,26 @@
             }
             crosshairElement.style.setProperty('--crosshair-color', crosshairColor);
 
-            // NOVO: Atualiza o temporizador da textura de modificação do terreno
+            // NOVO: Atualiza o temporizador e fade da textura de modificação do terreno
             if (modifiedVertices.length > 0) {
                 const now = Date.now();
                 const geom = islandGeometry;
                 const colors = geom.attributes.color.array;
+                const fadeDuration = 30000; // 30 segundos para o fade completo
                 let colorsChanged = false;
 
                 for (let i = modifiedVertices.length - 1; i >= 0; i--) {
-                    if (now - modifiedVertices[i].time > 10000) { // 10 segundos
-                        const vIdx = modifiedVertices[i].index;
-                        colors[vIdx * 3] = 1.0; // Restaura o canal vermelho (textura normal)
+                    const elapsed = now - modifiedVertices[i].time;
+                    const progress = Math.min(1.0, elapsed / fadeDuration);
+                    const vIdx = modifiedVertices[i].index;
+
+                    if (colors[vIdx * 3] < 1.0) {
+                        colors[vIdx * 3] = progress;
+                        colorsChanged = true;
+                    }
+
+                    if (progress >= 1.0) {
+                        colors[vIdx * 3] = 1.0;
                         modifiedVertices.splice(i, 1);
                         colorsChanged = true;
                     }
