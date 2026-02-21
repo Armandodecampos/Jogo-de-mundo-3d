@@ -3544,6 +3544,8 @@
                             destroyTargetDigInfo = { mound: currentMound, isBuilding: isBuilding };
                             baseDurability = isBuilding ? 0.02 : 1.0; // Adicionar terra é MUITO mais rápido (quase instantâneo no clique)
                             materialType = 'earth';
+                            // Garante que a textura de terra apareça imediatamente ao começar a cavar ou construir
+                            updateIslandGeometry(currentMound);
                         } else {
                             isDestroying = false;
                             return;
@@ -5282,11 +5284,26 @@
                 let colorsChanged = false;
 
                 for (let i = modifiedVertices.length - 1; i >= 0; i--) {
-                    const elapsed = now - modifiedVertices[i].time;
-                    const progress = Math.min(1.0, elapsed / fadeDuration);
                     const vIdx = modifiedVertices[i].index;
 
-                    if (colors[vIdx * 3] < 1.0) {
+                    // NOVO: Se estivermos modificando o terreno ativamente, reseta o tempo dos vértices afetados
+                    // Isso evita que a textura comece a desaparecer entre os estágios da cavagem/construção
+                    if (isDestroying && !destructionComplete && destroyTargetDigInfo) {
+                        const m = destroyTargetDigInfo.mound;
+                        const vi = vIdx % hfGridSize;
+                        const vj = Math.floor(vIdx / hfGridSize);
+                        const v_cannon_j = (hfGridSize - 1) - vj;
+
+                        if (vi >= Math.floor(m.x - m.radius) && vi <= Math.ceil(m.x + m.radius) &&
+                            v_cannon_j >= Math.floor(m.z - m.radius) && v_cannon_j <= Math.ceil(m.z + m.radius)) {
+                            modifiedVertices[i].time = now;
+                        }
+                    }
+
+                    const elapsed = now - modifiedVertices[i].time;
+                    const progress = Math.min(1.0, elapsed / fadeDuration);
+
+                    if (colors[vIdx * 3] < progress || (progress === 0.0 && colors[vIdx * 3] > 0.0)) {
                         colors[vIdx * 3] = progress;
                         colorsChanged = true;
                     }
