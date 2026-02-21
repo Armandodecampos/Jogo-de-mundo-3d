@@ -2331,6 +2331,23 @@
 
 
         let currentHfMatrix = null;
+        function applyTerrainChange(position, heightChange) {
+            const mx = Math.floor((position.x + worldSize / 2) / (worldSize / (hfGridSize - 1)));
+            const mz = Math.floor((worldSize / 2 - position.z) / (worldSize / (hfGridSize - 1)));
+            const newMound = {
+                x: mx,
+                z: mz,
+                radius: 2.0 * (hfGridSize / worldSize),
+                height: heightChange,
+                flattened: false,
+                position: position.clone(),
+                createdAt: world.time,
+                lastDugAt: world.time
+            };
+            mounds.push(newMound);
+            updateIslandGeometry(newMound);
+        }
+
         function updateIslandGeometry(affectedMound = null) {
             // Recalcula a matriz a partir da base + todos os mounds ativos
             currentHfMatrix = baseMatrix.map(row => [...row]);
@@ -2821,7 +2838,10 @@
                                     vec4 sandColor = texture2D(uSandTexture, vUv);
                                     vec4 grassColor = texture2D(uGrassTexture, vUv);
                                     vec4 stoneColor = texture2D(uStoneTexture, vUv * 4.0);
-                                    vec4 inferiorColor = texture2D(uInferiorTexture, vUv);
+
+                                    // Textura inferior com tiling corrigido e supressão de verde
+                                    vec4 inferiorColor = texture2D(uInferiorTexture, vUv * 75.0);
+                                    inferiorColor.g = min(inferiorColor.g, inferiorColor.r * 0.9);
 
                                     float dist = length(vWorldPosition.xz);
 
@@ -2838,16 +2858,19 @@
                                     vec3 grassStoneMix = mix(grassColor.rgb, stoneColor.rgb, stoneBlend);
                                     vec3 terrainMix = mix(seabedSandMix, grassStoneMix, sandToGrassBlend);
 
-                                    // NOVO: Aplica a textura inferior provisória se vColor.r < 1.0 (sinalizado por modificação)
-                                    // Apenas se NÃO for areia (sandToGrassBlend próximo de 1.0 significa grama/pedra)
+                                    // Aplica a textura inferior se vColor.r < 1.0 (sinalizado por modificação)
+                                    // Apenas se NÃO for areia
                                     #ifdef USE_COLOR
                                         float inferiorFactor = (1.0 - vColor.r) * sandToGrassBlend;
                                         terrainMix = mix(terrainMix, inferiorColor.rgb, inferiorFactor);
                                     #endif
 
-                                    diffuseColor *= vec4(terrainMix, 1.0);
+                                    diffuseColor = vec4(terrainMix, 1.0);
                                 #endif
                                 `
+                            ).replace(
+                                '#include <color_fragment>',
+                                '' // Remove a coloração direta do vértice para evitar o tom verde indesejado
                             );
                         };
                         islandMeshMaterial.needsUpdate = true;
