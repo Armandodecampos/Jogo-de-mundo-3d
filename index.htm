@@ -917,6 +917,7 @@
         let dirtTextureForHole; // NOVO: Textura de terra para o buraco
 
         let mounds = [];
+        let modifiedVertices = []; // NOVO: Controla a textura temporária do terreno [{index, time}]
         let dirtMountains = []; // Exposto globalmente
         let visualMounds = []; // NOVO: Para os montes de terra visuais
         let closingMounds = []; // NOVO: Para animar o fechamento dos buracos
@@ -2371,6 +2372,7 @@
             if (islandMeshes.length > 0) {
                 const geom = islandMeshes[0].mesh.geometry;
                 const vertices = geom.attributes.position.array;
+                const colors = geom.attributes.color.array;
 
                 if (affectedMound) {
                     // Otimização: Atualiza apenas a região afetada pelo mound modificado
@@ -2379,12 +2381,25 @@
                     const startJ_cannon = Math.max(0, Math.floor(affectedMound.z - affectedMound.radius));
                     const endJ_cannon = Math.min(hfGridSize - 1, Math.ceil(affectedMound.z + affectedMound.radius));
 
+                    const now = Date.now();
                     for (let i = startI; i <= endI; i++) {
                         for (let cannonJ = startJ_cannon; cannonJ <= endJ_cannon; cannonJ++) {
                             const j = (hfGridSize - 1) - cannonJ;
                             const height = currentHfMatrix[i][cannonJ];
-                            const index = (j * hfGridSize + i) * 3;
+                            const vIdx = (j * hfGridSize + i);
+                            const index = vIdx * 3;
                             vertices[index + 1] = height;
+
+                            // NOVO: Feedback visual temporário de modificação (não aplica em areia)
+                            // Calcula o raio do vértice
+                            const vx = (i / (hfGridSize - 1) - 0.5) * worldSize;
+                            const vz = (j / (hfGridSize - 1) - 0.5) * worldSize;
+                            const dist = Math.sqrt(vx * vx + vz * vz);
+                            if (dist < 280.0) { // uGrassRadius = 280.0
+                                colors[index] = 0.0; // Red channel = 0 (ativa textura inferior no shader)
+                                modifiedVertices.push({ index: vIdx, time: now });
+                                geom.attributes.color.needsUpdate = true;
+                            }
                         }
                     }
                 } else {
@@ -2599,6 +2614,12 @@
             // Cria o Terreno (Ilha Redonda)
             // A geometria visual é agora um plano segmentado cujos vértices correspondem ao Heightfield.
             const islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
+            window.islandGeometry = islandGeometry;
+
+            // Adiciona atributo de cor para feedback visual de modificação (1.0 = normal, 0.0 = modificado)
+            const colors = new Float32Array(islandGeometry.attributes.position.count * 3);
+            colors.fill(1.0); // Inicializa como branco (normal)
+            islandGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
             // Adiciona várias montanhas de terra por toda a ilha com tamanhos e formatos variados
@@ -2708,9 +2729,13 @@
             const groundTextureURL = "https://dl.dropbox.com/scl/fi/9vs85irmh6wxvcybemvc6/textura-de-terra.png?rlkey=oidjt8wp9dkf5vsxh1r3xaec9&st=wn7x7au3&dl=0";
             const sandTextureURL = "https://dl.dropbox.com/scl/fi/glmbudn8mnv7b7hrc41zp/Textura-de-areia.png?rlkey=gag1m2x82xv99kejun0f6f86t&st=iff4jjst&dl=0";
             const grassTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=0"; // Textura de grama atualizada conforme solicitado
+            const inferiorDirtTextureURL = "https://dl.dropbox.com/scl/fi/m3hxsvvmn1fqh9a9y005a/Textura-de-terra-qualidade-inferior.png?rlkey=drythuhadiioy1975o6svmymx&st=1eo8aek1&dl=0";
             const seabedTextureURL = sandTextureURL;
 
-            const islandMeshMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff }); // Grass color placeholder
+            const islandMeshMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffffff,
+                vertexColors: true
+            }); // Grass color placeholder
 
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
@@ -2741,8 +2766,9 @@
                     textureLoader.load(sandTextureURL, (sandTexture) => {
                         textureLoader.load(stoneTextureURL, (stoneTexture) => {
                             textureLoader.load(grassTextureURL, (grassTexture) => {
+                                textureLoader.load(inferiorDirtTextureURL, (inferiorDirtTexture) => {
                         // Todas as texturas estão carregadas
-                        [groundTexture, seabedTexture, sandTexture, stoneTexture, grassTexture].forEach(texture => {
+                        [groundTexture, seabedTexture, sandTexture, stoneTexture, grassTexture, inferiorDirtTexture].forEach(texture => {
                             texture.wrapS = THREE.RepeatWrapping;
                             texture.wrapT = THREE.RepeatWrapping;
                         });
@@ -2751,6 +2777,7 @@
                         sandTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
                         stoneTexture.repeat.set(islandRadiusTop / 16, islandRadiusTop / 16);
                         grassTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                        inferiorDirtTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
 
                         islandMeshMaterial.map = groundTexture;
                         islandMeshMaterial.onBeforeCompile = (shader) => {
@@ -2758,6 +2785,7 @@
                             shader.uniforms.uSandTexture = { value: sandTexture };
                             shader.uniforms.uStoneTexture = { value: stoneTexture };
                             shader.uniforms.uGrassTexture = { value: grassTexture };
+                            shader.uniforms.uInferiorTexture = { value: inferiorDirtTexture };
                             shader.uniforms.uWaterLevel = { value: waterLevel };
                             shader.uniforms.uGrassRadius = { value: 280.0 };
                             shader.uniforms.uBeachRadius = { value: 305.0 };
@@ -2778,6 +2806,7 @@
                                 uniform sampler2D uSandTexture;
                                 uniform sampler2D uStoneTexture;
                                 uniform sampler2D uGrassTexture;
+                                uniform sampler2D uInferiorTexture;
                                 uniform float uWaterLevel;
                                 uniform float uGrassRadius;
                                 uniform float uBeachRadius;
@@ -2792,6 +2821,7 @@
                                     vec4 sandColor = texture2D(uSandTexture, vUv);
                                     vec4 grassColor = texture2D(uGrassTexture, vUv);
                                     vec4 stoneColor = texture2D(uStoneTexture, vUv * 4.0);
+                                    vec4 inferiorColor = texture2D(uInferiorTexture, vUv);
 
                                     float dist = length(vWorldPosition.xz);
 
@@ -2808,12 +2838,20 @@
                                     vec3 grassStoneMix = mix(grassColor.rgb, stoneColor.rgb, stoneBlend);
                                     vec3 terrainMix = mix(seabedSandMix, grassStoneMix, sandToGrassBlend);
 
+                                    // NOVO: Aplica a textura inferior provisória se vColor.r < 1.0 (sinalizado por modificação)
+                                    // Apenas se NÃO for areia (sandToGrassBlend próximo de 1.0 significa grama/pedra)
+                                    #ifdef USE_COLOR
+                                        float inferiorFactor = (1.0 - vColor.r) * sandToGrassBlend;
+                                        terrainMix = mix(terrainMix, inferiorColor.rgb, inferiorFactor);
+                                    #endif
+
                                     diffuseColor *= vec4(terrainMix, 1.0);
                                 #endif
                                 `
                             );
                         };
                         islandMeshMaterial.needsUpdate = true;
+                        }, undefined, (error) => console.error('Falha ao carregar a textura de terra inferior:', error));
                         }, undefined, (error) => console.error('Falha ao carregar a textura de grama:', error));
                         }, undefined, (error) => console.error('Falha ao carregar a textura de pedra:', error));
                     }, undefined, (error) => console.error('Falha ao carregar a textura de areia:', error));
@@ -2895,6 +2933,7 @@
             ghostBlockMesh = new THREE.Mesh(new THREE.BoxGeometry(cobWidth, cobHeight, cobDepth), ghostBlockMaterial);
             ghostBlockMesh.visible = false; // Inicialmente invisível
             scene.add(ghostBlockMesh);
+            window.ghostBlockMesh = ghostBlockMesh;
 
             // NOVO: Carrega a textura do buraco para a ferramenta pá e o modelo do buraco
             textureLoader.load(holeTextureURL, (texture) => {
@@ -4491,6 +4530,10 @@
                 isPrimaryToolGrabbing = true;
             } else if (actionType === 'destroy') {
                 isPrimaryToolDestroying = true;
+                // NOVO: Se for uma ferramenta que cava terra ou o próprio item Terra, preparamos o ghost de terra
+                if (primaryTool === null || primaryTool.name === shovelItemName || primaryTool.name === pickaxeItemName || primaryTool.name === axeItemName || primaryTool.name === dirtItemName) {
+                    currentBlockType = dirtItemName;
+                }
             } else if (actionType === 'place') {
                 isPrimaryToolPlacing = true;
                 currentBlockType = primaryTool.name; // Define o tipo de bloco para o ghost mesh
@@ -4499,7 +4542,9 @@
 
             // Lógica do ghost block para colocação e snapping
             if (ghostBlockMesh) {
-                if (isPrimaryToolPlacing && !gamePaused) {
+                // NOVO: Mostra o ghost para construção OU para destruição de terra (cavagem)
+                const isShowingTerraGhost = (isPrimaryToolDestroying && currentBlockType === dirtItemName);
+                if ((isPrimaryToolPlacing || isShowingTerraGhost) && !gamePaused) {
                     ghostBlockMesh.visible = true; // Garante que o ghost block esteja visível
 
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
@@ -5111,6 +5156,7 @@
                         raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                         const intersects = raycaster.intersectObjects(scene.children, true);
                         let canDestroy = false;
+                        let isTerraHit = false;
                         for (let i = 0; i < intersects.length; i++) {
                             if (intersects[i].distance > destroyDistance) continue;
                             let obj = intersects[i].object;
@@ -5120,6 +5166,7 @@
 
                             if (isIslandMesh) {
                                 canDestroy = true;
+                                isTerraHit = true;
                                 break;
                             }
 
@@ -5148,15 +5195,18 @@
                             }
                             if (canDestroy) break;
                         }
-                        crosshairColor = canDestroy ? 'red' : 'white';
+                        crosshairColor = canDestroy ? (isTerraHit ? 'lime' : 'red') : 'white';
                     } else {
-                        crosshairColor = 'red';
+                        // Se estiver destruindo terra, usa lime (verde), se não usa red (vermelho)
+                        const isTerraCurrently = currentBlockType === dirtItemName;
+                        crosshairColor = isTerraCurrently ? 'lime' : 'red';
                     }
                 } else if (isPrimaryToolGrabbing) {
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                     const intersects = raycaster.intersectObjects(scene.children, true);
                     let objectInRange = false;
                     let canDestroyWithHand = false;
+                    let isTerraHitWithHand = false;
                     const aimablePickableBodies = collectibleBoxes.map(b => b.body);
 
                     for (let i = 0; i < intersects.length; i++) {
@@ -5176,6 +5226,7 @@
 
                         if (isIslandMesh || obj.userData.isCapim) {
                             canDestroyWithHand = true;
+                            isTerraHitWithHand = isIslandMesh;
                             break;
                         }
 
@@ -5195,7 +5246,7 @@
                         if (canDestroyWithHand) break;
                     }
                     if (objectInRange) crosshairColor = 'gold';
-                    else if (canDestroyWithHand) crosshairColor = 'red';
+                    else if (canDestroyWithHand) crosshairColor = isTerraHitWithHand ? 'lime' : 'red';
                     else crosshairColor = 'white';
                 } else {
                     crosshairColor = 'white';
@@ -5203,11 +5254,32 @@
             }
             crosshairElement.style.setProperty('--crosshair-color', crosshairColor);
 
+            // NOVO: Atualiza o temporizador da textura de modificação do terreno
+            if (modifiedVertices.length > 0) {
+                const now = Date.now();
+                const geom = islandGeometry;
+                const colors = geom.attributes.color.array;
+                let colorsChanged = false;
+
+                for (let i = modifiedVertices.length - 1; i >= 0; i--) {
+                    if (now - modifiedVertices[i].time > 10000) { // 10 segundos
+                        const vIdx = modifiedVertices[i].index;
+                        colors[vIdx * 3] = 1.0; // Restaura o canal vermelho (textura normal)
+                        modifiedVertices.splice(i, 1);
+                        colorsChanged = true;
+                    }
+                }
+                if (colorsChanged) {
+                    geom.attributes.color.needsUpdate = true;
+                }
+            }
+
             // Update ghostBlockMesh visibility and geometry
             if (ghostBlockMesh) {
-                if (isPrimaryToolPlacing && !gamePaused) {
+                const isShowingTerraGhost = (isPrimaryToolDestroying && currentBlockType === dirtItemName);
+                if ((isPrimaryToolPlacing || isShowingTerraGhost) && !gamePaused) {
                     ghostBlockMesh.visible = true;
-                    // Set color based on canPlace (which is determined by crosshair logic)
+                    // Set color based on canPlace/crosshairColor
                     ghostBlockMesh.material.color.setHex(crosshairColor === 'lime' ? 0x00ff00 : 0xff0000);
                 } else {
                     ghostBlockMesh.visible = false;
