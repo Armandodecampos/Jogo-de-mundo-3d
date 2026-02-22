@@ -1581,95 +1581,9 @@
             if (!isPositive) {
                 // NOVO: Remove todos os buracos existentes antes de criar um novo
                 visualMounds.forEach(mound => {
-                    scene.remove(mound.mesh);
+                    if (mound.mesh) scene.remove(mound.mesh);
                 });
                 visualMounds.length = 0; // Limpa o array
-
-                // Define as dimensões e segmentos do vulcão
-                const volcanoInnerRadius = 1.0;
-            const volcanoOuterRadiusAtTop = 1.0;
-            const volcanoOuterRadiusAtBottom = 1.5;
-            const mountainRadius = 160.0;
-            const volcanoHeight = 0.1;
-            const volcanoRadialSegments = 32;
-
-            // Cria um grupo para o vulcão
-            const volcanoGroup = new THREE.Group();
-
-            // Cria a geometria do cone externo do vulcão
-            const outerConeGeometry = new THREE.CylinderGeometry(volcanoOuterRadiusAtTop, volcanoOuterRadiusAtBottom, volcanoHeight, volcanoRadialSegments, 1, true);
-            const outerConeMesh = new THREE.Mesh(outerConeGeometry, islandMeshes[0].mesh.material);
-            outerConeMesh.position.y = volcanoHeight / 2;
-            outerConeMesh.receiveShadow = true;
-            volcanoGroup.add(outerConeMesh);
-
-            // Cria um material para o cilindro interno com renderização em ambos os lados
-            const innerCylinderMaterial = islandMeshes[0].mesh.material.clone();
-            innerCylinderMaterial.side = THREE.DoubleSide;
-            // Cria a geometria do cilindro interno
-            const innerCylinderGeometry = new THREE.CylinderGeometry(volcanoInnerRadius, volcanoInnerRadius, volcanoHeight, volcanoRadialSegments, 1, true);
-            const innerCylinderMesh = new THREE.Mesh(innerCylinderGeometry, innerCylinderMaterial);
-            innerCylinderMesh.position.y = volcanoHeight / 2;
-            innerCylinderMesh.receiveShadow = true;
-            volcanoGroup.add(innerCylinderMesh);
-
-            // Cria a geometria do anel superior para fechar o vulcão
-            const topRingGeometry = new THREE.RingGeometry(volcanoInnerRadius, volcanoOuterRadiusAtTop, volcanoRadialSegments);
-            const topRingMesh = new THREE.Mesh(topRingGeometry, islandMeshes[0].mesh.material);
-            topRingMesh.position.y = volcanoHeight;
-            topRingMesh.rotation.x = -Math.PI / 2;
-            topRingMesh.receiveShadow = true;
-            volcanoGroup.add(topRingMesh);
-
-            // Adiciona um pequeno deslocamento vertical ao vulcão e o adiciona ao grupo do buraco
-            volcanoGroup.position.y = 0.01;
-            holeGroup.add(volcanoGroup);
-
-            // Recalcula os UVs para o grupo do vulcão
-            volcanoGroup.children.forEach(mesh => {
-                const geometry = mesh.geometry;
-                const uvAttribute = geometry.attributes.uv;
-                const positionAttribute = geometry.attributes.position;
-                const worldPosition = new THREE.Vector3();
-
-                for (let i = 0; i < positionAttribute.count; i++) {
-                    worldPosition.fromBufferAttribute(positionAttribute, i);
-                    mesh.localToWorld(worldPosition); // Converte a posição do vértice para coordenadas mundiais
-
-                    // Mapeia as coordenadas do mundo para UVs para repetição da textura
-                    const u = worldPosition.x / worldSize;
-                    const v = worldPosition.z / worldSize;
-                    uvAttribute.setXY(i, u, v);
-                }
-                uvAttribute.needsUpdate = true; // Marca o atributo UV como necessitando de atualização
-            });
-
-            // Cria, dimensiona e posiciona o modelo do buraco central
-            const holeRadius = 1.4;
-            // Modificado: A geometria do buraco agora é condicional
-            const centerGeometry = new THREE.CircleGeometry(holeRadius, 32);
-            const centerInstance = new THREE.Mesh(centerGeometry, holeMaterial);
-            centerInstance.rotation.x = -Math.PI / 2;
-            centerInstance.position.y = 0.02;
-            centerInstance.receiveShadow = true;
-            holeGroup.add(centerInstance);
-
-            // Alinha o grupo do buraco com a normal da superfície
-            const up = new THREE.Vector3(0, 1, 0);
-            const normal = intersect.face.normal.clone();
-            const alignQuaternion = new THREE.Quaternion().setFromUnitVectors(up, normal);
-            holeGroup.quaternion.copy(alignQuaternion);
-            // Aplica uma rotação adicional para alinhar corretamente o modelo
-            holeGroup.quaternion.multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2));
-
-                // Salva o quaternion final para uso posterior
-                finalQuaternion.copy(holeGroup.quaternion);
-
-                // Define a escala inicial para a animação
-                const initialScale = moundGrowthStages[0];
-                holeGroup.scale.set(initialScale, initialScale, initialScale);
-
-                scene.add(holeGroup);
             }
 
             // Calcula os índices do heightfield para o ponto de impacto (coordenadas locais do heightfield)
@@ -5464,6 +5378,7 @@
             }
 
             isWorldReady = true; window.isWorldReady = true;
+            window.createMound = createMound;
             window.mounds = mounds;
             window.islandMeshes = islandMeshes;
             window.visualMounds = visualMounds;
