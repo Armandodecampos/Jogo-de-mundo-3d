@@ -4583,8 +4583,10 @@
             // Lógica do ghost block para colocação e snapping
             if (ghostBlockMesh) {
                 // NOVO: Mostra o ghost para construção OU para destruição de terra (cavagem)
+                // O "fantasma verde" da terra foi removido a pedido do usuário
                 const isShowingTerraGhost = (isPrimaryToolDestroying && currentBlockType === dirtItemName);
-                if ((isPrimaryToolPlacing || isShowingTerraGhost) && !gamePaused) {
+                const isTerra = currentBlockType === dirtItemName;
+                if ((isPrimaryToolPlacing || isShowingTerraGhost) && !gamePaused && !isTerra) {
                     ghostBlockMesh.visible = true; // Garante que o ghost block esteja visível
 
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
@@ -4668,11 +4670,6 @@
                         currentGhostDepth = 1.2;
                         ghostBlockMesh.geometry = new THREE.SphereGeometry(0.5, 16, 16);
                         ghostBlockMesh.scale.set(1, 0.5, 1.2);
-                    } else if (currentBlockType === dirtItemName) {
-                        currentGhostWidth = 3.0; // matching the volcanoOuterRadiusAtBottom * 2
-                        currentGhostHeight = 0.1;
-                        currentGhostDepth = 3.0;
-                        ghostBlockMesh.geometry = new THREE.CylinderGeometry(1.5, 1.5, 0.1, 32);
                     }
                     // Update ghost block geometry
                     // ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth); // Removido para lidar individualmente
@@ -5359,7 +5356,8 @@
             // Update ghostBlockMesh visibility and geometry
             if (ghostBlockMesh) {
                 const isShowingTerraGhost = (isPrimaryToolDestroying && currentBlockType === dirtItemName);
-                if ((isPrimaryToolPlacing || isShowingTerraGhost) && !gamePaused) {
+                const isTerra = currentBlockType === dirtItemName;
+                if ((isPrimaryToolPlacing || isShowingTerraGhost) && !gamePaused && !isTerra) {
                     ghostBlockMesh.visible = true;
                     // Set color based on canPlace/crosshairColor
                     ghostBlockMesh.material.color.setHex(crosshairColor === 'lime' ? 0x00ff00 : 0xff0000);
