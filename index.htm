@@ -1673,8 +1673,17 @@
             }
 
             // Calcula os índices do heightfield para o ponto de impacto (coordenadas locais do heightfield)
-            const mx = Math.floor((hitPoint.x + worldSize / 2) / (worldSize / (hfGridSize - 1)));
-            const mz = Math.floor((worldSize / 2 - hitPoint.z) / (worldSize / (hfGridSize - 1)));
+            const step = worldSize / (hfGridSize - 1);
+            const mx = Math.round((hitPoint.x + worldSize / 2) / step);
+            const mz = Math.round((worldSize / 2 - hitPoint.z) / step);
+
+            // Calcula a posição exata do vértice para alinhar o visual e a física
+            const vx = (mx / (hfGridSize - 1) - 0.5) * worldSize;
+            const vz = (0.5 - mz / (hfGridSize - 1)) * worldSize;
+            const vy = (typeof currentHfMatrix !== 'undefined' && currentHfMatrix) ? currentHfMatrix[mx][mz] : window.getSurfaceHeight(vx, vz);
+
+            // Alinha o grupo do buraco com o vértice selecionado
+            holeGroup.position.set(vx, vy, vz);
 
             const newMound = {
                 x: mx,
@@ -1682,7 +1691,7 @@
                 radius: 2.0 * (hfGridSize / worldSize), // Raio em unidades de índice (aprox 2 metros)
                 height: isPositive ? 0 : -1.0, // Altura do buraco ou monte
                 flattened: false,
-                position: hitPoint.clone(),
+                position: new THREE.Vector3(vx, vy, vz),
                 mesh: holeGroup,
                 createdAt: world.time,
                 quaternion: finalQuaternion,
@@ -3511,13 +3520,23 @@
                         const volcanoOuterRadiusAtBottom = 1.5;
                         const isBuilding = (heldItemName === dirtItemName);
 
+                        // Alinha o ponto de impacto com o vértice mais próximo para busca precisa
+                        const step = worldSize / (hfGridSize - 1);
+                        const mx = Math.round((hitPoint.x + worldSize / 2) / step);
+                        const mz = Math.round((worldSize / 2 - hitPoint.z) / step);
+                        const vx = (mx / (hfGridSize - 1) - 0.5) * worldSize;
+                        const vz = (0.5 - mz / (hfGridSize - 1)) * worldSize;
+                        const snappedHitPoint = new THREE.Vector3(vx, hitPoint.y, vz);
+
                         let targetMound = null;
                         // Ao construir, procuramos em todos os mounds ativos, não apenas nos visuais recentes
                         const moundsToSearch = isBuilding ? mounds.filter(m => !m.flattened) : visualMounds;
 
                         for (const mound of moundsToSearch) {
-                            const dist = mound.position.distanceTo(hitPoint);
-                            if (dist < volcanoOuterRadiusAtBottom) {
+                            // Calcula a distância horizontal para o vértice
+                            const distX = Math.abs(mound.position.x - snappedHitPoint.x);
+                            const distZ = Math.abs(mound.position.z - snappedHitPoint.z);
+                            if (distX < 0.1 && distZ < 0.1) {
                                 if (isBuilding) {
                                     // Se estiver construindo, aceita qualquer mound que possa crescer em altura
                                     if (mound.height < 1.0) {
@@ -4173,7 +4192,7 @@
                             // Lógica original de cavar
                             createDustCloud(mound.position, false);
                             mound.growthStage++;
-                            addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
+                            addItemToInventory(backpackItems, { name: dirtItemName, quantity: 25 });
                             updateBackpackDisplay();
 
                             if (mound.growthStage >= moundGrowthStages.length) {
@@ -4649,6 +4668,11 @@
                         currentGhostDepth = 1.2;
                         ghostBlockMesh.geometry = new THREE.SphereGeometry(0.5, 16, 16);
                         ghostBlockMesh.scale.set(1, 0.5, 1.2);
+                    } else if (currentBlockType === dirtItemName) {
+                        currentGhostWidth = 3.0; // matching the volcanoOuterRadiusAtBottom * 2
+                        currentGhostHeight = 0.1;
+                        currentGhostDepth = 3.0;
+                        ghostBlockMesh.geometry = new THREE.CylinderGeometry(1.5, 1.5, 0.1, 32);
                     }
                     // Update ghost block geometry
                     // ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth); // Removido para lidar individualmente
@@ -4679,20 +4703,33 @@
                                 basePosition.add(hitNormal.multiplyScalar(currentGhostHeight / 2));
 
                                 // NOVO: Alinhamento da grade
-                                // Calcula a posição "desenrolada" (absoluta)
-                                const unwrappedX = basePosition.x + visualOffsetX;
-                                const unwrappedZ = basePosition.z + visualOffsetZ;
-                                // Alinha na grade
-                                const snappedUnwrappedX = Math.round(unwrappedX / cobSize) * cobSize;
-                                const snappedUnwrappedZ = Math.round(unwrappedZ / cobSize) * cobSize;
-                                // Converte de volta para as coordenadas do mundo visível
-                                placementPosition.x = snappedUnwrappedX - visualOffsetX;
-                                placementPosition.z = snappedUnwrappedZ - visualOffsetZ;
+                                if (currentBlockType === dirtItemName) {
+                                    // Snapping para a grade do terreno (vértices)
+                                    const step = worldSize / (hfGridSize - 1);
+                                    const mx = Math.round((basePosition.x + visualOffsetX + worldSize / 2) / step);
+                                    const mz = Math.round((worldSize / 2 - (basePosition.z + visualOffsetZ)) / step);
+
+                                    const vx = (mx / (hfGridSize - 1) - 0.5) * worldSize;
+                                    const vz = (0.5 - mz / (hfGridSize - 1)) * worldSize;
+
+                                    placementPosition.x = vx - visualOffsetX;
+                                    placementPosition.z = vz - visualOffsetZ;
+                                } else {
+                                    // Calcula a posição "desenrolada" (absoluta)
+                                    const unwrappedX = basePosition.x + visualOffsetX;
+                                    const unwrappedZ = basePosition.z + visualOffsetZ;
+                                    // Alinha na grade de construção
+                                    const snappedUnwrappedX = Math.round(unwrappedX / cobSize) * cobSize;
+                                    const snappedUnwrappedZ = Math.round(unwrappedZ / cobSize) * cobSize;
+                                    // Converte de volta para as coordenadas do mundo visível
+                                    placementPosition.x = snappedUnwrappedX - visualOffsetX;
+                                    placementPosition.z = snappedUnwrappedZ - visualOffsetZ;
+                                }
 
                                 // NOVO: Alinha a posição Y na grade, considerando a altura da superfície da ilha como a base.
                                 // Isso garante que os blocos se encaixem verticalmente.
                                 // CORREÇÃO: As sementes não devem se encaixar na grade vertical, elas devem ser colocadas no chão.
-                                if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName) {
+                                if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === dirtItemName) {
                                     placementPosition.y = basePosition.y;
                                 } else {
                                     const n_y = Math.round((basePosition.y - islandSurfaceHeight) / currentGhostHeight - 0.5);
