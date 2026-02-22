@@ -466,6 +466,16 @@
                 </label>
                 <input type="range" id="treeDensitySlider" min="1" max="10000" value="100" class="w-full">
             </div>
+            <div class="option-item">
+                <label for="textureToggle" class="flex justify-between w-full">
+                    <span>Qualidade Visual</span>
+                    <span id="textureStatus">Com Textura</span>
+                </label>
+                <select id="textureToggle" class="w-full bg-gray-700 text-white p-2 rounded">
+                    <option value="true">Com Textura</option>
+                    <option value="false">Sem Textura (Sólido)</option>
+                </select>
+            </div>
         </div>
         <button id="backToMenuButton" class="mt-8 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-10 rounded-lg transition-colors">Voltar</button>
     </div>
@@ -561,6 +571,8 @@
         window.appleTrees = appleTrees;
         let targetCapimCount = parseInt(localStorage.getItem('targetCapimCount')) || 1000;
         let targetTreeCount = parseInt(localStorage.getItem('targetTreeCount')) || 100;
+        let useTextures = localStorage.getItem('useTextures') !== 'false';
+        const texturesRegistry = {};
 
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
         let collectibleBoxes = [];
@@ -1057,6 +1069,45 @@
         let smokeParticles = [];
         let debrisParticles = []; // For dirt and stone chunks
         let dustParticles = null; // NOVO: Para o efeito de poeira da tela inteira
+
+        function applyTextureSettings() {
+            window.useTextures = useTextures;
+            // Update materials
+            if (cubeMaterialMesh) cubeMaterialMesh.map = useTextures ? (texturesRegistry.cube || null) : null;
+            if (cobMaterialMesh) cobMaterialMesh.map = useTextures ? (texturesRegistry.cob || null) : null;
+            if (floorMaterialMesh) floorMaterialMesh.map = useTextures ? (texturesRegistry.floor || null) : null;
+            if (woodenPlankMaterialMesh) woodenPlankMaterialMesh.map = useTextures ? (texturesRegistry.plank || null) : null;
+            if (stoneBlockMaterialMesh) stoneBlockMaterialMesh.map = useTextures ? (texturesRegistry.stoneBlock || null) : null;
+            if (woodenBlockMaterialMesh) woodenBlockMaterialMesh.map = useTextures ? (texturesRegistry.woodenBlock || null) : null;
+            if (stoneFloorMaterialMesh) stoneFloorMaterialMesh.map = useTextures ? (texturesRegistry.stoneFloor || null) : null;
+            if (chestMaterialMesh) chestMaterialMesh.map = useTextures ? (texturesRegistry.chest || null) : null;
+            if (treeTrunkMaterialMesh) treeTrunkMaterialMesh.map = useTextures ? (texturesRegistry.treeBark || null) : null;
+            if (treeLeavesMaterialMesh) treeLeavesMaterialMesh.map = useTextures ? (texturesRegistry.treeLeaves || null) : null;
+            if (treeSaplingMaterialMesh) treeSaplingMaterialMesh.map = useTextures ? (texturesRegistry.treeSapling || null) : null;
+            if (holeMaterial) holeMaterial.map = useTextures ? (texturesRegistry.hole || null) : null;
+            if (stoneHoleMaterial) stoneHoleMaterial.map = useTextures ? (texturesRegistry.stone || null) : null;
+
+            // Notify materials of changes
+            [cubeMaterialMesh, cobMaterialMesh, floorMaterialMesh, woodenPlankMaterialMesh,
+             stoneBlockMaterialMesh, woodenBlockMaterialMesh, stoneFloorMaterialMesh,
+             chestMaterialMesh, treeTrunkMaterialMesh, treeLeavesMaterialMesh,
+             treeSaplingMaterialMesh, holeMaterial, stoneHoleMaterial].forEach(m => {
+                if (m) m.needsUpdate = true;
+            });
+
+            // Update terrain uniform
+            islandMeshes.forEach(tile => {
+                if (tile.mesh.material.userData.shader) {
+                    tile.mesh.material.userData.shader.uniforms.uUseTextures.value = useTextures ? 1.0 : 0.0;
+                }
+            });
+
+            // Update UI status
+            const status = document.getElementById('textureStatus');
+            if (status) status.textContent = useTextures ? "Com Textura" : "Sem Textura";
+            const toggle = document.getElementById('textureToggle');
+            if (toggle) toggle.value = useTextures.toString();
+        }
 
         // NOVO: Função para criar o efeito de poeira de partículas
         function createDustCloud(position, isMountain) {
@@ -2691,110 +2742,132 @@
             window.islandBody = islandBody = islandMeshes[4].body;
 
             textureLoader.load(groundTextureURL, (groundTexture) => {
+                texturesRegistry.ground = groundTexture;
                 textureLoader.load(seabedTextureURL, (seabedTexture) => {
+                    texturesRegistry.seabed = seabedTexture;
                     textureLoader.load(sandTextureURL, (sandTexture) => {
+                        texturesRegistry.sand = sandTexture;
                         textureLoader.load(stoneTextureURL, (stoneTexture) => {
+                            texturesRegistry.stone = stoneTexture;
                             textureLoader.load(grassTextureURL, (grassTexture) => {
+                                texturesRegistry.grass = grassTexture;
                                 textureLoader.load(inferiorDirtTextureURL, (inferiorDirtTexture) => {
-                        // Todas as texturas estão carregadas
-                        [groundTexture, seabedTexture, sandTexture, stoneTexture, grassTexture, inferiorDirtTexture].forEach(texture => {
-                            texture.wrapS = THREE.RepeatWrapping;
-                            texture.wrapT = THREE.RepeatWrapping;
-                        });
-                        groundTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                        seabedTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                        sandTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                        stoneTexture.repeat.set(islandRadiusTop / 16, islandRadiusTop / 16);
-                        grassTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                        inferiorDirtTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                                    texturesRegistry.inferior = inferiorDirtTexture;
+                                    // Todas as texturas estão carregadas
+                                    [groundTexture, seabedTexture, sandTexture, stoneTexture, grassTexture, inferiorDirtTexture].forEach(texture => {
+                                        texture.wrapS = THREE.RepeatWrapping;
+                                        texture.wrapT = THREE.RepeatWrapping;
+                                    });
+                                    groundTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                                    seabedTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                                    sandTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                                    stoneTexture.repeat.set(islandRadiusTop / 16, islandRadiusTop / 16);
+                                    grassTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                                    inferiorDirtTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
 
-                        islandMeshMaterial.map = groundTexture;
-                        islandMeshMaterial.onBeforeCompile = (shader) => {
-                            shader.uniforms.uSeabedTexture = { value: seabedTexture };
-                            shader.uniforms.uSandTexture = { value: sandTexture };
-                            shader.uniforms.uStoneTexture = { value: stoneTexture };
-                            shader.uniforms.uGrassTexture = { value: grassTexture };
-                            shader.uniforms.uInferiorTexture = { value: inferiorDirtTexture };
-                            shader.uniforms.uWaterLevel = { value: waterLevel };
-                            shader.uniforms.uGrassRadius = { value: 280.0 };
-                            shader.uniforms.uBeachRadius = { value: 305.0 };
+                                    islandMeshMaterial.map = groundTexture;
+                                    islandMeshMaterial.onBeforeCompile = (shader) => {
+                                        shader.uniforms.uSeabedTexture = { value: seabedTexture };
+                                        shader.uniforms.uSandTexture = { value: sandTexture };
+                                        shader.uniforms.uStoneTexture = { value: stoneTexture };
+                                        shader.uniforms.uGrassTexture = { value: grassTexture };
+                                        shader.uniforms.uInferiorTexture = { value: inferiorDirtTexture };
+                                        shader.uniforms.uWaterLevel = { value: waterLevel };
+                                        shader.uniforms.uGrassRadius = { value: 280.0 };
+                                        shader.uniforms.uBeachRadius = { value: 305.0 };
+                                        shader.uniforms.uUseTextures = { value: useTextures ? 1.0 : 0.0 };
+                                        islandMeshMaterial.userData.shader = shader;
 
-                            shader.vertexShader = `
-                                varying vec3 vWorldPosition;
-                                ${shader.vertexShader}
-                            `.replace(
-                                `#include <worldpos_vertex>`,
-                                `
-                                #include <worldpos_vertex>
-                                vWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;
-                                `
-                            );
+                                        shader.vertexShader = `
+                                            varying vec3 vWorldPosition;
+                                            ${shader.vertexShader}
+                                        `.replace(
+                                            `#include <worldpos_vertex>`,
+                                            `
+                                            #include <worldpos_vertex>
+                                            vWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;
+                                            `
+                                        );
 
-                            shader.fragmentShader = `
-                                uniform sampler2D uSeabedTexture;
-                                uniform sampler2D uSandTexture;
-                                uniform sampler2D uStoneTexture;
-                                uniform sampler2D uGrassTexture;
-                                uniform sampler2D uInferiorTexture;
-                                uniform float uWaterLevel;
-                                uniform float uGrassRadius;
-                                uniform float uBeachRadius;
-                                varying vec3 vWorldPosition;
-                                ${shader.fragmentShader}
-                            `.replace(
-                                `#include <map_fragment>`,
-                                `
-                                #ifdef USE_MAP
-                                    vec4 groundColor = texture2D(map, vUv);
-                                    vec4 seabedColor = texture2D(uSeabedTexture, vUv);
-                                    vec4 sandColor = texture2D(uSandTexture, vUv);
-                                    vec4 grassColor = texture2D(uGrassTexture, vUv);
-                                    vec4 stoneColor = texture2D(uStoneTexture, vUv * 4.0);
-                                    vec4 inferiorColor = texture2D(uInferiorTexture, vUv);
+                                        shader.fragmentShader = `
+                                            uniform sampler2D uSeabedTexture;
+                                            uniform sampler2D uSandTexture;
+                                            uniform sampler2D uStoneTexture;
+                                            uniform sampler2D uGrassTexture;
+                                            uniform sampler2D uInferiorTexture;
+                                            uniform float uWaterLevel;
+                                            uniform float uGrassRadius;
+                                            uniform float uBeachRadius;
+                                            uniform float uUseTextures;
+                                            varying vec3 vWorldPosition;
+                                            ${shader.fragmentShader}
+                                        `.replace(
+                                            `#include <map_fragment>`,
+                                            `
+                                            #ifdef USE_MAP
+                                                vec3 seabedColor;
+                                                vec3 sandColor;
+                                                vec3 grassColor;
+                                                vec3 stoneColor;
+                                                vec3 inferiorColor;
 
-                                    float dist = length(vWorldPosition.xz);
+                                                if (uUseTextures > 0.5) {
+                                                    seabedColor = texture2D(uSeabedTexture, vUv).rgb;
+                                                    sandColor = texture2D(uSandTexture, vUv).rgb;
+                                                    grassColor = texture2D(uGrassTexture, vUv).rgb;
+                                                    stoneColor = texture2D(uStoneTexture, vUv * 4.0).rgb;
+                                                    inferiorColor = texture2D(uInferiorTexture, vUv).rgb;
+                                                } else {
+                                                    seabedColor = vec3(0.1, 0.2, 0.3); // Solid seabed
+                                                    sandColor = vec3(0.8, 0.7, 0.4);  // Solid sand
+                                                    grassColor = vec3(0.3, 0.5, 0.2); // Solid grass terra
+                                                    stoneColor = vec3(0.5, 0.5, 0.5); // Solid stone
+                                                    inferiorColor = vec3(0.4, 0.3, 0.2); // Solid dirt
+                                                }
 
-                                    // Mistura entre areia e grama baseada no raio (praia larga)
-                                    float sandToGrassBlend = 1.0 - smoothstep(uGrassRadius, uBeachRadius, dist);
+                                                float dist = length(vWorldPosition.xz);
 
-                                    // Mistura fundo do mar baseada na altura
-                                    float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
+                                                // Mistura entre areia e grama baseada no raio (praia larga)
+                                                float sandToGrassBlend = 1.0 - smoothstep(uGrassRadius, uBeachRadius, dist);
 
-                                    // Mistura pedra para montanhas altas
-                                    float stoneBlend = smoothstep(20.0, 35.0, vWorldPosition.y);
+                                                // Mistura fundo do mar baseada na altura
+                                                float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
 
-                                    vec3 seabedSandMix = mix(seabedColor.rgb, sandColor.rgb, seabedToSandBlend);
-                                    // Tintamos a textura de terra da grama para verde
-                                    vec3 grassTinted = grassColor.rgb * vec3(0.7, 1.0, 0.4);
-                                    vec3 grassStoneMix = mix(grassTinted, stoneColor.rgb, stoneBlend);
-                                    vec3 terrainMix = mix(seabedSandMix, grassStoneMix, sandToGrassBlend);
+                                                // Mistura pedra para montanhas altas
+                                                float stoneBlend = smoothstep(20.0, 35.0, vWorldPosition.y);
 
-                                    // NOVO: Aplica a textura inferior provisória se vColor.r < 1.0 (sinalizado por modificação)
-                                    // Apenas se NÃO for areia (sandToGrassBlend próximo de 1.0 significa grama/pedra)
-                                    #ifdef USE_COLOR
-                                        float inferiorFactor = clamp(1.0 - vColor.r, 0.0, 1.0) * sandToGrassBlend;
-                                        terrainMix = mix(terrainMix, inferiorColor.rgb, inferiorFactor);
-                                    #endif
+                                                vec3 seabedSandMix = mix(seabedColor, sandColor, seabedToSandBlend);
+                                                // Tintamos a textura de terra da grama para verde
+                                                vec3 grassTinted = grassColor * vec3(0.7, 1.0, 0.4);
+                                                vec3 grassStoneMix = mix(grassTinted, stoneColor, stoneBlend);
+                                                vec3 terrainMix = mix(seabedSandMix, grassStoneMix, sandToGrassBlend);
 
-                                    diffuseColor.rgb = terrainMix;
-                                #endif
-                                `
-                            );
+                                                // NOVO: Aplica a textura inferior provisória se vColor.r < 1.0 (sinalizado por modificação)
+                                                // Apenas se NÃO for areia (sandToGrassBlend próximo de 1.0 significa grama/pedra)
+                                                #ifdef USE_COLOR
+                                                    float inferiorFactor = clamp(1.0 - vColor.r, 0.0, 1.0) * sandToGrassBlend;
+                                                    terrainMix = mix(terrainMix, inferiorColor, inferiorFactor);
+                                                #endif
 
-                            shader.fragmentShader = shader.fragmentShader.replace(
-                                '#include <color_fragment>',
-                                `
-                                #ifdef USE_COLOR
-                                    // Bypassa a multiplicação por vColor para evitar o tom esverdeado na terra mexida
-                                    // O vColor.r agora é usado apenas como máscara no passo anterior
-                                    diffuseColor.rgb *= vec3(1.0);
-                                #endif
-                                `
-                            );
-                        };
-                        islandMeshMaterial.needsUpdate = true;
-                        }, undefined, (error) => console.error('Falha ao carregar a textura de terra inferior:', error));
-                        }, undefined, (error) => console.error('Falha ao carregar a textura de grama:', error));
+                                                diffuseColor.rgb = terrainMix;
+                                            #endif
+                                            `
+                                        );
+
+                                        shader.fragmentShader = shader.fragmentShader.replace(
+                                            '#include <color_fragment>',
+                                            `
+                                            #ifdef USE_COLOR
+                                                // Bypassa a multiplicação por vColor para evitar o tom esverdeado na terra mexida
+                                                // O vColor.r agora é usado apenas como máscara no passo anterior
+                                                diffuseColor.rgb *= vec3(1.0);
+                                            #endif
+                                            `
+                                        );
+                                    };
+                                    islandMeshMaterial.needsUpdate = true;
+                                }, undefined, (error) => console.error('Falha ao carregar a textura de terra inferior:', error));
+                            }, undefined, (error) => console.error('Falha ao carregar a textura de grama:', error));
                         }, undefined, (error) => console.error('Falha ao carregar a textura de pedra:', error));
                     }, undefined, (error) => console.error('Falha ao carregar a textura de areia:', error));
                 }, undefined, (error) => console.error('Falha ao carregar a textura do fundo do mar:', error));
@@ -2855,8 +2928,8 @@
                 cubeTexture.wrapS = THREE.RepeatWrapping;
                 cubeTexture.wrapT = THREE.RepeatWrapping;
                 cubeTexture.repeat.set(1, 1);
-                cubeMaterialMesh.map = cubeTexture;
-                cubeMaterialMesh.needsUpdate = true;
+                texturesRegistry.cube = cubeTexture;
+                applyTextureSettings();
 
                 // Cria as caixas iniciais DENTRO do callback
                 createBox(new THREE.Vector3(0, cubeSize / 2 + getSurfaceHeight(0, -10), -10));
@@ -2882,14 +2955,16 @@
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                holeMaterial = new THREE.MeshBasicMaterial({ map: texture });
+                texturesRegistry.hole = texture;
+                holeMaterial = new THREE.MeshBasicMaterial({ map: useTextures ? texture : null });
 
                 // Adicionado: Carrega a textura de pedra para o buraco da montanha
                 textureLoader.load(stoneTextureURL, (stoneTexture) => {
                     stoneTexture.wrapS = THREE.RepeatWrapping;
                     stoneTexture.wrapT = THREE.RepeatWrapping;
                     stoneTexture.repeat.set(1, 1);
-                    stoneHoleMaterial = new THREE.MeshBasicMaterial({ map: stoneTexture });
+                    texturesRegistry.stone = stoneTexture;
+                    stoneHoleMaterial = new THREE.MeshBasicMaterial({ map: useTextures ? stoneTexture : null });
                 });
 
                 const gltfLoader = new GLTFLoader(loadingManager);
@@ -2915,8 +2990,8 @@
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                cobMaterialMesh.map = texture;
-                cobMaterialMesh.needsUpdate = true;
+                texturesRegistry.cob = texture;
+                applyTextureSettings();
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura do cob:', error);
             });
@@ -2926,8 +3001,8 @@
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                floorMaterialMesh.map = texture;
-                floorMaterialMesh.needsUpdate = true;
+                texturesRegistry.floor = texture;
+                applyTextureSettings();
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura do piso:', error);
             });
@@ -2937,8 +3012,8 @@
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                woodenPlankMaterialMesh.map = texture;
-                woodenPlankMaterialMesh.needsUpdate = true;
+                texturesRegistry.plank = texture;
+                applyTextureSettings();
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura da tábua de madeira:', error);
             });
@@ -2947,32 +3022,32 @@
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                stoneBlockMaterialMesh.map = texture;
-                stoneBlockMaterialMesh.needsUpdate = true;
+                texturesRegistry.stoneBlock = texture;
+                applyTextureSettings();
             });
 
             textureLoader.load(woodenBlockTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                woodenBlockMaterialMesh.map = texture;
-                woodenBlockMaterialMesh.needsUpdate = true;
+                texturesRegistry.woodenBlock = texture;
+                applyTextureSettings();
             });
 
             textureLoader.load(chestTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                chestMaterialMesh.map = texture;
-                chestMaterialMesh.needsUpdate = true;
+                texturesRegistry.chest = texture;
+                applyTextureSettings();
             });
 
             textureLoader.load(stoneFloorTextureURL, (texture) => {
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                stoneFloorMaterialMesh.map = texture;
-                stoneFloorMaterialMesh.needsUpdate = true;
+                texturesRegistry.stoneFloor = texture;
+                applyTextureSettings();
             });
 
             // Load the tree sapling texture (for icon)
@@ -2980,8 +3055,8 @@
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
-                treeSaplingMaterialMesh.map = texture;
-                treeSaplingMaterialMesh.needsUpdate = true;
+                texturesRegistry.treeSapling = texture;
+                applyTextureSettings();
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura da muda de árvore:', error);
             });
@@ -2991,8 +3066,8 @@
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1); // Adjust as needed for bark
-                treeTrunkMaterialMesh.map = texture;
-                treeTrunkMaterialMesh.needsUpdate = true;
+                texturesRegistry.treeBark = texture;
+                applyTextureSettings();
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura do tronco da árvore:', error);
             });
@@ -3002,8 +3077,8 @@
                 texture.wrapS = THREE.RepeatWrapping;
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1); // Adjust as needed for leaves
-                treeLeavesMaterialMesh.map = texture;
-                treeLeavesMaterialMesh.needsUpdate = true;
+                texturesRegistry.treeLeaves = texture;
+                applyTextureSettings();
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura das folhas da árvore:', error);
             });
@@ -3913,6 +3988,16 @@
                     }
                     treeDensityValue.textContent = targetTreeCount;
                     localStorage.setItem('targetTreeCount', targetTreeCount);
+                });
+            }
+
+            const textureToggle = document.getElementById('textureToggle');
+            if (textureToggle) {
+                textureToggle.value = useTextures.toString();
+                textureToggle.addEventListener('change', () => {
+                    useTextures = textureToggle.value === 'true';
+                    localStorage.setItem('useTextures', useTextures);
+                    applyTextureSettings();
                 });
             }
 
@@ -5395,6 +5480,9 @@
             window.updateUI = updateUI;
             window.selectedSlotIndex = selectedSlotIndex;
             window.dirtMountains = dirtMountains;
+            window.useTextures = useTextures;
+            window.cobMaterialMesh = cobMaterialMesh;
+            window.cubeMaterialMesh = cubeMaterialMesh;
         }
 
         // Listener de evento para o botão "Jogar"
