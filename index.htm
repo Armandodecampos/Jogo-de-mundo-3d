@@ -1654,7 +1654,7 @@
                 x: mx,
                 z: mz,
                 radius: 2.0 * (hfGridSize / worldSize), // Raio em unidades de índice (aprox 2 metros)
-                height: isPositive ? 0 : -1.0, // Altura do buraco ou monte
+                height: 0, // Inicia sem alteração na altura
                 flattened: false,
                 position: new THREE.Vector3(vx, vy, vz),
                 mesh: holeGroup,
@@ -1667,7 +1667,7 @@
             // Adiciona o novo monte às listas e o retorna
             if (!isPositive) visualMounds.push(newMound);
             mounds.push(newMound);
-            updateIslandGeometry(newMound);
+            // updateIslandGeometry(newMound); // REMOVIDO: Não atualiza imediatamente ao cavar
             return newMound;
         }
 
@@ -3534,7 +3534,7 @@
                                     }
                                 } else {
                                     // Se estiver cavando, usa a lógica original de estágios
-                                    if (mound.growthStage < moundGrowthStages.length - 1) {
+                                    if (mound.growthStage < moundGrowthStages.length) {
                                         targetMound = mound;
                                         break;
                                     }
@@ -4141,7 +4141,7 @@
                             if (mound.height < 0) {
                                 // Preenchendo um buraco
                                 mound.growthStage--;
-                                if (mound.growthStage < 0) {
+                                if (mound.growthStage <= 0) {
                                     mound.height = 0;
                                     updateIslandGeometry(mound);
                                     mound.flattened = true;
@@ -4153,9 +4153,9 @@
                                     isDestroying = false;
                                     progressContainer.style.display = 'none';
                                 } else {
-                                    mound.height = -1.0 * (mound.growthStage + 1) / moundGrowthStages.length;
+                                    mound.height = -1.0 * mound.growthStage / moundGrowthStages.length;
                                     if (mound.mesh) {
-                                        const newScale = moundGrowthStages[mound.growthStage];
+                                        const newScale = moundGrowthStages[mound.growthStage - 1];
                                         mound.mesh.scale.set(newScale, newScale, newScale);
                                     }
                                     updateIslandGeometry(mound);
@@ -4191,23 +4191,23 @@
                             // Lógica original de cavar
                             createDustCloud(mound.position, false);
                             mound.growthStage++;
-                            addItemToInventory(backpackItems, { name: dirtItemName, quantity: 25 });
+                            addItemToInventory(backpackItems, { name: dirtItemName, quantity: 20 });
                             updateBackpackDisplay();
 
                             if (mound.growthStage >= moundGrowthStages.length) {
-                                mound.growthStage = moundGrowthStages.length - 1;
+                                mound.height = -1.0;
+                                if (mound.mesh) mound.mesh.scale.set(1.0, 1.0, 1.0);
                                 destructionComplete = true;
                                 isDestroying = false;
                                 progressContainer.style.display = 'none';
                                 mound.lastDugAt = world.time;
                                 currentMound = null;
                             } else {
-                                const newScale = moundGrowthStages[mound.growthStage];
+                                const newScale = moundGrowthStages[mound.growthStage - 1];
                                 if (mound.mesh) mound.mesh.scale.set(newScale, newScale, newScale);
                                 destroyProgress = 0; // Reinicia para o próximo estágio
+                                mound.height = -1.0 * mound.growthStage / moundGrowthStages.length;
                             }
-                            // Atualiza a física do terreno para refletir o crescimento do buraco
-                            mound.height = -1.0 * (mound.growthStage + 1) / moundGrowthStages.length;
                         }
 
                         updateIslandGeometry(mound);
