@@ -540,7 +540,7 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 512; // Resolução global do terreno equilibrada
+        const hfGridSize = 256; // Resolução global do terreno equilibrada
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -602,7 +602,7 @@
         let destroyTargetPosition = null;
         let destructionComplete = false; // NOVO: Flag para gerenciar o estado de destruição
         let currentMound = null; // NOVO: Referência ao buraco que está sendo cavado
-        const moundGrowthStages = [0.125, 0.25, 0.375, 0.5]; // NOVO: Estágios de crescimento
+        const moundGrowthStages = [0.25, 0.5, 0.75, 1.0]; // NOVO: Estágios de crescimento
 
         // NOVO: Variáveis para a lógica de clique vs. segurar
         let mouseDownTime = 0;
@@ -1266,7 +1266,6 @@
             }
 
             if (item) {
-                if (item.quantity === undefined) item.quantity = 1;
                 const img = document.createElement('img');
                 const quantitySpan = document.createElement('span');
 
@@ -1418,7 +1417,6 @@
 
                 if (inventoryArray[i] === null) {
                     inventoryArray[i] = { ...itemToAdd }; // Add new item
-                    if (inventoryArray[i].quantity === undefined) inventoryArray[i].quantity = 1;
                     if (inventoryArray === backpackItems) maintainBackpack();
                     return;
                 }
@@ -1580,9 +1578,6 @@
             holeGroup.position.copy(hitPoint);
             let finalQuaternion = new THREE.Quaternion();
 
-            const physicalRadius = 1.2; // Raio físico em metros
-            const indexRadius = physicalRadius * (hfGridSize - 1) / worldSize;
-
             if (!isPositive) {
                 // NOVO: Remove todos os buracos existentes antes de criar um novo
                 visualMounds.forEach(mound => {
@@ -1591,9 +1586,9 @@
                 visualMounds.length = 0; // Limpa o array
 
                 // Define as dimensões e segmentos do vulcão
-                const volcanoInnerRadius = physicalRadius * 0.7;
-            const volcanoOuterRadiusAtTop = physicalRadius * 0.7;
-            const volcanoOuterRadiusAtBottom = physicalRadius;
+                const volcanoInnerRadius = 1.0;
+            const volcanoOuterRadiusAtTop = 1.0;
+            const volcanoOuterRadiusAtBottom = 1.5;
             const mountainRadius = 160.0;
             const volcanoHeight = 0.1;
             const volcanoRadialSegments = 32;
@@ -1650,7 +1645,7 @@
             });
 
             // Cria, dimensiona e posiciona o modelo do buraco central
-            const holeRadius = physicalRadius * 0.9;
+            const holeRadius = 1.4;
             // Modificado: A geometria do buraco agora é condicional
             const centerGeometry = new THREE.CircleGeometry(holeRadius, 32);
             const centerInstance = new THREE.Mesh(centerGeometry, holeMaterial);
@@ -1671,23 +1666,10 @@
                 finalQuaternion.copy(holeGroup.quaternion);
 
                 // Define a escala inicial para a animação
-                const initialScale = moundGrowthStages[0] / 0.5; // Ajusta escala baseada na nova altura max 0.5
+                const initialScale = moundGrowthStages[0];
                 holeGroup.scale.set(initialScale, initialScale, initialScale);
 
                 scene.add(holeGroup);
-            } else {
-                // NOVO: Adiciona um monte visual redondo para construção
-                const moundGeometry = new THREE.SphereGeometry(physicalRadius, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2);
-                const moundMesh = new THREE.Mesh(moundGeometry, islandMeshes[0].mesh.material);
-                moundMesh.receiveShadow = true;
-                moundMesh.castShadow = true;
-                holeGroup.add(moundMesh);
-
-                // Initial scale (Y height only for dirt piles)
-                holeGroup.scale.set(1, 0.01, 1);
-
-                scene.add(holeGroup);
-                visualMounds.push({ mesh: holeGroup, position: hitPoint.clone(), isPositive: true, createdAt: world.time, lastDugAt: world.time });
             }
 
             // Calcula os índices do heightfield para o ponto de impacto (coordenadas locais do heightfield)
@@ -1697,8 +1679,8 @@
             const newMound = {
                 x: mx,
                 z: mz,
-                radius: indexRadius, // Raio em unidades de índice
-                height: 0, // Inicia plano para crescer progressivamente
+                radius: 2.0 * (hfGridSize / worldSize), // Raio em unidades de índice (aprox 2 metros)
+                height: isPositive ? 0 : -1.0, // Altura do buraco ou monte
                 flattened: false,
                 position: hitPoint.clone(),
                 mesh: holeGroup,
@@ -3526,7 +3508,7 @@
                     if (target.isDigging) {
                         const intersect = target.intersect;
                         const hitPoint = intersect.point;
-                        const volcanoOuterRadiusAtBottom = 1.2;
+                        const volcanoOuterRadiusAtBottom = 1.5;
                         const isBuilding = (heldItemName === dirtItemName);
 
                         let targetMound = null;
@@ -3538,7 +3520,7 @@
                             if (dist < volcanoOuterRadiusAtBottom) {
                                 if (isBuilding) {
                                     // Se estiver construindo, aceita qualquer mound que possa crescer em altura
-                                    if (mound.height < 0.5) {
+                                    if (mound.height < 1.0) {
                                         targetMound = mound;
                                         break;
                                     }
@@ -4014,14 +3996,14 @@
             for (const item of beltItems) {
                 if (item) {
                     const weightPerItem = itemWeights[item.name] || 0;
-                    totalWeight += weightPerItem * (item.quantity || 1);
+                    totalWeight += weightPerItem * item.quantity;
                 }
             }
             // Calcular peso na mochila
             for (const item of backpackItems) {
                 if (item) {
                     const weightPerItem = itemWeights[item.name] || 0;
-                    totalWeight += weightPerItem * (item.quantity || 1);
+                    totalWeight += weightPerItem * item.quantity;
                 }
             }
             return totalWeight;
@@ -4146,16 +4128,16 @@
                                     updateIslandGeometry(mound);
                                     mound.flattened = true;
                                     if (mound.mesh) scene.remove(mound.mesh);
-                                    const vIndex = visualMounds.findIndex(m => m.mesh === mound.mesh || m === mound);
+                                    const vIndex = visualMounds.indexOf(mound);
                                     if (vIndex !== -1) visualMounds.splice(vIndex, 1);
 
                                     destructionComplete = true;
                                     isDestroying = false;
                                     progressContainer.style.display = 'none';
                                 } else {
-                                    mound.height = -0.5 * (mound.growthStage + 1) / moundGrowthStages.length;
+                                    mound.height = -1.0 * (mound.growthStage + 1) / moundGrowthStages.length;
                                     if (mound.mesh) {
-                                        const newScale = moundGrowthStages[mound.growthStage] / 0.5;
+                                        const newScale = moundGrowthStages[mound.growthStage];
                                         mound.mesh.scale.set(newScale, newScale, newScale);
                                     }
                                     updateIslandGeometry(mound);
@@ -4163,17 +4145,10 @@
                                 }
                             } else {
                                 // Criando um monte (positivo)
-                                mound.height += 0.125;
+                                mound.height += 0.25;
                                 updateIslandGeometry(mound);
-
-                                // Atualiza a escala visual do monte (escala Y deve mapear a altura física para o raio da esfera)
-                                if (mound.mesh) {
-                                    const currentYScale = mound.height / 1.2; // physicalRadius = 1.2
-                                    mound.mesh.scale.set(1, Math.max(0.01, currentYScale), 1);
-                                }
-
-                                if (mound.height >= 0.5) {
-                                    mound.height = 0.5;
+                                if (mound.height >= 1.0) {
+                                    mound.height = 1.0;
                                     destructionComplete = true;
                                     isDestroying = false;
                                     progressContainer.style.display = 'none';
@@ -4209,12 +4184,12 @@
                                 mound.lastDugAt = world.time;
                                 currentMound = null;
                             } else {
-                                const newScale = moundGrowthStages[mound.growthStage] / 0.5;
+                                const newScale = moundGrowthStages[mound.growthStage];
                                 if (mound.mesh) mound.mesh.scale.set(newScale, newScale, newScale);
                                 destroyProgress = 0; // Reinicia para o próximo estágio
                             }
                             // Atualiza a física do terreno para refletir o crescimento do buraco
-                            mound.height = -0.5 * (mound.growthStage + 1) / moundGrowthStages.length;
+                            mound.height = -1.0 * (mound.growthStage + 1) / moundGrowthStages.length;
                         }
 
                         updateIslandGeometry(mound);
@@ -4674,12 +4649,6 @@
                         currentGhostDepth = 1.2;
                         ghostBlockMesh.geometry = new THREE.SphereGeometry(0.5, 16, 16);
                         ghostBlockMesh.scale.set(1, 0.5, 1.2);
-                    } else if (currentBlockType === dirtItemName) {
-                        currentGhostWidth = 2.4; // 2 * physicalRadius (1.2)
-                        currentGhostHeight = 0.5;
-                        currentGhostDepth = 2.4;
-                        ghostBlockMesh.geometry = new THREE.SphereGeometry(1.2, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2);
-                        ghostBlockMesh.scale.set(1, 0.5 / 1.2, 1); // Dome shape (0.5m height / 1.2m radius)
                     }
                     // Update ghost block geometry
                     // ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth); // Removido para lidar individualmente
@@ -5155,12 +5124,6 @@
                         currentGhostWidth = 1;
                         currentGhostHeight = 0.5;
                         currentGhostDepth = 1.2;
-                    } else if (currentBlockType === dirtItemName) {
-                        currentGhostWidth = 4.0;
-                        currentGhostHeight = 0.5;
-                        currentGhostDepth = 4.0;
-                        ghostBlockMesh.geometry = new THREE.SphereGeometry(2.0, 16, 12, 0, Math.PI * 2, 0, Math.PI / 2);
-                        ghostBlockMesh.scale.set(1, 0.25, 1); // Dome shape (0.5m height / 2.0m radius = 0.25)
                     }
 
                     for (let i = 0; i < intersects.length; i++) {
