@@ -2306,9 +2306,120 @@
 
 
         let currentHfMatrix = null;
+        let waterMatrix = new Uint8Array(hfGridSize * hfGridSize);
+
+        function updateWaterConnectivity() {
+            if (!currentHfMatrix) return;
+            waterMatrix.fill(0);
+            const queue = [];
+
+            // Inicia a partir das bordas do mapa (oceano aberto)
+            for (let i = 0; i < hfGridSize; i++) {
+                // Borda de Cannon j=0 (z = -worldSize/2) e j=255 (z = worldSize/2)
+                if (currentHfMatrix[i][0] < waterLevel) {
+                    if (waterMatrix[i * hfGridSize + 0] === 0) {
+                        waterMatrix[i * hfGridSize + 0] = 1;
+                        queue.push(i, 0);
+                    }
+                }
+                if (currentHfMatrix[i][hfGridSize - 1] < waterLevel) {
+                    if (waterMatrix[i * hfGridSize + (hfGridSize - 1)] === 0) {
+                        waterMatrix[i * hfGridSize + (hfGridSize - 1)] = 1;
+                        queue.push(i, hfGridSize - 1);
+                    }
+                }
+            }
+            for (let j = 0; j < hfGridSize; j++) {
+                // Borda de Cannon i=0 (x = -worldSize/2) e i=255 (x = worldSize/2)
+                if (currentHfMatrix[0][j] < waterLevel) {
+                    if (waterMatrix[0 * hfGridSize + j] === 0) {
+                        waterMatrix[0 * hfGridSize + j] = 1;
+                        queue.push(0, j);
+                    }
+                }
+                if (currentHfMatrix[hfGridSize - 1][j] < waterLevel) {
+                    if (waterMatrix[(hfGridSize - 1) * hfGridSize + j] === 0) {
+                        waterMatrix[(hfGridSize - 1) * hfGridSize + j] = 1;
+                        queue.push(hfGridSize - 1, j);
+                    }
+                }
+            }
+
+            let head = 0;
+            while (head < queue.length) {
+                const i = queue[head++];
+                const j = queue[head++];
+
+                const ni = [i - 1, i + 1, i, i];
+                const nj = [j, j, j - 1, j + 1];
+
+                for (let k = 0; k < 4; k++) {
+                    const r = ni[k];
+                    const c = nj[k];
+                    if (r >= 0 && r < hfGridSize && c >= 0 && c < hfGridSize) {
+                        const idx = r * hfGridSize + c;
+                        if (waterMatrix[idx] === 0 && currentHfMatrix[r][c] < waterLevel) {
+                            waterMatrix[idx] = 1;
+                            queue.push(r, c);
+                        }
+                    }
+                }
+            }
+        }
+
+        function hasWaterAt(x, z) {
+            if (!waterMatrix) return true;
+            const step = worldSize / (hfGridSize - 1);
+
+            // Suporte para mundo toroidal (repete o padrão de água conforme os tiles do terreno)
+            let tx = ((x + worldSize / 2) % worldSize + worldSize) % worldSize;
+            let tz = ((worldSize / 2 - z) % worldSize + worldSize) % worldSize;
+
+            const mx = Math.round(tx / step);
+            const mz_three = Math.round(tz / step);
+            const mz_cannon = (hfGridSize - 1) - mz_three;
+
+            if (mx < 0 || mx >= hfGridSize || mz_cannon < 0 || mz_cannon >= hfGridSize) {
+                return true;
+            }
+            return waterMatrix[mx * hfGridSize + mz_cannon] === 1;
+        }
+
+        function updateWaterVisuals() {
+            if (!window.waterGeometry) return;
+            const indices = [];
+            for (let j = 0; j < hfGridSize - 1; j++) {
+                const cannonJ = (hfGridSize - 1) - j;
+                const cannonJnext = (hfGridSize - 1) - (j + 1);
+                for (let i = 0; i < hfGridSize - 1; i++) {
+                    const w1 = waterMatrix[i * hfGridSize + cannonJ];
+                    const w2 = waterMatrix[(i + 1) * hfGridSize + cannonJ];
+                    const w3 = waterMatrix[i * hfGridSize + cannonJnext];
+                    const w4 = waterMatrix[(i + 1) * hfGridSize + cannonJnext];
+
+                    if (w1 && w2 && w3 && w4) {
+                        const a = j * hfGridSize + i;
+                        const b = j * hfGridSize + (i + 1);
+                        const c = (j + 1) * hfGridSize + i;
+                        const d = (j + 1) * hfGridSize + (i + 1);
+
+                        indices.push(a, b, c);
+                        indices.push(b, d, c);
+                    }
+                }
+            }
+            window.waterGeometry.setIndex(indices);
+            if (window.waterGeometry.index) window.waterGeometry.index.needsUpdate = true;
+        }
+        window.hasWaterAt = hasWaterAt;
+        window.updateWaterConnectivity = updateWaterConnectivity;
+        window.updateWaterVisuals = updateWaterVisuals;
+        window.currentHfMatrix = currentHfMatrix;
+
         function updateIslandGeometry(affectedMound = null) {
             // Recalcula a matriz a partir da base + todos os mounds ativos
             currentHfMatrix = baseMatrix.map(row => [...row]);
+            window.currentHfMatrix = currentHfMatrix;
 
             for (const mound of mounds) {
                 if (mound.flattened) continue;
@@ -2397,6 +2508,10 @@
                 geom.attributes.position.needsUpdate = true;
                 geom.computeVertexNormals();
             }
+
+            // Atualiza a conectividade e o visual da água quando o terreno muda
+            updateWaterConnectivity();
+            updateWaterVisuals();
         }
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
@@ -2880,13 +2995,23 @@
                 }, undefined, (error) => console.error('Falha ao carregar a textura do fundo do mar:', error));
             }, undefined, (error) => console.error('Falha ao carregar a textura do solo:', error));
 
-            // Cria a Água (agora como uma grelha)
-            const waterGeometry = new THREE.BoxGeometry(worldSize, 0.1, worldSize);
+            // Cria a Água (agora como uma grelha de alta resolução para conectividade)
+            const waterGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
+            waterGeometry.rotateX(-Math.PI / 2);
+            window.waterGeometry = waterGeometry;
+
             const waterMaterial = new THREE.MeshBasicMaterial({ color: 0x006994, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+
+            // Inicializa a conectividade da água
+            currentHfMatrix = JSON.parse(JSON.stringify(baseMatrix));
+            window.currentHfMatrix = currentHfMatrix;
+            updateWaterConnectivity();
+            updateWaterVisuals();
+
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                     const mesh = new THREE.Mesh(waterGeometry, waterMaterial);
-                    mesh.position.y = waterLevel - 0.05; // Posição visual da água
+                    mesh.position.y = waterLevel; // Posição visual da água (agora plano)
                     mesh.userData.isWater = true; // Identificador para o raycaster
                     scene.add(mesh);
                     waterMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
@@ -3245,7 +3370,7 @@
                     keysPressed[event.key.toLowerCase()] = true;
                     if (event.key.toLowerCase() === ' ') { // Pular
                         const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
-                        const isInWater = playerBottomY < waterLevel;
+                        const isInWater = playerBottomY < waterLevel && hasWaterAt(playerBody.position.x, playerBody.position.z);
                         if (canJump || isInWater) {
                             // Impulso de salto mais forte necessário para sair da água
                             const jumpImpulse = isInWater ? 600 * 3 : 400 * 3;
@@ -4799,7 +4924,7 @@
 
 
             const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
-            const isInWater = playerBottomY < waterLevel;
+            const isInWater = playerBottomY < waterLevel && hasWaterAt(playerBody.position.x, playerBody.position.z);
 
             // Lógica de agachamento e mergulho
             if (keysPressed['c']) {
@@ -4828,7 +4953,7 @@
             camera.position.y += cameraEyeLevelOffset;
 
             // Lógica do efeito subaquático
-            if (camera.position.y < waterLevel) {
+            if (camera.position.y < waterLevel && hasWaterAt(camera.position.x, camera.position.z)) {
                 scene.background = underwaterColor;
                 scene.fog = underwaterFog;
                 ambientLight.color.setHex(0x004080); // Cor azulada para a luz ambiente
