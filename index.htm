@@ -650,6 +650,7 @@
         const islandRadiusBottom = 600; // NOVO: Raio da base da ilha
         const waterLevel = -9.6; // NOVO: Nível da água
         const seabedLevel = -20; // NOVO: Nível do fundo do mar
+        const stoneLayerLevel = -22.0; // NOVO: Nível onde começa a pedra
         let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 100; // Distância de renderização para objetos
         let frameCount = 0;
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
@@ -2773,6 +2774,7 @@
                                         shader.uniforms.uGrassTexture = { value: grassTexture };
                                         shader.uniforms.uInferiorTexture = { value: inferiorDirtTexture };
                                         shader.uniforms.uWaterLevel = { value: waterLevel };
+                                        shader.uniforms.uStoneLayerLevel = { value: stoneLayerLevel };
                                         shader.uniforms.uGrassRadius = { value: 280.0 };
                                         shader.uniforms.uBeachRadius = { value: 305.0 };
                                         shader.uniforms.uUseTextures = { value: useTextures ? 1.0 : 0.0 };
@@ -2796,6 +2798,7 @@
                                             uniform sampler2D uGrassTexture;
                                             uniform sampler2D uInferiorTexture;
                                             uniform float uWaterLevel;
+                                            uniform float uStoneLayerLevel;
                                             uniform float uGrassRadius;
                                             uniform float uBeachRadius;
                                             uniform float uUseTextures;
@@ -2835,6 +2838,9 @@
 
                                                 // Mistura pedra para montanhas altas
                                                 float stoneBlend = smoothstep(20.0, 35.0, vWorldPosition.y);
+                                                // Camada de pedra profunda
+                                                float deepStoneBlend = 1.0 - smoothstep(uStoneLayerLevel, uStoneLayerLevel + 1.0, vWorldPosition.y);
+                                                stoneBlend = max(stoneBlend, deepStoneBlend);
 
                                                 vec3 seabedSandMix = mix(seabedColor, sandColor, seabedToSandBlend);
                                                 // Tintamos a textura de terra da grama para verde
@@ -2846,7 +2852,8 @@
                                                 // Apenas se NÃO for areia (sandToGrassBlend próximo de 1.0 significa grama/pedra)
                                                 #ifdef USE_COLOR
                                                     float inferiorFactor = clamp(1.0 - vColor.r, 0.0, 1.0) * sandToGrassBlend;
-                                                    terrainMix = mix(terrainMix, inferiorColor, inferiorFactor);
+                                                    vec3 currentInferior = (vWorldPosition.y < uStoneLayerLevel) ? stoneColor : inferiorColor;
+                                                    terrainMix = mix(terrainMix, currentInferior, inferiorFactor);
                                                 #endif
 
                                                 diffuseColor.rgb = terrainMix;
@@ -3550,8 +3557,10 @@
 
                         if (currentMound) {
                             destroyTargetDigInfo = { mound: currentMound, isBuilding: isBuilding };
-                            baseDurability = isBuilding ? 0.02 : 1.0; // Adicionar terra é MUITO mais rápido (quase instantâneo no clique)
-                            materialType = 'earth';
+                            const vy = (typeof currentHfMatrix !== 'undefined' && currentHfMatrix) ? currentHfMatrix[mx][mz] : window.getSurfaceHeight(vx, vz);
+                            const isStoneLayer = vy < stoneLayerLevel;
+                            materialType = isStoneLayer ? 'stone' : 'earth';
+                            baseDurability = isBuilding ? 0.02 : (isStoneLayer ? 2.0 : 1.0); // Adicionar terra é MUITO mais rápido
                             // A textura de terra e a altura agora só mudam quando a barra de progresso termina
                             // updateIslandGeometry(currentMound); // REMOVIDO: Evita aplicação imediata da textura
                         } else {
@@ -4192,8 +4201,10 @@
                             createDustCloud(mound.position, false);
                             mound.growthStage++;
 
-                            // Gain 20 terras for each stage of digging
-                            addItemToInventory(backpackItems, { name: dirtItemName, quantity: 20 });
+                            // Gain 20 terras or stones for each stage of digging
+                            const currentDigHeight = mound.position.y + (mound.height || 0);
+                            const itemToGive = currentDigHeight < stoneLayerLevel ? stoneItemName : dirtItemName;
+                            addItemToInventory(backpackItems, { name: itemToGive, quantity: 20 });
                             updateBackpackDisplay();
 
                             if (mound.growthStage >= moundGrowthStages.length) {
