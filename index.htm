@@ -3552,8 +3552,8 @@
                             destroyTargetDigInfo = { mound: currentMound, isBuilding: isBuilding };
                             baseDurability = isBuilding ? 0.02 : 1.0; // Adicionar terra é MUITO mais rápido (quase instantâneo no clique)
                             materialType = 'earth';
-                            // Garante que a textura de terra apareça imediatamente ao começar a cavar ou construir
-                            updateIslandGeometry(currentMound);
+                            // A textura de terra e a altura agora só mudam quando a barra de progresso termina
+                            // updateIslandGeometry(currentMound); // REMOVIDO: Evita aplicação imediata da textura
                         } else {
                             isDestroying = false;
                             return;
@@ -4191,8 +4191,6 @@
                             // Lógica original de cavar
                             createDustCloud(mound.position, false);
                             mound.growthStage++;
-                            addItemToInventory(backpackItems, { name: dirtItemName, quantity: 20 });
-                            updateBackpackDisplay();
 
                             if (mound.growthStage >= moundGrowthStages.length) {
                                 mound.height = -1.0;
@@ -4202,6 +4200,10 @@
                                 progressContainer.style.display = 'none';
                                 mound.lastDugAt = world.time;
                                 currentMound = null;
+
+                                // Gain 20 terras upon finishing the digging
+                                addItemToInventory(backpackItems, { name: dirtItemName, quantity: 20 });
+                                updateBackpackDisplay();
                             } else {
                                 const newScale = moundGrowthStages[mound.growthStage - 1];
                                 if (mound.mesh) mound.mesh.scale.set(newScale, newScale, newScale);
