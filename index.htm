@@ -662,6 +662,8 @@
         const waterLevel = -9.6; // NOVO: Nível da água
         const seabedLevel = -20; // NOVO: Nível do fundo do mar
         const stoneLayerLevel = -10.0; // NOVO: Nível onde começa a pedra
+        const grassRadius = 280.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
+        const beachRadius = 305.0; window.beachRadius = beachRadius; // NOVO: Raio da praia
         let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 100; // Distância de renderização para objetos
         let frameCount = 0;
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
@@ -760,6 +762,7 @@
         const hammerItemName = 'martelo'; // Nome do item de martelo no inventário
         const stoneItemName = 'pedra'; // NOVO: Nome do item de pedra no inventário
         const dirtItemName = 'terra'; // NOVO: Nome do item de terra no inventário
+        const sandItemName = 'areia'; // NOVO: Nome do item de areia no inventário
         const shovelItemName = 'pá'; // NOVO: Nome do item de pá no inventário
         const pickaxeItemName = 'picareta'; // NOVO: Nome do item de picareta no inventário
         const branchItemName = 'galho'; // NOVO: Nome do item de galho no inventário
@@ -790,6 +793,7 @@
             [hammerItemName]: 'Martelo\nSem uso',
             [stoneItemName]: 'Pedra',
             [dirtItemName]: 'Terra',
+            [sandItemName]: 'Areia',
             [shovelItemName]: 'Pá\nEspecialidade: Terra',
             [pickaxeItemName]: 'Picareta\nEspecialidade: Pedra',
             [cobItemName]: 'Bloco de Barro',
@@ -814,6 +818,7 @@
             [hammerItemName]: 2.0,
             [stoneItemName]: 1.0,
             [dirtItemName]: 0.2,
+            [sandItemName]: 0.2,
             [shovelItemName]: 2.0,
             [pickaxeItemName]: 2.0,
             [cobItemName]: 2.0,
@@ -904,6 +909,7 @@
         const hammerImageURL = 'https://dl.dropbox.com/scl/fi/vadd8ztbnmzfqi18ml1cl/icone-de-martelo.png?rlkey=45l4k78t728fh4w4fkd4tvlef&st=cbi6paz9&dl=0'; // Placeholder for hammer image
         const stoneImageURL = 'https://dl.dropbox.com/scl/fi/m1fkx9ccbjxlwyvcrdbio/Textura-de-pedra.png?rlkey=vlbwqpy001vcjqiedh1wrdo53&st=sy0pevfr&dl=1'; // NOVO: Imagem para a pedra
         const dirtImageURL = 'https://placehold.co/100x100/A0522D/FFFFFF?text=Terra'; // NOVO: Imagem para a terra
+        const sandImageURL = 'https://placehold.co/100x100/c2b280/FFFFFF?text=Areia'; // NOVO: Imagem para a areia
         const shovelImageURL = 'https://placehold.co/100x100/808080/FFFFFF?text=Pá'; // NOVO: Imagem para a pá
         const pickaxeImageURL = 'https://file.loading.io/resources/icon/whnsbw.svg'; // NOVO: Imagem para a picareta
         const treeBarkTextureURL = 'https://dl.dropbox.com/scl/fi/njc60aje7lvqcju60ug8s/ChatGPT-Image-6-de-fev.-de-2026-21_52_132.png?rlkey=3ji8sf4ipjyjymhak24203mr5&st=lh4h3hc8&dl=0'; // Corrected URL
@@ -1353,6 +1359,8 @@
                     img.src = stoneImageURL;
                 } else if (item.name === dirtItemName) { // NOVO
                     img.src = dirtImageURL;
+                } else if (item.name === sandItemName) { // NOVO
+                    img.src = sandImageURL;
                 } else if (item.name === shovelItemName) { // NOVO
                     img.src = shovelImageURL;
                 } else if (item.name === pickaxeItemName) { // NOVO
@@ -1887,7 +1895,7 @@
                         position.y,
                         position.z + Math.sin(angle) * dist
                     );
-                    const h = 0.5 + Math.random() * 0.6;
+                    const h = 0.7 + Math.random() * 0.8;
                     const w = 1.2 + Math.random() * 0.6;
                     scale.set(w, h, w);
                     euler.set(0, Math.random() * Math.PI, 0);
@@ -1941,7 +1949,6 @@
         }
 
         function respawnCapim() {
-            const grassRadius = 280.0;
             let totalAttempts = 0;
             while (capimClusters.length < targetCapimCount && totalAttempts < 20) {
                 totalAttempts++;
@@ -1960,7 +1967,6 @@
         }
 
         function populateCapim() {
-            const grassRadius = 280.0;
             let attempts = 0;
             while (capimClusters.length < targetCapimCount && attempts < targetCapimCount * 5) {
                 attempts++;
@@ -1986,7 +1992,7 @@
             while (currentTreeCount < targetTreeCount && totalAttempts < 20) {
                 totalAttempts++;
                 const angle = Math.random() * Math.PI * 2;
-                const dist = Math.random() * 280.0;
+                const dist = Math.random() * grassRadius;
                 const x = Math.cos(angle) * dist;
                 const z = Math.sin(angle) * dist;
                 const y = window.getSurfaceHeight(x, z);
@@ -2967,8 +2973,8 @@
                                         shader.uniforms.uInferiorTexture = { value: inferiorDirtTexture };
                                         shader.uniforms.uWaterLevel = { value: waterLevel };
                                         shader.uniforms.uStoneLayerLevel = { value: stoneLayerLevel };
-                                        shader.uniforms.uGrassRadius = { value: 280.0 };
-                                        shader.uniforms.uBeachRadius = { value: 305.0 };
+                                        shader.uniforms.uGrassRadius = { value: grassRadius };
+                                        shader.uniforms.uBeachRadius = { value: beachRadius };
                                         shader.uniforms.uUseTextures = { value: useTextures ? 1.0 : 0.0 };
                                         islandMeshMaterial.userData.shader = shader;
 
@@ -4480,9 +4486,17 @@
                             createDustCloud(mound.position, destroyTargetColor);
                             mound.growthStage++;
 
-                            // Gain 20 terras or stones for each stage of digging
+                            // Gain 20 terras, sands or stones for each stage of digging
                             const currentDigHeight = mound.position.y + (mound.height || 0);
-                            const itemToGive = currentDigHeight < stoneLayerLevel ? stoneItemName : dirtItemName;
+                            const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
+                            let itemToGive;
+                            if (currentDigHeight < stoneLayerLevel) {
+                                itemToGive = stoneItemName;
+                            } else if (distFromCenter > grassRadius) {
+                                itemToGive = sandItemName;
+                            } else {
+                                itemToGive = dirtItemName;
+                            }
                             addItemToInventory(backpackItems, { name: itemToGive, quantity: 20 });
                             updateBackpackDisplay();
 
