@@ -621,6 +621,7 @@
         let destroyTargetMountainInfo = null;
         let destroyTargetDigInfo = null; // NOVO: Para unificar a escavação
         let destroyTargetCapimInfo = null; // NOVO: Para destruição de capim sem física
+        let destroyTargetColor = 0xA0522D; // NOVO: Cor do alvo sendo destruído
         let destroyTargetPosition = null;
         let destructionComplete = false; // NOVO: Flag para gerenciar o estado de destruição
         let currentMound = null; // NOVO: Referência ao buraco que está sendo cavado
@@ -1131,7 +1132,7 @@
         }
 
         // NOVO: Função para criar o efeito de poeira de partículas
-        function createDustCloud(position, isMountain) {
+        function createDustCloud(position, colorOverride = null) {
             // Se já existir uma nuvem de poeira, remove-a primeiro
             if (dustParticles) {
                 particlesGroup.remove(dustParticles);
@@ -1140,7 +1141,7 @@
                 dustParticles = null;
             }
 
-            const particleCount = 2000;
+            const particleCount = 500; // Reduzido de 2000 para performance
             const particles = new THREE.BufferGeometry();
             const positions = new Float32Array(particleCount * 3);
             const radius = 1.5;
@@ -1158,10 +1159,10 @@
             particles.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
             const particleMaterial = new THREE.PointsMaterial({
-                color: isMountain ? 0xAAAAAA : 0x966F33, // Dust/brown color
+                color: colorOverride !== null ? colorOverride : 0x966F33, // Cor herdada ou padrão terra
                 size: 0.08,
                 transparent: true,
-                opacity: 0.2,
+                opacity: 0.1, // Mais transparente
                 blending: THREE.NormalBlending,
                 depthWrite: false
             });
@@ -2268,13 +2269,13 @@
         }
 
         // Function to create a smoke effect at a given position
-        function createSmokeEffect(position, isMountain = false) {
-            const smokeCount = 15; // Increased particle count for denser smoke
+        function createSmokeEffect(position, colorOverride = null) {
+            const smokeCount = 6; // Reduzido para melhor performance
             const smokeGeometry = new THREE.SphereGeometry(0.15, 8, 8); // Tripled the size
             const smokeMaterial = new THREE.MeshBasicMaterial({
-                color: isMountain ? 0x888888 : 0xA0522D, // Gray for mountain, brown for dirt
+                color: colorOverride !== null ? colorOverride : 0xA0522D, // Cor herdada ou padrão terra
                 transparent: true,
-                opacity: 0.5,
+                opacity: 0.3, // Mais transparente
                 depthWrite: false // Important for transparent objects
             });
 
@@ -2294,26 +2295,23 @@
         }
 
         // NEW: Function to create digging debris (dirt and stone) - NOW VISUAL ONLY
-        function createDebris(position, count, isMountain) {
-            const debrisTypes = isMountain ? [
-                { type: 'stone', color: 0x888888, shape: 'icosahedron' }
-            ] : [
-                { type: 'dirt', color: 0xA0522D, shape: 'box' }
-            ];
+        function createDebris(position, count, colorOverride = null) {
+            const debrisColor = colorOverride !== null ? colorOverride : 0xA0522D;
+            // Usa icosaedro para pedras (cinza), box para o resto
+            const useIcosahedron = (debrisColor === 0x888888 || debrisColor === 0x808080 || debrisColor === 0x909090);
 
             for (let i = 0; i < count; i++) {
-                const debrisType = debrisTypes[Math.floor(Math.random() * debrisTypes.length)];
                 const size = Math.random() * 0.05 + 0.05; // Slightly smaller and less varied size
 
                 let debrisGeometry;
-                if (debrisType.shape === 'box') {
-                    debrisGeometry = new THREE.BoxGeometry(size, size, size);
-                } else { // icosahedron for stones
+                if (useIcosahedron) {
                     debrisGeometry = new THREE.IcosahedronGeometry(size, 0);
+                } else {
+                    debrisGeometry = new THREE.BoxGeometry(size, size, size);
                 }
 
                 const debrisMaterialMesh = new THREE.MeshStandardMaterial({
-                    color: debrisType.color,
+                    color: debrisColor,
                     roughness: 0.8,
                     metalness: 0.1
                 });
@@ -3832,7 +3830,13 @@
                         (heldItemName === shovelItemName && materialType === 'earth');
 
                     if (isCorrectTool) {
-                        multiplier = strongMultiplier;
+                        // NOVO: Pá e Picareta são mais eficientes em suas especialidades
+                        if ((heldItemName === shovelItemName && materialType === 'earth') ||
+                            (heldItemName === pickaxeItemName && materialType === 'stone')) {
+                            multiplier = 0.4; // 2.5x mais rápido
+                        } else {
+                            multiplier = strongMultiplier;
+                        }
                     } else if (heldItemName === branchItemName && (materialType === 'stone' || materialType === 'earth')) {
                         multiplier = branchMultiplier;
                     } else {
@@ -3847,10 +3851,19 @@
                     // Define a cor da barra de progresso com base no material
                     if (materialType === 'stone') {
                         progressBar.style.backgroundColor = '#888888';
+                        destroyTargetColor = 0x888888;
                     } else if (materialType === 'wood') {
                         progressBar.style.backgroundColor = '#8B4513';
+                        destroyTargetColor = 0x8B4513;
+                    } else if (materialType === 'earth') {
+                        progressBar.style.backgroundColor = '#A0522D';
+                        destroyTargetColor = 0xA0522D;
+                    } else if (target.isCapim) {
+                        progressBar.style.backgroundColor = '#4d7a31';
+                        destroyTargetColor = 0x4d7a31;
                     } else {
                         progressBar.style.backgroundColor = '#4CAF50';
+                        destroyTargetColor = 0x4CAF50;
                     }
                 }
             }
@@ -4398,11 +4411,11 @@
 
                 // Efeitos de partículas unificados
                 if (destroyTargetDigInfo && Math.random() < 0.5) {
-                    createDebris(destroyTargetDigInfo.mound.position, 2, false);
-                    createSmokeEffect(destroyTargetDigInfo.mound.position, false);
+                    createDebris(destroyTargetDigInfo.mound.position, 2, destroyTargetColor);
+                    createSmokeEffect(destroyTargetDigInfo.mound.position, destroyTargetColor);
                 } else if (destroyTargetMountainInfo && Math.random() < 0.3) {
-                    createDebris(destroyTargetMountainInfo.position, 2, true);
-                    createSmokeEffect(destroyTargetMountainInfo.position, true); // Fumaça cinza
+                    createDebris(destroyTargetMountainInfo.position, 2, destroyTargetColor);
+                    createSmokeEffect(destroyTargetMountainInfo.position, destroyTargetColor);
                 }
 
 
@@ -4461,10 +4474,10 @@
                             updateBeltDisplay();
                             updateBackpackDisplay();
                             sounds.playPlace();
-                            createSmokeEffect(mound.position);
+                            createSmokeEffect(mound.position, destroyTargetColor);
                         } else {
                             // Lógica original de cavar
-                            createDustCloud(mound.position, false);
+                            createDustCloud(mound.position, destroyTargetColor);
                             mound.growthStage++;
 
                             // Gain 20 terras or stones for each stage of digging
@@ -4491,8 +4504,8 @@
 
                         terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
                     } else if (destroyTargetMountainInfo) {
-                        createDustCloud(destroyTargetMountainInfo.position, true);
-                        createDebris(destroyTargetMountainInfo.position, 5, true);
+                        createDustCloud(destroyTargetMountainInfo.position, destroyTargetColor);
+                        createDebris(destroyTargetMountainInfo.position, 5, destroyTargetColor);
                         addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
                         updateBackpackDisplay();
                         destroyProgress = 0; // Reset mining progress to allow for continuous mining
@@ -4516,7 +4529,7 @@
                             capimClusters.splice(clusterIndex, 1);
                             addItemToInventory(backpackItems, { name: capimItemName, quantity: 1 });
                             updateBackpackDisplay();
-                            createSmokeEffect(cluster.position);
+                            createSmokeEffect(cluster.position, destroyTargetColor);
                             respawnCapim(); // Respawn trigger to maintain population
                         }
                         destructionComplete = true;
@@ -4569,7 +4582,7 @@
                             }
                         }
                         updateBackpackDisplay();
-                        if(position) createSmokeEffect(position);
+                        if(position) createSmokeEffect(position, destroyTargetColor);
                         destructionComplete = true;
                         isDestroying = false;
                         progressContainer.style.display = 'none';
@@ -5650,7 +5663,7 @@
                     smokeParticles.splice(i, 1);
                 } else {
                     particle.position.add(particle.userData.velocity.clone().multiplyScalar(1 / 30));
-                    particle.material.opacity = particle.userData.lifetime / 1.5; // Fade out over the new lifetime
+                    particle.material.opacity = (particle.userData.lifetime / 4.5) * 0.3; // Fade out proporcional à opacidade inicial (0.3)
                     particle.scale.addScalar(0.01); // Grow faster
                 }
             }
@@ -5691,7 +5704,7 @@
                     dustParticles = null;
                 } else {
                     // Fade out the opacity
-                    dustParticles.material.opacity = 0.2 * (1 - (elapsedTime / duration));
+                    dustParticles.material.opacity = 0.1 * (1 - (elapsedTime / duration));
                 }
             }
 
