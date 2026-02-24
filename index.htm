@@ -550,7 +550,7 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 320; // Resolução global do terreno equilibrada
+        const hfGridSize = 512; // Resolução global do terreno equilibrada
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -1671,13 +1671,13 @@
 
             // Calcula os índices do heightfield para o ponto de impacto (coordenadas locais do heightfield)
             const step = worldSize / (hfGridSize - 1);
-            const mx = Math.round((hitPoint.x + worldSize / 2) / step);
-            const mz = Math.round((worldSize / 2 - hitPoint.z) / step);
+            const mx = (hitPoint.x + worldSize / 2) / step;
+            const mz = (worldSize / 2 - hitPoint.z) / step;
 
             // Calcula a posição exata do vértice para alinhar o visual e a física
             const vx = (mx / (hfGridSize - 1) - 0.5) * worldSize;
             const vz = (0.5 - mz / (hfGridSize - 1)) * worldSize;
-            const vy = (typeof currentHfMatrix !== 'undefined' && currentHfMatrix) ? currentHfMatrix[mx][mz] : window.getSurfaceHeight(vx, vz);
+            const vy = (typeof currentHfMatrix !== 'undefined' && currentHfMatrix) ? currentHfMatrix[Math.round(mx)][Math.round(mz)] : window.getSurfaceHeight(vx, vz);
 
             // Alinha o grupo do buraco com o vértice selecionado
             holeGroup.position.set(vx, vy, vz);
@@ -1685,7 +1685,7 @@
             const newMound = {
                 x: mx,
                 z: mz,
-                radius: 2.0 * (hfGridSize / worldSize), // Raio em unidades de índice (aprox 2 metros)
+                radius: 4.0 * (hfGridSize / worldSize), // Raio em unidades de índice (aprox 4 metros)
                 height: 0, // Inicia sem alteração na altura
                 flattened: false,
                 position: new THREE.Vector3(vx, vy, vz),
@@ -2481,13 +2481,22 @@
                 if (mound.flattened) continue;
                 const rInt = Math.ceil(mound.radius);
                 const radiusSq = mound.radius * mound.radius;
+                const centerX = Math.round(mound.x);
+                const centerZ = Math.round(mound.z);
 
                 for (let di = -rInt; di <= rInt; di++) {
                     for (let dj = -rInt; dj <= rInt; dj++) {
-                        const distSq = di * di + dj * dj;
+                        const i = (centerX + di + hfGridSize) % hfGridSize;
+                        const j = (centerZ + dj + hfGridSize) % hfGridSize;
+
+                        // Coordenada do vértice real para cálculo de distância precisa
+                        const vertexX = centerX + di;
+                        const vertexZ = centerZ + dj;
+                        const dx = vertexX - mound.x;
+                        const dz = vertexZ - mound.z;
+                        const distSq = dx * dx + dz * dz;
+
                         if (distSq < radiusSq) {
-                            const i = (Math.round(mound.x) + di + hfGridSize) % hfGridSize;
-                            const j = (Math.round(mound.z) + dj + hfGridSize) % hfGridSize;
                             currentHfMatrix[i][j] += Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
                         }
                     }
@@ -4822,6 +4831,7 @@
 
                 if (world.time - mound.closingStageTimer > timePerClosingStage) {
                     mound.growthStage--;
+                    mound.height = -1.0 * mound.growthStage / moundGrowthStages.length; // Atualiza a altura física
                     mound.closingStageTimer = world.time; // Reset timer for next stage
 
                     if (mound.growthStage < 0) {
@@ -4832,7 +4842,7 @@
                         closingMounds.splice(i, 1);
                     } else {
                         // Set the scale to the previous stage
-                        const newScale = moundGrowthStages[mound.growthStage];
+                        const newScale = mound.growthStage > 0 ? moundGrowthStages[mound.growthStage - 1] : 0.1;
                         mound.mesh.scale.set(newScale, newScale, newScale);
                     }
                     terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
