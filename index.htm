@@ -563,6 +563,7 @@
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
+        let waterMaterialShader = null;
         let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
 
         // NOVO: Sistema de Capim Instanciado (Passo 3)
@@ -918,7 +919,7 @@
         const stoneFloorTextureURL = 'https://dl.dropbox.com/scl/fi/m1fkx9ccbjxlwyvcrdbio/Textura-de-pedra.png?rlkey=vlbwqpy001vcjqiedh1wrdo53&st=sy0pevfr&dl=1';
 
         // Geometrias e materiais compartilhados
-        const capimSharedGeometry = new THREE.CylinderGeometry(0, 0.1, 1, 4);
+        const capimSharedGeometry = new THREE.CylinderGeometry(0, 0.2, 1, 4);
         capimSharedGeometry.translate(0, 0.5, 0); // Alinha a base da geometria no ponto de origem
         const capimSharedMaterial = new THREE.MeshStandardMaterial({ color: 0x2d5a27 }); // Verde escuro
 
@@ -1087,12 +1088,7 @@
             islandMeshes.forEach(tile => raycastTargets.push(tile.mesh));
             raycastTargets.push(...placedConstructionMeshes);
             collectibleBoxes.forEach(box => raycastTargets.push(box.mesh));
-            // Adiciona as hitboxes do capim
-            if (typeof capimClusters !== 'undefined') {
-                capimClusters.forEach(cluster => {
-                    if (cluster.mesh) raycastTargets.push(cluster.mesh);
-                });
-            }
+            // Hitboxes do capim removidas para otimização de performance
         }
 
         function applyTextureSettings() {
@@ -1871,8 +1867,7 @@
             const cluster = {
                 position: position.clone(),
                 poolIndex: poolIndex,
-                count: numBlades,
-                mesh: null
+                count: numBlades
             };
 
             const matrix = new THREE.Matrix4();
@@ -1891,8 +1886,8 @@
                         position.y,
                         position.z + Math.sin(angle) * dist
                     );
-                    const h = 0.4 + Math.random() * 0.4;
-                    const w = 0.8 + Math.random() * 0.4;
+                    const h = 0.5 + Math.random() * 0.6;
+                    const w = 1.2 + Math.random() * 0.6;
                     scale.set(w, h, w);
                     euler.set(0, Math.random() * Math.PI, 0);
                     rotation.setFromEuler(euler);
@@ -1905,20 +1900,7 @@
             }
             capimInstancedMeshes[0].instanceMatrix.needsUpdate = true;
 
-            // Hitbox invisível para o raycaster
-            const hitbox = new THREE.Mesh(
-                new THREE.BoxGeometry(0.8, 0.8, 0.8),
-                new THREE.MeshBasicMaterial({ visible: false })
-            );
-            hitbox.position.copy(position);
-            hitbox.position.y += 0.3;
-            hitbox.userData = { isCapim: true, cluster: cluster };
-            scene.add(hitbox);
-            cluster.mesh = hitbox;
-            if (typeof raycastTargets !== 'undefined') raycastTargets.push(hitbox);
-
             capimClusters.push(cluster);
-            raycastTargetsNeedUpdate = true;
         }
 
         function isAreaOccupiedByConstruction(x, z, radius = 2.0) {
@@ -2444,20 +2426,30 @@
         function updateWaterVisuals() {
             if (!window.waterGeometry) return;
             const indices = [];
-            for (let j = 0; j < hfGridSize - 1; j++) {
-                const cannonJ = (hfGridSize - 1) - j;
-                const cannonJnext = (hfGridSize - 1) - (j + 1);
-                for (let i = 0; i < hfGridSize - 1; i++) {
-                    const w1 = waterMatrix[i * hfGridSize + cannonJ];
-                    const w2 = waterMatrix[(i + 1) * hfGridSize + cannonJ];
-                    const w3 = waterMatrix[i * hfGridSize + cannonJnext];
-                    const w4 = waterMatrix[(i + 1) * hfGridSize + cannonJnext];
+            const waterRes = 64; // Segmentos visuais (reduzido para performance)
+            const step = (hfGridSize - 1) / waterRes;
 
-                    if (w1 && w2 && w3 && w4) {
-                        const a = j * hfGridSize + i;
-                        const b = j * hfGridSize + (i + 1);
-                        const c = (j + 1) * hfGridSize + i;
-                        const d = (j + 1) * hfGridSize + (i + 1);
+            for (let j = 0; j < waterRes; j++) {
+                const zIndex = Math.floor(j * step);
+                const zIndexNext = Math.floor((j + 1) * step);
+                const cannonJ = (hfGridSize - 1) - zIndex;
+                const cannonJnext = (hfGridSize - 1) - zIndexNext;
+
+                for (let i = 0; i < waterRes; i++) {
+                    const xIndex = Math.floor(i * step);
+                    const xIndexNext = Math.floor((i + 1) * step);
+
+                    const w1 = waterMatrix[xIndex * hfGridSize + cannonJ];
+                    const w2 = waterMatrix[xIndexNext * hfGridSize + cannonJ];
+                    const w3 = waterMatrix[xIndex * hfGridSize + cannonJnext];
+                    const w4 = waterMatrix[xIndexNext * hfGridSize + cannonJnext];
+
+                    // Usa OU para incluir quads na borda, permitindo recorte suave com o terreno
+                    if (w1 || w2 || w3 || w4) {
+                        const a = j * (waterRes + 1) + i;
+                        const b = j * (waterRes + 1) + (i + 1);
+                        const c = (j + 1) * (waterRes + 1) + i;
+                        const d = (j + 1) * (waterRes + 1) + (i + 1);
 
                         indices.push(a, b, c);
                         indices.push(b, d, c);
@@ -2937,12 +2929,12 @@
                         instancedMesh.instanceMatrix = instanceMatrixAttribute;
                     }
                     instancedMesh.position.set(i * worldSize, 0, j * worldSize);
-                    instancedMesh.frustumCulled = true;
+                    instancedMesh.frustumCulled = false;
                     scene.add(instancedMesh);
                     capimInstancedMeshes.push(instancedMesh);
                 }
             }
-            updateRaycastTargets(); // Atualiza para incluir as novas malhas se necessário
+            // O raycastTargets será atualizado no próximo quadro pelo animate()
 
             textureLoader.load(groundTextureURL, (groundTexture) => {
                 texturesRegistry.ground = groundTexture;
@@ -3082,12 +3074,29 @@
                 }, undefined, (error) => console.error('Falha ao carregar a textura do fundo do mar:', error));
             }, undefined, (error) => console.error('Falha ao carregar a textura do solo:', error));
 
-            // Cria a Água (agora como uma grelha de alta resolução para conectividade)
-            const waterGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
+            // Cria a Água (resolução reduzida para performance visual, mantendo alta resolução na matriz de conectividade)
+            const waterRes = 64;
+            const waterGeometry = new THREE.PlaneGeometry(worldSize, worldSize, waterRes, waterRes);
             waterGeometry.rotateX(-Math.PI / 2);
             window.waterGeometry = waterGeometry;
 
-            const waterMaterial = new THREE.MeshBasicMaterial({ color: 0x006994, transparent: true, opacity: 0.9, side: THREE.DoubleSide });
+            const waterMaterial = new THREE.MeshBasicMaterial({ color: 0x006994, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+            waterMaterial.onBeforeCompile = (shader) => {
+                shader.uniforms.uTime = { value: 0 };
+                shader.vertexShader = `
+                    uniform float uTime;
+                    ${shader.vertexShader}
+                `.replace(
+                    '#include <begin_vertex>',
+                    `
+                    #include <begin_vertex>
+                    // Efeito de ondulação suave na água
+                    float wave = sin(position.x * 0.05 + uTime * 2.0) * 0.15 + cos(position.z * 0.05 + uTime * 1.5) * 0.15;
+                    transformed.y += wave;
+                    `
+                );
+                waterMaterialShader = shader;
+            };
 
             // Inicializa a conectividade da água
             currentHfMatrix = JSON.parse(JSON.stringify(baseMatrix));
@@ -3670,13 +3679,21 @@
                     // Lógica 1: Atingiu a Montanha ou Chão (Tudo tratado como terra/grama agora)
                     const isIslandMesh = islandMeshes.some(m => m.mesh === intersectedObject);
                     if (isIslandMesh) {
-                        target = { body: null, mesh: intersectedObject, isDigging: true, intersect: intersects[i] };
-                        break;
-                    }
+                        // NOVO: Verifica se há capim perto do hitPoint para destruição rápida de capim
+                        let nearCapim = null;
+                        for (const cluster of capimClusters) {
+                             // Usa calculateWrappedDistance para suportar o mundo toroidal
+                             if (calculateWrappedDistance(cluster.position, hitPoint) < 1.2) {
+                                 nearCapim = cluster;
+                                 break;
+                             }
+                        }
+                        if (nearCapim) {
+                            target = { body: null, mesh: null, isCapim: true, cluster: nearCapim };
+                            break;
+                        }
 
-                    // Lógica: Atingiu Capim (Sem física)
-                    if (intersectedObject.userData.isCapim) {
-                        target = { body: null, mesh: intersectedObject, isCapim: true, cluster: intersectedObject.userData.cluster };
+                        target = { body: null, mesh: intersectedObject, isDigging: true, intersect: intersects[i] };
                         break;
                     }
 
@@ -4493,18 +4510,10 @@
                             }
                             capimInstancedMeshes[0].instanceMatrix.needsUpdate = true;
 
-                            // Remove a hitbox
-                            if (cluster.mesh) {
-                                scene.remove(cluster.mesh);
-                                const rtIdx = raycastTargets.indexOf(cluster.mesh);
-                                if (rtIdx !== -1) raycastTargets.splice(rtIdx, 1);
-                            }
-
                             // Retorna o índice para o pool
                             capimFreeIndices.push(cluster.poolIndex);
 
                             capimClusters.splice(clusterIndex, 1);
-                            raycastTargetsNeedUpdate = true;
                             addItemToInventory(backpackItems, { name: capimItemName, quantity: 1 });
                             updateBackpackDisplay();
                             createSmokeEffect(cluster.position);
@@ -5494,11 +5503,6 @@
                                 canDestroy = true;
                                 break;
                             }
-                            // Check for Capim (sem física)
-                            if (obj.userData && obj.userData.isCapim) {
-                                canDestroy = true;
-                                break;
-                            }
                             // Check for blocks with physics bodies
                             let intersectedBody = null;
                             let currentObject = obj;
@@ -5542,9 +5546,17 @@
                         // Check for mining/digging with hand
                         const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
 
-                        if (isIslandMesh || obj.userData.isCapim) {
+                        if (isIslandMesh) {
+                            // Verifica se há capim perto para a cor do crosshair
+                            let nearCapimAtHand = false;
+                            for (const cluster of capimClusters) {
+                                if (calculateWrappedDistance(cluster.position, intersects[i].point) < 1.2) {
+                                    nearCapimAtHand = true;
+                                    break;
+                                }
+                            }
                             canDestroyWithHand = true;
-                            isTerraHitWithHand = isIslandMesh;
+                            isTerraHitWithHand = !nearCapimAtHand;
                             break;
                         }
 
@@ -5683,6 +5695,11 @@
                 }
             }
 
+            // Atualiza o tempo para as ondas da água
+            if (waterMaterialShader) {
+                waterMaterialShader.uniforms.uTime.value = performance.now() / 1000;
+            }
+
             // Renderiza a cena
             renderer.render(scene, camera);
             // Log para depuração: Mostra os corpos de construção colocados
@@ -5703,7 +5720,7 @@
                 });
             }
 
-            updateRaycastTargets();
+            // O raycastTargets será atualizado no próximo quadro pelo animate()
 
             // NOVO: Pega elementos do baú e adiciona listeners aqui, após o DOM estar pronto
             chestModal = document.getElementById('chestModal');
