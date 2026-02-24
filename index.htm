@@ -550,7 +550,7 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 256; // Resolução global do terreno equilibrada
+        const hfGridSize = 320; // Resolução global do terreno equilibrada
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -650,7 +650,7 @@
         const islandRadiusBottom = 600; // NOVO: Raio da base da ilha
         const waterLevel = -9.6; // NOVO: Nível da água
         const seabedLevel = -20; // NOVO: Nível do fundo do mar
-        const stoneLayerLevel = -22.0; // NOVO: Nível onde começa a pedra
+        const stoneLayerLevel = -10.0; // NOVO: Nível onde começa a pedra
         let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 100; // Distância de renderização para objetos
         let frameCount = 0;
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
@@ -2350,18 +2350,17 @@
                 const i = queue[head++];
                 const j = queue[head++];
 
-                const ni = [i - 1, i + 1, i, i];
-                const nj = [j, j, j - 1, j + 1];
+                // Vizinhos com wrapping toroidal
+                const ni = [(i - 1 + hfGridSize) % hfGridSize, (i + 1) % hfGridSize, i, i];
+                const nj = [j, j, (j - 1 + hfGridSize) % hfGridSize, (j + 1) % hfGridSize];
 
                 for (let k = 0; k < 4; k++) {
                     const r = ni[k];
                     const c = nj[k];
-                    if (r >= 0 && r < hfGridSize && c >= 0 && c < hfGridSize) {
-                        const idx = r * hfGridSize + c;
-                        if (waterMatrix[idx] === 0 && currentHfMatrix[r][c] < waterLevel) {
-                            waterMatrix[idx] = 1;
-                            queue.push(r, c);
-                        }
+                    const idx = r * hfGridSize + c;
+                    if (waterMatrix[idx] === 0 && currentHfMatrix[r][c] < waterLevel) {
+                        waterMatrix[idx] = 1;
+                        queue.push(r, c);
                     }
                 }
             }
@@ -2375,13 +2374,10 @@
             let tx = ((x + worldSize / 2) % worldSize + worldSize) % worldSize;
             let tz = ((worldSize / 2 - z) % worldSize + worldSize) % worldSize;
 
-            const mx = Math.round(tx / step);
-            const mz_three = Math.round(tz / step);
+            const mx = Math.round(tx / step) % hfGridSize;
+            const mz_three = Math.round(tz / step) % hfGridSize;
             const mz_cannon = (hfGridSize - 1) - mz_three;
 
-            if (mx < 0 || mx >= hfGridSize || mz_cannon < 0 || mz_cannon >= hfGridSize) {
-                return true;
-            }
             return waterMatrix[mx * hfGridSize + mz_cannon] === 1;
         }
 
@@ -2415,6 +2411,10 @@
         window.updateWaterConnectivity = updateWaterConnectivity;
         window.updateWaterVisuals = updateWaterVisuals;
         window.currentHfMatrix = currentHfMatrix;
+        window.updateIslandGeometry = updateIslandGeometry;
+        window.stoneLayerLevel = stoneLayerLevel;
+        window.hfGridSize = hfGridSize;
+        window.mounds = mounds;
 
         function updateIslandGeometry(affectedMound = null) {
             // Recalcula a matriz a partir da base + todos os mounds ativos
@@ -2423,18 +2423,15 @@
 
             for (const mound of mounds) {
                 if (mound.flattened) continue;
-                const startI = Math.max(0, Math.floor(mound.x - mound.radius));
-                const endI = Math.min(hfGridSize - 1, Math.ceil(mound.x + mound.radius));
-                const startJ = Math.max(0, Math.floor(mound.z - mound.radius));
-                const endJ = Math.min(hfGridSize - 1, Math.ceil(mound.z + mound.radius));
+                const rInt = Math.ceil(mound.radius);
                 const radiusSq = mound.radius * mound.radius;
 
-                for (let i = startI; i <= endI; i++) {
-                    for (let j = startJ; j <= endJ; j++) {
-                        const dx = i - mound.x;
-                        const dz = j - mound.z;
-                        const distSq = dx * dx + dz * dz;
+                for (let di = -rInt; di <= rInt; di++) {
+                    for (let dj = -rInt; dj <= rInt; dj++) {
+                        const distSq = di * di + dj * dj;
                         if (distSq < radiusSq) {
+                            const i = (Math.round(mound.x) + di + hfGridSize) % hfGridSize;
+                            const j = (Math.round(mound.z) + dj + hfGridSize) % hfGridSize;
                             currentHfMatrix[i][j] += Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
                         }
                     }
@@ -2461,29 +2458,28 @@
                 const colors = geom.attributes.color.array;
 
                 if (affectedMound) {
-                    // Otimização: Atualiza apenas a região afetada pelo mound modificado
-                    const startI = Math.max(0, Math.floor(affectedMound.x - affectedMound.radius));
-                    const endI = Math.min(hfGridSize - 1, Math.ceil(affectedMound.x + affectedMound.radius));
-                    const startJ_cannon = Math.max(0, Math.floor(affectedMound.z - affectedMound.radius));
-                    const endJ_cannon = Math.min(hfGridSize - 1, Math.ceil(affectedMound.z + affectedMound.radius));
-
+                    // Otimização: Atualiza apenas a região afetada pelo mound modificado (com suporte toroidal)
+                    const rInt = Math.ceil(affectedMound.radius);
                     const now = Date.now();
-                    for (let i = startI; i <= endI; i++) {
-                        for (let cannonJ = startJ_cannon; cannonJ <= endJ_cannon; cannonJ++) {
+
+                    for (let di = -rInt; di <= rInt; di++) {
+                        for (let dj_cannon = -rInt; dj_cannon <= rInt; dj_cannon++) {
+                            const cannonI = (Math.round(affectedMound.x) + di + hfGridSize) % hfGridSize;
+                            const cannonJ = (Math.round(affectedMound.z) + dj_cannon + hfGridSize) % hfGridSize;
+
                             const j = (hfGridSize - 1) - cannonJ;
+                            const i = cannonI;
                             const height = currentHfMatrix[i][cannonJ];
                             const vIdx = (j * hfGridSize + i);
                             const index = vIdx * 3;
                             vertices[index + 1] = height;
 
-                            // NOVO: Feedback visual temporário de modificação (não aplica em areia)
-                            // Calcula o raio do vértice
+                            // Feedback visual temporário
                             const vx = (i / (hfGridSize - 1) - 0.5) * worldSize;
                             const vz = (j / (hfGridSize - 1) - 0.5) * worldSize;
                             const dist = Math.sqrt(vx * vx + vz * vz);
-                            if (dist < 280.0) { // uGrassRadius = 280.0
-                                colors[index] = 0.0; // Red channel = 0 (ativa textura inferior no shader)
-                                // Evita duplicatas no array de modificação
+                            if (dist < 280.0) {
+                                colors[vIdx * 3] = 0.0;
                                 const existingIdx = modifiedVertices.findIndex(mv => mv.index === vIdx);
                                 if (existingIdx !== -1) {
                                     modifiedVertices[existingIdx].time = now;
@@ -4180,6 +4176,7 @@
             } else if (body.position.z < -size / 2) {
                 body.position.z += size;
             }
+            if (body.updateAABB) body.updateAABB();
         }
 
         // Função para atualizar as posições de todas as malhas visuais para um dado corpo de cubo/bloco
