@@ -550,7 +550,7 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 512; // Resolução global do terreno equilibrada
+        const hfGridSize = 320; // Resolução global do terreno equilibrada
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -2473,9 +2473,19 @@
         window.mounds = mounds;
 
         function updateIslandGeometry(affectedMound = null) {
+            // Inicializa a matriz se necessário
+            if (!currentHfMatrix || currentHfMatrix.length !== hfGridSize) {
+                currentHfMatrix = new Array(hfGridSize);
+                for (let i = 0; i < hfGridSize; i++) currentHfMatrix[i] = new Array(hfGridSize).fill(0);
+                window.currentHfMatrix = currentHfMatrix;
+            }
+
             // Recalcula a matriz a partir da base + todos os mounds ativos
-            currentHfMatrix = baseMatrix.map(row => [...row]);
-            window.currentHfMatrix = currentHfMatrix;
+            for (let i = 0; i < hfGridSize; i++) {
+                for (let j = 0; j < hfGridSize; j++) {
+                    currentHfMatrix[i][j] = baseMatrix[i][j];
+                }
+            }
 
             for (const mound of mounds) {
                 if (mound.flattened) continue;
@@ -2758,8 +2768,8 @@
             directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); // Luz direcional (simula o sol)
             directionalLight.position.set(10, 15, 10); // Posição inicial
             directionalLight.castShadow = true;
-            directionalLight.shadow.mapSize.width = 2048;
-            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.mapSize.width = 1024;
+            directionalLight.shadow.mapSize.height = 1024;
             directionalLight.shadow.camera.near = 0.5;
             directionalLight.shadow.camera.far = 50;
             directionalLight.shadow.camera.left = -20;
@@ -2942,7 +2952,13 @@
                         instancedMesh.instanceMatrix = instanceMatrixAttribute;
                     }
                     instancedMesh.position.set(i * worldSize, 0, j * worldSize);
-                    instancedMesh.frustumCulled = false;
+                    instancedMesh.frustumCulled = true;
+                    // Define um bounding sphere grande o suficiente para cobrir todos os clusters
+                    // evitando que a grama suma prematuramente nas bordas do tile.
+                    if (instancedMesh.geometry) {
+                        if (!instancedMesh.geometry.boundingSphere) instancedMesh.geometry.computeBoundingSphere();
+                        instancedMesh.geometry.boundingSphere.radius = worldSize * 0.5;
+                    }
                     scene.add(instancedMesh);
                     capimInstancedMeshes.push(instancedMesh);
                 }
@@ -4360,9 +4376,9 @@
             if (terrainNeedsUpdate) {
                 // Process batched terrain updates
                 const uniqueMounds = [...new Set(terrainAffectedMounds)];
-                uniqueMounds.forEach(mound => {
-                    updateIslandGeometry(mound);
-                });
+                // Call once for all mounds. If only one mound, pass it for visual optimization.
+                updateIslandGeometry(uniqueMounds.length === 1 ? uniqueMounds[0] : null);
+
                 terrainNeedsUpdate = false;
                 terrainAffectedMounds = [];
                 updateWaterConnectivity();
