@@ -660,9 +660,10 @@
         const islandRadiusTop = 150; // NOVO: Raio do topo da ilha
         const islandRadiusBottom = 300; // NOVO: Raio da base da ilha
         const waterLevel = -4.8; // NOVO: Nível da água
-        const seabedLevel = -10; // NOVO: Nível do fundo do mar
-        const stoneLayerLevel = -5.0; // NOVO: Nível onde começa a pedra
-        const grassRadius = 140.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
+        const seabedLevel = -20.0; // NOVO: Nível do fundo do mar
+        const stoneLayerLevel = -10.0; // NOVO: Nível onde começa a pedra (10 unidades de terra)
+        const bedrockLevel = -20.0; // NOVO: Camada indestrutível (10 unidades de pedra depois da terra)
+        const grassRadius = 146.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
         const beachRadius = 150.0; window.beachRadius = beachRadius; // NOVO: Raio da praia
         let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 250; // Distância de renderização para objetos
         let frameCount = 0;
@@ -2509,6 +2510,8 @@
                         if (distSq < radiusSq) {
                             currentHfMatrix[i][j] += Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
                         }
+                        // Clamp at bedrock
+                        if (currentHfMatrix[i][j] < bedrockLevel) currentHfMatrix[i][j] = bedrockLevel;
                     }
                 }
             }
@@ -2998,6 +3001,7 @@
                                         shader.uniforms.uInferiorTexture = { value: inferiorDirtTexture };
                                         shader.uniforms.uWaterLevel = { value: waterLevel };
                                         shader.uniforms.uStoneLayerLevel = { value: stoneLayerLevel };
+                                        shader.uniforms.uBedrockLevel = { value: bedrockLevel };
                                         shader.uniforms.uGrassRadius = { value: grassRadius };
                                         shader.uniforms.uBeachRadius = { value: beachRadius };
                                         shader.uniforms.uUseTextures = { value: useTextures ? 1.0 : 0.0 };
@@ -3022,6 +3026,7 @@
                                             uniform sampler2D uInferiorTexture;
                                             uniform float uWaterLevel;
                                             uniform float uStoneLayerLevel;
+                                            uniform float uBedrockLevel;
                                             uniform float uGrassRadius;
                                             uniform float uBeachRadius;
                                             uniform float uUseTextures;
@@ -3030,7 +3035,6 @@
                                         `.replace(
                                             `#include <map_fragment>`,
                                             `
-                                            #ifdef USE_MAP
                                                 vec3 seabedColor;
                                                 vec3 sandColor;
                                                 vec3 grassColor;
@@ -3079,8 +3083,12 @@
                                                     terrainMix = mix(terrainMix, currentInferior, inferiorFactor);
                                                 #endif
 
+                                                // NOVO: Camada de Bedrock (Camada escura indestrutível)
+                                                float bedrockBlend = 1.0 - smoothstep(uBedrockLevel, uBedrockLevel + 0.2, vWorldPosition.y);
+                                                vec3 bedrockColor = vec3(0.05, 0.05, 0.08); // Quase preto
+                                                terrainMix = mix(terrainMix, bedrockColor, bedrockBlend);
+
                                                 diffuseColor.rgb = terrainMix;
-                                            #endif
                                             `
                                         );
 
@@ -3774,10 +3782,11 @@
                         const volcanoOuterRadiusAtBottom = 1.5;
                         const isBuilding = (heldItemName === dirtItemName);
 
-                        // Alinha o ponto de impacto com o vértice mais próximo para busca precisa
+                        // Alinha o ponto de impacto para busca precisa (agora com suporte a sub-grid)
                         const step = worldSize / (hfGridSize - 1);
-                        const mx = Math.round((hitPoint.x + worldSize / 2) / step);
-                        const mz = Math.round((worldSize / 2 - hitPoint.z) / step);
+                        const mx = (hitPoint.x + worldSize / 2) / step;
+                        const mz = (worldSize / 2 - hitPoint.z) / step;
+                        // Para busca de mounds existentes, ainda usamos uma pequena tolerância
                         const vx = (mx / (hfGridSize - 1) - 0.5) * worldSize;
                         const vz = (0.5 - mz / (hfGridSize - 1)) * worldSize;
                         const snappedHitPoint = new THREE.Vector3(vx, hitPoint.y, vz);
@@ -3787,10 +3796,13 @@
                         const moundsToSearch = isBuilding ? mounds.filter(m => !m.flattened) : visualMounds;
 
                         for (const mound of moundsToSearch) {
-                            // Calcula a distância horizontal para o vértice
-                            const distX = Math.abs(mound.position.x - snappedHitPoint.x);
-                            const distZ = Math.abs(mound.position.z - snappedHitPoint.z);
-                            if (distX < 0.1 && distZ < 0.1) {
+                            // Calcula a distância horizontal para o ponto de impacto preciso
+                            const dx = mound.position.x - hitPoint.x;
+                            const dz = mound.position.z - hitPoint.z;
+                            const distSq = dx * dx + dz * dz;
+
+                            // Se estiver muito perto do centro de um mound existente, reusa ele
+                            if (distSq < 0.25) { // 0.5m de tolerância
                                 if (isBuilding) {
                                     // Se estiver construindo, aceita qualquer mound que possa crescer em altura
                                     if (mound.height < 1.0) {
@@ -4727,8 +4739,8 @@
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                // Culling mais agressivo para o terreno
-                tile.mesh.visible = dist <= renderDistance + 400;
+                // Culling estrito para o terreno (um pouco maior que renderDistance para evitar buracos nas bordas)
+                tile.mesh.visible = dist <= renderDistance + 100;
             });
 
             waterMeshes.forEach(tile => {
@@ -4736,7 +4748,7 @@
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + 400;
+                tile.mesh.visible = dist <= renderDistance + 100;
             });
 
             seabedMeshes.forEach(tile => {
@@ -4744,13 +4756,13 @@
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + 400;
+                tile.mesh.visible = dist <= renderDistance + 100;
             });
 
             const renderDistSq = renderDistance * renderDistance;
             const halfWorldSize = worldSize / 2;
 
-            // Otimização: Wrapping de instância única para todos os objetos
+            // Otimização: Wrapping de instância única para todos os objetos e culling estrito
             collectibleBoxes.forEach(box => {
                 const body = box.body;
                 const mesh = box.mesh;
@@ -4768,11 +4780,11 @@
                 const distSq = fDx*fDx + fDy*fDy + fDz*fDz;
 
                 if (distSq > renderDistSq) {
-                    if (mesh.visible) mesh.visible = false;
+                    mesh.visible = false;
                 } else {
                     mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
                     mesh.quaternion.copy(body.quaternion);
-                    if (!mesh.visible) mesh.visible = true;
+                    mesh.visible = true;
                 }
             });
 
@@ -4792,11 +4804,11 @@
                 const distSq = fDx*fDx + fDy*fDy + fDz*fDz;
 
                 if (distSq > renderDistSq) {
-                    if (mesh.visible) mesh.visible = false;
+                    mesh.visible = false;
                 } else {
                     mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
                     mesh.quaternion.copy(body.quaternion);
-                    if (!mesh.visible) mesh.visible = true;
+                    mesh.visible = true;
                 }
             });
 
@@ -4816,12 +4828,19 @@
                 const distSq = fDx*fDx + fDy*fDy + fDz*fDz;
 
                 if (distSq > renderDistSq) {
-                    if (mound.mesh.visible) mound.mesh.visible = false;
+                    mound.mesh.visible = false;
                 } else {
                     mound.mesh.position.set(wrappedX - visualOffsetX, mound.position.y, wrappedZ - visualOffsetZ);
                     mound.mesh.quaternion.copy(mound.quaternion);
-                    if (!mound.mesh.visible) mound.mesh.visible = true;
+                    mound.mesh.visible = true;
                 }
+            });
+
+            // NOVO: Culling para Grama Instanciada
+            capimInstancedMeshes.forEach(mesh => {
+                // Como são 9 tiles, verificamos a distância do centro do tile visual
+                const dist = camera.position.distanceTo(mesh.position);
+                mesh.visible = dist <= renderDistance + 100;
             });
 
             // NOVO: Lógica para fechar buracos inativos
