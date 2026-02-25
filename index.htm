@@ -663,8 +663,8 @@
         const seabedLevel = -20.0; // NOVO: Nível do fundo do mar
         let stoneLayerLevel = -10.0; // NOVO: Nível onde começa a pedra (10 unidades de terra)
         const bedrockLevel = -20.0; // NOVO: Camada indestrutível (10 unidades de pedra depois da terra)
-        const grassRadius = 146.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
-        const beachRadius = 150.0; window.beachRadius = beachRadius; // NOVO: Raio da praia
+        const grassRadius = 100.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
+        const beachRadius = 120.0; window.beachRadius = beachRadius; // NOVO: Raio da praia
         let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 250; // Distância de renderização para objetos
         let frameCount = 0;
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
@@ -2392,6 +2392,16 @@
                 }
             }
 
+            // NOVO: Fonte garantida no canto protegido para assegurar que o mar nunca suma
+            for (let i = 190; i < hfGridSize; i++) {
+                for (let j = 0; j < 10; j++) {
+                    if (waterMatrix[i * hfGridSize + j] === 0) {
+                        waterMatrix[i * hfGridSize + j] = 1;
+                        queue.push(i, j);
+                    }
+                }
+            }
+
             let head = 0;
             while (head < queue.length) {
                 const i = queue[head++];
@@ -2833,13 +2843,16 @@
                 const distance = Math.sqrt(x * x + z * z);
                 let height;
 
-                if (distance <= islandRadiusTop) {
+                if (distance <= grassRadius) {
                     height = islandSurfaceHeight;
-                } else if (distance <= islandRadiusBottom) {
-                    const t = (distance - islandRadiusTop) / (islandRadiusBottom - islandRadiusTop);
-                    height = islandSurfaceHeight * (1 - t) + seabedLevel * t;
+                } else if (distance <= beachRadius) {
+                    const t = (distance - grassRadius) / (beachRadius - grassRadius);
+                    // Transição de terra firme para um pouco abaixo do nível do mar
+                    height = islandSurfaceHeight * (1 - t) + (waterLevel - 0.2) * t;
                 } else {
-                    height = seabedLevel;
+                    // Gradiente suave até o fundo do mar
+                    const t = Math.min(1.0, (distance - beachRadius) / (worldSize * 0.4));
+                    height = (waterLevel - 0.2) * (1 - t) + seabedLevel * t;
                 }
 
                 let mountainHeight = 0;
@@ -3755,9 +3768,12 @@
 
                 // Priorização baseada na ferramenta
                 if (heldItemName === shovelItemName) {
-                    target = potentialGround || potentialObject || potentialCapim;
+                    // Prioriza capim se estiver mirando nele, para facilitar a limpeza antes de cavar
+                    target = potentialCapim || potentialGround || potentialObject;
                 } else if (heldItemName === axeItemName) {
-                    target = potentialObject || potentialGround || potentialCapim;
+                    target = potentialObject || potentialCapim || potentialGround;
+                } else if (heldItemName === dirtItemName) {
+                    target = potentialGround || potentialObject || potentialCapim;
                 } else {
                     // Mão ou outros: prioriza capim, depois objetos, depois terreno
                     target = potentialCapim || potentialObject || potentialGround;
@@ -3805,6 +3821,12 @@
                         let targetMound = null;
                         // Ao construir, procuramos em todos os mounds ativos, não apenas nos visuais recentes
                         const moundsToSearch = isBuilding ? mounds.filter(m => !m.flattened) : visualMounds;
+
+                        if (isProtected(hitPoint.x + visualOffsetX, hitPoint.z + visualOffsetZ)) {
+                            isDestroying = false;
+                            progressContainer.style.display = 'none';
+                            return;
+                        }
 
                         for (const mound of moundsToSearch) {
                             // Calcula a distância horizontal para o ponto de impacto preciso
@@ -4066,6 +4088,11 @@
                 if (!item || item.quantity <= 0) return;
 
                 currentBlockType = item.name;
+
+                // Final check for protected area before placing
+                if (ghostBlockMesh.visible && isProtected(ghostBlockMesh.position.x + visualOffsetX, ghostBlockMesh.position.z + visualOffsetZ)) {
+                    return;
+                }
 
                 // The ghostBlockMesh must be visible to have a valid placement position.
                 // The color check is a fast-fail based on the visual feedback from animate().
@@ -4387,6 +4414,16 @@
 
             return Math.sqrt(wrappedDx * wrappedDx + dy * dy + wrappedDz * wrappedDz);
         }
+
+        function isProtected(x, z) {
+            // Toroidal wrap coordinates to [-worldSize/2, worldSize/2]
+            const halfSize = worldSize / 2;
+            let tx = ((x + halfSize) % worldSize + worldSize) % worldSize - halfSize;
+            let tz = ((z + halfSize) % worldSize + worldSize) % worldSize - halfSize;
+            // Protected area: a small square at one "corner" (approx 280, 280)
+            return (tx > 270 && tz > 270);
+        }
+        window.isProtected = isProtected;
 
         // Loop principal de animação do jogo
         function animate() {
@@ -5102,6 +5139,12 @@
 
                                 if (distanceToPlayer > minPlayerDistance) {
                                     canPlace = true;
+
+                                    // NOVO: Verifica se a posição está em área protegida
+                                    if (isProtected(placementPosition.x + visualOffsetX, placementPosition.z + visualOffsetZ)) {
+                                        canPlace = false;
+                                    }
+
                                     // Se for uma muda de árvore, verifica a distância das outras árvores
                                     if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName) {
                                         for (const existingBody of placedConstructionBodies) {
@@ -5637,7 +5680,7 @@
                                 }
                             }
                             canDestroyWithHand = true;
-                            isTerraHitWithHand = !nearCapimAtHand;
+                            isTerraHitWithHand = true; // Sempre lime ao mirar no chão ou grama com a mão
                             break;
                         }
 
@@ -5837,6 +5880,7 @@
             window.mounds = mounds;
             window.islandMeshes = islandMeshes;
             window.visualMounds = visualMounds;
+            window.waterMatrix = waterMatrix;
             window.THREE = THREE;
             window.addItemToInventory = addItemToInventory;
             window.openBackpack = openBackpack;
