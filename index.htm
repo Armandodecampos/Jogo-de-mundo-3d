@@ -661,7 +661,7 @@
         const islandRadiusBottom = 300; // NOVO: Raio da base da ilha
         const waterLevel = -4.8; // NOVO: Nível da água
         const seabedLevel = -20.0; // NOVO: Nível do fundo do mar
-        const stoneLayerLevel = -10.0; // NOVO: Nível onde começa a pedra (10 unidades de terra)
+        let stoneLayerLevel = -10.0; // NOVO: Nível onde começa a pedra (10 unidades de terra)
         const bedrockLevel = -20.0; // NOVO: Camada indestrutível (10 unidades de pedra depois da terra)
         const grassRadius = 146.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
         const beachRadius = 150.0; window.beachRadius = beachRadius; // NOVO: Raio da praia
@@ -3493,9 +3493,11 @@
                 // NOVO: Seleção de slots com Q e E
                 if (!gamePaused && !backpackModal.classList.contains('active')) {
                     if (event.key.toLowerCase() === 'q') {
+                        if (selectedSlotIndex !== 0) stopDestruction();
                         selectedSlotIndex = 0;
                         updateBeltDisplay();
                     } else if (event.key.toLowerCase() === 'e') {
+                        if (selectedSlotIndex !== 1) stopDestruction();
                         selectedSlotIndex = 1;
                         updateBeltDisplay();
                     }
@@ -3587,9 +3589,7 @@
                     }
 
                     // Reinicia a destruição se o pointer lock for perdido
-                    isDestroying = false;
-                    destroyProgress = 0;
-                    progressContainer.style.display = 'none';
+                    stopDestruction();
 
                     document.body.style.cursor = 'default'; // Mostra o cursor
                     if (renderer && renderer.domElement) {
@@ -3683,7 +3683,8 @@
             function startDestruction() {
                 destructionComplete = false;
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                const intersects = raycaster.intersectObjects(scene.children, true);
+                // Usa raycastTargets para evitar colidir com partículas ou o bloco fantasma
+                const intersects = raycaster.intersectObjects(raycastTargets, true);
                 let target = null;
 
                 const heldItem = beltItems[selectedSlotIndex];
@@ -3708,48 +3709,58 @@
                     return;
                 }
 
+                let potentialGround = null;
+                let potentialObject = null;
+                let potentialCapim = null;
+
                 for (let i = 0; i < intersects.length; i++) {
                     if (intersects[i].distance > destroyDistance) continue;
-                    let intersectedObject = intersects[i].object;
+                    let obj = intersects[i].object;
                     const hitPoint = intersects[i].point;
 
-                    // Lógica 1: Atingiu a Montanha ou Chão (Tudo tratado como terra/grama agora)
-                    const isIslandMesh = islandMeshes.some(m => m.mesh === intersectedObject);
+                    // Verifica se é o terreno
+                    const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
                     if (isIslandMesh) {
-                        // NOVO: Verifica se há capim perto do hitPoint para destruição rápida de capim
+                        // Verifica se há capim perto para priorizar
                         let nearCapim = null;
                         for (const cluster of capimClusters) {
-                             // Usa calculateWrappedDistance para suportar o mundo toroidal
                              if (calculateWrappedDistance(cluster.position, hitPoint) < 1.2) {
                                  nearCapim = cluster;
                                  break;
                              }
                         }
-                        if (nearCapim) {
-                            target = { body: null, mesh: null, isCapim: true, cluster: nearCapim };
-                            break;
+                        if (nearCapim && !potentialCapim) {
+                            potentialCapim = { body: null, mesh: null, isCapim: true, cluster: nearCapim };
                         }
-
-                        target = { body: null, mesh: intersectedObject, isDigging: true, intersect: intersects[i] };
-                        break;
-                    }
-
-                    // Lógica 2: Atingiu um objeto destrutível
-                    let mainObject = null, intersectedBody = null;
-                    let currentObject = intersectedObject;
-                    while (currentObject) {
-                        if (currentObject.userData && currentObject.userData.physicsBody) {
-                            mainObject = currentObject;
-                            intersectedBody = currentObject.userData.physicsBody;
-                            break;
+                        if (!potentialGround) {
+                            potentialGround = { body: null, mesh: obj, isDigging: true, intersect: intersects[i] };
                         }
-                        currentObject = currentObject.parent;
+                    } else {
+                        // Verifica se é um objeto destrutível (árvore, baú, etc)
+                        let mainObject = null, intersectedBody = null;
+                        let current = obj;
+                        while (current) {
+                            if (current.userData && current.userData.physicsBody) {
+                                mainObject = current;
+                                intersectedBody = current.userData.physicsBody;
+                                break;
+                            }
+                            current = current.parent;
+                        }
+                        if (mainObject && intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible && !potentialObject) {
+                            potentialObject = { body: intersectedBody, mesh: mainObject, hitPoint: hitPoint.clone() };
+                        }
                     }
+                }
 
-                    if (mainObject && intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible) {
-                        target = { body: intersectedBody, mesh: mainObject, hitPoint: intersects[i].point.clone() };
-                        break;
-                    }
+                // Priorização baseada na ferramenta
+                if (heldItemName === shovelItemName) {
+                    target = potentialGround || potentialObject || potentialCapim;
+                } else if (heldItemName === axeItemName) {
+                    target = potentialObject || potentialGround || potentialCapim;
+                } else {
+                    // Mão ou outros: prioriza capim, depois objetos, depois terreno
+                    target = potentialCapim || potentialObject || potentialGround;
                 }
 
                 if (target) {
@@ -3826,11 +3837,13 @@
                         }
 
                         if (currentMound) {
+                            console.log("DEBUG: Target is digging, mound found.");
                             destroyTargetDigInfo = { mound: currentMound, isBuilding: isBuilding };
-                            const vy = (typeof currentHfMatrix !== 'undefined' && currentHfMatrix) ? currentHfMatrix[mx][mz] : window.getSurfaceHeight(vx, vz);
+                            const vy = (typeof currentHfMatrix !== 'undefined' && currentHfMatrix) ? currentHfMatrix[Math.floor(mx)][Math.floor(mz)] : window.getSurfaceHeight(vx, vz);
                             const isStoneLayer = vy < stoneLayerLevel;
                             materialType = isStoneLayer ? 'stone' : 'earth';
-                            baseDurability = isBuilding ? 0.02 : (isStoneLayer ? 2.0 : 1.0); // Adicionar terra é MUITO mais rápido
+                            // Aumentado para garantir que a barra de progresso seja visível e sentida
+                            baseDurability = isBuilding ? 0.3 : (isStoneLayer ? 3.0 : 1.5);
                             // A textura de terra e a altura agora só mudam quando a barra de progresso termina
                             // updateIslandGeometry(currentMound); // REMOVIDO: Evita aplicação imediata da textura
                         } else {
@@ -3863,8 +3876,8 @@
                     // Calcula o multiplicador
                     let multiplier;
                     const strongMultiplier = 1.0; // Multiplicador para a ferramenta correta
-                    const branchMultiplier = 3.0; // Bem lento
-                    const weakMultiplier = 5.0;   // Mais lento (Mão) - Reduzido para facilitar testes e gameplay
+                    const branchMultiplier = 4.0; // Bem lento
+                    const weakMultiplier = 10.0;  // Muito mais lento (Mão) para incentivar o uso de ferramentas
 
                     // Define a ferramenta correta para cada material
                     const isCorrectTool =
@@ -3876,7 +3889,7 @@
                         // NOVO: Pá e Picareta são mais eficientes em suas especialidades
                         if ((heldItemName === shovelItemName && materialType === 'earth') ||
                             (heldItemName === pickaxeItemName && materialType === 'stone')) {
-                            multiplier = 0.4; // 2.5x mais rápido
+                            multiplier = 0.3; // Mais rápido com a ferramenta correta
                         } else {
                             multiplier = strongMultiplier;
                         }
@@ -3887,6 +3900,7 @@
                     }
 
                     targetDestroyTime = baseDurability * multiplier;
+                    console.log("DEBUG: targetDestroyTime set to", targetDestroyTime);
 
                     // Exibe a barra de progresso
                     progressContainer.style.display = 'block';
@@ -3912,24 +3926,22 @@
             }
 
             function stopDestruction() {
-                if (isDestroying) {
-                    if (currentMound) {
-                        currentMound.lastDugAt = world.time; // Atualiza o tempo de inatividade ao parar
-                    }
-                    isDestroying = false;
-                    destroyProgress = 0;
-                    progressContainer.style.display = 'none';
-                    progressBar.style.backgroundColor = '#4CAF50'; // Redefine para o padrão
-                    currentMound = null;
-                    destroyTargetBody = null;
-                    destroyTargetMesh = null;
-                    destroyTargetPatchObject = null;
-                    destroyTargetMountainInfo = null;
-                    destroyTargetDigInfo = null; // Limpa a informação de escavação
-                    destroyTargetCapimInfo = null;
-                    destructionComplete = false;
-                    destroyTargetPosition = null;
+                if (currentMound) {
+                    currentMound.lastDugAt = world.time; // Atualiza o tempo de inatividade ao parar
                 }
+                isDestroying = false;
+                destroyProgress = 0;
+                progressContainer.style.display = 'none';
+                progressBar.style.backgroundColor = '#4CAF50'; // Redefine para o padrão
+                currentMound = null;
+                destroyTargetBody = null;
+                destroyTargetMesh = null;
+                destroyTargetPatchObject = null;
+                destroyTargetMountainInfo = null;
+                destroyTargetDigInfo = null; // Limpa a informação de escavação
+                destroyTargetCapimInfo = null;
+                destructionComplete = false;
+                destroyTargetPosition = null;
             }
 
             function interact() {
@@ -4396,9 +4408,6 @@
                 updateWaterConnectivity();
                 updateWaterVisuals();
             }
-            window.isDestroying = isDestroying;
-            window.destroyProgress = destroyProgress;
-            window.targetDestroyTime = targetDestroyTime;
 
             // Atualiza exibição de peso (mesmo se pausado, para refletir mudanças no inventário)
             const totalWeight = calculateTotalWeight();
@@ -5818,6 +5827,9 @@
             }
 
             isWorldReady = true; window.isWorldReady = true;
+            Object.defineProperty(window, 'isDestroying', { get: () => isDestroying });
+            Object.defineProperty(window, 'destroyProgress', { get: () => destroyProgress });
+            Object.defineProperty(window, 'targetDestroyTime', { get: () => targetDestroyTime });
             window.capimClusters = capimClusters;
             window.capimInstancedMeshes = capimInstancedMeshes;
             window.raycastTargets = raycastTargets;
@@ -5825,20 +5837,22 @@
             window.mounds = mounds;
             window.islandMeshes = islandMeshes;
             window.visualMounds = visualMounds;
-            window.isDestroying = isDestroying;
-            window.destroyProgress = destroyProgress;
-            window.targetDestroyTime = targetDestroyTime;
             window.THREE = THREE;
             window.addItemToInventory = addItemToInventory;
             window.openBackpack = openBackpack;
             window.closeBackpack = closeBackpack;
             window.createPlaceableBlock = createPlaceableBlock;
             window.startDestruction = startDestruction;
+            window.stopDestruction = stopDestruction;
             window.beltItems = beltItems;
             window.updateUI = updateUI;
             window.selectedSlotIndex = selectedSlotIndex;
             window.dirtMountains = dirtMountains;
             window.useTextures = useTextures;
+            Object.defineProperty(window, 'stoneLayerLevel', {
+                get: () => stoneLayerLevel,
+                set: (v) => { stoneLayerLevel = v; }
+            });
             window.cobMaterialMesh = cobMaterialMesh;
             window.cubeMaterialMesh = cubeMaterialMesh;
             window.renderer = renderer;
