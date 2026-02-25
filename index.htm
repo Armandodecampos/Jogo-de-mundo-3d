@@ -448,9 +448,9 @@
             <div class="option-item">
                 <label for="renderDistanceSlider" class="flex justify-between w-full">
                     <span>Distância de Visão</span>
-                    <span id="renderDistanceValue">100</span>
+                    <span id="renderDistanceValue">250</span>
                 </label>
-                <input type="range" id="renderDistanceSlider" min="40" max="400" value="100" class="w-full">
+                <input type="range" id="renderDistanceSlider" min="40" max="400" value="250" class="w-full">
             </div>
             <div class="option-item">
                 <label for="grassDensitySlider" class="flex justify-between w-full">
@@ -550,7 +550,7 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 320; // Resolução global do terreno equilibrada
+        const hfGridSize = 200; // Resolução global do terreno equilibrada
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -568,7 +568,7 @@
 
         // NOVO: Sistema de Capim Instanciado (Passo 3)
         let capimInstancedMeshes = [];
-        const maxCapimClusters = 10000;
+        const maxCapimClusters = 4000;
         const bladesPerCluster = 6;
         let capimClusters = [];
         let capimFreeIndices = [];
@@ -656,15 +656,15 @@
         let crouchPlayerShape;   // Para armazenar a forma agachada
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
-        const worldSize = 1200;
-        const islandRadiusTop = 300; // NOVO: Raio do topo da ilha
-        const islandRadiusBottom = 600; // NOVO: Raio da base da ilha
-        const waterLevel = -9.6; // NOVO: Nível da água
-        const seabedLevel = -20; // NOVO: Nível do fundo do mar
-        const stoneLayerLevel = -10.0; // NOVO: Nível onde começa a pedra
-        const grassRadius = 280.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
-        const beachRadius = 305.0; window.beachRadius = beachRadius; // NOVO: Raio da praia
-        let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 100; // Distância de renderização para objetos
+        const worldSize = 600;
+        const islandRadiusTop = 150; // NOVO: Raio do topo da ilha
+        const islandRadiusBottom = 300; // NOVO: Raio da base da ilha
+        const waterLevel = -4.8; // NOVO: Nível da água
+        const seabedLevel = -10; // NOVO: Nível do fundo do mar
+        const stoneLayerLevel = -5.0; // NOVO: Nível onde começa a pedra
+        const grassRadius = 140.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
+        const beachRadius = 150.0; window.beachRadius = beachRadius; // NOVO: Raio da praia
+        let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 250; // Distância de renderização para objetos
         let frameCount = 0;
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
@@ -2632,7 +2632,7 @@
             world = new CANNON.World();
             window.world = world;
             world.gravity.set(0, -30, 0); // Define a gravidade (para baixo), aumentada para -30
-            world.solver.iterations = 20; // Reduzido para performance
+            world.solver.iterations = 10; // Reduzido para performance
 
             // Inicializa os materiais de física
             playerMaterial = new CANNON.Material('playerMaterial');
@@ -2771,11 +2771,11 @@
             directionalLight.shadow.mapSize.width = 1024;
             directionalLight.shadow.mapSize.height = 1024;
             directionalLight.shadow.camera.near = 0.5;
-            directionalLight.shadow.camera.far = 50;
-            directionalLight.shadow.camera.left = -20;
-            directionalLight.shadow.camera.right = 20;
-            directionalLight.shadow.camera.top = 20;
-            directionalLight.shadow.camera.bottom = -20;
+            directionalLight.shadow.camera.far = 30;
+            directionalLight.shadow.camera.left = -15;
+            directionalLight.shadow.camera.right = 15;
+            directionalLight.shadow.camera.top = 15;
+            directionalLight.shadow.camera.bottom = -15;
             scene.add(directionalLight);
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
@@ -2791,21 +2791,21 @@
 
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
             // Adiciona várias montanhas de terra por toda a ilha com tamanhos e formatos variados
-            const stoneMountain = { x: 0, z: 0, r: 60, h: 40 }; // Montanha central menos larga
+            const stoneMountain = { x: 0, z: 0, r: 30, h: 20 }; // Montanha central menos larga
             dirtMountains = [];
             const numDirtMountains = 10; // Mais montanhas
             for (let i = 0; i < numDirtMountains; i++) {
                 let x, z, r;
                 let attempts = 0;
                 while (attempts < 100) {
-                    r = 15 + Math.random() * 40; // Raio entre 15 e 55
+                    r = 7.5 + Math.random() * 20; // Raio entre 7.5 e 27.5
                     const angle = Math.random() * Math.PI * 2;
-                    const dist = 140 + Math.random() * 140; // Mais espalhadas
+                    const dist = 70 + Math.random() * 70; // Mais espalhadas
                     x = Math.cos(angle) * dist;
                     z = Math.sin(angle) * dist;
 
                     let tooClose = false;
-                    const minDist = 100; // Distância mínima reduzida para acomodar mais montanhas
+                    const minDist = 50; // Distância mínima reduzida para acomodar mais montanhas
                     for (const m of dirtMountains) {
                         const dx = x - m.x;
                         const dz = z - m.z;
