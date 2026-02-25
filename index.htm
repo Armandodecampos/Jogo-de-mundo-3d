@@ -561,6 +561,7 @@
 
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
+        let islandGeometry; // Geometria compartilhada do terreno
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let waterMaterialShader = null;
@@ -631,7 +632,6 @@
         let mouseDownTime = 0;
         let clickHoldTimer = null;
         const CLICK_HOLD_DURATION = 250; // ms
-        let lastDestroyCheckTime = 0; // NOVO: Para a verificação de destruição repetida
 
         // Altura da câmera em relação ao centro do corpo do jogador (nível dos olhos)
         let cameraEyeLevelOffset; // Alterado para 'let' pois será modificado
@@ -659,12 +659,12 @@
         const worldSize = 600;
         const islandRadiusTop = 150; // NOVO: Raio do topo da ilha
         const islandRadiusBottom = 300; // NOVO: Raio da base da ilha
-        const waterLevel = -4.8; // NOVO: Nível da água
+        const waterLevel = -6.0; // NOVO: Nível da água (baixado de -4.8)
         const seabedLevel = -20.0; // NOVO: Nível do fundo do mar
         let stoneLayerLevel = -10.0; // NOVO: Nível onde começa a pedra (10 unidades de terra)
         const bedrockLevel = -20.0; // NOVO: Camada indestrutível (10 unidades de pedra depois da terra)
         const grassRadius = 100.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
-        const beachRadius = 120.0; window.beachRadius = beachRadius; // NOVO: Raio da praia
+        const beachRadius = 150.0; window.beachRadius = beachRadius; // NOVO: Raio da praia (aumentado de 120.0)
         let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 250; // Distância de renderização para objetos
         let frameCount = 0;
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
@@ -2794,7 +2794,7 @@
 
             // Cria o Terreno (Ilha Redonda)
             // A geometria visual é agora um plano segmentado cujos vértices correspondem ao Heightfield.
-            const islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
+            islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
             window.islandGeometry = islandGeometry;
 
             // Adiciona atributo de cor para feedback visual de modificação (1.0 = normal, 0.0 = modificado)
@@ -2848,11 +2848,11 @@
                 } else if (distance <= beachRadius) {
                     const t = (distance - grassRadius) / (beachRadius - grassRadius);
                     // Transição de terra firme para um pouco abaixo do nível do mar
-                    height = islandSurfaceHeight * (1 - t) + (waterLevel - 0.2) * t;
+                    height = islandSurfaceHeight * (1 - t) + (waterLevel - 0.5) * t;
                 } else {
                     // Gradiente suave até o fundo do mar
                     const t = Math.min(1.0, (distance - beachRadius) / (worldSize * 0.4));
-                    height = (waterLevel - 0.2) * (1 - t) + seabedLevel * t;
+                    height = (waterLevel - 0.5) * (1 - t) + seabedLevel * t;
                 }
 
                 let mountainHeight = 0;
@@ -3091,7 +3091,7 @@
                                                 // NOVO: Aplica a textura inferior provisória se vColor.r < 1.0 (sinalizado por modificação)
                                                 // Apenas se NÃO for areia (sandToGrassBlend próximo de 1.0 significa grama/pedra)
                                                 #ifdef USE_COLOR
-                                                    float inferiorFactor = clamp(1.0 - vColor.r, 0.0, 1.0) * sandToGrassBlend;
+                                                    float inferiorFactor = clamp(1.0 - vColor.r, 0.0, 1.0);
                                                     vec3 currentInferior = (vWorldPosition.y < uStoneLayerLevel) ? stoneColor : inferiorColor;
                                                     terrainMix = mix(terrainMix, currentInferior, inferiorFactor);
                                                 #endif
@@ -3859,7 +3859,6 @@
                         }
 
                         if (currentMound) {
-                            console.log("DEBUG: Target is digging, mound found.");
                             destroyTargetDigInfo = { mound: currentMound, isBuilding: isBuilding };
                             const vy = (typeof currentHfMatrix !== 'undefined' && currentHfMatrix) ? currentHfMatrix[Math.floor(mx)][Math.floor(mz)] : window.getSurfaceHeight(vx, vz);
                             const isStoneLayer = vy < stoneLayerLevel;
@@ -3922,7 +3921,6 @@
                     }
 
                     targetDestroyTime = baseDurability * multiplier;
-                    console.log("DEBUG: targetDestroyTime set to", targetDestroyTime);
 
                     // Exibe a barra de progresso
                     progressContainer.style.display = 'block';
@@ -4476,8 +4474,7 @@
             // Lógica de destruição progressiva
             // NOVO: Adiciona a verificação `isAttemptingToDestroy` e a lógica de reinício repetida.
             const now = performance.now();
-            if (isAttemptingToDestroy && now - lastDestroyCheckTime > 250) { // Verifica 4 vezes por segundo
-                lastDestroyCheckTime = now;
+            if (isAttemptingToDestroy) {
                 if (!isDestroying) {
                     startDestruction(); // Tenta reiniciar a destruição se a intenção estiver lá, mas a ação não.
                 }
