@@ -659,12 +659,12 @@
         const worldSize = 600;
         const islandRadiusTop = 150; // NOVO: Raio do topo da ilha
         const islandRadiusBottom = 300; // NOVO: Raio da base da ilha
-        const waterLevel = -6.0; // NOVO: Nível da água (baixado de -4.8)
+        const waterLevel = -8.0; // NOVO: Nível da água (baixado de -4.8)
         const seabedLevel = -20.0; // NOVO: Nível do fundo do mar
-        let stoneLayerLevel = -10.0; // NOVO: Nível onde começa a pedra (10 unidades de terra)
+        let stoneLayerLevel = -15.0; // NOVO: Nível onde começa a pedra (10 unidades de terra)
         const bedrockLevel = -20.0; // NOVO: Camada indestrutível (10 unidades de pedra depois da terra)
         const grassRadius = 100.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
-        const beachRadius = 150.0; window.beachRadius = beachRadius; // NOVO: Raio da praia (aumentado de 120.0)
+        const beachRadius = 200.0; window.beachRadius = beachRadius; // NOVO: Raio da praia (aumentado de 120.0)
         let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 250; // Distância de renderização para objetos
         let frameCount = 0;
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
@@ -3089,10 +3089,11 @@
                                                 vec3 terrainMix = mix(seabedSandMix, grassStoneMix, sandToGrassBlend);
 
                                                 // NOVO: Aplica a textura inferior provisória se vColor.r < 1.0 (sinalizado por modificação)
-                                                // Apenas se NÃO for areia (sandToGrassBlend próximo de 1.0 significa grama/pedra)
                                                 #ifdef USE_COLOR
                                                     float inferiorFactor = clamp(1.0 - vColor.r, 0.0, 1.0);
-                                                    vec3 currentInferior = (vWorldPosition.y < uStoneLayerLevel) ? stoneColor : inferiorColor;
+                                                    // Se estivermos na praia, a textura de "buraco" deve ser areia escura
+                                                    vec3 holeColor = mix(sandColor * 0.8, inferiorColor, sandToGrassBlend);
+                                                    vec3 currentInferior = (vWorldPosition.y < uStoneLayerLevel) ? stoneColor : holeColor;
                                                     terrainMix = mix(terrainMix, currentInferior, inferiorFactor);
                                                 #endif
 
