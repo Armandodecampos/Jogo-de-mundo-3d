@@ -1086,7 +1086,6 @@
 
         // Global array to hold active smoke particles
         let smokeParticles = [];
-        let debrisParticles = []; // For dirt and stone chunks
         let dustParticles = null; // NOVO: Para o efeito de poeira da tela inteira
         let particlesGroup = new THREE.Group(); // Grupo para partículas (excluído de raycasting)
 
@@ -2297,6 +2296,14 @@
 
         // Function to create a smoke effect at a given position
         function createSmokeEffect(position, colorOverride = null) {
+            // Limpa efeitos de fumaça anteriores para que apenas o atual seja visível
+            smokeParticles.forEach(particle => {
+                particlesGroup.remove(particle);
+                if (particle.geometry) particle.geometry.dispose();
+                if (particle.material) particle.material.dispose();
+            });
+            smokeParticles.length = 0;
+
             const smokeCount = 6; // Reduzido para melhor performance
             const smokeGeometry = new THREE.SphereGeometry(0.15, 8, 8); // Tripled the size
             const smokeMaterial = new THREE.MeshBasicMaterial({
@@ -2321,55 +2328,6 @@
             }
         }
 
-        // NEW: Function to create digging debris (dirt and stone) - NOW VISUAL ONLY
-        function createDebris(position, count, colorOverride = null) {
-            const debrisColor = colorOverride !== null ? colorOverride : 0xA0522D;
-            // Usa icosaedro para pedras (cinza), box para o resto
-            const useIcosahedron = (debrisColor === 0x888888 || debrisColor === 0x808080 || debrisColor === 0x909090);
-
-            for (let i = 0; i < count; i++) {
-                const size = Math.random() * 0.05 + 0.05; // Slightly smaller and less varied size
-
-                let debrisGeometry;
-                if (useIcosahedron) {
-                    debrisGeometry = new THREE.IcosahedronGeometry(size, 0);
-                } else {
-                    debrisGeometry = new THREE.BoxGeometry(size, size, size);
-                }
-
-                const debrisMaterialMesh = new THREE.MeshStandardMaterial({
-                    color: debrisColor,
-                    roughness: 0.8,
-                    metalness: 0.1
-                });
-
-                const debrisMesh = new THREE.Mesh(debrisGeometry, debrisMaterialMesh);
-                debrisMesh.castShadow = true;
-
-                // Set initial position with a slight random offset
-                debrisMesh.position.copy(position).add(new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.2,
-                    Math.random() * 0.2,
-                    (Math.random() - 0.5) * 0.2
-                ));
-
-                // Store velocity and lifetime in userData for manual simulation
-                debrisMesh.userData.velocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * 2.0,       // Horizontal spread
-                    1.5 + Math.random() * 2.0,         // Upward velocity
-                    (Math.random() - 0.5) * 2.0        // Horizontal spread
-                );
-                debrisMesh.userData.angularVelocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * 5,
-                    (Math.random() - 0.5) * 5,
-                    (Math.random() - 0.5) * 5
-                );
-                debrisMesh.userData.lifetime = 1.0 + Math.random() * 1.5; // Lifetime in seconds
-
-                particlesGroup.add(debrisMesh);
-                debrisParticles.push(debrisMesh); // Push the mesh directly
-            }
-        }
 
 
         let currentHfMatrix = null;
@@ -4535,10 +4493,8 @@
 
                 // Efeitos de partículas unificados
                 if (destroyTargetDigInfo && Math.random() < 0.5) {
-                    createDebris(destroyTargetDigInfo.mound.position, 2, destroyTargetColor);
                     createSmokeEffect(destroyTargetDigInfo.mound.position, destroyTargetColor);
                 } else if (destroyTargetMountainInfo && Math.random() < 0.3) {
-                    createDebris(destroyTargetMountainInfo.position, 2, destroyTargetColor);
                     createSmokeEffect(destroyTargetMountainInfo.position, destroyTargetColor);
                 }
 
@@ -4662,7 +4618,6 @@
                         terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
                     } else if (destroyTargetMountainInfo) {
                         createDustCloud(destroyTargetMountainInfo.position, destroyTargetColor);
-                        createDebris(destroyTargetMountainInfo.position, 5, destroyTargetColor);
                         addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
                         updateBackpackDisplay();
                         destroyProgress = 0; // Reset mining progress to allow for continuous mining
@@ -5841,30 +5796,6 @@
                 }
             }
 
-            // NEW: Update debris particles (visual only)
-            const timeStep = 1 / 60;
-            for (let i = debrisParticles.length - 1; i >= 0; i--) {
-                const particle = debrisParticles[i];
-                particle.userData.lifetime -= timeStep;
-
-                if (particle.userData.lifetime <= 0) {
-                    particlesGroup.remove(particle);
-                    if(particle.geometry) particle.geometry.dispose();
-                    if(particle.material) particle.material.dispose();
-                    debrisParticles.splice(i, 1);
-                } else {
-                    // Apply gravity
-                    particle.userData.velocity.y -= 9.82 * timeStep * 2; // A bit stronger gravity for effect
-
-                    // Update position
-                    particle.position.add(particle.userData.velocity.clone().multiplyScalar(timeStep));
-
-                    // Update rotation
-                    particle.rotation.x += particle.userData.angularVelocity.x * timeStep;
-                    particle.rotation.y += particle.userData.angularVelocity.y * timeStep;
-                    particle.rotation.z += particle.userData.angularVelocity.z * timeStep;
-                }
-            }
 
             // NOVO: Atualiza o efeito de poeira da tela inteira
             if (dustParticles) {
