@@ -1683,6 +1683,13 @@
             // Alinha o grupo do buraco com o ponto de impacto real
             holeGroup.position.set(vx, hitPoint.y, vz);
 
+            // NOVO: Adiciona a malha visual do buraco ao grupo para que o jogador tenha feedback visual na mira
+            if (holeGeometryTemplate && holeMaterial) {
+                const holeMesh = new THREE.Mesh(holeGeometryTemplate, holeMaterial);
+                holeMesh.scale.set(0.1, 0.1, 0.1); // Inicia pequeno e cresce nos estágios
+                holeGroup.add(holeMesh);
+            }
+
             const newMound = {
                 x: mx,
                 z: mz,
@@ -4498,9 +4505,8 @@
 
                 // Efeitos de partículas unificados
                 if (destroyTargetDigInfo && Math.random() < 0.5) {
-                    // Usa destroyTargetPosition (ponto exato do hit) em vez da posição do mound (vértice)
-                    createDebris(destroyTargetPosition, 2, destroyTargetColor);
-                    createSmokeEffect(destroyTargetPosition, destroyTargetColor);
+                    createDebris(destroyTargetDigInfo.mound.position, 2, destroyTargetColor);
+                    createSmokeEffect(destroyTargetDigInfo.mound.position, destroyTargetColor);
                 } else if (destroyTargetMountainInfo && Math.random() < 0.3) {
                     createDebris(destroyTargetMountainInfo.position, 2, destroyTargetColor);
                     createSmokeEffect(destroyTargetMountainInfo.position, destroyTargetColor);
@@ -4566,13 +4572,11 @@
                             createSmokeEffect(mound.position, destroyTargetColor);
                         } else {
                             // Lógica original de cavar
-                            // Usa destroyTargetPosition (ponto exato do hit) em vez da posição do mound (vértice)
-                            createDustCloud(destroyTargetPosition, destroyTargetColor);
+                            createDustCloud(mound.position, destroyTargetColor);
                             mound.growthStage++;
 
                             // Gain 20 terras, sands or stones for each stage of digging
-                            // Usa destroyTargetPosition.y (profundidade real da mira) para determinar o prêmio
-                            const currentDigHeight = destroyTargetPosition.y + (mound.height || 0);
+                            const currentDigHeight = mound.position.y + (mound.height || 0);
                             const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
                             let itemToGive;
                             if (currentDigHeight < stoneLayerLevel) {
