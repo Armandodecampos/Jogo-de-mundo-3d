@@ -2294,15 +2294,19 @@
             raycastTargetsNeedUpdate = true;
         }
 
-        // Function to create a smoke effect at a given position
-        function createSmokeEffect(position, colorOverride = null) {
-            // Limpa efeitos de fumaça anteriores para que apenas o atual seja visível
+        // Function to clear all smoke particles
+        function clearSmokeEffects() {
             smokeParticles.forEach(particle => {
                 particlesGroup.remove(particle);
                 if (particle.geometry) particle.geometry.dispose();
                 if (particle.material) particle.material.dispose();
             });
             smokeParticles.length = 0;
+        }
+
+        // Function to create a smoke effect at a given position
+        function createSmokeEffect(position, colorOverride = null) {
+            if (!position) return;
 
             const smokeCount = 6; // Reduzido para melhor performance
             const smokeGeometry = new THREE.SphereGeometry(0.15, 8, 8); // Tripled the size
@@ -3691,6 +3695,7 @@
             }
 
             function startDestruction() {
+                clearSmokeEffects(); // Reseta a fumaça ao iniciar uma nova ação
                 destructionComplete = false;
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 // Usa raycastTargets para evitar colidir com partículas ou o bloco fantasma
@@ -3942,6 +3947,7 @@
             }
 
             function stopDestruction() {
+                clearSmokeEffects(); // Reseta a fumaça ao parar a ação
                 if (currentMound) {
                     currentMound.lastDugAt = world.time; // Atualiza o tempo de inatividade ao parar
                 }
