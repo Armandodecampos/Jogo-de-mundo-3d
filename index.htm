@@ -1678,7 +1678,8 @@
             // Calcula a posição exata do vértice para alinhar o visual e a física
             const vx = (mx / (hfGridSize - 1) - 0.5) * worldSize;
             const vz = (0.5 - mz / (hfGridSize - 1)) * worldSize;
-            const vy = (typeof currentHfMatrix !== 'undefined' && currentHfMatrix) ? currentHfMatrix[Math.round(mx)][Math.round(mz)] : window.getSurfaceHeight(vx, vz);
+            const naturalY = window.getSurfaceHeight(vx, vz);
+            const vy = (typeof currentHfMatrix !== 'undefined' && currentHfMatrix) ? currentHfMatrix[Math.round(mx)][Math.round(mz)] : naturalY;
 
             // NOVO: Detecta se é uma cavagem horizontal (parede)
             const isHorizontal = !isPositive && intersect.face && Math.abs(intersect.face.normal.y) < 0.5;
@@ -1691,6 +1692,9 @@
             if (holeGeometryTemplate && holeMaterial) {
                 holeMesh = new THREE.Mesh(holeGeometryTemplate, holeMaterial);
                 holeMesh.scale.set(isHorizontal ? 0.08 : 0.1, isHorizontal ? 0.08 : 0.1, isHorizontal ? 0.08 : 0.1); // Inicia menor se for preciso
+                if (isHorizontal) {
+                    holeMesh.rotation.x = Math.PI / 2; // Gira para ficar vertical na parede
+                }
                 holeGroup.add(holeMesh);
             }
 
@@ -1699,9 +1703,10 @@
                 z: mz,
                 radius: (isHorizontal ? 3.0 : 4.0) * (hfGridSize / worldSize), // Raio reduzido para cavagem precisa em paredes
                 isPrecise: isHorizontal,
-                originalHeight: vy,
+                originalHeight: isHorizontal ? naturalY : vy,
+                targetFloorHeight: isHorizontal ? naturalY : vy,
                 height: 0, // Inicia sem alteração na altura
-                maxHeightChange: isPositive ? 1.0 : (hitPoint.y - 1.0 - vy),
+                maxHeightChange: isPositive ? 1.0 : (isHorizontal ? (hitPoint.y - naturalY) : -1.0),
                 flattened: false,
                 position: new THREE.Vector3(vx, hitPoint.y, vz),
                 mesh: holeGroup,
@@ -2520,7 +2525,7 @@
                     // Cavagem precisa (horizontal): afeta os 4 vértices ao redor para criar um caminho plano de 3x3m
                     const xBase = Math.floor(mound.x);
                     const zBase = Math.floor(mound.z);
-                    const targetHeight = mound.originalHeight + mound.height;
+                    const targetHeight = (mound.targetFloorHeight !== undefined ? mound.targetFloorHeight : mound.originalHeight) + mound.height;
 
                     for (let di = 0; di <= 1; di++) {
                         for (let dj = 0; dj <= 1; dj++) {
@@ -4622,11 +4627,19 @@
                                     mound.mesh.scale.set(finalScale, finalScale, finalScale);
                                 }
 
-                                // NOVO: Se for uma cavagem profunda em parede, coloca um teto automático para simular túnel
+                                // NOVO: Se for uma cavagem profunda em parede, coloca um teto automático (3x3 blocos) para simular túnel
                                 if (mound.isPrecise && (mound.originalHeight - mound.position.y) > 3.0) {
-                                    const roofPos = new THREE.Vector3(mound.position.x, mound.position.y + 3.5, mound.position.z);
                                     const roofType = (mound.position.y < stoneLayerLevel) ? stoneBlockItemName : cobItemName;
-                                    createPlaceableBlock(roofPos, new THREE.Quaternion(), roofType);
+                                    const centerX = mound.position.x;
+                                    const centerZ = mound.position.z;
+                                    const roofY = mound.originalHeight;
+
+                                    for (let dx = -1; dx <= 1; dx++) {
+                                        for (let dz = -1; dz <= 1; dz++) {
+                                            const roofPos = new THREE.Vector3(centerX + dx, roofY, centerZ + dz);
+                                            createPlaceableBlock(roofPos, new THREE.Quaternion(), roofType);
+                                        }
+                                    }
                                 }
 
                                 destructionComplete = true;
