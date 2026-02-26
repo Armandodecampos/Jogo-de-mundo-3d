@@ -1680,25 +1680,32 @@
             const vz = (0.5 - mz / (hfGridSize - 1)) * worldSize;
             const vy = (typeof currentHfMatrix !== 'undefined' && currentHfMatrix) ? currentHfMatrix[Math.round(mx)][Math.round(mz)] : window.getSurfaceHeight(vx, vz);
 
+            // NOVO: Detecta se é uma cavagem horizontal (parede)
+            const isHorizontal = !isPositive && intersect.face && Math.abs(intersect.face.normal.y) < 0.5;
+
             // Alinha o grupo do buraco com o ponto de impacto real
             holeGroup.position.set(vx, hitPoint.y, vz);
 
             // NOVO: Adiciona a malha visual do buraco ao grupo para que o jogador tenha feedback visual na mira
+            let holeMesh = null;
             if (holeGeometryTemplate && holeMaterial) {
-                const holeMesh = new THREE.Mesh(holeGeometryTemplate, holeMaterial);
-                holeMesh.scale.set(0.1, 0.1, 0.1); // Inicia pequeno e cresce nos estágios
+                holeMesh = new THREE.Mesh(holeGeometryTemplate, holeMaterial);
+                holeMesh.scale.set(isHorizontal ? 0.08 : 0.1, isHorizontal ? 0.08 : 0.1, isHorizontal ? 0.08 : 0.1); // Inicia menor se for preciso
                 holeGroup.add(holeMesh);
             }
 
             const newMound = {
                 x: mx,
                 z: mz,
-                radius: 4.0 * (hfGridSize / worldSize), // Raio em unidades de índice (aprox 4 metros)
+                radius: (isHorizontal ? 3.0 : 4.0) * (hfGridSize / worldSize), // Raio reduzido para cavagem precisa em paredes
+                isPrecise: isHorizontal,
+                originalHeight: vy,
                 height: 0, // Inicia sem alteração na altura
                 maxHeightChange: isPositive ? 1.0 : (hitPoint.y - 1.0 - vy),
                 flattened: false,
                 position: new THREE.Vector3(vx, hitPoint.y, vz),
                 mesh: holeGroup,
+                holeMesh: holeMesh,
                 createdAt: world.time,
                 quaternion: finalQuaternion,
                 growthStage: 0, // Inicia no primeiro estágio
@@ -2508,6 +2515,24 @@
 
             for (const mound of mounds) {
                 if (mound.flattened) continue;
+
+                if (mound.isPrecise) {
+                    // Cavagem precisa (horizontal): afeta os 4 vértices ao redor para criar um caminho plano de 3x3m
+                    const xBase = Math.floor(mound.x);
+                    const zBase = Math.floor(mound.z);
+                    const targetHeight = mound.originalHeight + mound.height;
+
+                    for (let di = 0; di <= 1; di++) {
+                        for (let dj = 0; dj <= 1; dj++) {
+                            const i = (xBase + di + hfGridSize) % hfGridSize;
+                            const j = (zBase + dj + hfGridSize) % hfGridSize;
+                            currentHfMatrix[i][j] = Math.min(currentHfMatrix[i][j], targetHeight);
+                            if (currentHfMatrix[i][j] < bedrockLevel) currentHfMatrix[i][j] = bedrockLevel;
+                        }
+                    }
+                    continue;
+                }
+
                 const rInt = Math.ceil(mound.radius);
                 const radiusSq = mound.radius * mound.radius;
                 const centerX = Math.round(mound.x);
@@ -4538,8 +4563,9 @@
                                     const maxHeight = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
                                     mound.height = maxHeight * mound.growthStage / moundGrowthStages.length;
                                     if (mound.mesh) {
-                                        const newScale = moundGrowthStages[mound.growthStage - 1];
-                                        mound.mesh.scale.set(newScale, newScale, newScale);
+                                        const baseScale = moundGrowthStages[mound.growthStage - 1];
+                                        const finalScale = mound.isPrecise ? baseScale * 0.8 : baseScale;
+                                        mound.mesh.scale.set(finalScale, finalScale, finalScale);
                                     }
                                     terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
                                     destroyProgress = 0;
@@ -4591,15 +4617,29 @@
 
                             if (mound.growthStage >= moundGrowthStages.length) {
                                 mound.height = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
-                                if (mound.mesh) mound.mesh.scale.set(1.0, 1.0, 1.0);
+                                if (mound.mesh) {
+                                    const finalScale = mound.isPrecise ? 0.8 : 1.0;
+                                    mound.mesh.scale.set(finalScale, finalScale, finalScale);
+                                }
+
+                                // NOVO: Se for uma cavagem profunda em parede, coloca um teto automático para simular túnel
+                                if (mound.isPrecise && (mound.originalHeight - mound.position.y) > 3.0) {
+                                    const roofPos = new THREE.Vector3(mound.position.x, mound.position.y + 3.5, mound.position.z);
+                                    const roofType = (mound.position.y < stoneLayerLevel) ? stoneBlockItemName : cobItemName;
+                                    createPlaceableBlock(roofPos, new THREE.Quaternion(), roofType);
+                                }
+
                                 destructionComplete = true;
                                 isDestroying = false;
                                 progressContainer.style.display = 'none';
                                 mound.lastDugAt = world.time;
                                 currentMound = null;
                             } else {
-                                const newScale = moundGrowthStages[mound.growthStage - 1];
-                                if (mound.mesh) mound.mesh.scale.set(newScale, newScale, newScale);
+                                const baseScale = moundGrowthStages[mound.growthStage - 1];
+                                if (mound.mesh) {
+                                    const finalScale = mound.isPrecise ? baseScale * 0.8 : baseScale;
+                                    mound.mesh.scale.set(finalScale, finalScale, finalScale);
+                                }
                                 destroyProgress = 0; // Reinicia para o próximo estágio
                                 const maxHeight = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
                                 mound.height = maxHeight * mound.growthStage / moundGrowthStages.length;
@@ -4931,8 +4971,9 @@
                         closingMounds.splice(i, 1);
                     } else {
                         // Set the scale to the previous stage
-                        const newScale = mound.growthStage > 0 ? moundGrowthStages[mound.growthStage - 1] : 0.1;
-                        mound.mesh.scale.set(newScale, newScale, newScale);
+                        const baseScale = mound.growthStage > 0 ? moundGrowthStages[mound.growthStage - 1] : 0.1;
+                        const finalScale = mound.isPrecise ? baseScale * 0.8 : baseScale;
+                        mound.mesh.scale.set(finalScale, finalScale, finalScale);
                     }
                     terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
                 }
