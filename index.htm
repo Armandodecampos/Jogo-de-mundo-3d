@@ -1688,6 +1688,7 @@
                 z: mz,
                 radius: 4.0 * (hfGridSize / worldSize), // Raio em unidades de índice (aprox 4 metros)
                 height: 0, // Inicia sem alteração na altura
+                maxHeightChange: isPositive ? 1.0 : (hitPoint.y - 1.0 - vy),
                 flattened: false,
                 position: new THREE.Vector3(vx, hitPoint.y, vz),
                 mesh: holeGroup,
@@ -4528,7 +4529,8 @@
                                     isDestroying = false;
                                     progressContainer.style.display = 'none';
                                 } else {
-                                    mound.height = -1.0 * mound.growthStage / moundGrowthStages.length;
+                                    const maxHeight = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
+                                    mound.height = maxHeight * mound.growthStage / moundGrowthStages.length;
                                     if (mound.mesh) {
                                         const newScale = moundGrowthStages[mound.growthStage - 1];
                                         mound.mesh.scale.set(newScale, newScale, newScale);
@@ -4584,7 +4586,7 @@
                             updateBackpackDisplay();
 
                             if (mound.growthStage >= moundGrowthStages.length) {
-                                mound.height = -1.0;
+                                mound.height = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
                                 if (mound.mesh) mound.mesh.scale.set(1.0, 1.0, 1.0);
                                 destructionComplete = true;
                                 isDestroying = false;
@@ -4595,7 +4597,8 @@
                                 const newScale = moundGrowthStages[mound.growthStage - 1];
                                 if (mound.mesh) mound.mesh.scale.set(newScale, newScale, newScale);
                                 destroyProgress = 0; // Reinicia para o próximo estágio
-                                mound.height = -1.0 * mound.growthStage / moundGrowthStages.length;
+                                const maxHeight = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
+                                mound.height = maxHeight * mound.growthStage / moundGrowthStages.length;
                             }
                         }
 
@@ -4912,7 +4915,8 @@
 
                 if (world.time - mound.closingStageTimer > timePerClosingStage) {
                     mound.growthStage--;
-                    mound.height = -1.0 * mound.growthStage / moundGrowthStages.length; // Atualiza a altura física
+                    const maxHeight = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
+                    mound.height = maxHeight * mound.growthStage / moundGrowthStages.length; // Atualiza a altura física
                     mound.closingStageTimer = world.time; // Reset timer for next stage
 
                     if (mound.growthStage < 0) {
