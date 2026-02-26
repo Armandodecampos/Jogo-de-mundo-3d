@@ -1680,8 +1680,8 @@
             const vz = (0.5 - mz / (hfGridSize - 1)) * worldSize;
             const vy = (typeof currentHfMatrix !== 'undefined' && currentHfMatrix) ? currentHfMatrix[Math.round(mx)][Math.round(mz)] : window.getSurfaceHeight(vx, vz);
 
-            // Alinha o grupo do buraco com o vértice selecionado
-            holeGroup.position.set(vx, vy, vz);
+            // Alinha o grupo do buraco com o ponto de impacto real
+            holeGroup.position.set(vx, hitPoint.y, vz);
 
             const newMound = {
                 x: mx,
@@ -1689,7 +1689,7 @@
                 radius: 4.0 * (hfGridSize / worldSize), // Raio em unidades de índice (aprox 4 metros)
                 height: 0, // Inicia sem alteração na altura
                 flattened: false,
-                position: new THREE.Vector3(vx, vy, vz),
+                position: new THREE.Vector3(vx, hitPoint.y, vz),
                 mesh: holeGroup,
                 createdAt: world.time,
                 quaternion: finalQuaternion,
@@ -3861,8 +3861,7 @@
 
                         if (currentMound) {
                             destroyTargetDigInfo = { mound: currentMound, isBuilding: isBuilding };
-                            const vy = (typeof currentHfMatrix !== 'undefined' && currentHfMatrix) ? currentHfMatrix[Math.floor(mx)][Math.floor(mz)] : window.getSurfaceHeight(vx, vz);
-                            const isStoneLayer = vy < stoneLayerLevel;
+                            const isStoneLayer = hitPoint.y < stoneLayerLevel;
                             materialType = isStoneLayer ? 'stone' : 'earth';
                             // Aumentado para garantir que a barra de progresso seja visível e sentida
                             baseDurability = isBuilding ? 0.3 : (isStoneLayer ? 3.0 : 1.5);
@@ -4498,8 +4497,9 @@
 
                 // Efeitos de partículas unificados
                 if (destroyTargetDigInfo && Math.random() < 0.5) {
-                    createDebris(destroyTargetDigInfo.mound.position, 2, destroyTargetColor);
-                    createSmokeEffect(destroyTargetDigInfo.mound.position, destroyTargetColor);
+                    // Usa destroyTargetPosition (ponto exato do hit) em vez da posição do mound (vértice)
+                    createDebris(destroyTargetPosition, 2, destroyTargetColor);
+                    createSmokeEffect(destroyTargetPosition, destroyTargetColor);
                 } else if (destroyTargetMountainInfo && Math.random() < 0.3) {
                     createDebris(destroyTargetMountainInfo.position, 2, destroyTargetColor);
                     createSmokeEffect(destroyTargetMountainInfo.position, destroyTargetColor);
@@ -4564,11 +4564,13 @@
                             createSmokeEffect(mound.position, destroyTargetColor);
                         } else {
                             // Lógica original de cavar
-                            createDustCloud(mound.position, destroyTargetColor);
+                            // Usa destroyTargetPosition (ponto exato do hit) em vez da posição do mound (vértice)
+                            createDustCloud(destroyTargetPosition, destroyTargetColor);
                             mound.growthStage++;
 
                             // Gain 20 terras, sands or stones for each stage of digging
-                            const currentDigHeight = mound.position.y + (mound.height || 0);
+                            // Usa destroyTargetPosition.y (profundidade real da mira) para determinar o prêmio
+                            const currentDigHeight = destroyTargetPosition.y + (mound.height || 0);
                             const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
                             let itemToGive;
                             if (currentDigHeight < stoneLayerLevel) {
