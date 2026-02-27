@@ -1717,7 +1717,7 @@
             };
 
             // Adiciona o novo monte às listas e o retorna
-            if (!isPositive) visualMounds.push(newMound);
+            visualMounds.push(newMound);
             mounds.push(newMound);
             // updateIslandGeometry(newMound); // REMOVIDO: Não atualiza imediatamente ao cavar
             return newMound;
@@ -2803,40 +2803,10 @@
 
             // --- Criação do Corpo de Física da Ilha com Heightfield ---
             // Adiciona várias montanhas de terra por toda a ilha com tamanhos e formatos variados
-            const stoneMountain = { x: 0, z: 0, r: 30, h: 20 }; // Montanha central menos larga
+            const stoneMountain = { x: 0, z: 0, r: 30, h: 0 }; // Montanha central removida (h=0)
+            window.stoneMountain = stoneMountain;
             dirtMountains = [];
-            const numDirtMountains = 10; // Mais montanhas
-            for (let i = 0; i < numDirtMountains; i++) {
-                let x, z, r;
-                let attempts = 0;
-                while (attempts < 100) {
-                    r = 7.5 + Math.random() * 20; // Raio entre 7.5 e 27.5
-                    const angle = Math.random() * Math.PI * 2;
-                    const dist = 70 + Math.random() * 70; // Mais espalhadas
-                    x = Math.cos(angle) * dist;
-                    z = Math.sin(angle) * dist;
-
-                    let tooClose = false;
-                    const minDist = 50; // Distância mínima reduzida para acomodar mais montanhas
-                    for (const m of dirtMountains) {
-                        const dx = x - m.x;
-                        const dz = z - m.z;
-                        if (Math.sqrt(dx * dx + dz * dz) < minDist) {
-                            tooClose = true;
-                            break;
-                        }
-                    }
-                    if (!tooClose) break;
-                    attempts++;
-                }
-
-                dirtMountains.push({
-                    x: x,
-                    z: z,
-                    r: r,
-                    h: 2 + 20 * Math.pow(Math.random(), 3) // Altura rasa, a maioria sendo bem baixa
-                });
-            }
+            // Geração de montanhas procedurais desativada a pedido do usuário
 
             window.getSurfaceHeight = function(x, z) {
                 const distance = Math.sqrt(x * x + z * z);
@@ -4914,10 +4884,10 @@
                 mesh.visible = dist <= renderDistance + 100;
             });
 
-            // NOVO: Lógica para fechar buracos inativos
+            // NOVO: Lógica para fechar buracos inativos (curar terreno após 5 minutos)
             for (let i = visualMounds.length - 1; i >= 0; i--) {
                 const mound = visualMounds[i];
-                if (mound !== currentMound && world.time - mound.lastDugAt > 5) {
+                if (mound !== currentMound && world.time - mound.lastDugAt > 300) { // 300s = 5 minutos
                     mound.closingStageTimer = world.time; // Initialize timer upon starting to close
                     closingMounds.push(mound);
                     visualMounds.splice(i, 1);
@@ -4936,9 +4906,37 @@
                 const timePerClosingStage = 0.5;
 
                 if (world.time - mound.closingStageTimer > timePerClosingStage) {
+                    const oldHeight = mound.height;
                     mound.growthStage--;
                     const maxHeight = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
-                    mound.height = maxHeight * mound.growthStage / moundGrowthStages.length; // Atualiza a altura física
+                    mound.height = mound.growthStage < 0 ? 0 : (maxHeight * mound.growthStage / moundGrowthStages.length);
+                    const heightDelta = mound.height - oldHeight;
+
+                    // NOVO: Empurra objetos para cima se o buraco estiver fechando
+                    const pushRadius = 2.0;
+                    if (heightDelta !== 0) {
+                        const moundWorldPos = { x: mound.position.x, y: mound.position.y, z: mound.position.z };
+                        // Empurra o jogador
+                        const playerDist = calculateWrappedDistance(playerBody.position, moundWorldPos);
+                        if (playerDist < pushRadius) {
+                            playerBody.position.y += heightDelta;
+                        }
+                        // Empurra caixotes
+                        collectibleBoxes.forEach(box => {
+                            const boxDist = calculateWrappedDistance(box.body.position, moundWorldPos);
+                            if (boxDist < pushRadius) {
+                                box.body.position.y += heightDelta;
+                            }
+                        });
+                        // Empurra construções (como baús e blocos)
+                        placedConstructionBodies.forEach(body => {
+                            const bodyDist = calculateWrappedDistance(body.position, moundWorldPos);
+                            if (bodyDist < pushRadius) {
+                                body.position.y += heightDelta;
+                            }
+                        });
+                    }
+
                     mound.closingStageTimer = world.time; // Reset timer for next stage
 
                     if (mound.growthStage < 0) {
@@ -5873,6 +5871,7 @@
             }
 
             isWorldReady = true; window.isWorldReady = true;
+            window.collectibleBoxes = collectibleBoxes;
             Object.defineProperty(window, 'isDestroying', { get: () => isDestroying });
             Object.defineProperty(window, 'destroyProgress', { get: () => destroyProgress });
             Object.defineProperty(window, 'targetDestroyTime', { get: () => targetDestroyTime });
@@ -5899,6 +5898,9 @@
             window.selectedSlotIndex = selectedSlotIndex;
             window.dirtMountains = dirtMountains;
             window.useTextures = useTextures;
+            window.createBox = createBox;
+            window.closingMounds = closingMounds;
+            window.calculateWrappedDistance = calculateWrappedDistance;
             Object.defineProperty(window, 'stoneLayerLevel', {
                 get: () => stoneLayerLevel,
                 set: (v) => { stoneLayerLevel = v; }
