@@ -3783,8 +3783,8 @@
                         const snappedHitPoint = new THREE.Vector3(vx, hitPoint.y, vz);
 
                         let targetMound = null;
-                        // Ao construir, procuramos em todos os mounds ativos, não apenas nos visuais recentes
-                        const moundsToSearch = isBuilding ? mounds.filter(m => !m.flattened) : visualMounds;
+                        // Procuramos em todos os mounds ativos, inclusive os que estão em processo de cura
+                        const moundsToSearch = mounds.filter(m => !m.flattened);
 
                         if (isProtected(hitPoint.x + visualOffsetX, hitPoint.z + visualOffsetZ)) {
                             isDestroying = false;
@@ -4898,11 +4898,11 @@
                 mesh.visible = dist <= renderDistance + 100;
             });
 
-            // NOVO: Lógica para fechar buracos e montes inativos (curar terreno após 1 minuto)
+            // NOVO: Lógica para fechar buracos e montes inativos (curar terreno após 10 segundos)
             for (let i = visualMounds.length - 1; i >= 0; i--) {
                 const mound = visualMounds[i];
-                // Cura buracos e montes após 60 segundos (1 minuto) de inatividade
-                if (mound !== currentMound && world.time - mound.lastDugAt > 60) {
+                // Cura buracos e montes após 10 segundos de inatividade
+                if (mound !== currentMound && world.time - mound.lastDugAt > 10) {
                     mound.closingStartTime = undefined;
                     closingMounds.push(mound);
                     visualMounds.splice(i, 1);
