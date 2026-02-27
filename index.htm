@@ -1661,14 +1661,6 @@
             holeGroup.position.copy(hitPoint);
             let finalQuaternion = new THREE.Quaternion();
 
-            if (!isPositive) {
-                // NOVO: Remove todos os buracos existentes antes de criar um novo
-                visualMounds.forEach(mound => {
-                    if (mound.mesh) scene.remove(mound.mesh);
-                });
-                visualMounds.length = 0; // Limpa o array
-            }
-
             // Calcula os índices do heightfield para o ponto de impacto (coordenadas locais do heightfield)
             const step = worldSize / (hfGridSize - 1);
             const mx = (hitPoint.x + worldSize / 2) / step;
@@ -3826,6 +3818,22 @@
 
                         if (targetMound) {
                             currentMound = targetMound;
+                            // Se o mound estava em processo de cura (fechamento), traz ele de volta
+                            const closingIndex = closingMounds.indexOf(targetMound);
+                            if (closingIndex !== -1) {
+                                closingMounds.splice(closingIndex, 1);
+                                if (!visualMounds.includes(targetMound)) {
+                                    visualMounds.push(targetMound);
+                                }
+                                targetMound.closingStartTime = undefined;
+                                // Sincroniza o estágio de crescimento baseado na altura atual para retomar a ação
+                                const scale = Math.abs(targetMound.height / (targetMound.maxHeightChange || -1.0));
+                                let newStage = 0;
+                                for (let s = 0; s < moundGrowthStages.length; s++) {
+                                    if (scale >= moundGrowthStages[s]) newStage = s + 1;
+                                }
+                                targetMound.growthStage = newStage;
+                            }
                         } else {
                             currentMound = createMound(intersect, isBuilding);
                         }
@@ -4513,16 +4521,22 @@
                                 }
                             } else {
                                 // Criando um monte (positivo)
-                                mound.height += 0.25;
-                                terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
-                                if (mound.height >= 1.0) {
+                                mound.growthStage++;
+                                if (mound.growthStage >= moundGrowthStages.length) {
                                     mound.height = 1.0;
                                     destructionComplete = true;
                                     isDestroying = false;
                                     progressContainer.style.display = 'none';
                                 } else {
+                                    mound.height = 1.0 * mound.growthStage / moundGrowthStages.length;
                                     destroyProgress = 0;
                                 }
+
+                                if (mound.mesh) {
+                                    const baseScale = moundGrowthStages[mound.growthStage - 1];
+                                    mound.mesh.scale.set(baseScale, baseScale, baseScale);
+                                }
+                                terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
                             }
 
                             // Consome o item Terra
@@ -4884,11 +4898,12 @@
                 mesh.visible = dist <= renderDistance + 100;
             });
 
-            // NOVO: Lógica para fechar buracos inativos (curar terreno após 5 minutos)
+            // NOVO: Lógica para fechar buracos e montes inativos (curar terreno após 1 minuto)
             for (let i = visualMounds.length - 1; i >= 0; i--) {
                 const mound = visualMounds[i];
-                if (mound !== currentMound && world.time - mound.lastDugAt > 300) { // 300s = 5 minutos
-                    mound.closingStageTimer = world.time; // Initialize timer upon starting to close
+                // Cura buracos e montes após 60 segundos (1 minuto) de inatividade
+                if (mound !== currentMound && world.time - mound.lastDugAt > 60) {
+                    mound.closingStartTime = undefined;
                     closingMounds.push(mound);
                     visualMounds.splice(i, 1);
                 }
@@ -4897,61 +4912,64 @@
             for (let i = closingMounds.length - 1; i >= 0; i--) {
                 const mound = closingMounds[i];
 
-                // Initialize the timer if it doesn't exist
-                if (mound.closingStageTimer === undefined) {
-                    mound.closingStageTimer = world.time;
+                // Inicializa o temporizador e a altura inicial de cura
+                if (mound.closingStartTime === undefined) {
+                    mound.closingStartTime = world.time;
+                    mound.startHeight = mound.height;
                 }
 
-                // Time per closing stage (e.g., 0.5 seconds)
-                const timePerClosingStage = 0.5;
+                const duration = 5.0; // 5 segundos para curar suavemente
+                const elapsed = world.time - mound.closingStartTime;
+                const progress = Math.min(1.0, elapsed / duration);
 
-                if (world.time - mound.closingStageTimer > timePerClosingStage) {
-                    const oldHeight = mound.height;
-                    mound.growthStage--;
-                    const maxHeight = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
-                    mound.height = mound.growthStage < 0 ? 0 : (maxHeight * mound.growthStage / moundGrowthStages.length);
-                    const heightDelta = mound.height - oldHeight;
+                const oldHeight = mound.height;
+                mound.height = mound.startHeight * (1 - progress);
+                const heightDelta = mound.height - oldHeight;
 
-                    // NOVO: Empurra objetos para cima se o buraco estiver fechando
-                    const pushRadius = 2.0;
-                    if (heightDelta !== 0) {
-                        const moundWorldPos = { x: mound.position.x, y: mound.position.y, z: mound.position.z };
-                        // Empurra o jogador
-                        const playerDist = calculateWrappedDistance(playerBody.position, moundWorldPos);
-                        if (playerDist < pushRadius) {
-                            playerBody.position.y += heightDelta;
+                // NOVO: Empurra objetos para cima se o buraco estiver fechando (apenas se o terreno subir)
+                const pushRadius = 2.0;
+                if (heightDelta > 0) {
+                    const moundWorldPos = { x: mound.position.x, y: mound.position.y, z: mound.position.z };
+                    // Empurra o jogador
+                    const playerDist = calculateWrappedDistance(playerBody.position, moundWorldPos);
+                    if (playerDist < pushRadius) {
+                        playerBody.position.y += heightDelta;
+                    }
+                    // Empurra caixotes
+                    collectibleBoxes.forEach(box => {
+                        const boxDist = calculateWrappedDistance(box.body.position, moundWorldPos);
+                        if (boxDist < pushRadius) {
+                            box.body.position.y += heightDelta;
                         }
-                        // Empurra caixotes
-                        collectibleBoxes.forEach(box => {
-                            const boxDist = calculateWrappedDistance(box.body.position, moundWorldPos);
-                            if (boxDist < pushRadius) {
-                                box.body.position.y += heightDelta;
-                            }
-                        });
-                        // Empurra construções (como baús e blocos)
-                        placedConstructionBodies.forEach(body => {
-                            const bodyDist = calculateWrappedDistance(body.position, moundWorldPos);
-                            if (bodyDist < pushRadius) {
-                                body.position.y += heightDelta;
-                            }
-                        });
-                    }
+                    });
+                    // Empurra construções (como baús e blocos)
+                    placedConstructionBodies.forEach(body => {
+                        const bodyDist = calculateWrappedDistance(body.position, moundWorldPos);
+                        if (bodyDist < pushRadius) {
+                            body.position.y += heightDelta;
+                        }
+                    });
+                }
 
-                    mound.closingStageTimer = world.time; // Reset timer for next stage
+                // Atualiza a escala visual suavemente
+                const currentScale = Math.abs(mound.height / (mound.maxHeightChange || -1.0));
+                if (mound.mesh) {
+                    const finalScale = mound.isPrecise ? currentScale * 0.8 : currentScale;
+                    // Mantém um tamanho mínimo para não desaparecer antes da hora e evitar erros de escala zero
+                    const s = Math.max(0.001, finalScale);
+                    mound.mesh.scale.set(s, s, s);
+                }
 
-                    if (mound.growthStage < 0) {
-                        // Remove the mound completely
-                        scene.remove(mound.mesh);
-                        const mIndex = mounds.indexOf(mound);
-                        if (mIndex !== -1) mounds.splice(mIndex, 1);
-                        closingMounds.splice(i, 1);
-                    } else {
-                        // Set the scale to the previous stage
-                        const baseScale = mound.growthStage > 0 ? moundGrowthStages[mound.growthStage - 1] : 0.1;
-                        const finalScale = mound.isPrecise ? baseScale * 0.8 : baseScale;
-                        mound.mesh.scale.set(finalScale, finalScale, finalScale);
-                    }
-                    terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+                // Sincronização de física em tempo real
+                terrainNeedsUpdate = true;
+                terrainAffectedMounds.push(mound);
+
+                if (progress >= 1.0) {
+                    // Remove o mound completamente ao fim da cura
+                    scene.remove(mound.mesh);
+                    const mIndex = mounds.indexOf(mound);
+                    if (mIndex !== -1) mounds.splice(mIndex, 1);
+                    closingMounds.splice(i, 1);
                 }
             }
 
@@ -5901,6 +5919,8 @@
             window.createBox = createBox;
             window.closingMounds = closingMounds;
             window.calculateWrappedDistance = calculateWrappedDistance;
+            window.animate = animate;
+            Object.defineProperty(window, 'currentMound', { get: () => currentMound });
             Object.defineProperty(window, 'stoneLayerLevel', {
                 get: () => stoneLayerLevel,
                 set: (v) => { stoneLayerLevel = v; }
