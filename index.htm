@@ -3498,6 +3498,7 @@
                 }
 
                 if (event.key.toLowerCase() === 'f') {
+                    if (event.repeat) return;
                     const interacted = interact();
                     if (!interacted && !pickedObjectBody) {
                         grabObject();
@@ -3970,7 +3971,7 @@
                 if (!isWorldReady || gamePaused || !document.pointerLockElement) return false;
 
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                const intersects = raycaster.intersectObjects(scene.children, true);
+                const intersects = raycaster.intersectObjects(raycastTargets, true);
                 for (const intersect of intersects) {
                     if (intersect.distance > pickUpDistance) continue;
 
@@ -4009,7 +4010,7 @@
 
             function collectObject() {
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                const intersects = raycaster.intersectObjects(scene.children, true);
+                const intersects = raycaster.intersectObjects(raycastTargets, true);
                 for (const intersect of intersects) {
                     if (intersect.distance > pickUpDistance) continue;
 
@@ -4040,7 +4041,7 @@
 
             function grabObject() {
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                const intersects = raycaster.intersectObjects(scene.children, true); // Search recursively
+                const intersects = raycaster.intersectObjects(raycastTargets, true); // Search recursively
                 const allPickableBodies = collectibleBoxes.map(b => b.body);
 
                 for (let i = 0; i < intersects.length; i++) {
@@ -4054,6 +4055,8 @@
                             // Make the object kinematic and disable collisions
                             pickedObjectBody.type = CANNON.Body.KINEMATIC;
                             pickedObjectBody.collisionResponse = false;
+                            pickedObjectBody.collisionFilterGroup = 0;
+                            pickedObjectBody.collisionFilterMask = 0;
 
                             // Remove any existing constraints if they exist
                             if (grabberConstraint) {
@@ -4072,6 +4075,8 @@
                 // Restore the object to its original dynamic state
                 pickedObjectBody.type = CANNON.Body.DYNAMIC;
                 pickedObjectBody.collisionResponse = true;
+                pickedObjectBody.collisionFilterGroup = 1;
+                pickedObjectBody.collisionFilterMask = 1;
                 pickedObjectBody.wakeUp();
 
                 // Give it a gentle push away from the player
@@ -5884,9 +5889,12 @@
             window.addItemToInventory = addItemToInventory;
             window.openBackpack = openBackpack;
             window.closeBackpack = closeBackpack;
+            window.grabObject = grabObject;
+            window.dropObject = dropObject;
             window.createPlaceableBlock = createPlaceableBlock;
             window.startDestruction = startDestruction;
             window.stopDestruction = stopDestruction;
+            window.keysPressed = keysPressed;
             window.beltItems = beltItems;
             window.updateUI = updateUI;
             window.selectedSlotIndex = selectedSlotIndex;
