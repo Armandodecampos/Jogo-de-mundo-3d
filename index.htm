@@ -1106,6 +1106,7 @@
             if (typeof raycastTargets === 'undefined') return;
             raycastTargets.length = 0;
             islandMeshes.forEach(tile => raycastTargets.push(tile.mesh));
+            waterMeshes.forEach(tile => raycastTargets.push(tile.mesh)); // NOVO: Água para colocação de jangada
             raycastTargets.push(...placedConstructionMeshes);
             collectibleBoxes.forEach(box => raycastTargets.push(box.mesh));
             // Hitboxes do capim removidas para otimização de performance
@@ -3508,6 +3509,11 @@
 
                 if (event.key.toLowerCase() === 'f') {
                     if (event.repeat) return;
+                    if (isDrivingRaft) {
+                        isDrivingRaft = false;
+                        currentRaftBody = null;
+                        return;
+                    }
                     const interacted = interact();
                     if (!interacted && !pickedObjectBody) {
                         grabObject();
@@ -4044,7 +4050,7 @@
                             openChest(body);
                             return true;
                         }
-                        if (body.userData.isRaft) {
+                        if (body.userData.isRaft && !isDrivingRaft) {
                             isDrivingRaft = true;
                             currentRaftBody = body;
                             return true;
@@ -4763,6 +4769,14 @@
                              position = destroyTargetBody.position.clone();
                             const bodyIndex = placedConstructionBodies.indexOf(destroyTargetBody);
                             if (bodyIndex !== -1) {
+                                if (destroyTargetBody.userData.isRaft) {
+                                    const raftIdx = raftBodies.indexOf(destroyTargetBody);
+                                    if (raftIdx !== -1) raftBodies.splice(raftIdx, 1);
+                                    if (currentRaftBody === destroyTargetBody) {
+                                        isDrivingRaft = false;
+                                        currentRaftBody = null;
+                                    }
+                                }
                                  // NOVO: Lógica para dropar itens do baú
                                 if (destroyTargetBody.userData.isChest) {
                                     const chestInventory = destroyTargetBody.userData.inventory;
@@ -5241,19 +5255,26 @@
                     for (let i = 0; i < intersects.length; i++) {
                         const intersectedObject = intersects[i].object;
                         const intersectedBody = intersectedObject.userData.physicsBody;
+                        const isWater = intersectedObject.userData.isWater;
+                        const isRaft = (currentBlockType === raftItemName);
 
-                        if (intersectedObject.userData.isWater) {
-                            continue; // Pula a água, não pode construir nela
+                        if (isWater && !isRaft) {
+                            continue; // Pula a água, exceto para a jangada
                         }
 
-                        if (intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) {
+                        if ((intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) || (isWater && isRaft)) {
                             // Verifica a distância máxima para colocação
                             if (intersects[i].distance <= pickUpDistance + 1) { // Um pouco mais longe que pegar
                                 const hitPoint = intersects[i].point;
 
 
 
-                                const hitNormal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
+                                let hitNormal;
+                                if (intersectedObject.userData.isWater) {
+                                    hitNormal = new THREE.Vector3(0, 1, 0); // Sempre para cima na água
+                                } else {
+                                    hitNormal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
+                                }
 
                                 // Calcula a posição do centro do bloco acima da superfície
                                 let basePosition = new THREE.Vector3().copy(hitPoint);
@@ -5286,7 +5307,7 @@
                                 // NOVO: Alinha a posição Y na grade, considerando a altura da superfície da ilha como a base.
                                 // Isso garante que os blocos se encaixem verticalmente.
                                 // CORREÇÃO: As sementes não devem se encaixar na grade vertical, elas devem ser colocadas no chão.
-                                if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === dirtItemName) {
+                                if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === dirtItemName || currentBlockType === raftItemName) {
                                     placementPosition.y = basePosition.y;
                                 } else {
                                     const n_y = Math.round((basePosition.y - islandSurfaceHeight) / currentGhostHeight - 0.5);
@@ -5489,11 +5510,9 @@
             }
 
             // NOVO: Sair do modo de direção da jangada
-            if (isDrivingRaft && (keysPressed['escape'] || keysPressed['f'])) {
+            if (isDrivingRaft && keysPressed['escape']) {
                 isDrivingRaft = false;
                 currentRaftBody = null;
-                // Pequeno atraso para não reativar imediatamente
-                keysPressed['f'] = false;
             }
 
             if (isDrivingRaft && currentRaftBody) {
@@ -5506,7 +5525,8 @@
                 playerBody.velocity.set(0, 0, 0); // Jogador "parado" na jangada
 
                 // Movimento da jangada
-                if (movementVector.lengthSq() > 0) {
+                const raftInWater = currentRaftBody.position.y < waterLevel && hasWaterAt(currentRaftBody.position.x, currentRaftBody.position.z);
+                if (movementVector.lengthSq() > 0 && raftInWater) {
                     const normalizedMovementVector = movementVector.clone().normalize();
                     const raftSpeed = 30; // Rapidez no mar
                     const force = new CANNON.Vec3(
@@ -5723,7 +5743,11 @@
                     let tempPlacementQuaternion = new THREE.Quaternion(); // Usar um quaternion temporário
                     let currentGhostHeight, currentGhostWidth, currentGhostDepth;
 
-                    if (currentBlockType === 'cob') {
+                    if (currentBlockType === raftItemName) {
+                        currentGhostWidth = 2.4;
+                        currentGhostHeight = 0.4;
+                        currentGhostDepth = 2.4;
+                    } else if (currentBlockType === 'cob') {
                         currentGhostWidth = cobWidth;
                         currentGhostHeight = cobHeight;
                         currentGhostDepth = cobDepth;
@@ -5778,17 +5802,24 @@
 
                     for (let i = 0; i < intersects.length; i++) {
                         const intersectedObject = intersects[i].object;
-                        if (intersectedObject.userData.isWater) continue; // Ignora a água
+                        const isWater = intersectedObject.userData.isWater;
+                        const isRaft = (currentBlockType === raftItemName);
+                        if (isWater && !isRaft) continue; // Ignora a água exceto para jangada
 
                         const intersectedBody = intersectedObject.userData.physicsBody;
                         const allPlaceableSurfaces = [islandBody, ...placedConstructionBodies];
 
-                        if (intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) {
+                        if ((intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) || (isWater && isRaft)) {
                             if (intersects[i].distance <= pickUpDistance + 1) {
                                 const hitPoint = intersects[i].point;
 
 
-                                const hitNormal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
+                                let hitNormal;
+                                if (intersectedObject.userData.isWater) {
+                                    hitNormal = new THREE.Vector3(0, 1, 0);
+                                } else {
+                                    hitNormal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
+                                }
                                 placementPosition.copy(hitPoint);
                                 placementPosition.add(hitNormal.multiplyScalar(currentGhostHeight / 2));
 
