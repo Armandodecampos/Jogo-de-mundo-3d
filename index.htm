@@ -5179,7 +5179,12 @@
                     let currentGhostWidth, currentGhostHeight, currentGhostDepth;
                     ghostBlockMesh.scale.set(1, 1, 1); // Reset scale
                     if (ghostBlockMesh.geometry) ghostBlockMesh.geometry.dispose();
-                    if (currentBlockType === 'cob') {
+                    if (currentBlockType === raftItemName) {
+                        currentGhostWidth = 2.4;
+                        currentGhostHeight = 0.4;
+                        currentGhostDepth = 2.4;
+                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
+                    } else if (currentBlockType === 'cob') {
                         currentGhostWidth = cobWidth;
                         currentGhostHeight = cobHeight;
                         currentGhostDepth = cobDepth;
@@ -5308,6 +5313,8 @@
                                 // Isso garante que os blocos se encaixem verticalmente.
                                 // CORREÇÃO: As sementes não devem se encaixar na grade vertical, elas devem ser colocadas no chão.
                                 if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === dirtItemName || currentBlockType === raftItemName) {
+                                    placementPosition.y = basePosition.y;
+                                } else if (currentBlockType === boxItemName || currentBlockType === chestItemName) {
                                     placementPosition.y = basePosition.y;
                                 } else {
                                     const n_y = Math.round((basePosition.y - islandSurfaceHeight) / currentGhostHeight - 0.5);
@@ -5734,125 +5741,14 @@
                 currentBlockType = primaryToolForCrosshair.name; // Define o tipo de bloco para o ghost mesh
             }
 
+            // NOVO: Define se o bloco fantasma é válido para determinar a cor da mira
+            const isPlacementValid = ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00;
+
             // Adjust crosshair color based on validity for placing/destroying/grabbing
             if (document.pointerLockElement === renderer.domElement && !pickedObjectBody && !gamePaused) {
                 const intersects = mainIntersects;
                 if (isPrimaryToolPlacing) {
-                    let canPlace = false; // Declarar canPlace aqui
-                    let placementPosition = new THREE.Vector3();
-                    let tempPlacementQuaternion = new THREE.Quaternion(); // Usar um quaternion temporário
-                    let currentGhostHeight, currentGhostWidth, currentGhostDepth;
-
-                    if (currentBlockType === raftItemName) {
-                        currentGhostWidth = 2.4;
-                        currentGhostHeight = 0.4;
-                        currentGhostDepth = 2.4;
-                    } else if (currentBlockType === 'cob') {
-                        currentGhostWidth = cobWidth;
-                        currentGhostHeight = cobHeight;
-                        currentGhostDepth = cobDepth;
-                    } else if (currentBlockType === 'piso') {
-                        currentGhostWidth = floorWidth;
-                        currentGhostHeight = floorHeight;
-                        currentGhostDepth = floorDepth;
-                    } else if (currentBlockType === 'tábuas') {
-                        currentGhostWidth = woodenPlankWidth;
-                        currentGhostHeight = woodenPlankHeight;
-                        currentGhostDepth = woodenPlankDepth;
-                    } else if (currentBlockType === stoneBlockItemName) {
-                        currentGhostWidth = stoneBlockWidth;
-                        currentGhostHeight = stoneBlockHeight;
-                        currentGhostDepth = stoneBlockDepth;
-                    } else if (currentBlockType === woodenBlockItemName) {
-                        currentGhostWidth = woodenBlockWidth;
-                        currentGhostHeight = woodenBlockHeight;
-                        currentGhostDepth = woodenBlockDepth;
-                    } else if (currentBlockType === stoneFloorItemName) {
-                        currentGhostWidth = stoneFloorWidth;
-                        currentGhostHeight = stoneFloorHeight;
-                        currentGhostDepth = stoneFloorDepth;
-                                        } else if (currentBlockType === appleSeedItemName) {
-                        const seedBaseData = treeStages['semente'];
-                        currentGhostWidth = seedBaseData.visual.sphere.radius * 2;
-                        currentGhostDepth = seedBaseData.visual.sphere.radius * 2;
-                        currentGhostHeight = seedBaseData.visual.sphere.radius * 2;
-                        ghostBlockMesh.geometry = new THREE.SphereGeometry(seedBaseData.visual.sphere.radius, 8, 8);
-                    } else if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName) {
-                        const seedBaseData = treeStages['semente'];
-                        currentGhostWidth = seedBaseData.visual.sphere.radius * 2;
-                        currentGhostDepth = seedBaseData.visual.sphere.radius * 2;
-                        currentGhostHeight = seedBaseData.visual.sphere.radius * 2;
-                    } else if (currentBlockType === 'tronco_arvore') { // NOVO: Altura do ghost para tronco
-                        currentGhostWidth = trunkRadius * 2;
-                        currentGhostHeight = trunkHeight;
-                        currentGhostDepth = trunkRadius * 2;
-                    } else if (currentBlockType === boxItemName) {
-                        currentGhostWidth = 1;
-                        currentGhostHeight = 1;
-                        currentGhostDepth = 1;
-                    } else if (currentBlockType === chestItemName) { // NOVO
-                        currentGhostWidth = 1;
-                        currentGhostHeight = 1;
-                        currentGhostDepth = 1;
-                    } else if (currentBlockType === stoneItemName) {
-                        currentGhostWidth = 1;
-                        currentGhostHeight = 0.5;
-                        currentGhostDepth = 1.2;
-                    }
-
-                    for (let i = 0; i < intersects.length; i++) {
-                        const intersectedObject = intersects[i].object;
-                        const isWater = intersectedObject.userData.isWater;
-                        const isRaft = (currentBlockType === raftItemName);
-                        if (isWater && !isRaft) continue; // Ignora a água exceto para jangada
-
-                        const intersectedBody = intersectedObject.userData.physicsBody;
-                        const allPlaceableSurfaces = [islandBody, ...placedConstructionBodies];
-
-                        if ((intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) || (isWater && isRaft)) {
-                            if (intersects[i].distance <= pickUpDistance + 1) {
-                                const hitPoint = intersects[i].point;
-
-
-                                let hitNormal;
-                                if (intersectedObject.userData.isWater) {
-                                    hitNormal = new THREE.Vector3(0, 1, 0);
-                                } else {
-                                    hitNormal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
-                                }
-                                placementPosition.copy(hitPoint);
-                                placementPosition.add(hitNormal.multiplyScalar(currentGhostHeight / 2));
-
-                                const playerPos = new THREE.Vector3().copy(playerBody.position);
-                                playerPos.y += currentPlayerRadius;
-
-                                const distanceToPlayer = placementPosition.distanceTo(playerPos);
-                                const minPlayerDistance = currentPlayerRadius + (currentGhostHeight / 2) + 0.1;
-
-                                if (distanceToPlayer > minPlayerDistance) {
-                                    canPlace = true;
-                                    // Se for uma muda de árvore, verifica a distância das outras árvores (incluindo as adultas)
-                                    if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName) {
-                                        for (const existingBody of placedConstructionBodies) {
-                                            // Verifica se o corpo existente é uma árvore em qualquer estágio de crescimento
-                                            // (muda, media ou arvore_adulta)
-                                            if (existingBody.userData.type === 'muda_arvore' || existingBody.userData.growthStage) {
-                                                const existingTreePos = new THREE.Vector3().copy(existingBody.position);
-                                                const distanceToExistingTree = placementPosition.distanceTo(existingTreePos);
-                                                // AQUI: A regra para não colocar mudas perto de árvores grandes
-                                                if (distanceToExistingTree < minTreePlacementDistance) {
-                                                    canPlace = false;
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    if (canPlace) break;
-                                }
-                            }
-                        }
-                    }
-                    crosshairColor = canPlace ? 'lime' : 'red';
+                    crosshairColor = isPlacementValid ? 'lime' : 'red';
                 } else if (isPrimaryToolDestroying) {
                     if (!isDestroying) {
                         const intersects = mainIntersects;
@@ -6103,6 +5999,7 @@
             window.capimClusters = capimClusters;
             window.capimInstancedMeshes = capimInstancedMeshes;
             window.raycastTargets = raycastTargets;
+            window.updateRaycastTargets = updateRaycastTargets;
             window.createMound = createMound;
             window.mounds = mounds;
             window.islandMeshes = islandMeshes;
