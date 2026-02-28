@@ -5382,7 +5382,7 @@
 
             // NOVO: Lógica de Flutuação das Jangadas
             raftBodies.forEach(raft => {
-                const raftInWater = raft.position.y < waterLevel && hasWaterAt(raft.position.x, raft.position.z);
+                const raftInWater = raft.position.y < waterLevel + 0.3 && hasWaterAt(raft.position.x, raft.position.z);
                 if (raftInWater) {
                     const K_SPRING_RAFT = 1000; // Maior rigidez para jangada
                     const C_DAMPING_RAFT = 150;
@@ -5397,8 +5397,8 @@
                     raft.applyForce(new CANNON.Vec3(0, totalBuoyancyForce, 0));
 
                     // Arrasto da água para a jangada
-                    raft.velocity.x *= 0.95;
-                    raft.velocity.z *= 0.95;
+                    raft.velocity.x *= 0.98;
+                    raft.velocity.z *= 0.98;
                 }
             });
 
@@ -5532,10 +5532,10 @@
                 playerBody.velocity.set(0, 0, 0); // Jogador "parado" na jangada
 
                 // Movimento da jangada
-                const raftInWater = currentRaftBody.position.y < waterLevel && hasWaterAt(currentRaftBody.position.x, currentRaftBody.position.z);
+                const raftInWater = currentRaftBody.position.y < waterLevel + 0.3 && hasWaterAt(currentRaftBody.position.x, currentRaftBody.position.z);
                 if (movementVector.lengthSq() > 0 && raftInWater) {
                     const normalizedMovementVector = movementVector.clone().normalize();
-                    const raftSpeed = 30; // Rapidez no mar
+                    const raftSpeed = 45; // Rapidez no mar
                     const force = new CANNON.Vec3(
                         normalizedMovementVector.x * raftSpeed * currentRaftBody.mass,
                         0,
