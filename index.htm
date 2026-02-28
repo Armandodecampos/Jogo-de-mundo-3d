@@ -4628,20 +4628,6 @@
                                         mound.mesh.scale.set(finalScale, finalScale, finalScale);
                                     }
 
-                                    // NOVO: Se for uma cavagem profunda em parede, coloca um teto automático (3x3 blocos) para simular túnel
-                                    if (mound.isPrecise && (mound.originalHeight - mound.position.y) > 3.0) {
-                                        const roofType = (mound.position.y < stoneLayerLevel) ? stoneBlockItemName : cobItemName;
-                                        const centerX = mound.position.x;
-                                        const centerZ = mound.position.z;
-                                        const roofY = mound.originalHeight;
-
-                                        for (let dx = -1; dx <= 1; dx++) {
-                                            for (let dz = -1; dz <= 1; dz++) {
-                                                const roofPos = new THREE.Vector3(centerX + dx, roofY, centerZ + dz);
-                                                createPlaceableBlock(roofPos, new THREE.Quaternion(), roofType);
-                                            }
-                                        }
-                                    }
 
                                     destructionComplete = true;
                                     isDestroying = false;
@@ -4847,7 +4833,7 @@
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
                 // Culling estrito para o terreno (um pouco maior que renderDistance para evitar buracos nas bordas)
-                tile.mesh.visible = dist <= renderDistance + 100;
+                tile.mesh.visible = dist <= renderDistance + 600;
             });
 
             waterMeshes.forEach(tile => {
@@ -4855,7 +4841,7 @@
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + 100;
+                tile.mesh.visible = dist <= renderDistance + 600;
             });
 
             seabedMeshes.forEach(tile => {
@@ -4863,7 +4849,7 @@
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + 100;
+                tile.mesh.visible = dist <= renderDistance + 600;
             });
 
             const renderDistSq = renderDistance * renderDistance;
@@ -4947,7 +4933,7 @@
             capimInstancedMeshes.forEach(mesh => {
                 // Como são 9 tiles, verificamos a distância do centro do tile visual
                 const dist = camera.position.distanceTo(mesh.position);
-                mesh.visible = dist <= renderDistance + 100;
+                mesh.visible = dist <= renderDistance + 600;
             });
 
             // NOVO: Lógica para fechar buracos inativos (curar terreno após 10 segundos)
@@ -4976,32 +4962,42 @@
 
                 const oldHeight = mound.height;
                 mound.height = mound.startHeight * (1 - progress);
-                const heightDelta = mound.height - oldHeight;
+                const currentGroundLevel = islandSurfaceHeight + mound.height;
 
                 // NOVO: Empurra objetos para cima se o buraco estiver fechando (apenas se o terreno subir)
                 const pushRadius = 2.0;
-                if (heightDelta > 0) {
-                    const moundWorldPos = { x: mound.position.x, y: mound.position.y, z: mound.position.z };
-                    // Empurra o jogador
-                    const playerDist = calculateWrappedDistance(playerBody.position, moundWorldPos);
-                    if (playerDist < pushRadius) {
-                        playerBody.position.y += heightDelta;
+                const moundWorldPos = { x: mound.position.x, y: mound.position.y, z: mound.position.z };
+
+                // Empurra o jogador
+                const playerDist = calculateWrappedDistance(playerBody.position, moundWorldPos);
+                if (playerDist < pushRadius) {
+                    const bottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
+                    if (bottomY < currentGroundLevel) {
+                        playerBody.position.y = currentGroundLevel + (isCrouching ? crouchRadius : playerRadius);
                     }
-                    // Empurra caixotes
-                    collectibleBoxes.forEach(box => {
-                        const boxDist = calculateWrappedDistance(box.body.position, moundWorldPos);
-                        if (boxDist < pushRadius) {
-                            box.body.position.y += heightDelta;
-                        }
-                    });
-                    // Empurra construções (como baús e blocos)
-                    placedConstructionBodies.forEach(body => {
-                        const bodyDist = calculateWrappedDistance(body.position, moundWorldPos);
-                        if (bodyDist < pushRadius) {
-                            body.position.y += heightDelta;
-                        }
-                    });
                 }
+                // Empurra caixotes
+                collectibleBoxes.forEach(box => {
+                    const boxDist = calculateWrappedDistance(box.body.position, moundWorldPos);
+                    if (boxDist < pushRadius) {
+                        const boxHeight = (box.body.userData.dimensions ? box.body.userData.dimensions.height : 1.0);
+                        const bottomY = box.body.position.y - boxHeight / 2;
+                        if (bottomY < currentGroundLevel) {
+                            box.body.position.y = currentGroundLevel + boxHeight / 2;
+                        }
+                    }
+                });
+                // Empurra construções (como baús e blocos)
+                placedConstructionBodies.forEach(body => {
+                    const bodyDist = calculateWrappedDistance(body.position, moundWorldPos);
+                    if (bodyDist < pushRadius) {
+                        const bodyHeight = (body.userData.dimensions ? body.userData.dimensions.height : (body.userData.isChest ? 1.0 : 0.4));
+                        const bottomY = body.position.y - bodyHeight / 2;
+                        if (bottomY < currentGroundLevel) {
+                            body.position.y = currentGroundLevel + bodyHeight / 2;
+                        }
+                    }
+                });
 
                 // Atualiza a escala visual suavemente
                 const currentScale = Math.abs(mound.height / (mound.maxHeightChange || -1.0));
