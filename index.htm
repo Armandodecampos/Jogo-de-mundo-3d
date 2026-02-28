@@ -518,6 +518,12 @@
         </div>
     </div>
 
+    <!-- Floating Item Indicator -->
+    <div id="floatingItem" style="display: none; position: fixed; pointer-events: none; z-index: 20000; align-items: center; justify-content: center; transform: translate(-50%, -50%);">
+        <i class="fas fa-hand-rock" style="color: #FFD700; font-size: 30px; position: absolute; top: 10px; left: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.5);"></i>
+        <img id="floatingItemIcon" src="" style="width: 50px; height: 50px; object-fit: contain; background: rgba(0,0,0,0.3); border-radius: 8px; border: 2px solid #FFD700; padding: 5px;">
+    </div>
+
     <div id="chestModal" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-800/90 border-2 border-stone-600 rounded-lg p-4 z-[1001] w-4/5 max-w-4xl max-h-[80%] flex flex-col text-white">
         <div class="flex justify-between items-center mb-4">
             <h2 class="text-2xl font-bold">Baú</h2>
@@ -1322,6 +1328,31 @@
             }
         }
 
+        function getItemIconURL(itemName) {
+            if (itemName === axeItemName) return axeImageURL;
+            if (itemName === capimItemName) return capimImageURL;
+            if (itemName === hammerItemName) return hammerImageURL;
+            if (itemName === stoneItemName) return stoneImageURL;
+            if (itemName === dirtItemName) return dirtImageURL;
+            if (itemName === sandItemName) return sandImageURL;
+            if (itemName === shovelItemName) return shovelImageURL;
+            if (itemName === pickaxeItemName) return pickaxeImageURL;
+            if (itemName === cobItemName) return cobTextureURL;
+            if (itemName === floorItemName) return floorTextureURL;
+            if (itemName === treeSaplingItemName) return treeSaplingTextureURL;
+            if (itemName === branchItemName) return branchImageURL;
+            if (itemName === treeTrunkItemName) return treeTrunkImageURL;
+            if (itemName === woodenPlankItemName) return woodenPlankTextureURL;
+            if (itemName === chestItemName) return chestTextureURL;
+            if (itemName === stoneBlockItemName) return stoneBlockTextureURL;
+            if (itemName === woodenBlockItemName) return woodenBlockTextureURL;
+            if (itemName === stoneFloorItemName) return stoneFloorTextureURL;
+            if (itemName === boxItemName) return cubeTextureURL;
+            if (itemName === appleItemName) return "https://placehold.co/100x100/ff0000/FFFFFF?text=Maçã"; // Adicionado na etapa 3
+            return handImageURL;
+        }
+        window.getItemIconURL = getItemIconURL;
+
         // Função para renderizar um slot de inventário (cinto ou mochila)
         function renderSlot(item, index, containerType) {
             const isList = containerType === 'backpack' || containerType === 'chest' || containerType === 'chestBackpack';
@@ -1349,45 +1380,7 @@
                 const quantitySpan = document.createElement('span');
 
                 // Define o ícone com base no nome do item
-                if (item.name === axeItemName) {
-                    img.src = axeImageURL;
-                } else if (item.name === capimItemName) {
-                    img.src = capimImageURL;
-                } else if (item.name === hammerItemName) {
-                    img.src = hammerImageURL;
-                } else if (item.name === stoneItemName) { // NOVO
-                    img.src = stoneImageURL;
-                } else if (item.name === dirtItemName) { // NOVO
-                    img.src = dirtImageURL;
-                } else if (item.name === sandItemName) { // NOVO
-                    img.src = sandImageURL;
-                } else if (item.name === shovelItemName) { // NOVO
-                    img.src = shovelImageURL;
-                } else if (item.name === pickaxeItemName) { // NOVO
-                    img.src = pickaxeImageURL;
-                } else if (item.name === cobItemName) {
-                    img.src = cobTextureURL;
-                } else if (item.name === floorItemName) {
-                    img.src = floorTextureURL;
-                } else if (item.name === treeSaplingItemName) {
-                    img.src = treeSaplingTextureURL;
-                } else if (item.name === branchItemName) { // NOVO
-                    img.src = branchImageURL;
-                } else if (item.name === treeTrunkItemName) { // Ícone para tronco de árvore
-                    img.src = treeTrunkImageURL;
-                } else if (item.name === woodenPlankItemName) { // Ícone para tábuas de madeira
-                    img.src = woodenPlankTextureURL;
-                } else if (item.name === chestItemName) { // NOVO
-                    img.src = chestTextureURL;
-                } else if (item.name === stoneBlockItemName) {
-                    img.src = stoneBlockTextureURL;
-                } else if (item.name === woodenBlockItemName) {
-                    img.src = woodenBlockTextureURL;
-                } else if (item.name === stoneFloorItemName) {
-                    img.src = stoneFloorTextureURL;
-                } else if (item.name === boxItemName) {
-                    img.src = cubeTextureURL;
-                }
+                img.src = getItemIconURL(item.name);
                 img.classList.add('slot-icon');
                 slotDiv.appendChild(img);
 
@@ -1464,11 +1457,9 @@
 
         function dropSelectedItem() {
             if (!selectedItem) return;
-            const dropPos = new THREE.Vector3();
-            camera.getWorldDirection(dropPos);
-            dropPos.multiplyScalar(2).add(camera.position);
-            createDroppableItem(dropPos, selectedItem.item);
-            selectedItem = null;
+            // Deletar itens foi desabilitado para corrigir o bug de cenário sumindo.
+            // Em vez de deletar, retorna o item para o local de origem.
+            returnSelectedItemToSource();
             updateUI();
         }
 
@@ -1647,6 +1638,9 @@
             updateBackpackDisplay();
             if (openedChest) {
                 updateChestDisplay();
+            }
+            if (typeof updateFloatingItem === 'function') {
+                updateFloatingItem();
             }
         }
 
@@ -3349,7 +3343,8 @@
             // Add drop functionality when clicking the modal background
             backpackModal.addEventListener('click', (e) => {
                 if (e.target === backpackModal && selectedItem) {
-                    dropSelectedItem();
+                    returnSelectedItemToSource();
+                    updateUI();
                 }
             });
 
@@ -4144,8 +4139,27 @@
                 }
             }
 
+            const floatingItem = document.getElementById('floatingItem');
+            const floatingItemIcon = document.getElementById('floatingItemIcon');
+
+            function updateFloatingItem() {
+                if (selectedItem) {
+                    floatingItemIcon.src = getItemIconURL(selectedItem.item.name);
+                    floatingItem.style.display = 'flex';
+                } else {
+                    floatingItem.style.display = 'none';
+                }
+            }
+            window.updateFloatingItem = updateFloatingItem;
+
             // Evento mousemove para rotação da câmera e rotação de objetos
             document.addEventListener('mousemove', (event) => {
+                // Update floating item position
+                if (selectedItem) {
+                    floatingItem.style.left = event.clientX + 'px';
+                    floatingItem.style.top = event.clientY + 'px';
+                }
+
                 // Determine the primary tool for visual feedback
                 const primaryToolForVisuals = beltItems[selectedSlotIndex]; // Usa o slot selecionado
                 const isPrimaryToolPlacing = primaryToolForVisuals && (
@@ -5922,7 +5936,8 @@
 
             chestModal.addEventListener('click', (e) => {
                 if (e.target === chestModal && selectedItem) {
-                    dropSelectedItem();
+                    returnSelectedItemToSource();
+                    updateUI();
                 }
             });
 
