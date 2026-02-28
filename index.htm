@@ -1670,13 +1670,12 @@
             const vx = (mx / (hfGridSize - 1) - 0.5) * worldSize;
             const vz = (0.5 - mz / (hfGridSize - 1)) * worldSize;
             const naturalY = window.getSurfaceHeight(vx, vz);
-            const vy = (typeof currentHfMatrix !== 'undefined' && currentHfMatrix) ? currentHfMatrix[Math.round(mx)][Math.round(mz)] : naturalY;
 
             // NOVO: Detecta se é uma cavagem horizontal (parede)
             const isHorizontal = !isPositive && intersect.face && Math.abs(intersect.face.normal.y) < 0.5;
 
-            // Alinha o grupo do buraco com o ponto de impacto real
-            holeGroup.position.set(vx, hitPoint.y, vz);
+            // Alinha o grupo do buraco com o ponto de impacto real ou linha de base
+            holeGroup.position.set(vx, isHorizontal ? hitPoint.y : naturalY, vz);
 
             // NOVO: Adiciona a malha visual do buraco ao grupo para que o jogador tenha feedback visual na mira
             let holeMesh = null;
@@ -1694,12 +1693,12 @@
                 z: mz,
                 radius: (isHorizontal ? 3.0 : 4.0) * (hfGridSize / worldSize), // Raio reduzido para cavagem precisa em paredes
                 isPrecise: isHorizontal,
-                originalHeight: isHorizontal ? naturalY : vy,
-                targetFloorHeight: isHorizontal ? naturalY : vy,
+                originalHeight: naturalY,
+                targetFloorHeight: naturalY,
                 height: 0, // Inicia sem alteração na altura
                 maxHeightChange: isPositive ? 1.0 : (isHorizontal ? (hitPoint.y - naturalY) : -1.0),
                 flattened: false,
-                position: new THREE.Vector3(vx, hitPoint.y, vz),
+                position: new THREE.Vector3(vx, isHorizontal ? hitPoint.y : naturalY, vz),
                 mesh: holeGroup,
                 holeMesh: holeMesh,
                 createdAt: world.time,
@@ -3792,23 +3791,31 @@
                             return;
                         }
 
+                        let existingMoundAtPos = null;
                         for (const mound of moundsToSearch) {
                             // Calcula a distância horizontal para o ponto de impacto preciso
-                            const dx = mound.position.x - hitPoint.x;
-                            const dz = mound.position.z - hitPoint.z;
+                            const dx = mound.position.x - snappedHitPoint.x;
+                            const dz = mound.position.z - snappedHitPoint.z;
                             const distSq = dx * dx + dz * dz;
 
                             // Se estiver muito perto do centro de um mound existente, reusa ele
                             if (distSq < 0.25) { // 0.5m de tolerância
+                                existingMoundAtPos = mound;
                                 if (isBuilding) {
-                                    // Se estiver construindo, aceita qualquer mound que possa crescer em altura
-                                    if (mound.height < 1.0) {
+                                    // Se estiver construindo:
+                                    // Monte positivo cresce (incrementa stage)
+                                    // Buraco negativo diminui (decrementa stage)
+                                    if ((mound.maxHeightChange > 0 && mound.growthStage < moundGrowthStages.length) ||
+                                        (mound.maxHeightChange < 0 && mound.growthStage > 0)) {
                                         targetMound = mound;
                                         break;
                                     }
                                 } else {
-                                    // Se estiver cavando, usa a lógica original de estágios
-                                    if (mound.growthStage < moundGrowthStages.length) {
+                                    // Se estiver cavando:
+                                    // Monte positivo diminui (decrementa stage)
+                                    // Buraco negativo aumenta profundidade (incrementa stage)
+                                    if ((mound.maxHeightChange > 0 && mound.growthStage > 0) ||
+                                        (mound.maxHeightChange < 0 && mound.growthStage < moundGrowthStages.length)) {
                                         targetMound = mound;
                                         break;
                                     }
@@ -3834,8 +3841,13 @@
                                 }
                                 targetMound.growthStage = newStage;
                             }
-                        } else {
+                        } else if (!existingMoundAtPos) {
                             currentMound = createMound(intersect, isBuilding);
+                        } else {
+                            // Encontrou um mound mas não é válido para a ação atual
+                            isDestroying = false;
+                            progressContainer.style.display = 'none';
+                            return;
                         }
 
                         if (currentMound) {
@@ -3879,15 +3891,18 @@
                     const branchMultiplier = 4.0; // Bem lento
                     const weakMultiplier = 10.0;  // Muito mais lento (Mão) para incentivar o uso de ferramentas
 
+                    const isBuildingAction = (heldItemName === dirtItemName);
+
                     // Define a ferramenta correta para cada material
-                    const isCorrectTool =
+                    const isCorrectTool = isBuildingAction ||
                         (heldItemName === axeItemName && materialType === 'wood') ||
                         (heldItemName === pickaxeItemName && materialType === 'stone') ||
                         (heldItemName === shovelItemName && materialType === 'earth');
 
                     if (isCorrectTool) {
-                        // NOVO: Pá e Picareta são mais eficientes em suas especialidades
-                        if ((heldItemName === shovelItemName && materialType === 'earth') ||
+                        if (isBuildingAction) {
+                            multiplier = 1.0;
+                        } else if ((heldItemName === shovelItemName && materialType === 'earth') ||
                             (heldItemName === pickaxeItemName && materialType === 'stone')) {
                             multiplier = 0.3; // Mais rápido com a ferramenta correta
                         } else {
@@ -4494,7 +4509,7 @@
 
                         if (isBuilding) {
                             // Lógica de adicionar terra
-                            if (mound.height < 0) {
+                            if (mound.maxHeightChange < 0) {
                                 // Preenchendo um buraco
                                 mound.growthStage--;
                                 if (mound.growthStage <= 0) {
@@ -4504,10 +4519,13 @@
                                     if (mound.mesh) scene.remove(mound.mesh);
                                     const vIndex = visualMounds.indexOf(mound);
                                     if (vIndex !== -1) visualMounds.splice(vIndex, 1);
+                                    const mIndex = mounds.indexOf(mound);
+                                    if (mIndex !== -1) mounds.splice(mIndex, 1);
 
                                     destructionComplete = true;
                                     isDestroying = false;
                                     progressContainer.style.display = 'none';
+                                    currentMound = null;
                                 } else {
                                     const maxHeight = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
                                     mound.height = maxHeight * mound.growthStage / moundGrowthStages.length;
@@ -4523,10 +4541,11 @@
                                 // Criando um monte (positivo)
                                 mound.growthStage++;
                                 if (mound.growthStage >= moundGrowthStages.length) {
-                                    mound.height = 1.0;
+                                    mound.height = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : 1.0);
                                     destructionComplete = true;
                                     isDestroying = false;
                                     progressContainer.style.display = 'none';
+                                    currentMound = null;
                                 } else {
                                     mound.height = 1.0 * mound.growthStage / moundGrowthStages.length;
                                     destroyProgress = 0;
@@ -4552,60 +4571,93 @@
                             sounds.playPlace();
                             createSmokeEffect(mound.position, destroyTargetColor);
                         } else {
-                            // Lógica original de cavar
-                            createDustCloud(mound.position, destroyTargetColor);
-                            mound.growthStage++;
+                            // Lógica de cavar
+                            if (mound.maxHeightChange > 0) {
+                                // Retirando terra de um monte positivo
+                                mound.growthStage--;
+                                if (mound.growthStage <= 0) {
+                                    mound.height = 0;
+                                    terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+                                    mound.flattened = true;
+                                    if (mound.mesh) scene.remove(mound.mesh);
+                                    const vIndex = visualMounds.indexOf(mound);
+                                    if (vIndex !== -1) visualMounds.splice(vIndex, 1);
+                                    const mIndex = mounds.indexOf(mound);
+                                    if (mIndex !== -1) mounds.splice(mIndex, 1);
 
-                            // Gain 20 terras, sands or stones for each stage of digging
-                            const currentDigHeight = mound.position.y + (mound.height || 0);
-                            const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
-                            let itemToGive;
-                            if (currentDigHeight < stoneLayerLevel) {
-                                itemToGive = stoneItemName;
-                            } else if (distFromCenter > grassRadius) {
-                                itemToGive = sandItemName;
-                            } else {
-                                itemToGive = dirtItemName;
-                            }
-                            addItemToInventory(backpackItems, { name: itemToGive, quantity: 20 });
-                            updateBackpackDisplay();
-
-                            if (mound.growthStage >= moundGrowthStages.length) {
-                                mound.height = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
-                                if (mound.mesh) {
-                                    const finalScale = mound.isPrecise ? 0.8 : 1.0;
-                                    mound.mesh.scale.set(finalScale, finalScale, finalScale);
+                                    destructionComplete = true;
+                                    isDestroying = false;
+                                    progressContainer.style.display = 'none';
+                                    currentMound = null;
+                                } else {
+                                    const maxHeight = 1.0;
+                                    mound.height = maxHeight * mound.growthStage / moundGrowthStages.length;
+                                    if (mound.mesh) {
+                                        const baseScale = moundGrowthStages[mound.growthStage - 1];
+                                        mound.mesh.scale.set(baseScale, baseScale, baseScale);
+                                    }
+                                    terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+                                    destroyProgress = 0;
                                 }
+                                // Gain 20 terras when digging a mound
+                                addItemToInventory(backpackItems, { name: dirtItemName, quantity: 20 });
+                                updateBackpackDisplay();
+                            } else {
+                                // Lógica original de cavar buraco
+                                createDustCloud(mound.position, destroyTargetColor);
+                                mound.growthStage++;
 
-                                // NOVO: Se for uma cavagem profunda em parede, coloca um teto automático (3x3 blocos) para simular túnel
-                                if (mound.isPrecise && (mound.originalHeight - mound.position.y) > 3.0) {
-                                    const roofType = (mound.position.y < stoneLayerLevel) ? stoneBlockItemName : cobItemName;
-                                    const centerX = mound.position.x;
-                                    const centerZ = mound.position.z;
-                                    const roofY = mound.originalHeight;
+                                // Gain 20 terras, sands or stones for each stage of digging
+                                const currentDigHeight = mound.position.y + (mound.height || 0);
+                                const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
+                                let itemToGive;
+                                if (currentDigHeight < stoneLayerLevel) {
+                                    itemToGive = stoneItemName;
+                                } else if (distFromCenter > grassRadius) {
+                                    itemToGive = sandItemName;
+                                } else {
+                                    itemToGive = dirtItemName;
+                                }
+                                addItemToInventory(backpackItems, { name: itemToGive, quantity: 20 });
+                                updateBackpackDisplay();
 
-                                    for (let dx = -1; dx <= 1; dx++) {
-                                        for (let dz = -1; dz <= 1; dz++) {
-                                            const roofPos = new THREE.Vector3(centerX + dx, roofY, centerZ + dz);
-                                            createPlaceableBlock(roofPos, new THREE.Quaternion(), roofType);
+                                if (mound.growthStage >= moundGrowthStages.length) {
+                                    mound.height = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
+                                    if (mound.mesh) {
+                                        const finalScale = mound.isPrecise ? 0.8 : 1.0;
+                                        mound.mesh.scale.set(finalScale, finalScale, finalScale);
+                                    }
+
+                                    // NOVO: Se for uma cavagem profunda em parede, coloca um teto automático (3x3 blocos) para simular túnel
+                                    if (mound.isPrecise && (mound.originalHeight - mound.position.y) > 3.0) {
+                                        const roofType = (mound.position.y < stoneLayerLevel) ? stoneBlockItemName : cobItemName;
+                                        const centerX = mound.position.x;
+                                        const centerZ = mound.position.z;
+                                        const roofY = mound.originalHeight;
+
+                                        for (let dx = -1; dx <= 1; dx++) {
+                                            for (let dz = -1; dz <= 1; dz++) {
+                                                const roofPos = new THREE.Vector3(centerX + dx, roofY, centerZ + dz);
+                                                createPlaceableBlock(roofPos, new THREE.Quaternion(), roofType);
+                                            }
                                         }
                                     }
-                                }
 
-                                destructionComplete = true;
-                                isDestroying = false;
-                                progressContainer.style.display = 'none';
-                                mound.lastDugAt = world.time;
-                                currentMound = null;
-                            } else {
-                                const baseScale = moundGrowthStages[mound.growthStage - 1];
-                                if (mound.mesh) {
-                                    const finalScale = mound.isPrecise ? baseScale * 0.8 : baseScale;
-                                    mound.mesh.scale.set(finalScale, finalScale, finalScale);
+                                    destructionComplete = true;
+                                    isDestroying = false;
+                                    progressContainer.style.display = 'none';
+                                    mound.lastDugAt = world.time;
+                                    currentMound = null;
+                                } else {
+                                    const baseScale = moundGrowthStages[mound.growthStage - 1];
+                                    if (mound.mesh) {
+                                        const finalScale = mound.isPrecise ? baseScale * 0.8 : baseScale;
+                                        mound.mesh.scale.set(finalScale, finalScale, finalScale);
+                                    }
+                                    destroyProgress = 0; // Reinicia para o próximo estágio
+                                    const maxHeight = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
+                                    mound.height = maxHeight * mound.growthStage / moundGrowthStages.length;
                                 }
-                                destroyProgress = 0; // Reinicia para o próximo estágio
-                                const maxHeight = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
-                                mound.height = maxHeight * mound.growthStage / moundGrowthStages.length;
                             }
                         }
 
@@ -5914,6 +5966,10 @@
             window.beltItems = beltItems;
             window.updateUI = updateUI;
             window.selectedSlotIndex = selectedSlotIndex;
+            Object.defineProperty(window, 'isAttemptingToDestroy', {
+                get: () => isAttemptingToDestroy,
+                set: (v) => { isAttemptingToDestroy = v; }
+            });
             window.dirtMountains = dirtMountains;
             window.useTextures = useTextures;
             window.createBox = createBox;
@@ -5928,6 +5984,7 @@
             window.cobMaterialMesh = cobMaterialMesh;
             window.cubeMaterialMesh = cubeMaterialMesh;
             window.renderer = renderer;
+            window.raycaster = raycaster;
         }
 
         // Listener de evento para o botão "Jogar"
