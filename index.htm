@@ -1859,7 +1859,9 @@
                 angularDamping: 0.5,
                 allowSleep: true,
                 sleepSpeedLimit: 0.01,
-                sleepTimeLimit: 1.0
+                sleepTimeLimit: 1.0,
+                collisionFilterGroup: 1,
+                collisionFilterMask: 1 // Colide com tudo exceto o grupo do jogador se configurado (padrão é 1)
             });
             raftBody.addShape(raftShape);
             raftBody.position.copy(position);
@@ -4876,7 +4878,10 @@
             });
 
             allStaticBodies.forEach(body => {
-                // Blocos (apenas os colocados) devem ser estáticos
+                // Blocos (apenas os colocados) devem ser estáticos, exceto jangadas
+                if (body.userData.isRaft) {
+                    return; // Jangadas permanecem dinâmicas
+                }
                 body.mass = 0;
                 body.type = CANNON.Body.STATIC;
                 body.allowSleep = false; // Mantém ativo para colisão, mas não se move por física
@@ -5532,17 +5537,20 @@
                 playerBody.velocity.set(0, 0, 0); // Jogador "parado" na jangada
 
                 // Movimento da jangada
-                const raftInWater = currentRaftBody.position.y < waterLevel + 0.3 && hasWaterAt(currentRaftBody.position.x, currentRaftBody.position.z);
+                const raftInWater = currentRaftBody.position.y < waterLevel + 0.5 && hasWaterAt(currentRaftBody.position.x, currentRaftBody.position.z);
                 if (movementVector.lengthSq() > 0 && raftInWater) {
                     const normalizedMovementVector = movementVector.clone().normalize();
-                    const raftSpeed = 45; // Rapidez no mar
-                    const force = new CANNON.Vec3(
-                        normalizedMovementVector.x * raftSpeed * currentRaftBody.mass,
-                        0,
-                        normalizedMovementVector.z * raftSpeed * currentRaftBody.mass
-                    );
-                    currentRaftBody.applyForce(force);
+                    const raftSpeed = 25.0; // Velocidade máxima da jangada
+
+                    // Move a jangada mudando a velocidade diretamente para resposta instantânea
+                    currentRaftBody.velocity.x = normalizedMovementVector.x * raftSpeed;
+                    currentRaftBody.velocity.z = normalizedMovementVector.z * raftSpeed;
                     currentRaftBody.allowSleep = false;
+                    currentRaftBody.wakeUp();
+                } else {
+                    // Atrito suave quando não está acelerando
+                    currentRaftBody.velocity.x *= 0.95;
+                    currentRaftBody.velocity.z *= 0.95;
                 }
             } else if (movementVector.lengthSq() > 0) {
                 const normalizedMovementVector = movementVector.clone().normalize();
