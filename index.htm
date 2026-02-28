@@ -566,6 +566,7 @@
         let playerBody;
 
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
+        let raftBodies = []; // NOVO: Array para armazenar corpos das jangadas
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
         let islandGeometry; // Geometria compartilhada do terreno
 
@@ -706,6 +707,8 @@
 
         // Variáveis de estado do jogo
         let gamePaused = false; // Novo: Flag para pausar/retomar a lógica do jogo
+        let isDrivingRaft = false; // NOVO: Flag para modo de direção da jangada
+        let currentRaftBody = null; // NOVO: Referência à jangada atual sendo dirigida
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
         let isWorldReady = false; window.isWorldReady = isWorldReady; // NOVO: Flag para rastrear se o mundo está pronto para interações
 
@@ -760,6 +763,7 @@
 
         // NOVO: Variáveis para o sistema de agarrar objetos (Mão)
         const handItemName = 'mao'; // Nome do item de mão no inventário
+        const raftItemName = 'jangada'; // NOVO: Nome do item de jangada
         const capimItemName = 'capim';
         const appleSeedItemName = 'semente_macieira';
         const appleItemName = 'maca';
@@ -810,6 +814,7 @@
             [woodenPlankItemName]: 'Piso de Madeira',
             [boxItemName]: 'Caixote',
             [chestItemName]: 'Baú', // NOVO
+            [raftItemName]: 'Jangada\nPara navegar no mar', // NOVO
             [branchItemName]: 'Galho',
             [stoneBlockItemName]: 'Bloco de Pedra',
             [woodenBlockItemName]: 'Bloco de Madeira',
@@ -835,6 +840,7 @@
             [woodenPlankItemName]: 1.5,
             [boxItemName]: 12.0,
             [chestItemName]: 12.0,
+            [raftItemName]: 30.0, // Jangada é pesada
             [branchItemName]: 0.5,
             [stoneBlockItemName]: 5.0,
             [woodenBlockItemName]: 3.0,
@@ -939,6 +945,7 @@
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
+        let raftMaterialMesh; // NOVO: Material da jangada
         let cobMaterialMesh;
         let floorMaterialMesh;
         let treeSaplingMaterialMesh; // New material for tree saplings icon
@@ -1115,6 +1122,7 @@
             if (woodenBlockMaterialMesh) woodenBlockMaterialMesh.map = useTextures ? (texturesRegistry.woodenBlock || null) : null;
             if (stoneFloorMaterialMesh) stoneFloorMaterialMesh.map = useTextures ? (texturesRegistry.stoneFloor || null) : null;
             if (chestMaterialMesh) chestMaterialMesh.map = useTextures ? (texturesRegistry.chest || null) : null;
+            if (raftMaterialMesh) raftMaterialMesh.map = useTextures ? (texturesRegistry.treeBark || null) : null;
             if (treeTrunkMaterialMesh) treeTrunkMaterialMesh.map = useTextures ? (texturesRegistry.treeBark || null) : null;
             if (treeLeavesMaterialMesh) treeLeavesMaterialMesh.map = useTextures ? (texturesRegistry.treeLeaves || null) : null;
             if (treeSaplingMaterialMesh) treeSaplingMaterialMesh.map = useTextures ? (texturesRegistry.treeSapling || null) : null;
@@ -1344,6 +1352,7 @@
             if (itemName === treeTrunkItemName) return treeTrunkImageURL;
             if (itemName === woodenPlankItemName) return woodenPlankTextureURL;
             if (itemName === chestItemName) return chestTextureURL;
+            if (itemName === raftItemName) return treeBarkTextureURL;
             if (itemName === stoneBlockItemName) return stoneBlockTextureURL;
             if (itemName === woodenBlockItemName) return woodenBlockTextureURL;
             if (itemName === stoneFloorItemName) return stoneFloorTextureURL;
@@ -1830,6 +1839,49 @@
 
             placedChests.push({ body: chestBody, mesh: mesh });
             placedConstructionBodies.push(chestBody); // Adiciona aos corpos de construção para interação
+            placedConstructionMeshes.push(mesh);
+            raycastTargetsNeedUpdate = true;
+        }
+
+        // NOVO: Função para criar uma nova jangada
+        function createRaft(position, quaternion) {
+            const raftWidth = 2.4;
+            const raftHeight = 0.4;
+            const raftDepth = 2.4;
+            const raftShape = new CANNON.Box(new CANNON.Vec3(raftWidth / 2, raftHeight / 2, raftDepth / 2));
+            const raftGeometry = new THREE.BoxGeometry(raftWidth, raftHeight, raftDepth);
+
+            const raftBody = new CANNON.Body({
+                mass: 200, // Jangada é dinâmica e pesada
+                material: constructionMaterial,
+                linearDamping: 0.5,
+                angularDamping: 0.5,
+                allowSleep: true,
+                sleepSpeedLimit: 0.01,
+                sleepTimeLimit: 1.0
+            });
+            raftBody.addShape(raftShape);
+            raftBody.position.copy(position);
+            if (quaternion) {
+                raftBody.quaternion.copy(quaternion);
+            }
+            world.addBody(raftBody);
+            raftBody.userData = {
+                isDestructible: true,
+                durability: 3.0,
+                type: raftItemName,
+                isRaft: true,
+                dimensions: { width: raftWidth, height: raftHeight, depth: raftDepth }
+            };
+
+            const mesh = new THREE.Mesh(raftGeometry, raftMaterialMesh);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.userData.physicsBody = raftBody;
+            scene.add(mesh);
+
+            raftBodies.push(raftBody);
+            placedConstructionBodies.push(raftBody);
             placedConstructionMeshes.push(mesh);
             raycastTargetsNeedUpdate = true;
         }
@@ -2586,6 +2638,7 @@
         function init() {
             // Inicializa materiais com padrões para evitar erros de undefined e falta de textura inicial
             cubeMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+            raftMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
             cobMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
             floorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
             woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xdeb887 });
@@ -3372,6 +3425,7 @@
             addItemToInventory(startingChestInventory, { name: woodenPlankItemName, quantity: 10 });
             addItemToInventory(startingChestInventory, { name: boxItemName, quantity: 20 });
             addItemToInventory(startingChestInventory, { name: chestItemName, quantity: 5 });
+            addItemToInventory(startingChestInventory, { name: raftItemName, quantity: 2 });
             addItemToInventory(startingChestInventory, { name: stoneBlockItemName, quantity: 100 });
             addItemToInventory(startingChestInventory, { name: woodenBlockItemName, quantity: 100 });
             addItemToInventory(startingChestInventory, { name: stoneFloorItemName, quantity: 100 });
@@ -3646,7 +3700,7 @@
                 // O martelo foi removido temporariamente das ferramentas de destruição
                 if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === branchItemName || item.name === dirtItemName) return 'destroy';
                 // Itens de colocação
-                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === chestItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === stoneItemName) return 'place';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === chestItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === stoneItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
             }
 
@@ -3990,6 +4044,11 @@
                             openChest(body);
                             return true;
                         }
+                        if (body.userData.isRaft) {
+                            isDrivingRaft = true;
+                            currentRaftBody = body;
+                            return true;
+                        }
                     }
                 }
                 return false;
@@ -4116,6 +4175,7 @@
                     else if (currentBlockType === stoneFloorItemName && stoneFloorMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === boxItemName && cubeMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === chestItemName && chestMaterialMesh) materialLoaded = true; // NOVO
+                    else if (currentBlockType === raftItemName && raftMaterialMesh) materialLoaded = true; // NOVO
                     else if (currentBlockType === stoneItemName) materialLoaded = true; // Pedra sempre carregada (usa material básico)
 
                     if (materialLoaded) {
@@ -4123,6 +4183,8 @@
                             createBox(ghostBlockMesh.position, ghostBlockMesh.quaternion);
                         } else if (currentBlockType === chestItemName) {
                             createChest(ghostBlockMesh.position, ghostBlockMesh.quaternion);
+                        } else if (currentBlockType === raftItemName) {
+                            createRaft(ghostBlockMesh.position, ghostBlockMesh.quaternion);
                         } else if (currentBlockType === stoneItemName) {
                             createStone(ghostBlockMesh.position, ghostBlockMesh.quaternion);
                         }
@@ -5290,6 +5352,28 @@
             }
 
 
+            // NOVO: Lógica de Flutuação das Jangadas
+            raftBodies.forEach(raft => {
+                const raftInWater = raft.position.y < waterLevel && hasWaterAt(raft.position.x, raft.position.z);
+                if (raftInWater) {
+                    const K_SPRING_RAFT = 1000; // Maior rigidez para jangada
+                    const C_DAMPING_RAFT = 150;
+                    const gravityMagnitude = Math.abs(world.gravity.y);
+                    const antiGravityForce = raft.mass * gravityMagnitude;
+                    const targetY = waterLevel + 0.2; // Flutua na superfície
+                    const displacement = raft.position.y - targetY;
+                    const springForce = -K_SPRING_RAFT * displacement;
+                    const verticalVelocity = raft.velocity.y;
+                    const dampingForce = -C_DAMPING_RAFT * verticalVelocity;
+                    const totalBuoyancyForce = antiGravityForce + springForce + dampingForce;
+                    raft.applyForce(new CANNON.Vec3(0, totalBuoyancyForce, 0));
+
+                    // Arrasto da água para a jangada
+                    raft.velocity.x *= 0.95;
+                    raft.velocity.z *= 0.95;
+                }
+            });
+
             const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
             const isInWater = playerBottomY < waterLevel && hasWaterAt(playerBody.position.x, playerBody.position.z);
 
@@ -5404,7 +5488,36 @@
                 movementVector.add(right);
             }
 
-            if (movementVector.lengthSq() > 0) {
+            // NOVO: Sair do modo de direção da jangada
+            if (isDrivingRaft && (keysPressed['escape'] || keysPressed['f'])) {
+                isDrivingRaft = false;
+                currentRaftBody = null;
+                // Pequeno atraso para não reativar imediatamente
+                keysPressed['f'] = false;
+            }
+
+            if (isDrivingRaft && currentRaftBody) {
+                // Sincroniza o jogador com a jangada
+                playerBody.position.set(
+                    currentRaftBody.position.x,
+                    currentRaftBody.position.y + 0.8,
+                    currentRaftBody.position.z
+                );
+                playerBody.velocity.set(0, 0, 0); // Jogador "parado" na jangada
+
+                // Movimento da jangada
+                if (movementVector.lengthSq() > 0) {
+                    const normalizedMovementVector = movementVector.clone().normalize();
+                    const raftSpeed = 30; // Rapidez no mar
+                    const force = new CANNON.Vec3(
+                        normalizedMovementVector.x * raftSpeed * currentRaftBody.mass,
+                        0,
+                        normalizedMovementVector.z * raftSpeed * currentRaftBody.mass
+                    );
+                    currentRaftBody.applyForce(force);
+                    currentRaftBody.allowSleep = false;
+                }
+            } else if (movementVector.lengthSq() > 0) {
                 const normalizedMovementVector = movementVector.clone().normalize();
 
                 // Calculate desired velocity
@@ -5987,6 +6100,16 @@
             window.closingMounds = closingMounds;
             window.calculateWrappedDistance = calculateWrappedDistance;
             window.animate = animate;
+            window.createRaft = createRaft;
+            window.raftBodies = raftBodies;
+            Object.defineProperty(window, 'isDrivingRaft', {
+                get: () => isDrivingRaft,
+                set: (v) => { isDrivingRaft = v; }
+            });
+            Object.defineProperty(window, 'currentRaftBody', {
+                get: () => currentRaftBody,
+                set: (v) => { currentRaftBody = v; }
+            });
             Object.defineProperty(window, 'currentMound', { get: () => currentMound });
             Object.defineProperty(window, 'stoneLayerLevel', {
                 get: () => stoneLayerLevel,
