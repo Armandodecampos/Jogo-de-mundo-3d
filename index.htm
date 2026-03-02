@@ -1920,7 +1920,7 @@
 
             // Mastro
             const mast = new THREE.Mesh(raftMastGeometry, woodMaterial);
-            mast.position.y = 2.25; // mastHeight / 2
+            mast.position.set(0, 2.25, 0.8); // mastHeight / 2, moved forward
             mast.castShadow = !isGhost;
             mast.receiveShadow = !isGhost;
             group.add(mast);
@@ -1928,13 +1928,13 @@
             // Yardarm (Travessa da vela)
             const yardarm = new THREE.Mesh(raftYardarmGeometry, woodMaterial);
             yardarm.rotation.z = Math.PI / 2;
-            yardarm.position.y = 4.5 * 0.85; // mastHeight * 0.85
+            yardarm.position.set(0, 4.5 * 0.85, 0.8); // mastHeight * 0.85, moved forward
             yardarm.castShadow = !isGhost;
             yardarm.receiveShadow = !isGhost;
             group.add(yardarm);
 
             const sail = new THREE.Mesh(raftSailGeometry, sailMaterial);
-            sail.position.set(0, 4.5 * 0.7, 0.1); // mastHeight * 0.7
+            sail.position.set(0, 4.5 * 0.7, 0.9); // mastHeight * 0.7, moved forward (0.1 offset from mast)
             sail.castShadow = !isGhost;
             sail.receiveShadow = !isGhost;
             group.add(sail);
@@ -5619,9 +5619,10 @@
                 const raftInWater = currentRaftBody.position.y < waterLevel + 0.5 && hasWaterAt(currentRaftBody.position.x, currentRaftBody.position.z);
                 const hasInput = keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d'];
 
-                if (hasInput && raftInWater) {
-                    const raftSpeed = 25.0; // Velocidade máxima da jangada
-                    const rotationSpeed = 1.5; // Velocidade de rotação
+                if (hasInput) {
+                    const speedMultiplier = raftInWater ? 1.0 : 0.15; // 85% reduction on land
+                    const raftSpeed = 25.0 * speedMultiplier; // Velocidade máxima da jangada
+                    const rotationSpeed = 1.5 * speedMultiplier; // Velocidade de rotação
 
                     let linearSpeed = 0;
                     if (keysPressed['w']) linearSpeed = raftSpeed;
