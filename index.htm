@@ -853,6 +853,7 @@
         let currentBlockType = 'cob'; // 'cob' ou 'piso'
         let ghostBlockRotationY = 0; // Novo: Armazena a rotação horizontal manual do bloco fantasma
         let ghostBlockRotationX = 0; // Novo: Armazena a rotação vertical manual do bloco fantasma
+        let lastGhostType = null; // Para otimizar a atualização visual do ghost block
 
         // Dimensões do cob
         const cobWidth = cobSize;
@@ -5276,89 +5277,63 @@
 
                     // Define as dimensões do bloco atual para o ghost mesh
                     let currentGhostWidth, currentGhostHeight, currentGhostDepth;
-                    ghostBlockMesh.scale.set(1, 1, 1); // Reset scale
 
-                    // Limpa filhos anteriores do ghostBlockMesh (importante para modelos complexos como a jangada)
-                    while(ghostBlockMesh.children.length > 0){
-                        ghostBlockMesh.remove(ghostBlockMesh.children[0]);
+                    // Otimização: Só atualiza a geometria e filhos se o tipo de bloco mudou
+                    if (lastGhostType !== currentBlockType) {
+                        lastGhostType = currentBlockType;
+                        ghostBlockMesh.scale.set(1, 1, 1); // Reset scale
+
+                        // Limpa filhos anteriores do ghostBlockMesh (importante para modelos complexos como a jangada)
+                        while(ghostBlockMesh.children.length > 0){
+                            ghostBlockMesh.remove(ghostBlockMesh.children[0]);
+                        }
+
+                        if (ghostBlockMesh.geometry) ghostBlockMesh.geometry.dispose();
+                        if (currentBlockType === raftItemName) {
+                            ghostBlockMesh.geometry = new THREE.BoxGeometry(0, 0, 0); // Geometria vazia para a base do ghost
+                            // Adiciona o visual complexo como filho
+                            const raftVisual = createRaftVisual(ghostBlockMaterial, ghostBlockMaterial, true);
+                            ghostBlockMesh.add(raftVisual);
+                        } else if (currentBlockType === 'cob') {
+                            ghostBlockMesh.geometry = new THREE.BoxGeometry(cobWidth, cobHeight, cobDepth);
+                        } else if (currentBlockType === 'piso') {
+                            ghostBlockMesh.geometry = new THREE.BoxGeometry(floorWidth, floorHeight, floorDepth);
+                        } else if (currentBlockType === 'tábuas') {
+                            ghostBlockMesh.geometry = new THREE.BoxGeometry(woodenPlankWidth, woodenPlankHeight, woodenPlankDepth);
+                        } else if (currentBlockType === stoneBlockItemName) {
+                            ghostBlockMesh.geometry = new THREE.BoxGeometry(stoneBlockWidth, stoneBlockHeight, stoneBlockDepth);
+                        } else if (currentBlockType === woodenBlockItemName) {
+                            ghostBlockMesh.geometry = new THREE.BoxGeometry(woodenBlockWidth, woodenBlockHeight, woodenBlockDepth);
+                        } else if (currentBlockType === stoneFloorItemName) {
+                            ghostBlockMesh.geometry = new THREE.BoxGeometry(stoneFloorWidth, stoneFloorHeight, stoneFloorDepth);
+                        } else if (currentBlockType === appleSeedItemName || currentBlockType === 'muda_arvore') {
+                            const seedBaseData = treeStages['semente'];
+                            ghostBlockMesh.geometry = new THREE.SphereGeometry(seedBaseData.visual.sphere.radius, 8, 8);
+                        } else if (currentBlockType === 'tronco_arvore') {
+                            ghostBlockMesh.geometry = new THREE.CylinderGeometry(trunkRadius, trunkRadius, trunkHeight, trunkSegments);
+                        } else if (currentBlockType === boxItemName) {
+                            ghostBlockMesh.geometry = new THREE.BoxGeometry(1, 1, 1);
+                        } else if (currentBlockType === chestItemName) {
+                            ghostBlockMesh.geometry = new THREE.BoxGeometry(1, 1, 1);
+                        } else if (currentBlockType === stoneItemName) {
+                            ghostBlockMesh.geometry = new THREE.SphereGeometry(0.5, 16, 16);
+                            ghostBlockMesh.scale.set(1, 0.5, 1.2);
+                        }
                     }
 
-                    if (ghostBlockMesh.geometry) ghostBlockMesh.geometry.dispose();
-                    if (currentBlockType === raftItemName) {
-                        currentGhostWidth = 2.4;
-                        currentGhostHeight = 0.4;
-                        currentGhostDepth = 2.4;
-                        ghostBlockMesh.geometry = new THREE.BoxGeometry(0, 0, 0); // Geometria vazia para a base do ghost
-
-                        // Adiciona o visual complexo como filho
-                        const raftVisual = createRaftVisual(ghostBlockMaterial, ghostBlockMaterial, true);
-                        ghostBlockMesh.add(raftVisual);
-                    } else if (currentBlockType === 'cob') {
-                        currentGhostWidth = cobWidth;
-                        currentGhostHeight = cobHeight;
-                        currentGhostDepth = cobDepth;
-                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
-                    } else if (currentBlockType === 'piso') {
-                        currentGhostWidth = floorWidth;
-                        currentGhostHeight = floorHeight;
-                        currentGhostDepth = floorDepth;
-                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
-                    } else if (currentBlockType === 'tábuas') {
-                        currentGhostWidth = woodenPlankWidth;
-                        currentGhostHeight = woodenPlankHeight;
-                        currentGhostDepth = woodenPlankDepth;
-                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
-                    } else if (currentBlockType === stoneBlockItemName) {
-                        currentGhostWidth = stoneBlockWidth;
-                        currentGhostHeight = stoneBlockHeight;
-                        currentGhostDepth = stoneBlockDepth;
-                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
-                    } else if (currentBlockType === woodenBlockItemName) {
-                        currentGhostWidth = woodenBlockWidth;
-                        currentGhostHeight = woodenBlockHeight;
-                        currentGhostDepth = woodenBlockDepth;
-                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
-                    } else if (currentBlockType === stoneFloorItemName) {
-                        currentGhostWidth = stoneFloorWidth;
-                        currentGhostHeight = stoneFloorHeight;
-                        currentGhostDepth = stoneFloorDepth;
-                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
-                                        } else if (currentBlockType === appleSeedItemName) {
-                        const seedBaseData = treeStages['semente'];
-                        currentGhostWidth = seedBaseData.visual.sphere.radius * 2;
-                        currentGhostDepth = seedBaseData.visual.sphere.radius * 2;
-                        currentGhostHeight = seedBaseData.visual.sphere.radius * 2;
-                        ghostBlockMesh.geometry = new THREE.SphereGeometry(seedBaseData.visual.sphere.radius, 8, 8);
-                    } else if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName) {
-                        // O ghost block para 'muda_arvore' deve corresponder ao estágio inicial 'semente'
-                        const seedBaseData = treeStages['semente'];
-                        currentGhostWidth = seedBaseData.visual.sphere.radius * 2;
-                        currentGhostDepth = seedBaseData.visual.sphere.radius * 2;
-                        currentGhostHeight = seedBaseData.visual.sphere.radius * 2;
-                        // A geometria do ghost block é agora uma esfera
-                        ghostBlockMesh.geometry = new THREE.SphereGeometry(seedBaseData.visual.sphere.radius, 8, 8);
-                    } else if (currentBlockType === 'tronco_arvore') { // NOVO: Geometria do ghost para tronco
-                        currentGhostWidth = trunkRadius * 2;
-                        currentGhostHeight = trunkHeight;
-                        currentGhostDepth = trunkRadius * 2;
-                        ghostBlockMesh.geometry = new THREE.CylinderGeometry(trunkRadius, trunkRadius, trunkHeight, trunkSegments);
-                    } else if (currentBlockType === boxItemName) {
-                        currentGhostWidth = 1;
-                        currentGhostHeight = 1;
-                        currentGhostDepth = 1;
-                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
-                    } else if (currentBlockType === chestItemName) { // NOVO
-                        currentGhostWidth = 1;
-                        currentGhostHeight = 1;
-                        currentGhostDepth = 1;
-                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
-                    } else if (currentBlockType === stoneItemName) {
-                        currentGhostWidth = 1;
-                        currentGhostHeight = 0.5;
-                        currentGhostDepth = 1.2;
-                        ghostBlockMesh.geometry = new THREE.SphereGeometry(0.5, 16, 16);
-                        ghostBlockMesh.scale.set(1, 0.5, 1.2);
-                    }
+                    // Determina a altura para o cálculo de posicionamento (não muda cada frame, mas precisamos dela)
+                    if (currentBlockType === raftItemName) currentGhostHeight = 0.4;
+                    else if (currentBlockType === 'cob') currentGhostHeight = cobHeight;
+                    else if (currentBlockType === 'piso') currentGhostHeight = floorHeight;
+                    else if (currentBlockType === 'tábuas') currentGhostHeight = woodenPlankHeight;
+                    else if (currentBlockType === stoneBlockItemName) currentGhostHeight = stoneBlockHeight;
+                    else if (currentBlockType === woodenBlockItemName) currentGhostHeight = woodenBlockHeight;
+                    else if (currentBlockType === stoneFloorItemName) currentGhostHeight = stoneFloorHeight;
+                    else if (currentBlockType === appleSeedItemName || currentBlockType === 'muda_arvore') currentGhostHeight = treeStages['semente'].visual.sphere.radius * 2;
+                    else if (currentBlockType === 'tronco_arvore') currentGhostHeight = trunkHeight;
+                    else if (currentBlockType === boxItemName) currentGhostHeight = 1;
+                    else if (currentBlockType === chestItemName) currentGhostHeight = 1;
+                    else if (currentBlockType === stoneItemName) currentGhostHeight = 0.5;
                     // Update ghost block geometry
                     // ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth); // Removido para lidar individualmente
 
