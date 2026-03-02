@@ -946,6 +946,8 @@
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
         let raftMaterialMesh; // NOVO: Material da jangada
+        let sailMaterialMesh; // NOVO: Material da vela da jangada
+        let raftLogGeometry, raftSupportGeometry, raftMastGeometry, raftYardarmGeometry, raftSailGeometry, raftRopeGeometry;
         let cobMaterialMesh;
         let floorMaterialMesh;
         let treeSaplingMaterialMesh; // New material for tree saplings icon
@@ -1124,6 +1126,7 @@
             if (stoneFloorMaterialMesh) stoneFloorMaterialMesh.map = useTextures ? (texturesRegistry.stoneFloor || null) : null;
             if (chestMaterialMesh) chestMaterialMesh.map = useTextures ? (texturesRegistry.chest || null) : null;
             if (raftMaterialMesh) raftMaterialMesh.map = useTextures ? (texturesRegistry.treeBark || null) : null;
+            if (sailMaterialMesh) sailMaterialMesh.map = null; // Vela não tem textura por enquanto
             if (treeTrunkMaterialMesh) treeTrunkMaterialMesh.map = useTextures ? (texturesRegistry.treeBark || null) : null;
             if (treeLeavesMaterialMesh) treeLeavesMaterialMesh.map = useTextures ? (texturesRegistry.treeLeaves || null) : null;
             if (treeSaplingMaterialMesh) treeSaplingMaterialMesh.map = useTextures ? (texturesRegistry.treeSapling || null) : null;
@@ -1133,7 +1136,7 @@
             // Notify materials of changes
             [cubeMaterialMesh, cobMaterialMesh, floorMaterialMesh, woodenPlankMaterialMesh,
              stoneBlockMaterialMesh, woodenBlockMaterialMesh, stoneFloorMaterialMesh,
-             chestMaterialMesh, treeTrunkMaterialMesh, treeLeavesMaterialMesh,
+             chestMaterialMesh, raftMaterialMesh, sailMaterialMesh, treeTrunkMaterialMesh, treeLeavesMaterialMesh,
              treeSaplingMaterialMesh, holeMaterial, stoneHoleMaterial].forEach(m => {
                 if (m) m.needsUpdate = true;
             });
@@ -1845,12 +1848,104 @@
         }
 
         // NOVO: Função para criar uma nova jangada
+        function createRaftVisual(woodMaterial, sailMaterial, isGhost) {
+            const group = new THREE.Group();
+            const ropeMaterial = new THREE.MeshStandardMaterial({ color: 0x3d2b1f }); // Dark brown for ropes
+
+            // Configurações da base de troncos (Logs)
+            const logRadius = 0.15;
+            const logHeight = 2.4;
+            const numLogs = 8;
+            const spacing = 0.3;
+            const startX = -((numLogs - 1) * spacing) / 2;
+
+            // Inicializa geometrias globais se necessário (para evitar memory leak)
+            if (!raftLogGeometry) {
+                raftLogGeometry = new THREE.CylinderGeometry(logRadius, logRadius, logHeight, 8);
+                raftSupportGeometry = new THREE.CylinderGeometry(logRadius * 0.8, logRadius * 0.8, 2.4, 8);
+                raftMastGeometry = new THREE.CylinderGeometry(0.08 * 0.7, 0.08, 3.0, 8);
+                raftYardarmGeometry = new THREE.CylinderGeometry(0.06, 0.06, 2.0, 8);
+                raftRopeGeometry = new THREE.TorusGeometry(logRadius * 1.1, 0.02, 8, 16);
+
+                // Vela (Sail) - Trapezoidal e Curvada
+                const sailWidthTop = 1.8;
+                const sailWidthBottom = 2.2;
+                const sailHeight = 2.0;
+                const segments = 10;
+                raftSailGeometry = new THREE.PlaneGeometry(1, 1, segments, segments);
+                const posAttr = raftSailGeometry.attributes.position;
+                for (let i = 0; i < posAttr.count; i++) {
+                    let x = posAttr.getX(i); // -0.5 to 0.5
+                    let y = posAttr.getY(i); // -0.5 to 0.5
+                    const lerpY = (y + 0.5); // 0 at bottom, 1 at top
+                    const currentWidth = sailWidthBottom + (sailWidthTop - sailWidthBottom) * lerpY;
+                    posAttr.setX(i, x * currentWidth);
+                    posAttr.setY(i, y * sailHeight);
+                    const curve = Math.sin((y + 0.5) * Math.PI) * 0.3;
+                    posAttr.setZ(i, curve);
+                }
+                raftSailGeometry.computeVertexNormals();
+            }
+
+            // Troncos horizontais (Base)
+            for (let i = 0; i < numLogs; i++) {
+                const log = new THREE.Mesh(raftLogGeometry, woodMaterial);
+                log.rotation.x = Math.PI / 2; // Deitado ao longo do eixo Z
+                log.position.x = startX + i * spacing;
+                log.castShadow = !isGhost;
+                log.receiveShadow = !isGhost;
+                group.add(log);
+            }
+
+            // Troncos de suporte transversais
+            const supportPositionsZ = [0.8, -0.8];
+            for (let i = 0; i < supportPositionsZ.length; i++) {
+                const support = new THREE.Mesh(raftSupportGeometry, woodMaterial);
+                support.rotation.z = Math.PI / 2; // Horizontal ao longo do eixo X
+                support.position.y = logRadius;
+                support.position.z = supportPositionsZ[i];
+                support.castShadow = !isGhost;
+                support.receiveShadow = !isGhost;
+                group.add(support);
+
+                // Adiciona "cordas" nas interseções
+                for (let j = 0; j < numLogs; j++) {
+                    const rope = new THREE.Mesh(raftRopeGeometry, ropeMaterial);
+                    rope.position.set(startX + j * spacing, logRadius, supportPositionsZ[i]);
+                    rope.rotation.x = Math.PI / 2;
+                    group.add(rope);
+                }
+            }
+
+            // Mastro
+            const mast = new THREE.Mesh(raftMastGeometry, woodMaterial);
+            mast.position.y = 1.5; // mastHeight / 2
+            mast.castShadow = !isGhost;
+            mast.receiveShadow = !isGhost;
+            group.add(mast);
+
+            // Yardarm (Travessa da vela)
+            const yardarm = new THREE.Mesh(raftYardarmGeometry, woodMaterial);
+            yardarm.rotation.z = Math.PI / 2;
+            yardarm.position.y = 3.0 * 0.85; // mastHeight * 0.85
+            yardarm.castShadow = !isGhost;
+            yardarm.receiveShadow = !isGhost;
+            group.add(yardarm);
+
+            const sail = new THREE.Mesh(raftSailGeometry, sailMaterial);
+            sail.position.set(0, 3.0 * 0.5, 0.1); // mastHeight * 0.5
+            sail.castShadow = !isGhost;
+            sail.receiveShadow = !isGhost;
+            group.add(sail);
+
+            return group;
+        }
+
         function createRaft(position, quaternion) {
             const raftWidth = 2.4;
             const raftHeight = 0.4;
             const raftDepth = 2.4;
             const raftShape = new CANNON.Box(new CANNON.Vec3(raftWidth / 2, raftHeight / 2, raftDepth / 2));
-            const raftGeometry = new THREE.BoxGeometry(raftWidth, raftHeight, raftDepth);
 
             const raftBody = new CANNON.Body({
                 mass: 200, // Jangada é dinâmica e pesada
@@ -1877,9 +1972,7 @@
                 dimensions: { width: raftWidth, height: raftHeight, depth: raftDepth }
             };
 
-            const mesh = new THREE.Mesh(raftGeometry, raftMaterialMesh);
-            mesh.castShadow = true;
-            mesh.receiveShadow = true;
+            const mesh = createRaftVisual(raftMaterialMesh, sailMaterialMesh, false);
             mesh.userData.physicsBody = raftBody;
             scene.add(mesh);
 
@@ -2642,6 +2735,7 @@
             // Inicializa materiais com padrões para evitar erros de undefined e falta de textura inicial
             cubeMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xcccccc });
             raftMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            sailMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xF5F5DC, side: THREE.DoubleSide });
             cobMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
             floorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
             woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xdeb887 });
@@ -5183,12 +5277,22 @@
                     // Define as dimensões do bloco atual para o ghost mesh
                     let currentGhostWidth, currentGhostHeight, currentGhostDepth;
                     ghostBlockMesh.scale.set(1, 1, 1); // Reset scale
+
+                    // Limpa filhos anteriores do ghostBlockMesh (importante para modelos complexos como a jangada)
+                    while(ghostBlockMesh.children.length > 0){
+                        ghostBlockMesh.remove(ghostBlockMesh.children[0]);
+                    }
+
                     if (ghostBlockMesh.geometry) ghostBlockMesh.geometry.dispose();
                     if (currentBlockType === raftItemName) {
                         currentGhostWidth = 2.4;
                         currentGhostHeight = 0.4;
                         currentGhostDepth = 2.4;
-                        ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth);
+                        ghostBlockMesh.geometry = new THREE.BoxGeometry(0, 0, 0); // Geometria vazia para a base do ghost
+
+                        // Adiciona o visual complexo como filho
+                        const raftVisual = createRaftVisual(ghostBlockMaterial, ghostBlockMaterial, true);
+                        ghostBlockMesh.add(raftVisual);
                     } else if (currentBlockType === 'cob') {
                         currentGhostWidth = cobWidth;
                         currentGhostHeight = cobHeight;
