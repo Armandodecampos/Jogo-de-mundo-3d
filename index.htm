@@ -5642,19 +5642,38 @@
 
                 // Movimento da jangada
                 const raftInWater = currentRaftBody.position.y < waterLevel + 0.5 && hasWaterAt(currentRaftBody.position.x, currentRaftBody.position.z);
-                if (movementVector.lengthSq() > 0 && raftInWater) {
-                    const normalizedMovementVector = movementVector.clone().normalize();
+                const hasInput = keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d'];
+
+                if (hasInput && raftInWater) {
                     const raftSpeed = 25.0; // Velocidade máxima da jangada
+                    const rotationSpeed = 1.5; // Velocidade de rotação
+
+                    let linearSpeed = 0;
+                    if (keysPressed['w']) linearSpeed = raftSpeed;
+                    if (keysPressed['s']) linearSpeed = -raftSpeed;
+
+                    let angularSpeed = 0;
+                    if (keysPressed['a']) angularSpeed = rotationSpeed;
+                    if (keysPressed['d']) angularSpeed = -rotationSpeed;
+
+                    // Forward vector from raft's quaternion (Z+ is forward)
+                    const forward = new CANNON.Vec3(0, 0, 1);
+                    currentRaftBody.quaternion.vmult(forward, forward);
 
                     // Move a jangada mudando a velocidade diretamente para resposta instantânea
-                    currentRaftBody.velocity.x = normalizedMovementVector.x * raftSpeed;
-                    currentRaftBody.velocity.z = normalizedMovementVector.z * raftSpeed;
+                    currentRaftBody.velocity.x = forward.x * linearSpeed;
+                    currentRaftBody.velocity.z = forward.z * linearSpeed;
+
+                    // Gira a jangada
+                    currentRaftBody.angularVelocity.y = angularSpeed;
+
                     currentRaftBody.allowSleep = false;
                     currentRaftBody.wakeUp();
                 } else {
-                    // Atrito suave quando não está acelerando
+                    // Atrito suave quando não está acelerando ou fora da água
                     currentRaftBody.velocity.x *= 0.95;
                     currentRaftBody.velocity.z *= 0.95;
+                    currentRaftBody.angularVelocity.y *= 0.95;
                 }
             } else if (movementVector.lengthSq() > 0) {
                 const normalizedMovementVector = movementVector.clone().normalize();
