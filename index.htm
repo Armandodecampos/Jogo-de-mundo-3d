@@ -536,6 +536,16 @@
                     <option value="false">Sem Textura (Sólido)</option>
                 </select>
             </div>
+            <div class="option-item">
+                <label for="shadowToggle" class="flex justify-between w-full">
+                    <span>Sombras</span>
+                    <span id="shadowStatus">Ativado</span>
+                </label>
+                <select id="shadowToggle" class="w-full bg-gray-700 text-white p-2 rounded">
+                    <option value="true">Ativado</option>
+                    <option value="false">Desativado</option>
+                </select>
+            </div>
         </div>
         <button id="backToMenuButton" class="mt-8 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-10 rounded-lg transition-colors">Voltar</button>
     </div>
@@ -654,6 +664,7 @@
         let targetCapimCount = parseInt(localStorage.getItem('targetCapimCount')) || 1000;
         let targetTreeCount = parseInt(localStorage.getItem('targetTreeCount')) || 100;
         let useTextures = localStorage.getItem('useTextures') !== 'false';
+        let useShadows = localStorage.getItem('useShadows') !== 'false';
         const texturesRegistry = {};
 
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
@@ -1226,6 +1237,29 @@
             if (status) status.textContent = useTextures ? "Com Textura" : "Sem Textura";
             const toggle = document.getElementById('textureToggle');
             if (toggle) toggle.value = useTextures.toString();
+        }
+
+        function applyShadowSettings() {
+            if (renderer) {
+                renderer.shadowMap.enabled = useShadows;
+
+                // Update lights
+                if (directionalLight) directionalLight.castShadow = useShadows;
+                if (moonLight) moonLight.castShadow = useShadows;
+
+                // Traverse scene to force material update
+                scene.traverse((node) => {
+                    if (node.isMesh && node.material) {
+                        node.material.needsUpdate = true;
+                    }
+                });
+            }
+
+            // Update UI
+            const status = document.getElementById('shadowStatus');
+            if (status) status.textContent = useShadows ? "Ativado" : "Desativado";
+            const toggle = document.getElementById('shadowToggle');
+            if (toggle) toggle.value = useShadows.toString();
         }
 
         // NOVO: Função para criar o efeito de poeira de partículas
@@ -2857,7 +2891,7 @@
             // Configuração do Renderizador Three.js
             renderer = new THREE.WebGLRenderer({ antialiased: true }); // Habilita antialiasing para gráficos mais suaves
             renderer.setSize(window.innerWidth, window.innerHeight); // Define o tamanho do renderizador para o tamanho da janela
-            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.enabled = useShadows;
             document.body.appendChild(renderer.domElement); // Adiciona o canvas ao corpo do documento
 
             // Configuração do Mundo Cannon-es (física)
@@ -4642,6 +4676,16 @@
                 });
             }
 
+            const shadowToggle = document.getElementById('shadowToggle');
+            if (shadowToggle) {
+                shadowToggle.value = useShadows.toString();
+                shadowToggle.addEventListener('change', () => {
+                    useShadows = shadowToggle.value === 'true';
+                    localStorage.setItem('useShadows', useShadows);
+                    applyShadowSettings();
+                });
+            }
+
             // Adiciona o listener para o novo botão de ícone do menu
             if (menuIconButton) {
                 menuIconButton.addEventListener('click', showOptionsScreen);
@@ -5687,11 +5731,11 @@
             const skyColors = [
                 { p: 0.0,  c: 0x87CEEB, i: 0.8 }, // Meio-dia
                 { p: 0.2,  c: 0x87CEEB, i: 0.7 }, // Tarde
-                { p: 0.25, c: 0xff4500, i: 0.4 }, // Pôr do sol
-                { p: 0.35, c: 0x000022, i: 0.2 }, // Início da noite
-                { p: 0.5,  c: 0x000008, i: 0.1 }, // Meia-noite
-                { p: 0.65, c: 0x000022, i: 0.2 }, // Fim da noite
-                { p: 0.75, c: 0xff8c00, i: 0.4 }, // Amanhecer
+                { p: 0.25, c: 0xd96c4d, i: 0.55 }, // Pôr do sol
+                { p: 0.35, c: 0x2c2c54, i: 0.4 }, // Início da noite
+                { p: 0.5,  c: 0x1a1a33, i: 0.3 }, // Meia-noite
+                { p: 0.65, c: 0x2c2c54, i: 0.4 }, // Fim da noite
+                { p: 0.75, c: 0xd98a4d, i: 0.55 }, // Amanhecer
                 { p: 0.8,  c: 0x87CEEB, i: 0.7 }, // Manhã
                 { p: 1.0,  c: 0x87CEEB, i: 0.8 }  // Meio-dia
             ];
@@ -6254,6 +6298,7 @@
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             document.getElementById('clockContainer').style.display = 'block'; // Mostra o relógio
             init(); // Inicializa os componentes do jogo
+            applyShadowSettings(); // Aplica as configurações de sombra após init
             populateCapim(); // NOVO: Popula a ilha com capim
             populateTrees(); // NOVO: Popula a ilha com árvores
 
