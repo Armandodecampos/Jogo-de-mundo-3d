@@ -2851,7 +2851,7 @@
             scene.fog = skyFog; // Começa com o nevoeiro do céu
 
             // Configuração da Câmera Three.js
-            window.camera = camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, renderDistance);
+            window.camera = camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
             camera.rotation.order = 'YXZ'; // Define a ordem de rotação para guinada (Y), inclinação (X), rolagem (Z)
 
             // Configuração do Renderizador Three.js
@@ -3024,14 +3024,24 @@
             moonLight.shadow.camera.bottom = -500;
             scene.add(moonLight);
 
-            // Malhas do Sol e da Lua
-            const sunGeometry = new THREE.SphereGeometry(10, 32, 32);
-            const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00, fog: false });
+            // Malhas do Sol e da Lua (Esferas 3D com brilho)
+            const sunGeometry = new THREE.SphereGeometry(20, 32, 32);
+            const sunMaterial = new THREE.MeshStandardMaterial({
+                color: 0xffcc00,
+                emissive: 0xffaa00,
+                emissiveIntensity: 5,
+                fog: false
+            });
             sunMesh = new THREE.Mesh(sunGeometry, sunMaterial);
             scene.add(sunMesh);
 
-            const moonGeometry = new THREE.SphereGeometry(8, 32, 32);
-            const moonMaterial = new THREE.MeshBasicMaterial({ color: 0xcccccc, fog: false });
+            const moonGeometry = new THREE.SphereGeometry(15, 32, 32);
+            const moonMaterial = new THREE.MeshStandardMaterial({
+                color: 0xeeeeee,
+                emissive: 0x4444ff,
+                emissiveIntensity: 1,
+                fog: false
+            });
             moonMesh = new THREE.Mesh(moonGeometry, moonMaterial);
             scene.add(moonMesh);
 
@@ -5063,7 +5073,6 @@
 
             // Atualiza o mundo da física e o tempo simulado
             world.step(1 / 60);
-            world.time += 1 / 60;
 
             // Lógica para os cubos e blocos: sempre dinâmicos e com massa original, a menos que sejam segurados
             // Apenas os cubos são pickable agora
@@ -5651,8 +5660,12 @@
             const moonX = orbitRadius * Math.sin(theta + Math.PI);
             const moonY = orbitRadius * Math.cos(theta + Math.PI);
 
-            sunMesh.position.set(camera.position.x + sunX, camera.position.y + sunY, camera.position.z);
-            moonMesh.position.set(camera.position.x + moonX, camera.position.y + moonY, camera.position.z);
+            // Adiciona uma pequena inclinação no eixo Z para uma órbita mais natural
+            const sunZ = sunX * 0.4;
+            const moonZ = moonX * 0.4;
+
+            sunMesh.position.set(camera.position.x + sunX, camera.position.y + sunY, camera.position.z + sunZ);
+            moonMesh.position.set(camera.position.x + moonX, camera.position.y + moonY, camera.position.z + moonZ);
 
             // Atualiza luzes celestiais
             directionalLight.position.copy(sunMesh.position);
@@ -5670,18 +5683,31 @@
             directionalLight.intensity = Math.max(0, sunAltitude * 0.8 + 0.2);
             moonLight.intensity = Math.max(0, moonAltitude * 0.3);
 
-            // Transição de cores do céu e neblina
-            let targetSkyColor, targetAmbientIntensity;
-            if (sunAltitude > 0.2) { // Dia
-                targetSkyColor = new THREE.Color(0x87CEEB);
-                targetAmbientIntensity = 0.6;
-            } else if (sunAltitude > -0.2) { // Amanhecer / Entardecer
-                const t = (sunAltitude + 0.2) / 0.4;
-                targetSkyColor = new THREE.Color(0xff4500).lerp(new THREE.Color(0x87CEEB), t);
-                targetAmbientIntensity = 0.3 + 0.3 * t;
-            } else { // Noite
-                targetSkyColor = new THREE.Color(0x000008);
-                targetAmbientIntensity = 0.2;
+            // Transição de cores do céu e neblina (Granular e suave)
+            const skyColors = [
+                { p: 0.0,  c: 0x87CEEB, i: 0.8 }, // Meio-dia
+                { p: 0.2,  c: 0x87CEEB, i: 0.7 }, // Tarde
+                { p: 0.25, c: 0xff4500, i: 0.4 }, // Pôr do sol
+                { p: 0.35, c: 0x000022, i: 0.2 }, // Início da noite
+                { p: 0.5,  c: 0x000008, i: 0.1 }, // Meia-noite
+                { p: 0.65, c: 0x000022, i: 0.2 }, // Fim da noite
+                { p: 0.75, c: 0xff8c00, i: 0.4 }, // Amanhecer
+                { p: 0.8,  c: 0x87CEEB, i: 0.7 }, // Manhã
+                { p: 1.0,  c: 0x87CEEB, i: 0.8 }  // Meio-dia
+            ];
+
+            let targetSkyColor = new THREE.Color();
+            let targetAmbientIntensity = 0.6;
+
+            for (let i = 0; i < skyColors.length - 1; i++) {
+                if (dayProgress >= skyColors[i].p && dayProgress <= skyColors[i+1].p) {
+                    const t = (dayProgress - skyColors[i].p) / (skyColors[i+1].p - skyColors[i].p);
+                    const c1 = new THREE.Color(skyColors[i].c);
+                    const c2 = new THREE.Color(skyColors[i+1].c);
+                    targetSkyColor.copy(c1).lerp(c2, t);
+                    targetAmbientIntensity = skyColors[i].i + (skyColors[i+1].i - skyColors[i].i) * t;
+                    break;
+                }
             }
 
             skyColor.copy(targetSkyColor);
