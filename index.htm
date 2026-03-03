@@ -417,6 +417,66 @@
             transition: width 0.1s linear;
         }
 
+        /* Analog Clock Styles */
+        #clockContainer {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 80px;
+            height: 80px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            border-radius: 50%;
+            z-index: 1000;
+            display: none; /* Inicia oculto, aparece no startGame */
+        }
+        #clockFace {
+            position: relative;
+            width: 100%;
+            height: 100%;
+        }
+        .hand {
+            position: absolute;
+            bottom: 50%;
+            left: 50%;
+            transform-origin: bottom;
+            background-color: white;
+            border-radius: 2px;
+        }
+        #hourHand {
+            width: 4px;
+            height: 20px;
+            margin-left: -2px;
+            z-index: 3;
+        }
+        #minuteHand {
+            width: 2px;
+            height: 30px;
+            margin-left: -1px;
+            z-index: 2;
+        }
+        #clockCenter {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 6px;
+            height: 6px;
+            background-color: white;
+            border-radius: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 4;
+        }
+        .clock-mark {
+            position: absolute;
+            width: 2px;
+            height: 6px;
+            background-color: rgba(255, 255, 255, 0.8);
+            left: 50%;
+            top: 2px;
+            margin-left: -1px;
+            transform-origin: 50% 38px;
+        }
+
     </style>
 </head>
 <body>
@@ -485,6 +545,14 @@
     </div>
 
     <div id="crosshair"></div>
+
+    <div id="clockContainer">
+        <div id="clockFace">
+            <div id="clockCenter"></div>
+            <div id="hourHand" class="hand"></div>
+            <div id="minuteHand" class="hand"></div>
+        </div>
+    </div>
 
     <!-- #messageBox foi removido -->
 
@@ -693,7 +761,11 @@
 
         // Variável global para luz direcional
         let directionalLight;
+        let moonLight;
         let ambientLight;
+        let sunMesh, moonMesh;
+        const dayDuration = 300; // 5 minutos = 300 segundos
+        let hourHandElement, minuteHandElement;
 
         // Referência ao elemento da mira
         let crosshairElement;
@@ -2734,6 +2806,17 @@
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
         function init() {
+            // Inicializa marcas do relógio
+            const clockFace = document.getElementById('clockFace');
+            hourHandElement = document.getElementById('hourHand');
+            minuteHandElement = document.getElementById('minuteHand');
+            for (let i = 0; i < 12; i++) {
+                const mark = document.createElement('div');
+                mark.className = 'clock-mark';
+                mark.style.transform = `rotate(${i * 30}deg)`;
+                clockFace.appendChild(mark);
+            }
+
             // Inicializa materiais com padrões para evitar erros de undefined e falta de textura inicial
             cubeMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xcccccc });
             raftMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
@@ -2920,13 +3003,37 @@
             directionalLight.shadow.mapSize.width = 1024;
             directionalLight.shadow.mapSize.height = 1024;
             directionalLight.shadow.camera.near = 0.5;
-            directionalLight.shadow.camera.far = 30;
-            directionalLight.shadow.camera.left = -15;
-            directionalLight.shadow.camera.right = 15;
-            directionalLight.shadow.camera.top = 15;
-            directionalLight.shadow.camera.bottom = -15;
+            directionalLight.shadow.camera.far = 500; // Aumentado para o sol orbitar longe
+            directionalLight.shadow.camera.left = -500;
+            directionalLight.shadow.camera.right = 500;
+            directionalLight.shadow.camera.top = 500;
+            directionalLight.shadow.camera.bottom = -500;
             scene.add(directionalLight);
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
+
+            // Luz da Lua
+            moonLight = new THREE.DirectionalLight(0x4444ff, 0.2);
+            moonLight.castShadow = true;
+            moonLight.shadow.mapSize.width = 1024;
+            moonLight.shadow.mapSize.height = 1024;
+            moonLight.shadow.camera.near = 0.5;
+            moonLight.shadow.camera.far = 500;
+            moonLight.shadow.camera.left = -500;
+            moonLight.shadow.camera.right = 500;
+            moonLight.shadow.camera.top = 500;
+            moonLight.shadow.camera.bottom = -500;
+            scene.add(moonLight);
+
+            // Malhas do Sol e da Lua
+            const sunGeometry = new THREE.SphereGeometry(10, 32, 32);
+            const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00, fog: false });
+            sunMesh = new THREE.Mesh(sunGeometry, sunMaterial);
+            scene.add(sunMesh);
+
+            const moonGeometry = new THREE.SphereGeometry(8, 32, 32);
+            const moonMaterial = new THREE.MeshBasicMaterial({ color: 0xcccccc, fog: false });
+            moonMesh = new THREE.Mesh(moonGeometry, moonMaterial);
+            scene.add(moonMesh);
 
             // Cria o Terreno (Ilha Redonda)
             // A geometria visual é agora um plano segmentado cujos vértices correspondem ao Heightfield.
@@ -4954,8 +5061,9 @@
                 tile.body.updateAABB();
             });
 
-            // Atualiza o mundo da física
+            // Atualiza o mundo da física e o tempo simulado
             world.step(1 / 60);
+            world.time += 1 / 60;
 
             // Lógica para os cubos e blocos: sempre dinâmicos e com massa original, a menos que sejam segurados
             // Apenas os cubos são pickable agora
@@ -5532,13 +5640,64 @@
                 ambientLight.color.setHex(0xffffff); // Cor branca padrão
             }
 
-            // Atualiza a posição e o alvo da luz direcional para seguir a câmera/jogador
-            directionalLight.position.copy(camera.position);
-            directionalLight.position.x += 10;
-            directionalLight.position.y += 15;
-            directionalLight.position.z += 10;
+            // --- Ciclo Dia/Noite ---
+            const dayProgress = (world.time % dayDuration) / dayDuration;
+            const theta = dayProgress * 2 * Math.PI;
+
+            // Orbita do Sol e da Lua
+            const orbitRadius = 400;
+            const sunX = orbitRadius * Math.sin(theta);
+            const sunY = orbitRadius * Math.cos(theta);
+            const moonX = orbitRadius * Math.sin(theta + Math.PI);
+            const moonY = orbitRadius * Math.cos(theta + Math.PI);
+
+            sunMesh.position.set(camera.position.x + sunX, camera.position.y + sunY, camera.position.z);
+            moonMesh.position.set(camera.position.x + moonX, camera.position.y + moonY, camera.position.z);
+
+            // Atualiza luzes celestiais
+            directionalLight.position.copy(sunMesh.position);
             directionalLight.target.position.copy(camera.position);
             directionalLight.target.updateMatrixWorld();
+
+            moonLight.position.copy(moonMesh.position);
+            moonLight.target.position.copy(camera.position);
+            moonLight.target.updateMatrixWorld();
+
+            // Intensidades baseadas na altitude (Y)
+            const sunAltitude = Math.cos(theta); // 1 ao meio-dia, -1 à meia-noite
+            const moonAltitude = Math.cos(theta + Math.PI);
+
+            directionalLight.intensity = Math.max(0, sunAltitude * 0.8 + 0.2);
+            moonLight.intensity = Math.max(0, moonAltitude * 0.3);
+
+            // Transição de cores do céu e neblina
+            let targetSkyColor, targetAmbientIntensity;
+            if (sunAltitude > 0.2) { // Dia
+                targetSkyColor = new THREE.Color(0x87CEEB);
+                targetAmbientIntensity = 0.6;
+            } else if (sunAltitude > -0.2) { // Amanhecer / Entardecer
+                const t = (sunAltitude + 0.2) / 0.4;
+                targetSkyColor = new THREE.Color(0xff4500).lerp(new THREE.Color(0x87CEEB), t);
+                targetAmbientIntensity = 0.3 + 0.3 * t;
+            } else { // Noite
+                targetSkyColor = new THREE.Color(0x000008);
+                targetAmbientIntensity = 0.2;
+            }
+
+            skyColor.copy(targetSkyColor);
+            if (skyFog) skyFog.color.copy(skyColor);
+            ambientLight.intensity = targetAmbientIntensity;
+
+            // Atualiza Relógio Analógico
+            if (hourHandElement && minuteHandElement) {
+                // No nosso relógio, um dia (300s) = 24 horas (duas voltas completas do ponteiro de horas)
+                const hourAngle = (dayProgress * 2) * 360;
+                // O ponteiro de minutos dá 24 voltas por dia
+                const minuteAngle = (dayProgress * 24) * 360;
+
+                hourHandElement.style.transform = `rotate(${hourAngle}deg)`;
+                minuteHandElement.style.transform = `rotate(${minuteAngle}deg)`;
+            }
 
             // Sincroniza a rotação horizontal do corpo do jogador com a rotação da câmera
             playerBody.quaternion.setFromEuler(0, camera.rotation.y, 0);
@@ -6067,6 +6226,7 @@
         // Função para iniciar o jogo
         function startGame() {
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
+            document.getElementById('clockContainer').style.display = 'block'; // Mostra o relógio
             init(); // Inicializa os componentes do jogo
             populateCapim(); // NOVO: Popula a ilha com capim
             populateTrees(); // NOVO: Popula a ilha com árvores
