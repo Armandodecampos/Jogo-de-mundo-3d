@@ -753,7 +753,7 @@
         let rainParticles = null; // Sistema de partículas da chuva
         let lastWeatherChange = 0; // Controle de tempo para mudanças climáticas
         let cloudMaterial = null; // Material compartilhado das nuvens
-        let maxClouds = 20; // Quantidade máxima de nuvens
+        let targetCloudCount = 15; // NOVO: Quantidade alvo de nuvens
         const islandRadiusTop = 150; // NOVO: Raio do topo da ilha
         const islandRadiusBottom = 300; // NOVO: Raio da base da ilha
         const waterLevel = -8.0; // NOVO: Nível da água (baixado de -4.8)
@@ -2347,8 +2347,8 @@
         }
 
         function updateClouds(delta) {
-            // Se houver menos nuvens que o máximo, tenta spawnar novas
-            if (clouds.length < maxClouds && Math.random() < 0.01) {
+            // Se houver menos nuvens que o alvo, tenta spawnar novas
+            if (clouds.length < targetCloudCount && Math.random() < 0.02) {
                 spawnCloud();
             }
 
@@ -2430,21 +2430,31 @@
         }
 
         function updateWeather(delta) {
-            // Tenta mudar o clima a cada 30-60 segundos
-            if (world.time - lastWeatherChange > 30 + Math.random() * 30) {
+            // Tenta mudar o clima com duração variável (20s a 300s)
+            const weatherDuration = targetRainIntensity > 0 ? (20 + Math.random() * 280) : (60 + Math.random() * 120);
+            if (world.time - lastWeatherChange > weatherDuration) {
                 lastWeatherChange = world.time;
 
-                // 30% de chance de chover se estiver limpo, ou 70% de parar se estiver chovendo
+                // Chance de mudar o clima
                 if (targetRainIntensity === 0) {
-                    if (Math.random() < 0.3) {
-                        targetRainIntensity = 0.2 + Math.random() * 0.8; // Intensidade aleatória
+                    if (Math.random() < 0.25) {
+                        // Inicia chuva com intensidade variada
+                        targetRainIntensity = 0.1 + Math.random() * 0.9;
                     }
                 } else {
-                    if (Math.random() < 0.7) {
+                    // Se já estiver chovendo, chance de parar ou mudar de intensidade
+                    if (Math.random() < 0.6) {
                         targetRainIntensity = 0;
+                    } else {
+                        targetRainIntensity = 0.1 + Math.random() * 0.9;
                     }
                 }
             }
+
+            // Quantidade de nuvens aumenta com a chuva para cobrir o céu/estrelas
+            const baseClouds = 15;
+            const extraClouds = Math.floor(rainIntensity * 45); // Até +45 nuvens se chuva forte
+            targetCloudCount = baseClouds + extraClouds;
 
             // Transição suave para a intensidade alvo
             if (rainIntensity < targetRainIntensity) {
@@ -2456,7 +2466,7 @@
 
         function spawnCloud(initial = false) {
             const mesh = createCloudMesh();
-            const altitude = 80 + Math.random() * 60;
+            const altitude = 40 + Math.random() * 30; // Nuvens mais baixas
             const dist = initial ? Math.random() * worldSize : worldSize / 2 + 50;
             const angle = Math.random() * Math.PI * 2;
 
@@ -6014,9 +6024,15 @@
             // Sincroniza estrelas com a posição da câmera
             if (starField) {
                 starField.position.copy(camera.position);
-                // Opacidade baseada na altitude do sol e da lua
+                // Opacidade baseada na altitude do sol e da lua e chuva
                 // Quando o sol está abaixo do horizonte (sunAltitude < 0), as estrelas começam a aparecer
-                const starOpacity = Math.max(0, -sunAltitude * 1.5 - 0.2); // Aparece suavemente conforme o sol se põe
+                let starOpacity = Math.max(0, -sunAltitude * 1.5 - 0.2); // Aparece suavemente conforme o sol se põe
+
+                // Diminui visibilidade das estrelas com a chuva (nuvens cobrem)
+                if (rainIntensity > 0) {
+                    starOpacity *= (1.0 - rainIntensity * 0.9);
+                }
+
                 starField.material.opacity = Math.min(1.0, starOpacity);
             }
 
@@ -6032,10 +6048,11 @@
             directionalLight.intensity = Math.max(0, sunAltitude * 0.8 + 0.2);
             moonLight.intensity = Math.max(0, moonAltitude * 0.3);
 
-            // NOVO: Atualiza o sistema de pássaros
-            if (sunAltitude > 0 && world.time - lastBirdSpawnCheck > 10) {
+            // NOVO: Atualiza o sistema de pássaros (mais frequente e variado)
+            if (sunAltitude > 0 && world.time - lastBirdSpawnCheck > 5) {
                 lastBirdSpawnCheck = world.time;
-                if (Math.random() < 0.3) {
+                // Chance variada de spawn
+                if (Math.random() < 0.4) {
                     spawnBirdGroup();
                 }
             }
@@ -6669,7 +6686,7 @@
             });
 
             createRainSystem();
-            for (let i = 0; i < maxClouds; i++) {
+            for (let i = 0; i < targetCloudCount; i++) {
                 spawnCloud(true);
             }
 
@@ -6739,9 +6756,15 @@
             window.cubeMaterialMesh = cubeMaterialMesh;
             window.renderer = renderer;
             window.raycaster = raycaster;
+            window.starField = starField;
+            window.rainParticles = rainParticles;
 
             // Weather exposure
             window.clouds = clouds;
+            Object.defineProperty(window, 'targetCloudCount', {
+                get: () => targetCloudCount,
+                set: (v) => { targetCloudCount = v; }
+            });
             Object.defineProperty(window, 'rainIntensity', {
                 get: () => rainIntensity,
                 set: (v) => { rainIntensity = v; }
@@ -6750,6 +6773,7 @@
                 get: () => targetRainIntensity,
                 set: (v) => { targetRainIntensity = v; }
             });
+            window.updateWeather = updateWeather;
         }
 
         // Listener de evento para o botão "Jogar"
