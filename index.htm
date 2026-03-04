@@ -774,7 +774,7 @@
         let directionalLight;
         let moonLight;
         let ambientLight;
-        let sunMesh, moonMesh;
+        let sunMesh, moonMesh, starField;
         const dayDuration = 300; // 5 minutos = 300 segundos
         let hourHandElement, minuteHandElement;
 
@@ -3078,6 +3078,30 @@
             });
             moonMesh = new THREE.Mesh(moonGeometry, moonMaterial);
             scene.add(moonMesh);
+
+            // Estrelas (Star Field)
+            const starCount = 2000;
+            const starGeometry = new THREE.BufferGeometry();
+            const starPositions = new Float32Array(starCount * 3);
+            for (let i = 0; i < starCount; i++) {
+                const r = 500; // Raio grande para as estrelas
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2 * Math.random() - 1);
+                starPositions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+                starPositions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+                starPositions[i * 3 + 2] = r * Math.cos(phi);
+            }
+            starGeometry.setAttribute('position', new THREE.BufferAttribute(starPositions, 3));
+            const starMaterial = new THREE.PointsMaterial({
+                color: 0xffffff,
+                size: 1.5,
+                transparent: true,
+                opacity: 0.0, // Começa invisível
+                sizeAttenuation: false,
+                fog: false
+            });
+            starField = new THREE.Points(starGeometry, starMaterial);
+            scene.add(starField);
 
             // Cria o Terreno (Ilha Redonda)
             // A geometria visual é agora um plano segmentado cujos vértices correspondem ao Heightfield.
@@ -5710,6 +5734,15 @@
 
             sunMesh.position.set(camera.position.x + sunX, camera.position.y + sunY, camera.position.z + sunZ);
             moonMesh.position.set(camera.position.x + moonX, camera.position.y + moonY, camera.position.z + moonZ);
+
+            // Sincroniza estrelas com a posição da câmera
+            if (starField) {
+                starField.position.copy(camera.position);
+                // Opacidade baseada na altitude do sol e da lua
+                // Quando o sol está abaixo do horizonte (sunAltitude < 0), as estrelas começam a aparecer
+                const starOpacity = Math.max(0, -sunAltitude * 1.5 - 0.2); // Aparece suavemente conforme o sol se põe
+                starField.material.opacity = Math.min(1.0, starOpacity);
+            }
 
             // Atualiza luzes celestiais
             directionalLight.position.copy(sunMesh.position);
