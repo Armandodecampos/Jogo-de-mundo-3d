@@ -2346,7 +2346,7 @@
             return bird;
         }
 
-        function updateClouds(delta) {
+        function updateClouds(delta, despawnDist) {
             // Se houver menos nuvens que o alvo, tenta spawnar novas
             if (clouds.length < targetCloudCount && Math.random() < 0.02) {
                 spawnCloud();
@@ -2366,8 +2366,12 @@
 
                 // Despawn se estiver muito longe
                 const dist = cloud.mesh.position.distanceTo(camera.position);
-                if (dist > worldSize) {
+                if (dist > despawnDist) {
                     scene.remove(cloud.mesh);
+                    // Dispose geometries
+                    cloud.mesh.children.forEach(child => {
+                        if (child.geometry) child.geometry.dispose();
+                    });
                     clouds.splice(i, 1);
                 }
             }
@@ -2523,24 +2527,29 @@
         }
 
         function spawnBirdGroup() {
-            const groupSize = 5 + Math.floor(Math.random() * 15); // Aumentado para 5 a 20 pássaros
-            const altitude = 40 + Math.random() * 40;
-            const spawnDist = Math.random() * 200; // Aleatório para aparecer em qualquer lugar (até 200 de distância)
-            const angle = Math.random() * Math.PI * 2;
+            const groupSize = 5 + Math.floor(Math.random() * 15);
+            const altitude = 30 + Math.random() * 50;
+            const spawnDist = 300; // Surjam no horizonte
+            const spawnAngle = Math.random() * Math.PI * 2;
 
             const basePos = new THREE.Vector3(
-                camera.position.x + Math.cos(angle) * spawnDist,
+                camera.position.x + Math.cos(spawnAngle) * spawnDist,
                 altitude,
-                camera.position.z + Math.sin(angle) * spawnDist
+                camera.position.z + Math.sin(spawnAngle) * spawnDist
             );
 
-            const direction = new THREE.Vector3(
-                (Math.random() - 0.5) * 2,
-                (Math.random() - 0.5) * 0.2,
-                (Math.random() - 0.5) * 2
-            ).normalize();
+            // Direção para atravessar o horizonte: mira o lado oposto com um pequeno desvio
+            const targetAngle = spawnAngle + Math.PI + (Math.random() - 0.5) * 1.0;
+            const targetPos = new THREE.Vector3(
+                camera.position.x + Math.cos(targetAngle) * spawnDist,
+                altitude,
+                camera.position.z + Math.sin(targetAngle) * spawnDist
+            );
 
-            const speed = 10 + Math.random() * 10;
+            const direction = new THREE.Vector3().subVectors(targetPos, basePos).normalize();
+            direction.y = 0; // Voar sempre horizontalmente
+
+            const speed = 12 + Math.random() * 8;
             const groupVelocity = direction.multiplyScalar(speed);
 
             for (let i = 0; i < groupSize; i++) {
@@ -2557,7 +2566,7 @@
                     mesh: birdMesh,
                     velocity: groupVelocity.clone().add(new THREE.Vector3(
                         (Math.random() - 0.5) * 2,
-                        (Math.random() - 0.5) * 1,
+                        0, // Mantém horizontal
                         (Math.random() - 0.5) * 2
                     )),
                     flapOffset: Math.random() * Math.PI * 2,
@@ -5069,8 +5078,11 @@
             requestAnimationFrame(animate);
 
             const delta = 1/60; // Assumindo 60 FPS
+            // Sincroniza Birds e Clouds com worldSize real para despawn
+            const despawnDist = worldSize * 0.8;
+
             updateWeather(delta);
-            updateClouds(delta);
+            updateClouds(delta, despawnDist);
             updateRain(delta);
 
             if (typeof raycastTargetsNeedUpdate !== 'undefined' && raycastTargetsNeedUpdate) {
@@ -6072,7 +6084,7 @@
                 bird.mesh.userData.rightWing.rotation.z = -flapAngle;
 
                 // Despawn se estiver muito longe
-                if (bird.mesh.position.distanceTo(camera.position) > 500) {
+                if (bird.mesh.position.distanceTo(camera.position) > despawnDist) {
                     scene.remove(bird.mesh);
                     birds.splice(i, 1);
                 }
