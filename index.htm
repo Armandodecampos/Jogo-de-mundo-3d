@@ -3268,9 +3268,16 @@
             camera.rotation.order = 'YXZ'; // Define a ordem de rotação para guinada (Y), inclinação (X), rolagem (Z)
 
             // Configuração do Renderizador Three.js
-            renderer = new THREE.WebGLRenderer({ antialiased: true }); // Habilita antialiasing para gráficos mais suaves
+            renderer = new THREE.WebGLRenderer({
+                antialiased: true,
+                powerPreference: "high-performance",
+                precision: "highp",
+                stencil: false
+            }); // Habilita antialiasing para gráficos mais suaves
+            renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight); // Define o tamanho do renderizador para o tamanho da janela
             renderer.shadowMap.enabled = useShadows;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             document.body.appendChild(renderer.domElement); // Adiciona o canvas ao corpo do documento
 
             // Configuração do Mundo Cannon-es (física)
@@ -5226,10 +5233,13 @@
         window.isProtected = isProtected;
 
         // Loop principal de animação do jogo
+        let lastTime = performance.now();
         function animate() {
             requestAnimationFrame(animate);
 
-            const delta = 1/60; // Assumindo 60 FPS
+            const now = performance.now();
+            const delta = Math.min((now - lastTime) / 1000, 0.1);
+            lastTime = now;
             // Sincroniza Birds e Clouds com worldSize real para despawn
             const despawnDist = worldSize * 0.8;
 
@@ -5303,7 +5313,7 @@
                     }
                 }
                 // Se estiver na mira, continua o progresso
-                destroyProgress += 1 / 60;
+                destroyProgress += delta;
 
                 // Efeitos de partículas unificados
                 if (destroyTargetDigInfo && Math.random() < 0.5) {
@@ -5587,7 +5597,7 @@
             });
 
             // Atualiza o mundo da física e o tempo simulado
-            world.step(1 / 60);
+            world.step(1 / 60, delta, 3);
 
             // Lógica para os cubos e blocos: sempre dinâmicos e com massa original, a menos que sejam segurados
             // Apenas os cubos são pickable agora
@@ -6275,7 +6285,7 @@
             for (let i = birds.length - 1; i >= 0; i--) {
                 const bird = birds[i];
                 // Move o pássaro
-                bird.mesh.position.add(bird.velocity.clone().multiplyScalar(1/60));
+                bird.mesh.position.add(bird.velocity.clone().multiplyScalar(delta));
 
                 // Aponta o pássaro para a direção da velocidade
                 const lookAtPos = bird.mesh.position.clone().add(bird.velocity);
@@ -6830,12 +6840,12 @@
             // Update smoke particles
             for (let i = smokeParticles.length - 1; i >= 0; i--) {
                 const particle = smokeParticles[i];
-                particle.userData.lifetime -= 1 / 30; // Assuming 60 FPS
+                particle.userData.lifetime -= delta;
                 if (particle.userData.lifetime <= 0) {
                     particlesGroup.remove(particle);
                     smokeParticles.splice(i, 1);
                 } else {
-                    particle.position.add(particle.userData.velocity.clone().multiplyScalar(1 / 30));
+                    particle.position.add(particle.userData.velocity.clone().multiplyScalar(delta));
                     particle.material.opacity = (particle.userData.lifetime / 4.5) * 0.3; // Fade out proporcional à opacidade inicial (0.3)
                     particle.scale.addScalar(0.01); // Grow faster
                 }
