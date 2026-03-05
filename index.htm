@@ -2175,31 +2175,32 @@
             world.addBody(stoneBody);
             stoneBody.userData = {
                 isCollectible: true,
+                isDestructible: true,
+                durability: 0.5,
                 type: stoneItemName,
                 originalMass: 5,
                 initialPosition: new CANNON.Vec3().copy(stoneBody.position)
             };
 
-            const stoneMesh = new THREE.Group();
-            const numBlocks = 2 + Math.floor(Math.random() * 2);
-            for (let i = 0; i < numBlocks; i++) {
-                const radius = 0.15 + Math.random() * 0.15;
-                const blockGeom = new THREE.DodecahedronGeometry(radius, 0);
-                const blockMesh = new THREE.Mesh(blockGeom, stoneMaterial);
-                blockMesh.position.set(
-                    (Math.random() - 0.5) * (stoneSize.width - radius),
-                    (Math.random() - 0.5) * (stoneSize.height - radius),
-                    (Math.random() - 0.5) * (stoneSize.depth - radius)
+            const segments = 5 + Math.floor(Math.random() * 4);
+            const stoneRadius = 0.25 + Math.random() * 0.1;
+            const stoneHeight = 0.2 + Math.random() * 0.2;
+            const stoneGeom = new THREE.CylinderGeometry(stoneRadius, stoneRadius, stoneHeight, segments);
+
+            const positionAttr = stoneGeom.getAttribute('position');
+            for (let i = 0; i < positionAttr.count; i++) {
+                positionAttr.setXYZ(
+                    i,
+                    positionAttr.getX(i) + (Math.random() - 0.5) * 0.1,
+                    positionAttr.getY(i) + (Math.random() - 0.5) * 0.1,
+                    positionAttr.getZ(i) + (Math.random() - 0.5) * 0.1
                 );
-                blockMesh.rotation.set(
-                    Math.random() * Math.PI,
-                    Math.random() * Math.PI,
-                    Math.random() * Math.PI
-                );
-                blockMesh.castShadow = true;
-                blockMesh.receiveShadow = true;
-                stoneMesh.add(blockMesh);
             }
+            stoneGeom.computeVertexNormals();
+
+            const stoneMesh = new THREE.Mesh(stoneGeom, stoneMaterial);
+            stoneMesh.castShadow = true;
+            stoneMesh.receiveShadow = true;
 
             stoneMesh.userData.physicsBody = stoneBody;
             scene.add(stoneMesh);
@@ -4627,7 +4628,7 @@
                         const targetType = target.body.userData.type;
                         const isTree = !!target.body.userData.growthStage;
                         const isWooden = [woodenPlankItemName, treeTrunkItemName, boxItemName, woodenBlockItemName].includes(targetType);
-                        const isStone = [stoneBlockItemName, stoneFloorItemName].includes(targetType);
+                        const isStone = [stoneBlockItemName, stoneFloorItemName, stoneItemName].includes(targetType);
                         const isEarth = [cobItemName, floorItemName].includes(targetType);
 
                         if (isTree || isWooden) materialType = 'wood';
@@ -5554,8 +5555,18 @@
                     else {
                         let position;
                         if (destroyTargetBody) {
-                             position = destroyTargetBody.position.clone();
+                            position = destroyTargetBody.position.clone();
+
+                            // Reward item based on the destroyed object type
+                            if (destroyTargetBody.userData && destroyTargetBody.userData.type) {
+                                const itemType = destroyTargetBody.userData.type;
+                                const itemQuantity = destroyTargetBody.userData.quantity || 1;
+                                addItemToInventory(backpackItems, { name: itemType, quantity: itemQuantity });
+                            }
+
                             const bodyIndex = placedConstructionBodies.indexOf(destroyTargetBody);
+                            const collectibleIndex = collectibleBoxes.findIndex(box => box.body === destroyTargetBody);
+
                             if (bodyIndex !== -1) {
                                 if (destroyTargetBody.userData.isRaft) {
                                     const raftIdx = raftBodies.indexOf(destroyTargetBody);
@@ -5600,6 +5611,12 @@
                                 scene.remove(placedConstructionMeshes[bodyIndex]);
                                 placedConstructionBodies.splice(bodyIndex, 1);
                                 placedConstructionMeshes.splice(bodyIndex, 1);
+                                raycastTargetsNeedUpdate = true;
+                            } else if (collectibleIndex !== -1) {
+                                const collectibleToRemove = collectibleBoxes[collectibleIndex];
+                                world.removeBody(collectibleToRemove.body);
+                                scene.remove(collectibleToRemove.mesh);
+                                collectibleBoxes.splice(collectibleIndex, 1);
                                 raycastTargetsNeedUpdate = true;
                             }
                         }
