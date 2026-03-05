@@ -63,6 +63,22 @@
             height: 100%;
         }
 
+        #interactionHint {
+            position: absolute;
+            top: calc(50% + 40px);
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 1.2em;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+            pointer-events: none;
+            z-index: 1000;
+            display: none;
+            text-align: center;
+            white-space: pre-wrap;
+        }
+
         /* Start Screen Styles */
         #startScreen {
             position: absolute;
@@ -527,6 +543,13 @@
                 <input type="range" id="treeDensitySlider" min="1" max="10000" value="100" class="w-full">
             </div>
             <div class="option-item">
+                <label for="stoneDensitySlider" class="flex justify-between w-full">
+                    <span>Densidade de Pedras</span>
+                    <span id="stoneDensityValue">100</span>
+                </label>
+                <input type="range" id="stoneDensitySlider" min="1" max="1000" value="100" class="w-full">
+            </div>
+            <div class="option-item">
                 <label for="textureToggle" class="flex justify-between w-full">
                     <span>Qualidade Visual</span>
                     <span id="textureStatus">Com Textura</span>
@@ -555,6 +578,7 @@
     </div>
 
     <div id="crosshair"></div>
+    <div id="interactionHint"></div>
 
     <div id="clockContainer">
         <div id="clockFace">
@@ -663,6 +687,7 @@
         window.appleTrees = appleTrees;
         let targetCapimCount = parseInt(localStorage.getItem('targetCapimCount')) || 1000;
         let targetTreeCount = parseInt(localStorage.getItem('targetTreeCount')) || 100;
+        let targetStoneCount = parseInt(localStorage.getItem('targetStoneCount')) || 100;
         let useTextures = localStorage.getItem('useTextures') !== 'false';
         let useShadows = localStorage.getItem('useShadows') !== 'false';
         const texturesRegistry = {};
@@ -792,6 +817,7 @@
 
         // Referência ao elemento da mira
         let crosshairElement;
+        let interactionHintElement;
 
         // Referência ao elemento de exibição de peso
         let weightDisplayElement;
@@ -2250,6 +2276,49 @@
                 if (y > waterLevel + 0.5 && y < 25) {
                     if (!isAreaOccupiedByConstruction(x, z, 2.0) && !isPositionOccupied(x, z, 4.0)) {
                         createCapim(new THREE.Vector3(x, y, z));
+                    }
+                }
+            }
+        }
+
+        function respawnStone() {
+            let totalAttempts = 0;
+            let currentStoneCount = collectibleBoxes.filter(box => box.body.userData && box.body.userData.type === stoneItemName).length;
+
+            while (currentStoneCount < targetStoneCount && totalAttempts < 20) {
+                totalAttempts++;
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * grassRadius * 2; // Stones can be on beach too
+                const x = Math.cos(angle) * dist;
+                const z = Math.sin(angle) * dist;
+                const y = window.getSurfaceHeight(x, z);
+
+                if (y > waterLevel + 0.2 && y < 25) {
+                    if (!isAreaOccupiedByConstruction(x, z, 1.0) && !isPositionOccupied(x, z, 0.5)) {
+                        createStone(new THREE.Vector3(x, y, z), new THREE.Quaternion());
+                        currentStoneCount++;
+                    }
+                }
+            }
+        }
+
+        function populateStones() {
+            let attempts = 0;
+            const initialTarget = targetStoneCount;
+            while (attempts < initialTarget * 10) {
+                const currentStoneCount = collectibleBoxes.filter(box => box.body.userData && box.body.userData.type === stoneItemName).length;
+                if (currentStoneCount >= initialTarget) break;
+
+                attempts++;
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * beachRadius; // Scattered across grass and beach
+                const x = Math.cos(angle) * dist;
+                const z = Math.sin(angle) * dist;
+                const y = window.getSurfaceHeight(x, z);
+
+                if (y > waterLevel + 0.2 && y < 25) {
+                    if (!isAreaOccupiedByConstruction(x, z, 1.0) && !isPositionOccupied(x, z, 0.5)) {
+                        createStone(new THREE.Vector3(x, y, z), new THREE.Quaternion());
                     }
                 }
             }
@@ -3977,6 +4046,7 @@
 
             // Pega o elemento da mira
             crosshairElement = document.getElementById('crosshair');
+            interactionHintElement = document.getElementById('interactionHint');
 
             // Pega o elemento de exibição de peso
             weightDisplayElement = document.getElementById('weightDisplay');
@@ -4116,6 +4186,11 @@
                     if (!interacted && !pickedObjectBody) {
                         grabObject();
                     }
+                }
+
+                if (event.key.toLowerCase() === 'g') {
+                    if (event.repeat) return;
+                    collectObject();
                 }
 
                 // NOVO: Seleção de slots com Q e E
@@ -5016,6 +5091,43 @@
                 });
             }
 
+            const stoneDensitySlider = document.getElementById('stoneDensitySlider');
+            const stoneDensityValue = document.getElementById('stoneDensityValue');
+            if (stoneDensitySlider && stoneDensityValue) {
+                stoneDensitySlider.value = targetStoneCount;
+                stoneDensityValue.textContent = targetStoneCount;
+                stoneDensitySlider.addEventListener('input', () => {
+                    const newVal = parseInt(stoneDensitySlider.value);
+                    if (newVal > targetStoneCount) {
+                        targetStoneCount = newVal;
+                        if (isWorldReady) respawnStone();
+                    } else {
+                        targetStoneCount = newVal;
+                        // Remoção imediata se diminuir a densidade
+                        if (isWorldReady) {
+                            let stoneIndices = [];
+                            for (let i = collectibleBoxes.length - 1; i >= 0; i--) {
+                                if (collectibleBoxes[i].body.userData && collectibleBoxes[i].body.userData.type === stoneItemName) {
+                                    stoneIndices.push(i);
+                                }
+                            }
+
+                            let countToRemove = stoneIndices.length - targetStoneCount;
+                            for (let i = 0; i < countToRemove; i++) {
+                                const idx = stoneIndices[i];
+                                const item = collectibleBoxes[idx];
+                                world.removeBody(item.body);
+                                scene.remove(item.mesh);
+                                collectibleBoxes.splice(idx, 1);
+                            }
+                            if (countToRemove > 0) raycastTargetsNeedUpdate = true;
+                        }
+                    }
+                    stoneDensityValue.textContent = targetStoneCount;
+                    localStorage.setItem('targetStoneCount', targetStoneCount);
+                });
+            }
+
             const textureToggle = document.getElementById('textureToggle');
             if (textureToggle) {
                 textureToggle.value = useTextures.toString();
@@ -5533,6 +5645,7 @@
                 });
                 respawnCapim();
                 respawnTree();
+                respawnStone();
             }
 
             // Atualiza as posições das malhas do terreno com base na posição envolvida do jogador
@@ -5770,10 +5883,59 @@
 
             // PERFORM MAIN RAYCAST ONCE PER FRAME for crosshair and interaction checks
             let mainIntersects = [];
-            if (document.pointerLockElement === renderer.domElement && !pickedObjectBody && !gamePaused) {
-                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                // Use a pré-calculada raycastTargets para evitar percorrer milhares de objetos (como partículas e grama instanciada sem hitbox)
-                mainIntersects = raycaster.intersectObjects(raycastTargets, true);
+            let interactionHintText = "";
+            if (document.pointerLockElement === renderer.domElement && !gamePaused) {
+                if (pickedObjectBody) {
+                    interactionHintText = "(F) Soltar";
+                } else {
+                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                    // Use a pré-calculada raycastTargets para evitar percorrer milhares de objetos (como partículas e grama instanciada sem hitbox)
+                    mainIntersects = raycaster.intersectObjects(raycastTargets, true);
+
+                    for (const intersect of mainIntersects) {
+                        if (intersect.distance > pickUpDistance) continue;
+
+                        const obj = intersect.object;
+                        if (obj.userData.isApple && obj.visible) {
+                            interactionHintText = "(F) Colher";
+                            break;
+                        }
+
+                        let body = null;
+                        let current = obj;
+                        while (current) {
+                            if (current.userData && current.userData.physicsBody) {
+                                body = current.userData.physicsBody;
+                                break;
+                            }
+                            current = current.parent;
+                        }
+
+                        if (body && body.userData) {
+                            if (body.userData.isChest) {
+                                interactionHintText = "(F) Abrir";
+                                break;
+                            }
+                            if (body.userData.isRaft) {
+                                interactionHintText = "(F) Navegar";
+                                break;
+                            }
+                            if (body.userData.isCollectible) {
+                                interactionHintText = "(F) Pegar / (G) Guardar";
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (interactionHintElement) {
+                if (interactionHintText) {
+                    interactionHintElement.textContent = interactionHintText;
+                    interactionHintElement.style.display = 'block';
+                } else {
+                    interactionHintElement.style.display = 'none';
+                }
             }
 
             // Lógica do ghost block para colocação e snapping
@@ -6714,6 +6876,7 @@
             applyShadowSettings(); // Aplica as configurações de sombra após init
             populateCapim(); // NOVO: Popula a ilha com capim
             populateTrees(); // NOVO: Popula a ilha com árvores
+            populateStones(); // NOVO: Popula a ilha com pedras
 
             // Solicita o bloqueio do ponteiro imediatamente ao iniciar
             if (renderer && renderer.domElement) {
