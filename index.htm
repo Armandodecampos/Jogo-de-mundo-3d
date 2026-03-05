@@ -752,6 +752,7 @@
         let targetRainIntensity = 0; // Intensidade alvo para transições suaves
         let rainParticles = null; // Sistema de partículas da chuva
         let lastWeatherChange = 0; // Controle de tempo para mudanças climáticas
+        let nextWeatherDuration = 60; // Duração da fase climática atual
         let cloudMaterial = null; // Material compartilhado das nuvens
         let targetCloudCount = 15; // NOVO: Quantidade alvo de nuvens
         const islandRadiusTop = 150; // NOVO: Raio do topo da ilha
@@ -2434,10 +2435,12 @@
         }
 
         function updateWeather(delta) {
-            // Tenta mudar o clima com duração variável (20s a 300s)
-            const weatherDuration = targetRainIntensity > 0 ? (20 + Math.random() * 280) : (60 + Math.random() * 120);
-            if (world.time - lastWeatherChange > weatherDuration) {
+            // Tenta mudar o clima com duração variável
+            if (world.time - lastWeatherChange > nextWeatherDuration) {
                 lastWeatherChange = world.time;
+
+                // Define a próxima duração baseada no novo estado
+                nextWeatherDuration = targetRainIntensity > 0 ? (20 + Math.random() * 280) : (60 + Math.random() * 120);
 
                 // Chance de mudar o clima
                 if (targetRainIntensity === 0) {
@@ -6060,11 +6063,11 @@
             directionalLight.intensity = Math.max(0, sunAltitude * 0.8 + 0.2);
             moonLight.intensity = Math.max(0, moonAltitude * 0.3);
 
-            // NOVO: Atualiza o sistema de pássaros (mais frequente e variado)
-            if (sunAltitude > 0 && world.time - lastBirdSpawnCheck > 5) {
+            // NOVO: Atualiza o sistema de pássaros (frequência reduzida pela metade)
+            if (sunAltitude > 0 && world.time - lastBirdSpawnCheck > 10) {
                 lastBirdSpawnCheck = world.time;
-                // Chance variada de spawn
-                if (Math.random() < 0.7) {
+                // Frequência reduzida: 15% de chance a cada 10 segundos
+                if (Math.random() < 0.15) {
                     spawnBirdGroup();
                 }
             }
