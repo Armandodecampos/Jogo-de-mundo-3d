@@ -569,6 +569,16 @@
                     <option value="false">Desativado</option>
                 </select>
             </div>
+            <div class="option-item">
+                <label for="hintToggle" class="flex justify-between w-full">
+                    <span>Dicas de Interação</span>
+                    <span id="hintStatus">Ativado</span>
+                </label>
+                <select id="hintToggle" class="w-full bg-gray-700 text-white p-2 rounded">
+                    <option value="true">Ativado</option>
+                    <option value="false">Desativado</option>
+                </select>
+            </div>
         </div>
         <button id="backToMenuButton" class="mt-8 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-10 rounded-lg transition-colors">Voltar</button>
     </div>
@@ -690,6 +700,7 @@
         let targetStoneCount = parseInt(localStorage.getItem('targetStoneCount')) || 100;
         let useTextures = localStorage.getItem('useTextures') !== 'false';
         let useShadows = localStorage.getItem('useShadows') !== 'false';
+        let useInteractionHints = localStorage.getItem('useInteractionHints') !== 'false';
         const texturesRegistry = {};
 
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
@@ -769,6 +780,7 @@
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
         const worldSize = 600;
         let birds = []; // NOVO: Array para armazenar os pássaros
+        let treeMeshes = []; // NOVO: Array para armazenar as malhas de árvores para raycasting
         let lastBirdSpawnCheck = 0; // NOVO: Controle de tempo para spawn de pássaros
         let birdBodyGeom, birdWingGeom, birdTailGeom, birdMat;
 
@@ -1232,6 +1244,7 @@
             islandMeshes.forEach(tile => raycastTargets.push(tile.mesh));
             waterMeshes.forEach(tile => raycastTargets.push(tile.mesh)); // NOVO: Água para colocação de jangada
             raycastTargets.push(...placedConstructionMeshes);
+            raycastTargets.push(...treeMeshes); // NOVO: Árvores para dicas e interação
             collectibleBoxes.forEach(box => raycastTargets.push(box.mesh));
             // Hitboxes do capim removidas para otimização de performance
         }
@@ -1298,6 +1311,18 @@
             if (status) status.textContent = useShadows ? "Ativado" : "Desativado";
             const toggle = document.getElementById('shadowToggle');
             if (toggle) toggle.value = useShadows.toString();
+        }
+
+        function applyHintSettings() {
+            // Update UI
+            const status = document.getElementById('hintStatus');
+            if (status) status.textContent = useInteractionHints ? "Ativado" : "Desativado";
+            const toggle = document.getElementById('hintToggle');
+            if (toggle) toggle.value = useInteractionHints.toString();
+
+            if (!useInteractionHints && interactionHintElement) {
+                interactionHintElement.style.display = 'none';
+            }
         }
 
         // NOVO: Função para criar o efeito de poeira de partículas
@@ -2826,6 +2851,8 @@
                 }
 
                 mesh = setupTreeVisualsAndPhysics(blockBody, stageData);
+                treeMeshes.push(mesh);
+                raycastTargetsNeedUpdate = true;
 
                 initialMass = initialTreeSaplingMass;
                 durability = stageData.durability || treeSaplingDurability;
@@ -3602,6 +3629,7 @@
                     tileBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
                     world.addBody(tileBody);
                     islandMesh.userData.physicsBody = tileBody;
+                    islandMesh.userData.isIslandMesh = true; // NOVO: Para identificação em dicas
 
                     islandMeshes.push({
                         mesh: islandMesh,
@@ -4740,7 +4768,16 @@
                 for (const intersect of intersects) {
                     if (intersect.distance > pickUpDistance) continue;
 
-                    const clickedBody = intersect.object.userData.physicsBody;
+                    let clickedBody = null;
+                    let current = intersect.object;
+                    while (current) {
+                        if (current.userData && current.userData.physicsBody) {
+                            clickedBody = current.userData.physicsBody;
+                            break;
+                        }
+                        current = current.parent;
+                    }
+
                     if (!clickedBody || !clickedBody.userData) continue;
 
                     if (!clickedBody.userData.isCollectible) continue;
@@ -4771,11 +4808,22 @@
                 const allPickableBodies = collectibleBoxes.map(b => b.body);
 
                 for (let i = 0; i < intersects.length; i++) {
-                    let body = intersects[i].object.userData.physicsBody;
+                    let body = null;
+                    let visualRoot = null;
+                    let current = intersects[i].object;
+                    while (current) {
+                        if (current.userData && current.userData.physicsBody) {
+                            body = current.userData.physicsBody;
+                            visualRoot = current;
+                            break;
+                        }
+                        current = current.parent;
+                    }
+
                     if (body && allPickableBodies.includes(body)) {
                         if (intersects[i].distance <= pickUpDistance) {
                             pickedObjectBody = body;
-                            pickedObjectMesh = intersects[i].object;
+                            pickedObjectMesh = visualRoot; // Use the visual root that has the physics body reference
                             distanceToPickedObject = intersects[i].distance; // Store initial distance
 
                             // Make the object kinematic and disable collisions
@@ -5145,6 +5193,16 @@
                     useShadows = shadowToggle.value === 'true';
                     localStorage.setItem('useShadows', useShadows);
                     applyShadowSettings();
+                });
+            }
+
+            const hintToggle = document.getElementById('hintToggle');
+            if (hintToggle) {
+                hintToggle.value = useInteractionHints.toString();
+                hintToggle.addEventListener('change', () => {
+                    useInteractionHints = hintToggle.value === 'true';
+                    localStorage.setItem('useInteractionHints', useInteractionHints);
+                    applyHintSettings();
                 });
             }
 
@@ -5885,7 +5943,9 @@
             let mainIntersects = [];
             let interactionHintText = "";
             if (document.pointerLockElement === renderer.domElement && !gamePaused) {
-                if (pickedObjectBody) {
+                if (isDrivingRaft) {
+                    interactionHintText = "(F) Sair";
+                } else if (pickedObjectBody) {
                     interactionHintText = "(F) Soltar";
                 } else {
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
@@ -5898,6 +5958,33 @@
                         const obj = intersect.object;
                         if (obj.userData.isApple && obj.visible) {
                             interactionHintText = "(F) Colher";
+                            break;
+                        }
+
+                        // Verifica se é o terreno
+                        if (obj.userData.isIslandMesh) {
+                            const hitPoint = intersect.point;
+                            // Verifica se há capim perto
+                            let nearCapim = null;
+                            for (const cluster of capimClusters) {
+                                if (calculateWrappedDistance(cluster.position, hitPoint) < 1.2) {
+                                    nearCapim = cluster;
+                                    break;
+                                }
+                            }
+                            if (nearCapim) {
+                                interactionHintText = "(Botão Esq.) Colher Grama";
+                            } else {
+                                const distFromCenter = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
+                                let mat = "Terra";
+                                if (distFromCenter > beachRadius) mat = "Areia";
+                                else if (distFromCenter > grassRadius) mat = "Areia";
+
+                                const surfaceY = getSurfaceHeight(hitPoint.x, hitPoint.z);
+                                if (hitPoint.y < surfaceY - DIRT_TO_STONE_DEPTH) mat = "Pedra";
+
+                                interactionHintText = `(Botão Esq.) Cavar ${mat}`;
+                            }
                             break;
                         }
 
@@ -5924,13 +6011,17 @@
                                 interactionHintText = "(F) Pegar / (G) Guardar";
                                 break;
                             }
+                            if (body.userData.growthStage) {
+                                interactionHintText = "(Botão Esq.) Cortar Árvore";
+                                break;
+                            }
                         }
                     }
                 }
             }
 
             if (interactionHintElement) {
-                if (interactionHintText) {
+                if (interactionHintText && useInteractionHints) {
                     interactionHintElement.textContent = interactionHintText;
                     interactionHintElement.style.display = 'block';
                 } else {
@@ -6611,12 +6702,20 @@
                         }
 
                         // Cria o novo objeto visual e física usando o helper
+                        const oldTreeMesh = placedConstructionMeshes[i];
                         const newTreeMesh = setupTreeVisualsAndPhysics(blockBody, nextRandomizedData);
                         newTreeMesh.userData.physicsBody = blockBody;
                         scene.add(newTreeMesh);
 
                         // Atualiza a referência no array para o novo objeto
                         placedConstructionMeshes[i] = newTreeMesh;
+
+                        // Atualiza treeMeshes se for uma árvore
+                        const tmIdx = treeMeshes.indexOf(oldTreeMesh);
+                        if (tmIdx !== -1) {
+                            treeMeshes[tmIdx] = newTreeMesh;
+                            raycastTargetsNeedUpdate = true;
+                        }
 
                         // Update userData
                         blockBody.userData.isDestructible = true;
@@ -6874,6 +6973,7 @@
             document.getElementById('clockContainer').style.display = 'block'; // Mostra o relógio
             init(); // Inicializa os componentes do jogo
             applyShadowSettings(); // Aplica as configurações de sombra após init
+            applyHintSettings(); // Aplica as configurações de dica após init
             populateCapim(); // NOVO: Popula a ilha com capim
             populateTrees(); // NOVO: Popula a ilha com árvores
             populateStones(); // NOVO: Popula a ilha com pedras
