@@ -2188,13 +2188,23 @@
             const stoneGeom = new THREE.CylinderGeometry(stoneRadius, stoneRadius, stoneHeight, segments);
 
             const positionAttr = stoneGeom.getAttribute('position');
+            const vertexMap = new Map();
             for (let i = 0; i < positionAttr.count; i++) {
-                positionAttr.setXYZ(
-                    i,
-                    positionAttr.getX(i) + (Math.random() - 0.5) * 0.1,
-                    positionAttr.getY(i) + (Math.random() - 0.5) * 0.1,
-                    positionAttr.getZ(i) + (Math.random() - 0.5) * 0.1
-                );
+                const px = positionAttr.getX(i);
+                const py = positionAttr.getY(i);
+                const pz = positionAttr.getZ(i);
+                const key = `${px.toFixed(4)},${py.toFixed(4)},${pz.toFixed(4)}`;
+
+                if (!vertexMap.has(key)) {
+                    vertexMap.set(key, {
+                        dx: (Math.random() - 0.5) * 0.1,
+                        dy: (Math.random() - 0.5) * 0.1,
+                        dz: (Math.random() - 0.5) * 0.1
+                    });
+                }
+
+                const offset = vertexMap.get(key);
+                positionAttr.setXYZ(i, px + offset.dx, py + offset.dy, pz + offset.dz);
             }
             stoneGeom.computeVertexNormals();
 
