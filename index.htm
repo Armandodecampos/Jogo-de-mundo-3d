@@ -4747,7 +4747,16 @@
                 for (const intersect of intersects) {
                     if (intersect.distance > pickUpDistance) continue;
 
-                    const clickedBody = intersect.object.userData.physicsBody;
+                    let clickedBody = null;
+                    let current = intersect.object;
+                    while (current) {
+                        if (current.userData && current.userData.physicsBody) {
+                            clickedBody = current.userData.physicsBody;
+                            break;
+                        }
+                        current = current.parent;
+                    }
+
                     if (!clickedBody || !clickedBody.userData) continue;
 
                     if (!clickedBody.userData.isCollectible) continue;
@@ -4778,7 +4787,16 @@
                 const allPickableBodies = collectibleBoxes.map(b => b.body);
 
                 for (let i = 0; i < intersects.length; i++) {
-                    let body = intersects[i].object.userData.physicsBody;
+                    let body = null;
+                    let current = intersects[i].object;
+                    while (current) {
+                        if (current.userData && current.userData.physicsBody) {
+                            body = current.userData.physicsBody;
+                            break;
+                        }
+                        current = current.parent;
+                    }
+
                     if (body && allPickableBodies.includes(body)) {
                         if (intersects[i].distance <= pickUpDistance) {
                             pickedObjectBody = body;
@@ -6730,7 +6748,15 @@
                         if (intersects[i].distance > destroyDistance) continue;
 
                         const obj = intersects[i].object;
-                        const body = obj.userData.physicsBody;
+                        let body = null;
+                        let current = obj;
+                        while (current) {
+                            if (current.userData && current.userData.physicsBody) {
+                                body = current.userData.physicsBody;
+                                break;
+                            }
+                            current = current.parent;
+                        }
 
                         // Check for collectible
                         if (body && aimablePickableBodies.includes(body) && intersects[i].distance <= pickUpDistance) {
