@@ -569,6 +569,16 @@
                     <option value="false">Desativado</option>
                 </select>
             </div>
+            <div class="option-item">
+                <label for="hintToggle" class="flex justify-between w-full">
+                    <span>Dicas de Interação</span>
+                    <span id="hintStatus">Ativado</span>
+                </label>
+                <select id="hintToggle" class="w-full bg-gray-700 text-white p-2 rounded">
+                    <option value="true">Ativado</option>
+                    <option value="false">Desativado</option>
+                </select>
+            </div>
         </div>
         <button id="backToMenuButton" class="mt-8 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-10 rounded-lg transition-colors">Voltar</button>
     </div>
@@ -690,6 +700,7 @@
         let targetStoneCount = parseInt(localStorage.getItem('targetStoneCount')) || 100;
         let useTextures = localStorage.getItem('useTextures') !== 'false';
         let useShadows = localStorage.getItem('useShadows') !== 'false';
+        let useInteractionHints = localStorage.getItem('useInteractionHints') !== 'false';
         const texturesRegistry = {};
 
         // NOVO: Array para rastrear todas as caixas colecionáveis (corpos e malhas)
@@ -1298,6 +1309,14 @@
             if (status) status.textContent = useShadows ? "Ativado" : "Desativado";
             const toggle = document.getElementById('shadowToggle');
             if (toggle) toggle.value = useShadows.toString();
+        }
+
+        function applyHintSettings() {
+            // Update UI
+            const status = document.getElementById('hintStatus');
+            if (status) status.textContent = useInteractionHints ? "Ativado" : "Desativado";
+            const toggle = document.getElementById('hintToggle');
+            if (toggle) toggle.value = useInteractionHints.toString();
         }
 
         // NOVO: Função para criar o efeito de poeira de partículas
@@ -5173,6 +5192,16 @@
                 });
             }
 
+            const hintToggle = document.getElementById('hintToggle');
+            if (hintToggle) {
+                hintToggle.value = useInteractionHints.toString();
+                hintToggle.addEventListener('change', () => {
+                    useInteractionHints = hintToggle.value === 'true';
+                    localStorage.setItem('useInteractionHints', useInteractionHints);
+                    applyHintSettings();
+                });
+            }
+
             // Adiciona o listener para o novo botão de ícone do menu
             if (menuIconButton) {
                 menuIconButton.addEventListener('click', showOptionsScreen);
@@ -5951,13 +5980,53 @@
                                 interactionHintText = "(F) Pegar / (G) Guardar";
                                 break;
                             }
+                            // Adiciona dicas contextuais para ferramentas
+                            if (body.userData.isDestructible) {
+                                if (body.userData.growthStage) {
+                                    interactionHintText = "(Botão Esq.) Cortar Árvore";
+                                } else if (body.userData.type === stoneBlockItemName || body.userData.type === stoneFloorItemName) {
+                                    interactionHintText = "(Botão Esq.) Minerar Pedra";
+                                } else {
+                                    interactionHintText = "(Botão Esq.) Destruir";
+                                }
+                                break;
+                            }
+                        }
+
+                        // Verificação de terreno (Cavar / Colher Grama)
+                        const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
+                        if (isIslandMesh) {
+                            // Verifica se há capim perto
+                            let nearCapim = false;
+                            for (const cluster of capimClusters) {
+                                if (calculateWrappedDistance(cluster.position, intersect.point) < 1.2) {
+                                    nearCapim = true;
+                                    break;
+                                }
+                            }
+                            if (nearCapim) {
+                                interactionHintText = "(Botão Esq.) Colher Grama";
+                            } else {
+                                const hitPoint = intersect.point;
+                                const distFromCenter = Math.sqrt(hitPoint.x ** 2 + hitPoint.z ** 2);
+                                const surfaceHeightAtMound = getSurfaceHeight(hitPoint.x, hitPoint.z);
+
+                                let material = "Terra";
+                                if (hitPoint.y < (surfaceHeightAtMound - DIRT_TO_STONE_DEPTH)) {
+                                    material = "Pedra";
+                                } else if (distFromCenter > grassRadius) {
+                                    material = "Areia";
+                                }
+                                interactionHintText = `(Botão Esq.) Cavar ${material}`;
+                            }
+                            break;
                         }
                     }
                 }
             }
 
             if (interactionHintElement) {
-                if (interactionHintText) {
+                if (interactionHintText && useInteractionHints) {
                     interactionHintElement.textContent = interactionHintText;
                     interactionHintElement.style.display = 'block';
                 } else {
@@ -6909,6 +6978,7 @@
             document.getElementById('clockContainer').style.display = 'block'; // Mostra o relógio
             init(); // Inicializa os componentes do jogo
             applyShadowSettings(); // Aplica as configurações de sombra após init
+            applyHintSettings(); // Aplica as configurações de dicas após init
             populateCapim(); // NOVO: Popula a ilha com capim
             populateTrees(); // NOVO: Popula a ilha com árvores
             populateStones(); // NOVO: Popula a ilha com pedras
@@ -6952,6 +7022,7 @@
             }
 
             isWorldReady = true; window.isWorldReady = true;
+            window.useInteractionHints = useInteractionHints;
             window.collectibleBoxes = collectibleBoxes;
             Object.defineProperty(window, 'isDestroying', { get: () => isDestroying });
             Object.defineProperty(window, 'destroyProgress', { get: () => destroyProgress });
