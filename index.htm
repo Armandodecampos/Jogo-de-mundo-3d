@@ -695,6 +695,8 @@
         for (let i = 0; i < maxCapimClusters; i++) capimFreeIndices.push(i);
         let appleTrees = [];
         window.appleTrees = appleTrees;
+        let coconutTrees = [];
+        window.coconutTrees = coconutTrees;
         let targetCapimCount = parseInt(localStorage.getItem('targetCapimCount')) || 1000;
         let targetTreeCount = parseInt(localStorage.getItem('targetTreeCount')) || 100;
         let targetStoneCount = parseInt(localStorage.getItem('targetStoneCount')) || 100;
@@ -899,6 +901,8 @@
         const capimItemName = 'capim';
         const appleSeedItemName = 'semente_macieira';
         const appleItemName = 'maca';
+        const coconutSeedItemName = 'semente_coqueiro';
+        const coconutItemName = 'coco';
 
         // NOVO: Variáveis para o sistema de destruição de blocos (Machado e Martelo)
         const axeItemName = 'machado'; // Nome do item de machado no inventário
@@ -932,6 +936,8 @@
             [capimItemName]: 'Capim',
             [appleSeedItemName]: 'Semente de Macieira',
             [appleItemName]: 'Maçã',
+            [coconutSeedItemName]: 'Semente de Coqueiro',
+            [coconutItemName]: 'Coco',
             [axeItemName]: 'Machado\nEspecialidade: Madeira',
             [hammerItemName]: 'Martelo\nSem uso',
             [stoneItemName]: 'Pedra',
@@ -958,6 +964,8 @@
             [capimItemName]: 0.1,
             [appleSeedItemName]: 0.1,
             [appleItemName]: 0.2,
+            [coconutSeedItemName]: 0.1,
+            [coconutItemName]: 0.3,
             [axeItemName]: 2.0,
             [hammerItemName]: 2.0,
             [stoneItemName]: 1.0,
@@ -1187,6 +1195,10 @@
                 m.trunkHeight *= 0.4;
                 m.trunkRadius *= 0.7;
                 m.leavesRadius *= 1.2;
+            } else if (treeType === 'coconut') {
+                m.trunkHeight *= 1.5;
+                m.trunkRadius *= 0.5;
+                m.leavesRadius *= 1.1;
             }
 
             // Apply factors
@@ -1526,6 +1538,8 @@
             if (itemName === stoneFloorItemName) return stoneFloorTextureURL;
             if (itemName === boxItemName) return cubeTextureURL;
             if (itemName === appleItemName) return "https://placehold.co/100x100/ff0000/FFFFFF?text=Maçã"; // Adicionado na etapa 3
+            if (itemName === coconutSeedItemName) return "https://placehold.co/100x100/D2B48C/FFFFFF?text=Semente+Coco";
+            if (itemName === coconutItemName) return "https://placehold.co/100x100/F5F5DC/FFFFFF?text=Coco";
             return handImageURL;
         }
         window.getItemIconURL = getItemIconURL;
@@ -2377,7 +2391,14 @@
                 if (y > waterLevel + 1.0 && y < 25) {
                     if (!isAreaOccupiedByConstruction(x, z, 5.0) && !isPositionOccupied(x, z, 0.1)) {
                         // Respawn as 'muda' stage as per user request
-                        const type = (Math.random() < 0.03) ? appleSeedItemName : 'muda_arvore'; createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), type, 'muda');
+                        const distFromCenter = Math.sqrt(x * x + z * z);
+                        let type = 'muda_arvore';
+                        if (distFromCenter > grassRadius && distFromCenter < beachRadius) {
+                            type = coconutSeedItemName;
+                        } else if (Math.random() < 0.03) {
+                            type = appleSeedItemName;
+                        }
+                        createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), type, 'muda');
                         currentTreeCount++;
                     }
                 }
@@ -2399,7 +2420,14 @@
 
                 if (y > waterLevel + 1.0 && y < 25) {
                     if (!isAreaOccupiedByConstruction(x, z, 2.0) && !isPositionOccupied(x, z, 0.1)) {
-                        const type = (Math.random() < 0.03) ? appleSeedItemName : 'muda_arvore'; createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), type, 'arvore_adulta');
+                        const distFromCenter = Math.sqrt(x * x + z * z);
+                        let type = 'muda_arvore';
+                        if (distFromCenter > grassRadius && distFromCenter < beachRadius) {
+                            type = coconutSeedItemName;
+                        } else if (Math.random() < 0.03) {
+                            type = appleSeedItemName;
+                        }
+                        createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), type, 'arvore_adulta');
                     }
                 }
             }
@@ -2757,6 +2785,70 @@
                             treeGroup.add(apple);
                         }
                     }
+                } else if (treeType === 'coconut') {
+                    // Visual de Coqueiro
+                    const trunkRadius = stageData.visual.trunk.radius;
+                    const trunkHeight = stageData.visual.trunk.height;
+
+                    // Tronco segmentado (curvado levemente)
+                    treeGroup.remove(trunkMesh); // Remove o tronco padrão
+                    const segments = 10;
+                    for (let i = 0; i < segments; i++) {
+                        const segGeom = new THREE.CylinderGeometry(trunkRadius * (1 - i * 0.02), trunkRadius * (1 - (i + 1) * 0.02), trunkHeight / segments, 8);
+                        const segMesh = new THREE.Mesh(segGeom, treeTrunkMaterialMesh);
+                        segMesh.position.y = (i + 0.5) * (trunkHeight / segments);
+                        // Pequena curvatura
+                        segMesh.position.x = Math.pow(i / segments, 2) * 0.5;
+                        segMesh.rotation.z = (i / segments) * 0.1;
+                        segMesh.castShadow = true;
+                        segMesh.receiveShadow = true;
+                        treeGroup.add(segMesh);
+                    }
+
+                    // Folhas de palmeira
+                    const palmGroup = new THREE.Group();
+                    const numFronds = 8;
+                    for (let i = 0; i < numFronds; i++) {
+                        const frondPivot = new THREE.Group();
+                        frondPivot.rotation.y = (i / numFronds) * Math.PI * 2;
+
+                        const frondGeom = new THREE.BoxGeometry(leavesRadius * 1.5, 0.05, leavesRadius * 0.3);
+                        const frondMesh = new THREE.Mesh(frondGeom, treeLeavesMaterialMesh);
+                        frondMesh.position.x = leavesRadius * 0.75;
+                        frondMesh.rotation.z = -0.3;
+                        frondPivot.add(frondMesh);
+                        palmGroup.add(frondPivot);
+                    }
+                    palmGroup.position.set(0.5, trunkHeight, 0);
+                    treeGroup.add(palmGroup);
+
+                    if (blockBody.userData.growthStage === 'arvore_adulta') {
+                        const coconutGeom = new THREE.SphereGeometry(trunkRadius * 1.2, 8, 8);
+                        const coconutMat = new THREE.MeshStandardMaterial({ color: 0x654321 });
+                        if (!blockBody.userData.coconuts) {
+                            blockBody.userData.coconuts = [];
+                            for (let i = 0; i < 5; i++) {
+                                const angle = (i / 5) * Math.PI * 2;
+                                blockBody.userData.coconuts.push({ angle, picked: false, lastPickedTime: 0 });
+                            }
+                        }
+                        for (let i = 0; i < 5; i++) {
+                            const cocoData = blockBody.userData.coconuts[i];
+                            const cocoMesh = new THREE.Mesh(coconutGeom, coconutMat);
+                            cocoMesh.position.set(
+                                Math.cos(cocoData.angle) * trunkRadius * 1.5 + 0.5,
+                                trunkHeight - trunkRadius,
+                                Math.sin(cocoData.angle) * trunkRadius * 1.5
+                            );
+                            cocoMesh.castShadow = true;
+                            cocoMesh.userData.isCoconut = true;
+                            cocoMesh.userData.treeBody = blockBody;
+                            cocoMesh.userData.coconutIndex = i;
+                            if (cocoData.picked) cocoMesh.visible = false;
+                            treeGroup.add(cocoMesh);
+                        }
+                        if (!window.coconutTrees.includes(blockBody)) window.coconutTrees.push(blockBody);
+                    }
                 } else {
                     const numCones = 3;
                     for (let i = 0; i < numCones; i++) {
@@ -2825,9 +2917,12 @@
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), floorMaterialMesh);
                 initialMass = initialFloorMass;
                 durability = floorDurability;
-            } else if (type === 'muda_arvore' || type === appleSeedItemName) {
-                const treeType = (type === appleSeedItemName) ? 'apple' : 'normal';
-                const stageToUse = initialStage || ((type === appleSeedItemName) ? 'semente' : 'muda');
+            } else if (type === 'muda_arvore' || type === appleSeedItemName || type === coconutSeedItemName) {
+                let treeType = 'normal';
+                if (type === appleSeedItemName) treeType = 'apple';
+                else if (type === coconutSeedItemName) treeType = 'coconut';
+
+                const stageToUse = initialStage || ((type === appleSeedItemName || type === coconutSeedItemName) ? 'semente' : 'muda');
                 blockBody.userData.growthStage = stageToUse; // Define antes de configurar visuals
                 blockBody.userData.treeType = treeType;
 
@@ -4735,6 +4830,18 @@
                             return true;
                         }
                     }
+                    if (obj.userData.isCoconut && obj.visible) {
+                        const body = obj.userData.treeBody;
+                        const coconutIndex = obj.userData.coconutIndex;
+                        if (body && body.userData.coconuts && body.userData.coconuts[coconutIndex]) {
+                            body.userData.coconuts[coconutIndex].picked = true;
+                            body.userData.coconuts[coconutIndex].lastPickedTime = world.time;
+                            obj.visible = false;
+                            addItemToInventory(backpackItems, { name: coconutItemName, quantity: 1 });
+                            updateBackpackDisplay();
+                            return true;
+                        }
+                    }
                     let body = null;
                     let current = obj;
                     while (current) {
@@ -5590,6 +5697,17 @@
                                         }
                                         const appleTreeIndex = appleTrees.indexOf(destroyTargetBody);
                                         if (appleTreeIndex !== -1) appleTrees.splice(appleTreeIndex, 1);
+                                    } else if (treeType === 'coconut') {
+                                        createDroppableItem(position, { name: coconutSeedItemName, quantity: 1 });
+                                        if (destroyTargetBody.userData.coconuts) {
+                                            destroyTargetBody.userData.coconuts.forEach(cocoData => {
+                                                if (!cocoData.picked) {
+                                                    createDroppableItem(position, { name: coconutItemName, quantity: 1 });
+                                                }
+                                            });
+                                        }
+                                        const cocoTreeIndex = window.coconutTrees.indexOf(destroyTargetBody);
+                                        if (cocoTreeIndex !== -1) window.coconutTrees.splice(cocoTreeIndex, 1);
                                     }
                                     setTimeout(respawnTree, 100);
                                 }
@@ -5694,6 +5812,21 @@
                                 if (mesh && mesh.children) {
                                     const appleMesh = mesh.children.find(child => child.userData.isApple && child.userData.appleIndex === index);
                                     if (appleMesh) appleMesh.visible = true;
+                                }
+                            }
+                        });
+                    }
+                });
+                // NOVO: Respawn de cocos nos coqueiros adultos
+                window.coconutTrees.forEach(body => {
+                    if (body.userData.coconuts) {
+                        body.userData.coconuts.forEach((cocoData, index) => {
+                            if (cocoData.picked && world.time - cocoData.lastPickedTime > 30) {
+                                cocoData.picked = false;
+                                const mesh = placedConstructionMeshes[placedConstructionBodies.indexOf(body)];
+                                if (mesh && mesh.children) {
+                                    const cocoMesh = mesh.children.find(child => child.userData.isCoconut && child.userData.coconutIndex === index);
+                                    if (cocoMesh) cocoMesh.visible = true;
                                 }
                             }
                         });
@@ -5952,7 +6085,7 @@
                         if (intersect.distance > pickUpDistance) continue;
 
                         const obj = intersect.object;
-                        if (obj.userData.isApple && obj.visible) {
+                        if ((obj.userData.isApple || obj.userData.isCoconut) && obj.visible) {
                             interactionHintText = "(F) Colher";
                             break;
                         }
@@ -7048,6 +7181,7 @@
             window.keysPressed = keysPressed;
             window.beltItems = beltItems;
             window.updateUI = updateUI;
+            window.coconutTrees = coconutTrees;
             window.selectedSlotIndex = selectedSlotIndex;
             Object.defineProperty(window, 'isAttemptingToDestroy', {
                 get: () => isAttemptingToDestroy,
