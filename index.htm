@@ -2934,12 +2934,12 @@
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), floorMaterialMesh);
                 initialMass = initialFloorMass;
                 durability = floorDurability;
-            } else if (type === 'muda_arvore' || type === appleSeedItemName || type === pineSeedItemName || type === coconutItemName) {
+            } else if (type === 'muda_arvore' || type === appleSeedItemName || type === pineSeedItemName || type === coconutItemName || type === coconutSeedItemName) {
                 let treeType = 'normal';
                 if (type === appleSeedItemName) treeType = 'apple';
-                else if (type === coconutItemName) treeType = 'coconut';
+                else if (type === coconutItemName || type === coconutSeedItemName) treeType = 'coconut';
 
-                const stageToUse = initialStage || ((type === appleSeedItemName || type === pineSeedItemName || type === coconutItemName) ? 'semente' : 'muda');
+                const stageToUse = initialStage || ((type === appleSeedItemName || type === pineSeedItemName || type === coconutItemName || type === coconutSeedItemName) ? 'semente' : 'muda');
                 blockBody.userData.growthStage = stageToUse; // Define antes de configurar visuals
                 blockBody.userData.treeType = treeType;
 
@@ -4371,7 +4371,8 @@
 
                                 const dir = new THREE.Vector3(wrappedDiffX, 0, wrappedDiffZ).normalize();
                                 const trunkRad = body.userData.dimensions ? body.userData.dimensions.width / 2 : 0.4;
-                                const climbDist = trunkRad + (isCrouching ? crouchRadius : playerRadius) * 0.5;
+                                // Aumenta o climbDist para garantir que o jogador fique fora da colisão do tronco
+                                const climbDist = trunkRad + (isCrouching ? crouchRadius : playerRadius) * 1.2;
 
                                 climbingOffset.copy(dir.multiplyScalar(climbDist));
                                 break;
@@ -4590,7 +4591,7 @@
                                      heldItemName === branchItemName ||
                                      heldItemName === dirtItemName;
 
-                if (!isAllowedTool) return;
+                if (!isAllowedTool || isClimbing) return;
 
                 // Se estiver com terra equipada, precisa ter quantidade maior que zero
                 if (heldItemName === dirtItemName && heldItemQuantity <= 0) return;
@@ -6734,13 +6735,34 @@
 
                     // Movimento vertical com W e S
                     let verticalMove = 0;
-                    if (keysPressed['w']) verticalMove = walkSpeed * 1.5;
-                    if (keysPressed['s']) verticalMove = -walkSpeed * 1.5;
+                    const treeHeight = climbingTreeBody.userData.dimensions ? climbingTreeBody.userData.dimensions.height : 5;
+                    const treeBaseY = climbingTreeBody.position.y - treeHeight / 2;
+                    const treeTopY = climbingTreeBody.position.y + treeHeight / 2;
+                    const playerH = isCrouching ? crouchBodyHeight : playerBodyHeight;
+
+                    if (keysPressed['w']) {
+                        // Limita a subida ao topo da árvore
+                        if (playerBody.position.y < treeTopY) {
+                            verticalMove = walkSpeed * 1.5;
+                        }
+                    }
+                    if (keysPressed['s']) {
+                        // Limita a descida ao chão
+                        if (playerBody.position.y > treeBaseY + playerH / 2) {
+                            verticalMove = -walkSpeed * 1.5;
+                        } else {
+                            // Solta automaticamente se chegar ao chão
+                            isClimbing = false;
+                            climbingTreeBody = null;
+                        }
+                    }
 
                     playerBody.velocity.set(0, verticalMove, 0);
 
-                    // Impede queda por gravidade
-                    playerBody.applyForce(new CANNON.Vec3(0, Math.abs(world.gravity.y) * playerBody.mass, 0));
+                    // Impede queda por gravidade se estiver subindo ou parado
+                    if (verticalMove >= 0) {
+                        playerBody.applyForce(new CANNON.Vec3(0, Math.abs(world.gravity.y) * playerBody.mass, 0));
+                    }
 
                     // Soltar se pular
                     if (keysPressed[' ']) {
