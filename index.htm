@@ -843,6 +843,7 @@
         let gamePaused = false; // Novo: Flag para pausar/retomar a lógica do jogo
         let isClimbing = false; // NOVO: Flag para modo de escalada
         let climbingTreeBody = null; // NOVO: Referência à árvore que está sendo escalada
+        let climbingOffset = new THREE.Vector3(); // NOVO: Vetor de offset para escalada (fora do tronco)
         let isDrivingRaft = false; // NOVO: Flag para modo de direção da jangada
         let currentRaftBody = null; // NOVO: Referência à jangada atual sendo dirigida
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
@@ -4350,6 +4351,25 @@
                             if (body && body.userData && body.userData.growthStage) {
                                 isClimbing = true;
                                 climbingTreeBody = body;
+
+                                // Calcula o offset para ficar encostado na árvore, não dentro
+                                const treePos = new THREE.Vector3(body.position.x, playerBody.position.y, body.position.z);
+                                const playerPos = new THREE.Vector3(playerBody.position.x, playerBody.position.y, playerBody.position.z);
+
+                                // Vetor do centro da árvore para o jogador (com wrapping)
+                                const diffX = playerPos.x - treePos.x;
+                                const diffZ = playerPos.z - treePos.z;
+
+                                let wrappedDiffX = diffX;
+                                let wrappedDiffZ = diffZ;
+                                if (Math.abs(diffX) > worldSize / 2) wrappedDiffX += (diffX > 0 ? -worldSize : worldSize);
+                                if (Math.abs(diffZ) > worldSize / 2) wrappedDiffZ += (diffZ > 0 ? -worldSize : worldSize);
+
+                                const dir = new THREE.Vector3(wrappedDiffX, 0, wrappedDiffZ).normalize();
+                                const trunkRad = body.userData.dimensions ? body.userData.dimensions.width / 2 : 0.4;
+                                const climbDist = trunkRad + (isCrouching ? crouchRadius : playerRadius) * 0.5;
+
+                                climbingOffset.copy(dir.multiplyScalar(climbDist));
                                 break;
                             }
                         }
@@ -6693,9 +6713,9 @@
                     isClimbing = false;
                     climbingTreeBody = null;
                 } else {
-                    // Mantém o jogador preso à árvore horizontalmente
-                    playerBody.position.x = climbingTreeBody.position.x;
-                    playerBody.position.z = climbingTreeBody.position.z;
+                    // Mantém o jogador preso à árvore horizontalmente (usando offset para ficar fora do tronco)
+                    playerBody.position.x = climbingTreeBody.position.x + climbingOffset.x;
+                    playerBody.position.z = climbingTreeBody.position.z + climbingOffset.z;
 
                     // Movimento vertical com W e S
                     let verticalMove = 0;
