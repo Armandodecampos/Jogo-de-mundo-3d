@@ -904,6 +904,7 @@
         const capimItemName = 'capim';
         const appleSeedItemName = 'semente_macieira';
         const appleItemName = 'maca';
+        const pineSeedItemName = 'pinhão';
         const coconutSeedItemName = 'semente_coqueiro';
         const coconutItemName = 'coco';
 
@@ -939,6 +940,7 @@
             [capimItemName]: 'Capim',
             [appleSeedItemName]: 'Semente de Macieira',
             [appleItemName]: 'Maçã',
+            [pineSeedItemName]: 'Pinhão',
             [coconutSeedItemName]: 'Semente de Coqueiro',
             [coconutItemName]: 'Coco',
             [axeItemName]: 'Machado\nEspecialidade: Madeira',
@@ -967,6 +969,7 @@
             [capimItemName]: 0.1,
             [appleSeedItemName]: 0.1,
             [appleItemName]: 0.2,
+            [pineSeedItemName]: 0.1,
             [coconutSeedItemName]: 0.1,
             [coconutItemName]: 0.3,
             [axeItemName]: 2.0,
@@ -1541,6 +1544,7 @@
             if (itemName === stoneFloorItemName) return stoneFloorTextureURL;
             if (itemName === boxItemName) return cubeTextureURL;
             if (itemName === appleItemName) return "https://placehold.co/100x100/ff0000/FFFFFF?text=Maçã"; // Adicionado na etapa 3
+            if (itemName === pineSeedItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Pinhão";
             if (itemName === coconutSeedItemName) return "https://placehold.co/100x100/D2B48C/FFFFFF?text=Semente+Coco";
             if (itemName === coconutItemName) return "https://placehold.co/100x100/F5F5DC/FFFFFF?text=Coco";
             return handImageURL;
@@ -2930,12 +2934,12 @@
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), floorMaterialMesh);
                 initialMass = initialFloorMass;
                 durability = floorDurability;
-            } else if (type === 'muda_arvore' || type === appleSeedItemName || type === coconutSeedItemName) {
+            } else if (type === 'muda_arvore' || type === appleSeedItemName || type === pineSeedItemName || type === coconutItemName) {
                 let treeType = 'normal';
                 if (type === appleSeedItemName) treeType = 'apple';
-                else if (type === coconutSeedItemName) treeType = 'coconut';
+                else if (type === coconutItemName) treeType = 'coconut';
 
-                const stageToUse = initialStage || ((type === appleSeedItemName || type === coconutSeedItemName) ? 'semente' : 'muda');
+                const stageToUse = initialStage || ((type === appleSeedItemName || type === pineSeedItemName || type === coconutItemName) ? 'semente' : 'muda');
                 blockBody.userData.growthStage = stageToUse; // Define antes de configurar visuals
                 blockBody.userData.treeType = treeType;
 
@@ -4562,7 +4566,7 @@
                 // O martelo foi removido temporariamente das ferramentas de destruição
                 if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === branchItemName || item.name === dirtItemName) return 'destroy';
                 // Itens de colocação
-                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === chestItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === stoneItemName) return 'place';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === chestItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === stoneItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
             }
 
@@ -5061,7 +5065,7 @@
                     if (currentBlockType === 'cob' && cobMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === 'piso' && floorMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === 'tábuas' && woodenPlankMaterialMesh) materialLoaded = true;
-                    else if ((currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName) && treeTrunkMaterialMesh && treeLeavesMaterialMesh) materialLoaded = true;
+                    else if ((currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName) && treeTrunkMaterialMesh && treeLeavesMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === 'tronco_arvore' && treeTrunkMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === stoneBlockItemName && stoneBlockMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === woodenBlockItemName && woodenBlockMaterialMesh) materialLoaded = true;
@@ -5760,7 +5764,8 @@
                                         const appleTreeIndex = appleTrees.indexOf(destroyTargetBody);
                                         if (appleTreeIndex !== -1) appleTrees.splice(appleTreeIndex, 1);
                                     } else if (treeType === 'coconut') {
-                                        createDroppableItem(position, { name: coconutSeedItemName, quantity: 1 });
+                                            // Coco é a semente de coqueiro
+                                            createDroppableItem(position, { name: coconutItemName, quantity: 1 });
                                         if (destroyTargetBody.userData.coconuts) {
                                             destroyTargetBody.userData.coconuts.forEach(cocoData => {
                                                 if (!cocoData.picked) {
@@ -5770,6 +5775,9 @@
                                         }
                                         const cocoTreeIndex = window.coconutTrees.indexOf(destroyTargetBody);
                                         if (cocoTreeIndex !== -1) window.coconutTrees.splice(cocoTreeIndex, 1);
+                                        } else if (treeType === 'normal') {
+                                            // Árvore normal dropa pinhão
+                                            createDroppableItem(position, { name: pineSeedItemName, quantity: 1 });
                                     }
                                     setTimeout(respawnTree, 100);
                                 }
@@ -6280,7 +6288,7 @@
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(woodenBlockWidth, woodenBlockHeight, woodenBlockDepth);
                         } else if (currentBlockType === stoneFloorItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(stoneFloorWidth, stoneFloorHeight, stoneFloorDepth);
-                        } else if (currentBlockType === appleSeedItemName || currentBlockType === 'muda_arvore') {
+                        } else if (currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === 'muda_arvore') {
                             const seedBaseData = treeStages['semente'];
                             ghostBlockMesh.geometry = new THREE.SphereGeometry(seedBaseData.visual.sphere.radius, 8, 8);
                         } else if (currentBlockType === 'tronco_arvore') {
@@ -6303,7 +6311,7 @@
                     else if (currentBlockType === stoneBlockItemName) currentGhostHeight = stoneBlockHeight;
                     else if (currentBlockType === woodenBlockItemName) currentGhostHeight = woodenBlockHeight;
                     else if (currentBlockType === stoneFloorItemName) currentGhostHeight = stoneFloorHeight;
-                    else if (currentBlockType === appleSeedItemName || currentBlockType === 'muda_arvore') currentGhostHeight = treeStages['semente'].visual.sphere.radius * 2;
+                    else if (currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === 'muda_arvore') currentGhostHeight = treeStages['semente'].visual.sphere.radius * 2;
                     else if (currentBlockType === 'tronco_arvore') currentGhostHeight = trunkHeight;
                     else if (currentBlockType === boxItemName) currentGhostHeight = 1;
                     else if (currentBlockType === chestItemName) currentGhostHeight = 1;
@@ -6370,7 +6378,7 @@
                                 // NOVO: Alinha a posição Y na grade, considerando a altura da superfície da ilha como a base.
                                 // Isso garante que os blocos se encaixem verticalmente.
                                 // CORREÇÃO: As sementes não devem se encaixar na grade vertical, elas devem ser colocadas no chão.
-                                if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === dirtItemName || currentBlockType === raftItemName) {
+                                if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === dirtItemName || currentBlockType === raftItemName) {
                                     placementPosition.y = basePosition.y;
                                 } else if (currentBlockType === boxItemName || currentBlockType === chestItemName) {
                                     placementPosition.y = basePosition.y;
@@ -6399,7 +6407,7 @@
                                     }
 
                                     // Se for uma muda de árvore, verifica a distância das outras árvores
-                                    if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName) {
+                                    if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName) {
                                         for (const existingBody of placedConstructionBodies) {
                                             // Verifica se o corpo existente é uma árvore em qualquer estágio de crescimento
                                             // (muda, media ou arvore_adulta)
@@ -6468,9 +6476,16 @@
             const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
             const isInWater = playerBottomY < waterLevel && hasWaterAt(playerBody.position.x, playerBody.position.z);
 
-            // Lógica de agachamento e mergulho
+            // Lógica de agachamento e mergulho OU Plantar
             if (keysPressed['c']) {
-                if (!isCrouching && !isInWater) { // Agachar em terra
+                const heldItem = beltItems[selectedSlotIndex];
+                const isHoldingSeed = heldItem && (heldItem.name === pineSeedItemName || heldItem.name === appleSeedItemName || heldItem.name === coconutItemName);
+
+                if (isHoldingSeed && ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
+                    // Tenta plantar se estiver segurando semente e a mira estiver num lugar válido
+                    placeBlock(heldItem, selectedSlotIndex);
+                    keysPressed['c'] = false; // Reset para evitar repetição instantânea se não for event.repeat
+                } else if (!isCrouching && !isInWater) { // Agachar em terra
                     isCrouching = true;
                     playerBody.removeShape(originalPlayerShape);
                     playerBody.addShape(crouchPlayerShape);
