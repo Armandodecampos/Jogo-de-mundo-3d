@@ -841,6 +841,8 @@
 
         // Variáveis de estado do jogo
         let gamePaused = false; // Novo: Flag para pausar/retomar a lógica do jogo
+        let isClimbing = false; // NOVO: Flag para modo de escalada
+        let climbingTreeBody = null; // NOVO: Referência à árvore que está sendo escalada
         let isDrivingRaft = false; // NOVO: Flag para modo de direção da jangada
         let currentRaftBody = null; // NOVO: Referência à jangada atual sendo dirigida
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
@@ -2810,9 +2812,6 @@
                         const segGeom = new THREE.CylinderGeometry(trunkRadius * (1 - i * 0.02), trunkRadius * (1 - (i + 1) * 0.02), trunkHeight / segments, 8);
                         const segMesh = new THREE.Mesh(segGeom, treeTrunkMaterialMesh);
                         segMesh.position.y = baseY + (i + 0.5) * (trunkHeight / segments);
-                        // Pequena curvatura
-                        segMesh.position.x = Math.pow(i / segments, 2) * 0.5;
-                        segMesh.rotation.z = (i / segments) * 0.1;
                         segMesh.castShadow = true;
                         segMesh.receiveShadow = true;
                         treeGroup.add(segMesh);
@@ -2832,7 +2831,7 @@
                         frondPivot.add(frondMesh);
                         palmGroup.add(frondPivot);
                     }
-                    palmGroup.position.set(0.5, baseY + trunkHeight, 0);
+                    palmGroup.position.set(0, baseY + trunkHeight, 0);
                     treeGroup.add(palmGroup);
 
                     if (blockBody.userData.growthStage === 'arvore_adulta') {
@@ -4325,6 +4324,36 @@
                 if (event.key.toLowerCase() === 'g') {
                     if (event.repeat) return;
                     collectObject();
+                }
+
+                // NOVO: Toggle escalada com 'P'
+                if (event.key.toLowerCase() === 'p') {
+                    if (event.repeat) return;
+                    if (isClimbing) {
+                        isClimbing = false;
+                        climbingTreeBody = null;
+                    } else if (!isDrivingRaft) {
+                        // Tenta encontrar uma árvore para escalar
+                        raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                        const intersects = raycaster.intersectObjects(raycastTargets, true);
+                        for (const intersect of intersects) {
+                            if (intersect.distance > pickUpDistance) continue;
+                            let body = null;
+                            let current = intersect.object;
+                            while (current) {
+                                if (current.userData && current.userData.physicsBody) {
+                                    body = current.userData.physicsBody;
+                                    break;
+                                }
+                                current = current.parent;
+                            }
+                            if (body && body.userData && body.userData.growthStage) {
+                                isClimbing = true;
+                                climbingTreeBody = body;
+                                break;
+                            }
+                        }
+                    }
                 }
 
                 // NOVO: Seleção de slots com Q e E
@@ -6129,7 +6158,7 @@
                             // Adiciona dicas contextuais para ferramentas
                             if (body.userData.isDestructible) {
                                 if (body.userData.growthStage) {
-                                    interactionHintText = "(Botão Esq.) Cortar Árvore";
+                                    interactionHintText = "(Botão Esq.) Cortar Árvore\n(P) Escalar";
                                 } else if (body.userData.type === stoneBlockItemName || body.userData.type === stoneFloorItemName) {
                                     interactionHintText = "(Botão Esq.) Minerar Pedra";
                                 } else {
@@ -6658,7 +6687,34 @@
                 currentRaftBody = null;
             }
 
-            if (isDrivingRaft && currentRaftBody) {
+            if (isClimbing && climbingTreeBody) {
+                // Se a árvore sumir (destruída)
+                if (!placedConstructionBodies.includes(climbingTreeBody)) {
+                    isClimbing = false;
+                    climbingTreeBody = null;
+                } else {
+                    // Mantém o jogador preso à árvore horizontalmente
+                    playerBody.position.x = climbingTreeBody.position.x;
+                    playerBody.position.z = climbingTreeBody.position.z;
+
+                    // Movimento vertical com W e S
+                    let verticalMove = 0;
+                    if (keysPressed['w']) verticalMove = walkSpeed * 1.5;
+                    if (keysPressed['s']) verticalMove = -walkSpeed * 1.5;
+
+                    playerBody.velocity.set(0, verticalMove, 0);
+
+                    // Impede queda por gravidade
+                    playerBody.applyForce(new CANNON.Vec3(0, Math.abs(world.gravity.y) * playerBody.mass, 0));
+
+                    // Soltar se pular
+                    if (keysPressed[' ']) {
+                        isClimbing = false;
+                        climbingTreeBody = null;
+                        playerBody.applyImpulse(new CANNON.Vec3(0, 400 * 3, 0));
+                    }
+                }
+            } else if (isDrivingRaft && currentRaftBody) {
                 // Sincroniza o jogador com a jangada
                 playerBody.position.set(
                     currentRaftBody.position.x,
@@ -7169,6 +7225,7 @@
             }
 
             isWorldReady = true; window.isWorldReady = true;
+            Object.defineProperty(window, 'isClimbing', { get: () => isClimbing, set: (v) => { isClimbing = v; } });
             window.useInteractionHints = useInteractionHints;
             window.collectibleBoxes = collectibleBoxes;
             Object.defineProperty(window, 'isDestroying', { get: () => isDestroying });
