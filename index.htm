@@ -2394,7 +2394,12 @@
                         const distFromCenter = Math.sqrt(x * x + z * z);
                         let type = 'muda_arvore';
                         if (distFromCenter > grassRadius && distFromCenter < beachRadius) {
-                            type = coconutSeedItemName;
+                            // Reduz a densidade de coqueiros para deixar apenas alguns
+                            if (Math.random() < 0.05) {
+                                type = coconutSeedItemName;
+                            } else {
+                                continue;
+                            }
                         } else if (Math.random() < 0.03) {
                             type = appleSeedItemName;
                         }
@@ -2423,7 +2428,12 @@
                         const distFromCenter = Math.sqrt(x * x + z * z);
                         let type = 'muda_arvore';
                         if (distFromCenter > grassRadius && distFromCenter < beachRadius) {
-                            type = coconutSeedItemName;
+                            // Reduz a densidade de coqueiros para deixar apenas alguns
+                            if (Math.random() < 0.05) {
+                                type = coconutSeedItemName;
+                            } else {
+                                continue;
+                            }
                         } else if (Math.random() < 0.03) {
                             type = appleSeedItemName;
                         }
@@ -2789,6 +2799,9 @@
                     // Visual de Coqueiro
                     const trunkRadius = stageData.visual.trunk.radius;
                     const trunkHeight = stageData.visual.trunk.height;
+                    // O baseY garante que os segmentos do tronco e a copa comecem na base do corpo de física,
+                    // que por sua vez está alinhado com o terreno. Isso evita que a árvore pareça flutuar.
+                    const baseY = stageData.visual.trunk.yOffsetInGroup - (trunkHeight / 2);
 
                     // Tronco segmentado (curvado levemente)
                     treeGroup.remove(trunkMesh); // Remove o tronco padrão
@@ -2796,7 +2809,7 @@
                     for (let i = 0; i < segments; i++) {
                         const segGeom = new THREE.CylinderGeometry(trunkRadius * (1 - i * 0.02), trunkRadius * (1 - (i + 1) * 0.02), trunkHeight / segments, 8);
                         const segMesh = new THREE.Mesh(segGeom, treeTrunkMaterialMesh);
-                        segMesh.position.y = (i + 0.5) * (trunkHeight / segments);
+                        segMesh.position.y = baseY + (i + 0.5) * (trunkHeight / segments);
                         // Pequena curvatura
                         segMesh.position.x = Math.pow(i / segments, 2) * 0.5;
                         segMesh.rotation.z = (i / segments) * 0.1;
@@ -2819,7 +2832,7 @@
                         frondPivot.add(frondMesh);
                         palmGroup.add(frondPivot);
                     }
-                    palmGroup.position.set(0.5, trunkHeight, 0);
+                    palmGroup.position.set(0.5, baseY + trunkHeight, 0);
                     treeGroup.add(palmGroup);
 
                     if (blockBody.userData.growthStage === 'arvore_adulta') {
@@ -2837,7 +2850,7 @@
                             const cocoMesh = new THREE.Mesh(coconutGeom, coconutMat);
                             cocoMesh.position.set(
                                 Math.cos(cocoData.angle) * trunkRadius * 1.5 + 0.5,
-                                trunkHeight - trunkRadius,
+                                baseY + trunkHeight - trunkRadius,
                                 Math.sin(cocoData.angle) * trunkRadius * 1.5
                             );
                             cocoMesh.castShadow = true;
@@ -6860,6 +6873,7 @@
                         if (nextGrowthStageName === 'arvore_adulta') {
                             blockBody.userData.isFullyGrown = true;
                             if (treeType === 'apple') appleTrees.push(blockBody);
+                            else if (treeType === 'coconut') window.coconutTrees.push(blockBody);
                         }
                         blockBody.wakeUp(); // Ensure the body is active after shape changes
                     }
