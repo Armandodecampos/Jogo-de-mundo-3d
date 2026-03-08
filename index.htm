@@ -2810,11 +2810,11 @@
                     // que por sua vez está alinhado com o terreno. Isso evita que a árvore pareça flutuar.
                     const baseY = stageData.visual.trunk.yOffsetInGroup - (trunkHeight / 2);
 
-                    // Tronco segmentado (curvado levemente)
+                    // Tronco reto (conforme pedido do usuário)
                     treeGroup.remove(trunkMesh); // Remove o tronco padrão
                     const segments = 10;
                     for (let i = 0; i < segments; i++) {
-                        const segGeom = new THREE.CylinderGeometry(trunkRadius * (1 - i * 0.02), trunkRadius * (1 - (i + 1) * 0.02), trunkHeight / segments, 8);
+                        const segGeom = new THREE.CylinderGeometry(trunkRadius, trunkRadius, trunkHeight / segments, 8);
                         const segMesh = new THREE.Mesh(segGeom, treeTrunkMaterialMesh);
                         segMesh.position.y = baseY + (i + 0.5) * (trunkHeight / segments);
                         segMesh.castShadow = true;
@@ -2853,7 +2853,7 @@
                             const cocoData = blockBody.userData.coconuts[i];
                             const cocoMesh = new THREE.Mesh(coconutGeom, coconutMat);
                             cocoMesh.position.set(
-                                Math.cos(cocoData.angle) * trunkRadius * 1.5 + 0.5,
+                                Math.cos(cocoData.angle) * trunkRadius * 1.5,
                                 baseY + trunkHeight - trunkRadius,
                                 Math.sin(cocoData.angle) * trunkRadius * 1.5
                             );
@@ -2960,9 +2960,9 @@
 
                 initialMass = initialTreeSaplingMass;
                 durability = stageData.durability || treeSaplingDurability;
-                width = stageData.overallPhysicsHeight;
+                width = stageData.visual.trunk ? stageData.visual.trunk.radius * 2 : 0.2;
                 height = stageData.overallPhysicsHeight;
-                depth = stageData.overallPhysicsHeight;
+                depth = stageData.visual.trunk ? stageData.visual.trunk.radius * 2 : 0.2;
             } else if (type === 'tronco_arvore') { // NOVO: Bloco de tronco de árvore
                 width = trunkRadius * 2; // Diâmetro para largura
                 height = trunkHeight;
@@ -3023,8 +3023,8 @@
                 type: type,
                 dimensions: { width, height, depth },
                 initialDimensions: { width, height, depth },
-                growthStage: (type === 'muda_arvore' || type === appleSeedItemName) ? blockBody.userData.growthStage : null,
-                growthStartTime: (type === 'muda_arvore' || type === appleSeedItemName) ? world.time : null,
+                growthStage: (type === 'muda_arvore' || type === appleSeedItemName || type === pineSeedItemName || type === coconutItemName || type === coconutSeedItemName) ? blockBody.userData.growthStage : null,
+                growthStartTime: (type === 'muda_arvore' || type === appleSeedItemName || type === pineSeedItemName || type === coconutItemName || type === coconutSeedItemName) ? world.time : null,
                 isFullyGrown: (initialStage === 'arvore_adulta'),
                 randomizedDimensions: randomizedTreeDimensions,
                 treeType: blockBody.userData.treeType || 'normal',
@@ -4355,6 +4355,7 @@
                             if (body && body.userData && body.userData.growthStage) {
                                 isClimbing = true;
                                 climbingTreeBody = body;
+                                stopDestruction(); // Interrompe a destruição ao começar a escalar
 
                                 // Calcula o offset para ficar encostado na árvore, não dentro
                                 const treePos = new THREE.Vector3(body.position.x, playerBody.position.y, body.position.z);
@@ -4790,7 +4791,15 @@
                         const isStone = [stoneBlockItemName, stoneFloorItemName].includes(targetType);
                         const isEarth = [cobItemName, floorItemName].includes(targetType);
 
-                        if (isTree || isWooden) materialType = 'wood';
+                    if (isTree || isWooden) {
+                        materialType = 'wood';
+                        // NOVO: Restrição estrita de machado para árvores
+                        if (isTree && heldItemName !== axeItemName) {
+                            isDestroying = false;
+                            progressContainer.style.display = 'none';
+                            return;
+                        }
+                    }
                         else if (isStone) materialType = 'stone';
                         else if (isEarth) materialType = 'earth';
                         else materialType = 'other';
