@@ -1131,16 +1131,14 @@
         const treeStages = {
             'semente': {
                 physics: {
-                    // A semente quase não tem corpo de física, apenas uma pequena caixa para detecção
-                    trunk: { width: 0.1, height: 0.1, depth: 0.1, yOffset: 0 },
-                    leaves: { width: 0, height: 0, depth: 0, yOffset: 0 } // Sem folhas
+                    trunk: { width: 0.4, height: 0.2, depth: 0.4, yOffset: 0 },
+                    leaves: { width: 0, height: 0, depth: 0, yOffset: 0 }
                 },
                 visual: {
-                    // O visual da semente agora é uma esfera
-                    sphere: { radius: 0.1 }
+                    mound: { radius: 0.2, height: 0.15 }
                 },
-                overallPhysicsHeight: 0.1,
-                growthTime: 10 // Tempo em segundos para crescer para a próxima fase
+                overallPhysicsHeight: 0.2,
+                growthTime: 10
             },
             'muda': {
                 physics: {
@@ -2734,11 +2732,13 @@
             }
             let mesh;
             if (blockBody.userData.growthStage === 'semente') {
-                const seedMaterial = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
-                const seedGeometry = new THREE.SphereGeometry(stageData.visual.sphere.radius, 8, 8);
-                const seedMesh = new THREE.Mesh(seedGeometry, seedMaterial);
-                seedMesh.castShadow = true;
-                mesh = seedMesh;
+                const moundMaterial = new THREE.MeshStandardMaterial({ color: 0x5C4033 }); // Brown dirt color
+                const moundGeometry = new THREE.ConeGeometry(stageData.visual.mound.radius, stageData.visual.mound.height, 8);
+                const moundMesh = new THREE.Mesh(moundGeometry, moundMaterial);
+                moundMesh.position.y = -stageData.overallPhysicsHeight / 2 + stageData.visual.mound.height / 2;
+                moundMesh.castShadow = true;
+                moundMesh.receiveShadow = true;
+                mesh = moundMesh;
             } else {
                 const treeGroup = new THREE.Group();
                 treeGroup.userData.treeBody = blockBody;
@@ -2949,8 +2949,8 @@
                 const stageData = randomizedTreeDimensions;
 
                 if (stageToUse === 'semente') {
-                    // Posiciona a semente sobre o chão
-                    blockBody.position.y = position.y + stageData.visual.sphere.radius;
+                    // Posiciona o montinho sobre o chão
+                    blockBody.position.y = position.y + stageData.visual.mound.height / 2;
                 } else {
                     // Garante que a árvore não fique enterrada (base no chão)
                     blockBody.position.y = position.y + stageData.overallPhysicsHeight / 2;
@@ -6489,7 +6489,12 @@
             // Lógica de agachamento e mergulho OU Plantar
             if (keysPressed['c']) {
                 const heldItem = beltItems[selectedSlotIndex];
-                const isHoldingSeed = heldItem && (heldItem.name === pineSeedItemName || heldItem.name === appleSeedItemName || heldItem.name === coconutItemName);
+                const isHoldingSeed = heldItem && (
+                    heldItem.name === pineSeedItemName ||
+                    heldItem.name === appleSeedItemName ||
+                    heldItem.name === coconutItemName ||
+                    heldItem.name === coconutSeedItemName
+                );
 
                 if (isHoldingSeed && ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
                     // Tenta plantar se estiver segurando semente e a mira estiver num lugar válido
@@ -6931,7 +6936,15 @@
                 const blockBody = placedConstructionBodies[i];
                 const treeMesh = placedConstructionMeshes[i];
 
-                if ((blockBody.userData.type === 'muda_arvore' || blockBody.userData.type === appleSeedItemName) && !blockBody.userData.isFullyGrown) {
+                const isPlantableSeed = [
+                    'muda_arvore',
+                    appleSeedItemName,
+                    pineSeedItemName,
+                    coconutItemName,
+                    coconutSeedItemName
+                ].includes(blockBody.userData.type);
+
+                if (isPlantableSeed && !blockBody.userData.isFullyGrown) {
                     const treeType = blockBody.userData.treeType || 'normal';
                     const currentGrowthStageName = blockBody.userData.growthStage;
                     const currentBaseStageData = treeStages[currentGrowthStageName];
