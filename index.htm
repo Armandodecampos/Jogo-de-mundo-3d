@@ -938,7 +938,7 @@
         const itemDisplayNames = {
             [handItemName]: 'Mão',
             [capimItemName]: 'Capim',
-            [appleSeedItemName]: 'Semente de Macieira',
+            [appleSeedItemName]: 'Semente de Maçã',
             [appleItemName]: 'Maçã',
             [pineSeedItemName]: 'Pinhão',
             [coconutSeedItemName]: 'Semente de Coqueiro',
@@ -2963,6 +2963,7 @@
                 width = stageData.visual.trunk ? stageData.visual.trunk.radius * 2 : 0.2;
                 height = stageData.overallPhysicsHeight;
                 depth = stageData.visual.trunk ? stageData.visual.trunk.radius * 2 : 0.2;
+                blockBody.userData.dimensions = { width, height, depth };
             } else if (type === 'tronco_arvore') { // NOVO: Bloco de tronco de árvore
                 width = trunkRadius * 2; // Diâmetro para largura
                 height = trunkHeight;
@@ -5735,10 +5736,21 @@
                     else {
                         let position;
                         if (destroyTargetBody) {
-                             position = destroyTargetBody.position.clone();
+                            position = destroyTargetBody.position.clone();
                             const bodyIndex = placedConstructionBodies.indexOf(destroyTargetBody);
                             if (bodyIndex !== -1) {
-                                if (destroyTargetBody.userData.isRaft) {
+                                const isTree = !!destroyTargetBody.userData.growthStage;
+                                const treeType = destroyTargetBody.userData.treeType || 'normal';
+                                const isChest = !!destroyTargetBody.userData.isChest;
+                                const isRaft = !!destroyTargetBody.userData.isRaft;
+
+                                // Se for uma árvore, ajusta a posição de drop para o nível do chão
+                                let dropPosition = position.clone();
+                                if (isTree && destroyTargetBody.userData.dimensions) {
+                                    dropPosition.y -= destroyTargetBody.userData.dimensions.height / 2 - 0.5;
+                                }
+
+                                if (isRaft) {
                                     const raftIdx = raftBodies.indexOf(destroyTargetBody);
                                     if (raftIdx !== -1) raftBodies.splice(raftIdx, 1);
                                     if (currentRaftBody === destroyTargetBody) {
@@ -5746,57 +5758,54 @@
                                         currentRaftBody = null;
                                     }
                                 }
-                                 // NOVO: Lógica para dropar itens do baú
-                                if (destroyTargetBody.userData.isChest) {
-                                    const chestInventory = destroyTargetBody.userData.inventory;
-                                    chestInventory.forEach(item => {
-                                        if (item) {
-                                            // Dropar cada item stack como um único objeto no mundo
-                                            createDroppableItem(position, item);
-                                        }
-                                    });
-                                }
-                                // NOVO: Se for uma árvore, dropa galhos
-                                if (destroyTargetBody.userData.growthStage) {
-                                    const treeType = destroyTargetBody.userData.treeType || 'normal';
-                                    // Dropa os itens no chão em vez de ir direto pro inventário
-                                    createDroppableItem(position, { name: branchItemName, quantity: 3 });
 
+                                // Salva os itens que devem ser dropados ANTES de remover o corpo
+                                let itemsToDrop = [];
+                                if (isChest) {
+                                    const chestInventory = destroyTargetBody.userData.inventory;
+                                    chestInventory.forEach(item => { if (item) itemsToDrop.push(item); });
+                                }
+
+                                if (isTree) {
+                                    itemsToDrop.push({ name: branchItemName, quantity: 3 });
                                     if (treeType === 'apple') {
-                                        createDroppableItem(position, { name: appleSeedItemName, quantity: 1 });
+                                        itemsToDrop.push({ name: appleSeedItemName, quantity: 1 });
                                         if (destroyTargetBody.userData.apples) {
                                             destroyTargetBody.userData.apples.forEach(appleData => {
-                                                if (!appleData.picked) {
-                                                    createDroppableItem(position, { name: appleItemName, quantity: 1 });
-                                                }
+                                                if (!appleData.picked) itemsToDrop.push({ name: appleItemName, quantity: 1 });
                                             });
                                         }
                                         const appleTreeIndex = appleTrees.indexOf(destroyTargetBody);
                                         if (appleTreeIndex !== -1) appleTrees.splice(appleTreeIndex, 1);
                                     } else if (treeType === 'coconut') {
-                                            // Coco é a semente de coqueiro
-                                            createDroppableItem(position, { name: coconutItemName, quantity: 1 });
+                                        itemsToDrop.push({ name: coconutItemName, quantity: 1 }); // Semente/Fruto
                                         if (destroyTargetBody.userData.coconuts) {
                                             destroyTargetBody.userData.coconuts.forEach(cocoData => {
-                                                if (!cocoData.picked) {
-                                                    createDroppableItem(position, { name: coconutItemName, quantity: 1 });
-                                                }
+                                                if (!cocoData.picked) itemsToDrop.push({ name: coconutItemName, quantity: 1 });
                                             });
                                         }
                                         const cocoTreeIndex = window.coconutTrees.indexOf(destroyTargetBody);
                                         if (cocoTreeIndex !== -1) window.coconutTrees.splice(cocoTreeIndex, 1);
-                                        } else if (treeType === 'normal') {
-                                            // Árvore normal dropa pinhão
-                                            createDroppableItem(position, { name: pineSeedItemName, quantity: 1 });
+                                    } else if (treeType === 'normal') {
+                                        itemsToDrop.push({ name: pineSeedItemName, quantity: 1 });
                                     }
-                                    setTimeout(respawnTree, 100);
                                 }
+
+                                // Remove o corpo e a malha PRIMEIRO para evitar colisões indesejadas com os itens dropados
                                 world.removeBody(destroyTargetBody);
-                                // IMPORTANTE: Remove as malhas ANTES de remover do array de corpos para manter o índice correto
                                 scene.remove(placedConstructionMeshes[bodyIndex]);
                                 placedConstructionBodies.splice(bodyIndex, 1);
                                 placedConstructionMeshes.splice(bodyIndex, 1);
                                 raycastTargetsNeedUpdate = true;
+
+                                // Agora dropa os itens
+                                itemsToDrop.forEach(item => {
+                                    createDroppableItem(dropPosition, item);
+                                });
+
+                                if (isTree) {
+                                    setTimeout(respawnTree, 100);
+                                }
                             }
                         }
                         updateBackpackDisplay();
