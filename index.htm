@@ -4332,6 +4332,22 @@
                     collectObject();
                 }
 
+                // NOVO: Plantar com 'L'
+                if (event.key.toLowerCase() === 'l') {
+                    if (event.repeat) return;
+                    const heldItem = beltItems[selectedSlotIndex];
+                    const isHoldingSeed = heldItem && (
+                        heldItem.name === pineSeedItemName ||
+                        heldItem.name === appleSeedItemName ||
+                        heldItem.name === coconutItemName ||
+                        heldItem.name === coconutSeedItemName
+                    );
+
+                    if (isHoldingSeed && ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
+                        placeBlock(heldItem, selectedSlotIndex);
+                    }
+                }
+
                 // NOVO: Toggle escalada com 'P'
                 if (event.key.toLowerCase() === 'p') {
                     if (event.repeat) return;
@@ -6226,7 +6242,17 @@
                                     break;
                                 }
                             }
-                            if (nearCapim) {
+                            const heldItem = beltItems[selectedSlotIndex];
+                            const isHoldingSeed = heldItem && (
+                                heldItem.name === pineSeedItemName ||
+                                heldItem.name === appleSeedItemName ||
+                                heldItem.name === coconutItemName ||
+                                heldItem.name === coconutSeedItemName
+                            );
+
+                            if (isHoldingSeed && ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
+                                interactionHintText = "(L) Plantar";
+                            } else if (nearCapim) {
                                 interactionHintText = "(Botão Esq.) Colher Grama";
                             } else {
                                 const hitPoint = intersect.point;
@@ -6495,21 +6521,9 @@
             const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
             const isInWater = playerBottomY < waterLevel && hasWaterAt(playerBody.position.x, playerBody.position.z);
 
-            // Lógica de agachamento e mergulho OU Plantar
+            // Lógica de agachamento e mergulho
             if (keysPressed['c']) {
-                const heldItem = beltItems[selectedSlotIndex];
-                const isHoldingSeed = heldItem && (
-                    heldItem.name === pineSeedItemName ||
-                    heldItem.name === appleSeedItemName ||
-                    heldItem.name === coconutItemName ||
-                    heldItem.name === coconutSeedItemName
-                );
-
-                if (isHoldingSeed && ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
-                    // Tenta plantar se estiver segurando semente e a mira estiver num lugar válido
-                    placeBlock(heldItem, selectedSlotIndex);
-                    keysPressed['c'] = false; // Reset para evitar repetição instantânea se não for event.repeat
-                } else if (!isCrouching && !isInWater) { // Agachar em terra
+                if (!isCrouching && !isInWater) { // Agachar em terra
                     isCrouching = true;
                     playerBody.removeShape(originalPlayerShape);
                     playerBody.addShape(crouchPlayerShape);
