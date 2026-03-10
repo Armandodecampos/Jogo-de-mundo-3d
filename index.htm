@@ -1194,29 +1194,33 @@
 
             const randomized = JSON.parse(JSON.stringify(baseStageData)); // Deep copy
 
+            let finalTrunkHeight = m.trunkHeight;
+            let finalTrunkRadius = m.trunkRadius;
+            let finalLeavesRadius = m.leavesRadius;
+
             // Aplica escala da macieira: tronco menor, copa maior relativa ao tronco
             if (treeType === 'apple') {
-                m.trunkHeight *= 0.4;
-                m.trunkRadius *= 0.7;
-                m.leavesRadius *= 1.2;
+                finalTrunkHeight *= 0.4;
+                finalTrunkRadius *= 0.7;
+                finalLeavesRadius *= 1.2;
             } else if (treeType === 'coconut') {
-                m.trunkHeight *= 1.5;
-                m.trunkRadius *= 0.5;
-                m.leavesRadius *= 1.1;
+                finalTrunkHeight *= 1.5;
+                finalTrunkRadius *= 0.5;
+                finalLeavesRadius *= 1.1;
             }
 
             // Apply factors
-            randomized.physics.trunk.height *= m.trunkHeight;
-            randomized.physics.trunk.width *= m.trunkRadius;
-            randomized.physics.trunk.depth *= m.trunkRadius;
-            randomized.visual.trunk.height *= m.trunkHeight;
-            randomized.visual.trunk.radius *= m.trunkRadius;
+            randomized.physics.trunk.height *= finalTrunkHeight;
+            randomized.physics.trunk.width *= finalTrunkRadius;
+            randomized.physics.trunk.depth *= finalTrunkRadius;
+            randomized.visual.trunk.height *= finalTrunkHeight;
+            randomized.visual.trunk.radius *= finalTrunkRadius;
 
             // Apply factors to leaves
-            randomized.physics.leaves.width *= m.leavesRadius;
-            randomized.physics.leaves.height *= m.leavesRadius;
-            randomized.physics.leaves.depth *= m.leavesRadius;
-            randomized.visual.leaves.radius *= m.leavesRadius;
+            randomized.physics.leaves.width *= finalLeavesRadius;
+            randomized.physics.leaves.height *= finalLeavesRadius;
+            randomized.physics.leaves.depth *= finalLeavesRadius;
+            randomized.visual.leaves.radius *= finalLeavesRadius;
 
             // Recalculate yOffsets and overallPhysicsHeight based on randomized dimensions
             const trunkHeightVisual = randomized.visual.trunk.height;
@@ -7033,6 +7037,7 @@
                             if (treeType === 'apple') appleTrees.push(blockBody);
                             else if (treeType === 'coconut') window.coconutTrees.push(blockBody);
                         }
+                        raycastTargetsNeedUpdate = true;
                         blockBody.wakeUp(); // Ensure the body is active after shape changes
                     }
                 }
