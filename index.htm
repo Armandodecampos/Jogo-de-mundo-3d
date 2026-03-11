@@ -3884,7 +3884,9 @@
                                                     inferiorColor = vec3(0.4, 0.3, 0.2); // Solid dirt
                                                 }
 
-                                                float dist = length(vWorldPosition.xz);
+                                                // Calcula distância relativa ao centro do bloco (toroidal) para uniformidade no oceano
+                                                vec2 wrappedPos = mod(vWorldPosition.xz + 900.0, 1800.0) - 900.0;
+                                                float dist = length(wrappedPos);
 
                                                 // Mistura entre areia e grama baseada no raio (praia larga)
                                                 float sandToGrassBlend = 1.0 - smoothstep(uGrassRadius, uBeachRadius, dist);
@@ -3959,8 +3961,10 @@
                     '#include <begin_vertex>',
                     `
                     #include <begin_vertex>
-                    // Efeito de ondulação suave na água
-                    float wave = sin(position.x * 0.05 + uTime * 2.0) * 0.15 + cos(position.z * 0.05 + uTime * 1.5) * 0.15;
+                    // Calcula posição global para ondas contínuas entre blocos
+                    vec4 worldPos = modelMatrix * vec4(position, 1.0);
+                    // Efeito de ondulação suave na água usando coordenadas mundiais
+                    float wave = sin(worldPos.x * 0.05 + uTime * 2.0) * 0.15 + cos(worldPos.z * 0.05 + uTime * 1.5) * 0.15;
                     transformed.y += wave;
                     `
                 );
@@ -5867,6 +5871,168 @@
             // Define currentPlayerRadius no início da função animate
             const currentPlayerRadius = isCrouching ? crouchRadius : playerRadius;
 
+            // --- CÁLCULO DE ENTRADAS (INPUTS) ANTES DO STEP DE FÍSICA ---
+
+            // Sincroniza a rotação horizontal do corpo do jogador com a rotação da câmera ANTES de calcular movimento
+            playerBody.quaternion.setFromEuler(0, camera.rotation.y, 0);
+
+            // Lógica de movimento do jogador com base nas teclas pressionadas
+            let currentMoveSpeed = walkSpeed;
+
+            // Aplica penalidade de peso
+            const weightFactor = Math.max(0, 1 - (totalWeight / maxWeight));
+            currentMoveSpeed *= weightFactor;
+
+            if (keysPressed['shift']) {
+                currentMoveSpeed *= runSpeedMultiplier;
+            }
+            if (isCrouching) {
+                currentMoveSpeed *= crouchSpeedMultiplier;
+            }
+
+            const forward = new THREE.Vector3();
+            const right = new THREE.Vector3();
+            const movementVector = new THREE.Vector3(0, 0, 0);
+
+            camera.getWorldDirection(forward);
+            forward.y = 0;
+            forward.normalize();
+            right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
+
+            if (isClimbing && climbingTreeBody) {
+                // Se a árvore sumir (destruída)
+                if (!placedConstructionBodies.includes(climbingTreeBody)) {
+                    isClimbing = false;
+                    climbingTreeBody = null;
+                } else {
+                    // Mantém o jogador preso à árvore horizontalmente (usando offset para ficar fora do tronco)
+                    playerBody.position.x = climbingTreeBody.position.x + climbingOffset.x;
+                    playerBody.position.z = climbingTreeBody.position.z + climbingOffset.z;
+
+                    // Movimento vertical com W e S
+                    let verticalMove = 0;
+                    const treeHeight = climbingTreeBody.userData.dimensions ? climbingTreeBody.userData.dimensions.height : 5;
+                    const treeBaseY = climbingTreeBody.position.y - treeHeight / 2;
+                    const treeTopY = climbingTreeBody.position.y + treeHeight / 2;
+                    const playerH = isCrouching ? crouchBodyHeight : playerBodyHeight;
+
+                    if (keysPressed['w']) {
+                        // Limita a subida ao topo da árvore
+                        if (playerBody.position.y < treeTopY) {
+                            verticalMove = walkSpeed * 1.5;
+                        }
+                    }
+                    if (keysPressed['s']) {
+                        // Limita a descida ao chão
+                        if (playerBody.position.y > treeBaseY + playerH / 2) {
+                            verticalMove = -walkSpeed * 1.5;
+                        } else {
+                            // Solta automaticamente se chegar ao chão
+                            isClimbing = false;
+                            climbingTreeBody = null;
+                        }
+                    }
+
+                    playerBody.velocity.set(0, verticalMove, 0);
+
+                    // Impede queda por gravidade se estiver subindo ou parado
+                    if (verticalMove >= 0) {
+                        playerBody.applyForce(new CANNON.Vec3(0, Math.abs(world.gravity.y) * playerBody.mass, 0));
+                    }
+
+                    // Soltar se pular
+                    if (keysPressed[' ']) {
+                        isClimbing = false;
+                        climbingTreeBody = null;
+                        playerBody.applyImpulse(new CANNON.Vec3(0, 400 * 3, 0));
+                    }
+                }
+            } else if (isDrivingRaft && currentRaftBody) {
+                // Sincroniza o jogador com a jangada
+                playerBody.position.set(
+                    currentRaftBody.position.x,
+                    currentRaftBody.position.y + 0.8,
+                    currentRaftBody.position.z
+                );
+                playerBody.velocity.set(0, 0, 0); // Jogador "parado" na jangada
+
+                // Movimento da jangada
+                const raftInWater = currentRaftBody.position.y < waterLevel + 0.5 && hasWaterAt(currentRaftBody.position.x, currentRaftBody.position.z);
+
+                const speedMultiplier = raftInWater ? 1.0 : 0.15; // 85% reduction on land
+                const maxLinearSpeed = 25.0 * speedMultiplier;
+                const maxAngularSpeed = 1.5 * speedMultiplier;
+
+                let linearInput = 0;
+                if (keysPressed['w']) linearInput += 1;
+                if (keysPressed['s']) linearInput -= 1;
+
+                let angularInput = 0;
+                if (keysPressed['a']) angularInput += 1;
+                if (keysPressed['d']) angularInput -= 1;
+
+                // Forward vector from raft's quaternion (Z+ is forward)
+                const forwardRaft = new CANNON.Vec3(0, 0, 1);
+                currentRaftBody.quaternion.vmult(forwardRaft, forwardRaft);
+
+                const targetVelocityX = forwardRaft.x * linearInput * maxLinearSpeed;
+                const targetVelocityZ = forwardRaft.z * linearInput * maxLinearSpeed;
+                const targetAngularVelocityY = angularInput * maxAngularSpeed;
+
+                // Suavização do movimento (lerp) para maior fluidez
+                const lerpFactor = 0.02;
+                currentRaftBody.velocity.x += (targetVelocityX - currentRaftBody.velocity.x) * lerpFactor;
+                currentRaftBody.velocity.z += (targetVelocityZ - currentRaftBody.velocity.z) * lerpFactor;
+                currentRaftBody.angularVelocity.y += (targetAngularVelocityY - currentRaftBody.angularVelocity.y) * lerpFactor;
+
+                // Manual angular damping for smoother rotation stop
+                if (angularInput === 0) {
+                    currentRaftBody.angularVelocity.y *= 0.95;
+                }
+
+                if (linearInput !== 0 || angularInput !== 0) {
+                    currentRaftBody.allowSleep = false;
+                    currentRaftBody.wakeUp();
+                }
+            } else if (keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d']) {
+                if (keysPressed['w']) movementVector.add(forward);
+                if (keysPressed['s']) movementVector.sub(forward);
+                if (keysPressed['a']) movementVector.sub(right);
+                if (keysPressed['d']) movementVector.add(right);
+
+                const normalizedMovementVector = movementVector.clone().normalize();
+
+                // Calculate desired velocity
+                const desiredVelocity = new CANNON.Vec3(
+                    normalizedMovementVector.x * currentMoveSpeed,
+                    playerBody.velocity.y, // Maintain current vertical velocity
+                    normalizedMovementVector.z * currentMoveSpeed
+                );
+
+                // Calculate velocity difference
+                const velocityDifference = new CANNON.Vec3();
+                desiredVelocity.vsub(playerBody.velocity, velocityDifference);
+
+                // Apply impulse to reach desired velocity
+                const impulse = new CANNON.Vec3(
+                    playerBody.mass * velocityDifference.x,
+                    playerBody.mass * velocityDifference.y,
+                    playerBody.mass * velocityDifference.z
+                );
+                playerBody.applyImpulse(impulse);
+
+                playerBody.allowSleep = false; // Player is moving, keep active
+            } else {
+                // If no movement keys are pressed, apply a small damping to stop horizontal movement
+                playerBody.velocity.x *= 0.9;
+                playerBody.velocity.z *= 0.9;
+                if (pickedObjectBody === null && Math.abs(playerBody.velocity.y) < 0.1) {
+                    playerBody.allowSleep = true;
+                } else {
+                    playerBody.allowSleep = false;
+                }
+            }
+
             // --- SINCRONIZAÇÃO E WRAPPING ANTES DO STEP DE FÍSICA ---
             // Aplica o envolvimento ao corpo de física do jogador
             wrapObject(playerBody, worldSize);
@@ -6718,32 +6884,6 @@
                 minuteHandElement.style.transform = `rotate(${minuteAngle}deg)`;
             }
 
-            // Sincroniza a rotação horizontal do corpo do jogador com a rotação da câmera
-            playerBody.quaternion.setFromEuler(0, camera.rotation.y, 0);
-
-            // Lógica de movimento do jogador com base nas teclas pressionadas
-            let currentMoveSpeed = walkSpeed;
-
-            // Aplica penalidade de peso
-            const weightFactor = Math.max(0, 1 - (totalWeight / maxWeight));
-            currentMoveSpeed *= weightFactor;
-
-            if (keysPressed['shift']) {
-                currentMoveSpeed *= runSpeedMultiplier;
-            }
-            if (isCrouching) {
-                currentMoveSpeed *= crouchSpeedMultiplier;
-            }
-
-            const forward = new THREE.Vector3();
-            const right = new THREE.Vector3();
-            const movementVector = new THREE.Vector3(0, 0, 0);
-
-            camera.getWorldDirection(forward);
-            forward.y = 0;
-            forward.normalize();
-            right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
-
             // Lógica de física da água e mergulho
             if (isInWater && !isWaterJumping) {
                 // Lógica de Mergulho: Se 'c' for pressionado, define uma velocidade para baixo
@@ -6771,19 +6911,6 @@
             }
 
 
-            if (keysPressed['w']) {
-                movementVector.add(forward);
-            }
-            if (keysPressed['s']) {
-                movementVector.sub(forward);
-            }
-            if (keysPressed['a']) {
-                movementVector.sub(right);
-            }
-            if (keysPressed['d']) {
-                movementVector.add(right);
-            }
-
             // NOVO: Sair do modo de direção da jangada
             if (isDrivingRaft && keysPressed['escape']) {
                 isDrivingRaft = false;
@@ -6794,137 +6921,6 @@
                 playerBody.collisionFilterGroup = 1;
                 playerBody.collisionFilterMask = 1;
                 playerBody.wakeUp();
-            }
-
-            if (isClimbing && climbingTreeBody) {
-                // Se a árvore sumir (destruída)
-                if (!placedConstructionBodies.includes(climbingTreeBody)) {
-                    isClimbing = false;
-                    climbingTreeBody = null;
-                } else {
-                    // Mantém o jogador preso à árvore horizontalmente (usando offset para ficar fora do tronco)
-                    playerBody.position.x = climbingTreeBody.position.x + climbingOffset.x;
-                    playerBody.position.z = climbingTreeBody.position.z + climbingOffset.z;
-
-                    // Movimento vertical com W e S
-                    let verticalMove = 0;
-                    const treeHeight = climbingTreeBody.userData.dimensions ? climbingTreeBody.userData.dimensions.height : 5;
-                    const treeBaseY = climbingTreeBody.position.y - treeHeight / 2;
-                    const treeTopY = climbingTreeBody.position.y + treeHeight / 2;
-                    const playerH = isCrouching ? crouchBodyHeight : playerBodyHeight;
-
-                    if (keysPressed['w']) {
-                        // Limita a subida ao topo da árvore
-                        if (playerBody.position.y < treeTopY) {
-                            verticalMove = walkSpeed * 1.5;
-                        }
-                    }
-                    if (keysPressed['s']) {
-                        // Limita a descida ao chão
-                        if (playerBody.position.y > treeBaseY + playerH / 2) {
-                            verticalMove = -walkSpeed * 1.5;
-                        } else {
-                            // Solta automaticamente se chegar ao chão
-                            isClimbing = false;
-                            climbingTreeBody = null;
-                        }
-                    }
-
-                    playerBody.velocity.set(0, verticalMove, 0);
-
-                    // Impede queda por gravidade se estiver subindo ou parado
-                    if (verticalMove >= 0) {
-                        playerBody.applyForce(new CANNON.Vec3(0, Math.abs(world.gravity.y) * playerBody.mass, 0));
-                    }
-
-                    // Soltar se pular
-                    if (keysPressed[' ']) {
-                        isClimbing = false;
-                        climbingTreeBody = null;
-                        playerBody.applyImpulse(new CANNON.Vec3(0, 400 * 3, 0));
-                    }
-                }
-            } else if (isDrivingRaft && currentRaftBody) {
-                // Sincroniza o jogador com a jangada
-                playerBody.position.set(
-                    currentRaftBody.position.x,
-                    currentRaftBody.position.y + 0.8,
-                    currentRaftBody.position.z
-                );
-                playerBody.velocity.set(0, 0, 0); // Jogador "parado" na jangada
-
-                // Movimento da jangada
-                const raftInWater = currentRaftBody.position.y < waterLevel + 0.5 && hasWaterAt(currentRaftBody.position.x, currentRaftBody.position.z);
-
-                const speedMultiplier = raftInWater ? 1.0 : 0.15; // 85% reduction on land
-                const maxLinearSpeed = 25.0 * speedMultiplier;
-                const maxAngularSpeed = 1.5 * speedMultiplier;
-
-                let linearInput = 0;
-                if (keysPressed['w']) linearInput += 1;
-                if (keysPressed['s']) linearInput -= 1;
-
-                let angularInput = 0;
-                if (keysPressed['a']) angularInput += 1;
-                if (keysPressed['d']) angularInput -= 1;
-
-                // Forward vector from raft's quaternion (Z+ is forward)
-                const forward = new CANNON.Vec3(0, 0, 1);
-                currentRaftBody.quaternion.vmult(forward, forward);
-
-                const targetVelocityX = forward.x * linearInput * maxLinearSpeed;
-                const targetVelocityZ = forward.z * linearInput * maxLinearSpeed;
-                const targetAngularVelocityY = angularInput * maxAngularSpeed;
-
-                // Suavização do movimento (lerp) para maior fluidez
-                const lerpFactor = 0.02;
-                currentRaftBody.velocity.x += (targetVelocityX - currentRaftBody.velocity.x) * lerpFactor;
-                currentRaftBody.velocity.z += (targetVelocityZ - currentRaftBody.velocity.z) * lerpFactor;
-                currentRaftBody.angularVelocity.y += (targetAngularVelocityY - currentRaftBody.angularVelocity.y) * lerpFactor;
-
-                // Manual angular damping for smoother rotation stop
-                if (angularInput === 0) {
-                    currentRaftBody.angularVelocity.y *= 0.95;
-                }
-
-                if (linearInput !== 0 || angularInput !== 0) {
-                    currentRaftBody.allowSleep = false;
-                    currentRaftBody.wakeUp();
-                }
-            } else if (movementVector.lengthSq() > 0) {
-                const normalizedMovementVector = movementVector.clone().normalize();
-
-                // Calculate desired velocity
-                const desiredVelocity = new CANNON.Vec3(
-                    normalizedMovementVector.x * currentMoveSpeed,
-                    playerBody.velocity.y, // Maintain current vertical velocity
-                    normalizedMovementVector.z * currentMoveSpeed
-                );
-
-                // Calculate velocity difference
-                const velocityDifference = new CANNON.Vec3();
-                desiredVelocity.vsub(playerBody.velocity, velocityDifference);
-
-                // Apply impulse to reach desired velocity
-                // Impulse = mass * velocity_difference
-                const impulse = new CANNON.Vec3(
-                    playerBody.mass * velocityDifference.x,
-                    playerBody.mass * velocityDifference.y,
-                    playerBody.mass * velocityDifference.z
-                );
-                playerBody.applyImpulse(impulse);
-
-                playerBody.allowSleep = false; // Player is moving, keep active
-            } else {
-                // If no movement keys are pressed, apply a small damping to stop horizontal movement
-                playerBody.velocity.x *= 0.9;
-                playerBody.velocity.z *= 0.9;
-                // Allow the player to "sleep" (physics optimization) if stopped and not holding an object
-                if (pickedObjectBody === null && Math.abs(playerBody.velocity.y) < 0.1) {
-                    playerBody.allowSleep = true;
-                } else {
-                    playerBody.allowSleep = false; // Keep active if holding object or falling/jumping
-                }
             }
 
 
