@@ -5957,7 +5957,7 @@
                 playerBody.velocity.set(0, 0, 0); // Jogador "parado" na jangada
 
                 // Movimento da jangada
-                const raftInWater = currentRaftBody.position.y < waterLevel + 0.5 && hasWaterAt(currentRaftBody.position.x, currentRaftBody.position.z);
+                const raftInWater = currentRaftBody.position.y < waterLevel + 2.0 && hasWaterAt(currentRaftBody.position.x, currentRaftBody.position.z);
 
                 const speedMultiplier = raftInWater ? 1.0 : 0.15; // 85% reduction on land
                 const maxLinearSpeed = 25.0 * speedMultiplier;
@@ -6683,15 +6683,10 @@
 
             // NOVO: Lógica de Flutuação das Jangadas
             raftBodies.forEach(raft => {
-                // Força a jangada a ficar sempre de pé, sem inclinação nos eixos X e Z
-                raft.quaternion.x = 0;
-                raft.quaternion.z = 0;
-                raft.quaternion.normalize();
-
-                const raftInWater = raft.position.y < waterLevel + 0.6 && hasWaterAt(raft.position.x, raft.position.z);
+                const raftInWater = raft.position.y < waterLevel + 2.0 && hasWaterAt(raft.position.x, raft.position.z);
                 if (raftInWater) {
-                    const K_SPRING_RAFT = 8000; // Maior rigidez para jangada
-                    const C_DAMPING_RAFT = 500;
+                    const K_SPRING_RAFT = 15000; // Rigidez aumentada para estabilidade
+                    const C_DAMPING_RAFT = 1000; // Amortecimento aumentado para reduzir oscilações
                     const gravityMagnitude = Math.abs(world.gravity.y);
 
                     let totalMass = raft.mass;
@@ -6700,7 +6695,7 @@
                     }
 
                     const antiGravityForce = totalMass * gravityMagnitude;
-                    const targetY = waterLevel + 0.5; // Flutua na superfície
+                    const targetY = waterLevel; // Submersa até a metade para parecer mais pesada
                     const displacement = raft.position.y - targetY;
                     const springForce = -K_SPRING_RAFT * displacement;
                     const verticalVelocity = raft.velocity.y;
