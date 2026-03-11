@@ -762,7 +762,7 @@
         let originalCameraEyeLevelOffset; // Para armazenar o valor inicial
 
         // Variável para controlar se o personagem pode pular
-        let canJump = true;
+        let canJump = true; window.canJump = canJump;
         let isWaterJumping = false; // NOVO: Para controlar o salto a partir da água
 
         // Variáveis globais para dimensões do jogador e vetor de direção horizontal
@@ -3755,7 +3755,7 @@
                 }
             }
             // Define islandBody como o tile central para compatibilidade
-            window.islandBody = islandBody = islandMeshes[4].body;
+            window.islandBody = islandBody = islandMeshes[Math.floor(islandMeshes.length / 2)].body;
 
             // Inicializa o sistema de capim instanciado (Passo 3)
             const maxCapimInstances = maxCapimClusters * bladesPerCluster;
@@ -4013,9 +4013,10 @@
             playerBody.addEventListener('collide', (event) => {
                 // canJump é verdadeiro APENAS se o corpo colidido NÃO for o objeto que está sendo segurado
                 // A lista de corpos "chão" agora inclui apenas superfícies que podem ser pisadas
-                const allGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
+                const islandBodies = islandMeshes.map(m => m.body);
+                const allGroundBodies = [...islandBodies, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
                 if (event.body !== pickedObjectBody && allGroundBodies.includes(event.body)) {
-                    canJump = true;
+                    canJump = true; window.canJump = true;
                 }
             });
 
@@ -4324,10 +4325,12 @@
                     if (isDrivingRaft) {
                         isDrivingRaft = false;
                         currentRaftBody = null;
-                        // Restaura colisão do jogador
+                        // Restaura colisão e dinâmica do jogador
+                        playerBody.type = CANNON.Body.DYNAMIC;
                         playerBody.collisionResponse = true;
                         playerBody.collisionFilterGroup = 1;
                         playerBody.collisionFilterMask = 1;
+                        playerBody.wakeUp();
                         return;
                     }
                     const interacted = interact();
@@ -4428,7 +4431,7 @@
                             // Impulso de salto mais forte necessário para sair da água
                             const jumpImpulse = isInWater ? 600 * 3 : 400 * 3;
                             playerBody.applyImpulse(new CANNON.Vec3(0, jumpImpulse, 0));
-                            canJump = false; // Impede pulos múltiplos
+                            canJump = false; window.canJump = false; // Impede pulos múltiplos
                             if (isInWater) {
                                 isWaterJumping = true;
                                 // Desativa temporariamente as forças de flutuação para permitir que o salto tenha efeito
@@ -4962,7 +4965,8 @@
                         if (body.userData.isRaft && !isDrivingRaft) {
                             isDrivingRaft = true;
                             currentRaftBody = body;
-                            // Desativa colisão do jogador para não empurrar a jangada para baixo
+                            // Desativa colisão e dinâmica do jogador para não empurrar a jangada para baixo
+                            playerBody.type = CANNON.Body.KINEMATIC;
                             playerBody.collisionResponse = false;
                             playerBody.collisionFilterGroup = 0;
                             playerBody.collisionFilterMask = 0;
@@ -5785,10 +5789,12 @@
                                     if (currentRaftBody === destroyTargetBody) {
                                         isDrivingRaft = false;
                                         currentRaftBody = null;
-                                        // Restaura colisão do jogador
+                                        // Restaura colisão e dinâmica do jogador
+                                        playerBody.type = CANNON.Body.DYNAMIC;
                                         playerBody.collisionResponse = true;
                                         playerBody.collisionFilterGroup = 1;
                                         playerBody.collisionFilterMask = 1;
+                                        playerBody.wakeUp();
                                     }
                                 }
 
@@ -6383,7 +6389,8 @@
 
 
                     // Lista de todos os corpos que podem ser base para colocação
-                    const allPlaceableSurfaces = [islandBody, ...placedConstructionBodies];
+                    const islandBodies = islandMeshes.map(m => m.body);
+                    const allPlaceableSurfaces = [...islandBodies, ...placedConstructionBodies];
 
                     for (let i = 0; i < intersects.length; i++) {
                         const intersectedObject = intersects[i].object;
@@ -6523,7 +6530,7 @@
 
                     let totalMass = raft.mass;
                     if (isDrivingRaft && raft === currentRaftBody) {
-                        totalMass += 80; // Adiciona o peso do jogador (playerBody.mass)
+                        totalMass += playerBody.mass; // Adiciona o peso do jogador
                     }
 
                     const antiGravityForce = totalMass * gravityMagnitude;
@@ -6781,10 +6788,12 @@
             if (isDrivingRaft && keysPressed['escape']) {
                 isDrivingRaft = false;
                 currentRaftBody = null;
-                // Restaura colisão do jogador
+                // Restaura colisão e dinâmica do jogador
+                playerBody.type = CANNON.Body.DYNAMIC;
                 playerBody.collisionResponse = true;
                 playerBody.collisionFilterGroup = 1;
                 playerBody.collisionFilterMask = 1;
+                playerBody.wakeUp();
             }
 
             if (isClimbing && climbingTreeBody) {
@@ -6945,7 +6954,8 @@
             const rayResultStep = new CANNON.RaycastResult();
             // Verifica colisão com terreno, blocos e construções - varre de cima para baixo até o nível dos pés
             world.raycastClosest(rayOriginLow, rayTargetLow, {}, rayResultStep);
-            const stepClimbGroundBodies = [islandBody, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies, ...placedChests.map(c => c.body)];
+            const islandBodies = islandMeshes.map(m => m.body);
+            const stepClimbGroundBodies = [...islandBodies, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies, ...placedChests.map(c => c.body)];
             if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
                 hitLow = true;
             }
