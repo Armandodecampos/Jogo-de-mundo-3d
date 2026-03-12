@@ -5948,18 +5948,10 @@
                     }
                 }
             } else if (isDrivingRaft && currentRaftBody) {
-                // Sincroniza o jogador com a jangada
-                playerBody.position.set(
-                    currentRaftBody.position.x,
-                    currentRaftBody.position.y + 0.8,
-                    currentRaftBody.position.z
-                );
-                playerBody.velocity.set(0, 0, 0); // Jogador "parado" na jangada
-
                 // Movimento da jangada
                 const raftInWater = currentRaftBody.position.y < waterLevel + 2.0 && hasWaterAt(currentRaftBody.position.x, currentRaftBody.position.z);
 
-                const speedMultiplier = raftInWater ? 1.0 : 0.15; // 85% reduction on land
+                const speedMultiplier = raftInWater ? 1.0 : 0.0; // Bloqueia movimento na terra
                 const maxLinearSpeed = 25.0 * speedMultiplier;
                 const maxAngularSpeed = 1.5 * speedMultiplier;
 
@@ -6056,6 +6048,16 @@
 
             // Atualiza o mundo da física e o tempo simulado
             world.step(1 / 60, delta, 3);
+
+            // Sincroniza o jogador com a jangada APÓS o step da física para evitar jitter visual
+            if (isDrivingRaft && currentRaftBody) {
+                playerBody.position.set(
+                    currentRaftBody.position.x,
+                    currentRaftBody.position.y + 0.8,
+                    currentRaftBody.position.z
+                );
+                playerBody.velocity.set(0, 0, 0);
+            }
 
             // Lógica para os cubos e blocos: sempre dinâmicos e com massa original, a menos que sejam segurados
             // Apenas os cubos são pickable agora
