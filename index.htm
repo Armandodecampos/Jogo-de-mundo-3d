@@ -780,7 +780,7 @@
         let crouchPlayerShape;   // Para armazenar a forma agachada
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
-        const worldSize = 1800;
+        const worldSize = 1200;
         let birds = []; // NOVO: Array para armazenar os pássaros
         let lastBirdSpawnCheck = 0; // NOVO: Controle de tempo para spawn de pássaros
         let birdBodyGeom, birdWingGeom, birdTailGeom, birdMat;
@@ -2154,6 +2154,7 @@
             world.addBody(raftBody);
             raftBody.userData = {
                 isDestructible: true,
+                isCollectible: true,
                 durability: 3.0,
                 type: raftItemName,
                 isRaft: true,
@@ -3885,7 +3886,7 @@
                                                 }
 
                                                 // Calcula distância relativa ao centro do bloco (toroidal) para uniformidade no oceano
-                                                vec2 wrappedPos = mod(vWorldPosition.xz + 900.0, 1800.0) - 900.0;
+                                                vec2 wrappedPos = mod(vWorldPosition.xz + 600.0, 1200.0) - 600.0;
                                                 float dist = length(wrappedPos);
 
                                                 // Mistura entre areia e grama baseada no raio (praia larga)
@@ -5017,6 +5018,23 @@
                         updateBackpackDisplay();
 
                         break;
+                    } else if (clickedBody.userData.isRaft) {
+                        const raftIndex = raftBodies.indexOf(clickedBody);
+                        if (raftIndex > -1) {
+                            const constructionIndex = placedConstructionBodies.indexOf(clickedBody);
+                            if (constructionIndex > -1) {
+                                scene.remove(placedConstructionMeshes[constructionIndex]);
+                                placedConstructionBodies.splice(constructionIndex, 1);
+                                placedConstructionMeshes.splice(constructionIndex, 1);
+                            }
+                            world.removeBody(clickedBody);
+                            raftBodies.splice(raftIndex, 1);
+                            raycastTargetsNeedUpdate = true;
+
+                            addItemToInventory(backpackItems, { name: raftItemName, quantity: 1 });
+                            updateBackpackDisplay();
+                            break;
+                        }
                     }
                 }
             }
@@ -5952,7 +5970,7 @@
                 const raftInWater = currentRaftBody.position.y < waterLevel + 2.0 && hasWaterAt(currentRaftBody.position.x, currentRaftBody.position.z);
 
                 const speedMultiplier = raftInWater ? 1.0 : 0.0; // Bloqueia movimento na terra
-                const maxLinearSpeed = 25.0 * speedMultiplier;
+                const maxLinearSpeed = 37.5 * speedMultiplier;
                 const maxAngularSpeed = 1.5 * speedMultiplier;
 
                 let linearInput = 0;
