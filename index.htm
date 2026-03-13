@@ -3551,11 +3551,13 @@
             directionalLight.shadow.mapSize.width = 1024;
             directionalLight.shadow.mapSize.height = 1024;
             directionalLight.shadow.camera.near = 0.5;
-            directionalLight.shadow.camera.far = 2000; // Aumentado para o sol orbitar longe
+            directionalLight.shadow.camera.far = 4000; // Aumentado para o sol orbitar longe
             directionalLight.shadow.camera.left = -2000;
             directionalLight.shadow.camera.right = 2000;
             directionalLight.shadow.camera.top = 2000;
             directionalLight.shadow.camera.bottom = -2000;
+            directionalLight.shadow.bias = -0.0005;
+            directionalLight.shadow.normalBias = 0.02;
             scene.add(directionalLight);
             scene.add(directionalLight.target); // Adiciona o alvo à cena para atualizações de posição
 
@@ -3565,11 +3567,13 @@
             moonLight.shadow.mapSize.width = 1024;
             moonLight.shadow.mapSize.height = 1024;
             moonLight.shadow.camera.near = 0.5;
-            moonLight.shadow.camera.far = 1000;
-            moonLight.shadow.camera.left = -1000;
-            moonLight.shadow.camera.right = 1000;
-            moonLight.shadow.camera.top = 1000;
-            moonLight.shadow.camera.bottom = -1000;
+            moonLight.shadow.camera.far = 4000;
+            moonLight.shadow.camera.left = -2000;
+            moonLight.shadow.camera.right = 2000;
+            moonLight.shadow.camera.top = 2000;
+            moonLight.shadow.camera.bottom = -2000;
+            moonLight.shadow.bias = -0.0005;
+            moonLight.shadow.normalBias = 0.02;
             scene.add(moonLight);
 
             // Malhas do Sol e da Lua (Esferas 3D com brilho)
@@ -4991,7 +4995,7 @@
 
                     if (!clickedBody || !clickedBody.userData) continue;
 
-                    if (!clickedBody.userData.isCollectible) continue;
+                    if (!clickedBody.userData.isCollectible && !clickedBody.userData.isRaft) continue;
 
                     const itemType = clickedBody.userData.type;
                     const itemQuantity = clickedBody.userData.quantity || 1; // Padrão para 1 se não especificado
@@ -5980,15 +5984,15 @@
                 const targetVelocityZ = forwardRaft.z * linearInput * maxLinearSpeed;
                 const targetAngularVelocityY = angularInput * maxAngularSpeed;
 
-                // Suavização do movimento (lerp) para maior fluidez
-                const lerpFactor = 0.02;
+                // Suavização do movimento (lerp) para maior fluidez (independente de frame-rate)
+                const lerpFactor = 1.0 - Math.pow(1.0 - 0.02, delta * 60);
                 currentRaftBody.velocity.x += (targetVelocityX - currentRaftBody.velocity.x) * lerpFactor;
                 currentRaftBody.velocity.z += (targetVelocityZ - currentRaftBody.velocity.z) * lerpFactor;
                 currentRaftBody.angularVelocity.y += (targetAngularVelocityY - currentRaftBody.angularVelocity.y) * lerpFactor;
 
                 // Manual angular damping for smoother rotation stop
                 if (angularInput === 0) {
-                    currentRaftBody.angularVelocity.y *= 0.95;
+                    currentRaftBody.angularVelocity.y *= Math.pow(0.95, delta * 60);
                 }
 
                 if (linearInput !== 0 || angularInput !== 0) {
@@ -6714,9 +6718,10 @@
                     const totalBuoyancyForce = antiGravityForce + springForce + dampingForce;
                     raft.applyForce(new CANNON.Vec3(0, totalBuoyancyForce, 0));
 
-                    // Arrasto da água para a jangada
-                    raft.velocity.x *= 0.98;
-                    raft.velocity.z *= 0.98;
+                    // Arrasto da água para a jangada (independente de frame-rate)
+                    const waterDrag = Math.pow(0.98, delta * 60);
+                    raft.velocity.x *= waterDrag;
+                    raft.velocity.z *= waterDrag;
                 }
             });
 
