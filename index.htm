@@ -526,7 +526,7 @@
                     <span>Distância de Visão</span>
                     <span id="renderDistanceValue">600</span>
                 </label>
-                <input type="range" id="renderDistanceSlider" min="40" max="1200" value="600" class="w-full">
+                <input type="range" id="renderDistanceSlider" min="40" max="2000" value="600" class="w-full">
             </div>
             <div class="option-item">
                 <label for="grassDensitySlider" class="flex justify-between w-full">
@@ -780,7 +780,7 @@
         let crouchPlayerShape;   // Para armazenar a forma agachada
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
-        const worldSize = 1200;
+        const worldSize = 2000;
         let birds = []; // NOVO: Array para armazenar os pássaros
         let lastBirdSpawnCheck = 0; // NOVO: Controle de tempo para spawn de pássaros
         let birdBodyGeom, birdWingGeom, birdTailGeom, birdMat;
@@ -3886,7 +3886,7 @@
                                                 }
 
                                                 // Calcula distância relativa ao centro do bloco (toroidal) para uniformidade no oceano
-                                                vec2 wrappedPos = mod(vWorldPosition.xz + 600.0, 1200.0) - 600.0;
+                                                vec2 wrappedPos = mod(vWorldPosition.xz + 1000.0, 2000.0) - 1000.0;
                                                 float dist = length(wrappedPos);
 
                                                 // Mistura entre areia e grama baseada no raio (praia larga)
@@ -3902,7 +3902,7 @@
                                                 float deepStoneBlend = 1.0 - smoothstep(relStoneLevel, relStoneLevel + 1.0, vWorldPosition.y);
                                                 stoneBlend = max(stoneBlend, deepStoneBlend);
 
-                                                vec3 seabedSandMix = mix(seabedColor, sandColor, seabedToSandBlend);
+                                                vec3 seabedSandMix = sandColor; // Padronizado para areia em todo o fundo do mar
                                                 // Tintamos a textura de terra da grama para verde
                                                 vec3 grassTinted = grassColor * vec3(0.7, 1.0, 0.4);
                                                 vec3 grassStoneMix = mix(grassTinted, stoneColor, stoneBlend);
@@ -6160,7 +6160,7 @@
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
                 // Culling estrito para o terreno (um pouco maior que renderDistance para evitar buracos nas bordas)
-                tile.mesh.visible = dist <= renderDistance + 600;
+                tile.mesh.visible = dist <= renderDistance + 1000;
             });
 
             waterMeshes.forEach(tile => {
@@ -6168,7 +6168,7 @@
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + 600;
+                tile.mesh.visible = dist <= renderDistance + 1000;
             });
 
             seabedMeshes.forEach(tile => {
@@ -6176,7 +6176,7 @@
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + 600;
+                tile.mesh.visible = dist <= renderDistance + 1000;
             });
 
             const renderDistSq = renderDistance * renderDistance;
@@ -6260,7 +6260,7 @@
             capimInstancedMeshes.forEach(mesh => {
                 // Como são 9 tiles, verificamos a distância do centro do tile visual
                 const dist = camera.position.distanceTo(mesh.position);
-                mesh.visible = dist <= renderDistance + 600;
+                mesh.visible = dist <= renderDistance + 1000;
             });
 
             // NOVO: Lógica para fechar buracos inativos (curar terreno após 10 segundos)
@@ -6420,7 +6420,7 @@
                                 break;
                             }
                             if (body.userData.isRaft) {
-                                interactionHintText = "(F) Navegar";
+                                interactionHintText = "(F) Navegar / (G) Guardar";
                                 break;
                             }
                             if (body.userData.isCollectible) {
