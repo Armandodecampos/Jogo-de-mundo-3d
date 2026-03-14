@@ -1339,6 +1339,28 @@
             if (toggle) toggle.value = useInteractionHints.toString();
         }
 
+        // NOVO: Função para ajustar as bordas da câmera de sombra dinamicamente
+        function updateShadowCameras(distance) {
+            const margin = 1.2; // 20% de margem
+            const size = distance * margin;
+
+            if (directionalLight) {
+                directionalLight.shadow.camera.left = -size;
+                directionalLight.shadow.camera.right = size;
+                directionalLight.shadow.camera.top = size;
+                directionalLight.shadow.camera.bottom = -size;
+                directionalLight.shadow.camera.updateProjectionMatrix();
+            }
+
+            if (moonLight) {
+                moonLight.shadow.camera.left = -size;
+                moonLight.shadow.camera.right = size;
+                moonLight.shadow.camera.top = size;
+                moonLight.shadow.camera.bottom = -size;
+                moonLight.shadow.camera.updateProjectionMatrix();
+            }
+        }
+
         // NOVO: Função para criar o efeito de poeira de partículas
         function createDustCloud(position, colorOverride = null) {
             // Se já existir uma nuvem de poeira, remove-a primeiro
@@ -3552,10 +3574,6 @@
             directionalLight.shadow.mapSize.height = 1024;
             directionalLight.shadow.camera.near = 0.5;
             directionalLight.shadow.camera.far = 4000; // Aumentado para o sol orbitar longe
-            directionalLight.shadow.camera.left = -2000;
-            directionalLight.shadow.camera.right = 2000;
-            directionalLight.shadow.camera.top = 2000;
-            directionalLight.shadow.camera.bottom = -2000;
             directionalLight.shadow.bias = -0.0005;
             directionalLight.shadow.normalBias = 0.02;
             scene.add(directionalLight);
@@ -3568,10 +3586,6 @@
             moonLight.shadow.mapSize.height = 1024;
             moonLight.shadow.camera.near = 0.5;
             moonLight.shadow.camera.far = 4000;
-            moonLight.shadow.camera.left = -2000;
-            moonLight.shadow.camera.right = 2000;
-            moonLight.shadow.camera.top = 2000;
-            moonLight.shadow.camera.bottom = -2000;
             moonLight.shadow.bias = -0.0005;
             moonLight.shadow.normalBias = 0.02;
             scene.add(moonLight);
@@ -5284,6 +5298,9 @@
                         skyFog.near = renderDistance * 0.5;
                         skyFog.far = renderDistance;
                     }
+
+                    // Atualizar as câmeras de sombra
+                    updateShadowCameras(renderDistance);
 
                     // Atualizar a câmera
                     if (typeof camera !== 'undefined' && camera) {
@@ -7335,6 +7352,7 @@
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             document.getElementById('clockContainer').style.display = 'block'; // Mostra o relógio
             init(); // Inicializa os componentes do jogo
+            updateShadowCameras(renderDistance); // Inicializa as bordas da sombra
             applyShadowSettings(); // Aplica as configurações de sombra após init
             applyHintSettings(); // Aplica as configurações de dicas após init
             populateCapim(); // NOVO: Popula a ilha com capim
