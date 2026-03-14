@@ -3867,11 +3867,11 @@
                                                 vec3 inferiorColor;
 
                                                 if (uUseTextures > 0.5) {
-                                                    seabedColor = texture2D(uSeabedTexture, vUv).rgb;
-                                                    sandColor = texture2D(uSandTexture, vUv).rgb;
-                                                    grassColor = texture2D(uGrassTexture, vUv).rgb;
-                                                    stoneColor = texture2D(uStoneTexture, vUv * 4.0).rgb;
-                                                    inferiorColor = texture2D(uInferiorTexture, vUv).rgb;
+                                                    seabedColor = texture2D(uSeabedTexture, vUv * 50.0).rgb;
+                                                    sandColor = texture2D(uSandTexture, vUv * 50.0).rgb;
+                                                    grassColor = texture2D(uGrassTexture, vUv * 50.0).rgb;
+                                                    stoneColor = texture2D(uStoneTexture, vUv * 50.0).rgb;
+                                                    inferiorColor = texture2D(uInferiorTexture, vUv * 50.0).rgb;
                                                 } else {
                                                     seabedColor = vec3(0.1, 0.2, 0.3); // Solid seabed
                                                     sandColor = vec3(0.8, 0.7, 0.4);  // Solid sand
@@ -3880,9 +3880,8 @@
                                                     inferiorColor = vec3(0.4, 0.3, 0.2); // Solid dirt
                                                 }
 
-                                                // Calcula distância relativa ao centro do bloco (toroidal) para uniformidade no oceano
-                                                vec2 wrappedPos = mod(vWorldPosition.xz + 1000.0, 2000.0) - 1000.0;
-                                                float dist = length(wrappedPos);
+                                                // Calcula distância absoluta ao centro do mundo para evitar reflexos fantasmas
+                                                float dist = length(vWorldPosition.xz);
 
                                                 // Mistura entre areia e grama baseada no raio (praia larga)
                                                 float sandToGrassBlend = 1.0 - smoothstep(uGrassRadius, uBeachRadius, dist);
@@ -3897,7 +3896,7 @@
                                                 float deepStoneBlend = 1.0 - smoothstep(relStoneLevel, relStoneLevel + 1.0, vWorldPosition.y);
                                                 stoneBlend = max(stoneBlend, deepStoneBlend);
 
-                                                vec3 seabedSandMix = sandColor; // Padronizado para areia em todo o fundo do mar
+                                                vec3 seabedSandMix = mix(seabedColor, sandColor, seabedToSandBlend) * 1.2;
                                                 // Tintamos a textura de terra da grama para verde
                                                 vec3 grassTinted = grassColor * vec3(0.7, 1.0, 0.4);
                                                 vec3 grassStoneMix = mix(grassTinted, stoneColor, stoneBlend);
