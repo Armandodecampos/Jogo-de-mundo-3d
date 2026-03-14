@@ -3548,8 +3548,8 @@
             directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); // Luz direcional (simula o sol)
             directionalLight.position.set(10, 15, 10); // Posição inicial
             directionalLight.castShadow = true;
-            directionalLight.shadow.mapSize.width = 2048;
-            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.mapSize.width = 1024;
+            directionalLight.shadow.mapSize.height = 1024;
             directionalLight.shadow.camera.near = 0.5;
             directionalLight.shadow.camera.far = 4000; // Aumentado para o sol orbitar longe
             directionalLight.shadow.camera.left = -2000;
@@ -3867,22 +3867,22 @@
                                                 vec3 inferiorColor;
 
                                                 if (uUseTextures > 0.5) {
-                                                    vec2 tiledUv = vUv * 50.0; // Tiling para evitar texturas esticadas no fundo do mar
-                                                    seabedColor = texture2D(uSeabedTexture, tiledUv).rgb;
-                                                    sandColor = texture2D(uSandTexture, tiledUv).rgb;
-                                                    grassColor = texture2D(uGrassTexture, tiledUv).rgb;
-                                                    stoneColor = texture2D(uStoneTexture, tiledUv * 2.0).rgb;
-                                                    inferiorColor = texture2D(uInferiorTexture, tiledUv).rgb;
+                                                    seabedColor = texture2D(uSeabedTexture, vUv).rgb;
+                                                    sandColor = texture2D(uSandTexture, vUv).rgb;
+                                                    grassColor = texture2D(uGrassTexture, vUv).rgb;
+                                                    stoneColor = texture2D(uStoneTexture, vUv * 4.0).rgb;
+                                                    inferiorColor = texture2D(uInferiorTexture, vUv).rgb;
                                                 } else {
-                                                    seabedColor = vec3(0.2, 0.3, 0.5); // Solid seabed (mais claro)
-                                                    sandColor = vec3(0.9, 0.85, 0.6);  // Solid sand (mais claro)
+                                                    seabedColor = vec3(0.1, 0.2, 0.3); // Solid seabed
+                                                    sandColor = vec3(0.8, 0.7, 0.4);  // Solid sand
                                                     grassColor = vec3(0.3, 0.5, 0.2); // Solid grass terra
                                                     stoneColor = vec3(0.5, 0.5, 0.5); // Solid stone
                                                     inferiorColor = vec3(0.4, 0.3, 0.2); // Solid dirt
                                                 }
 
-                                                // Calcula distância relativa ao centro do mundo (0,0) para que apenas a ilha central tenha grama/areia
-                                                float dist = length(vWorldPosition.xz);
+                                                // Calcula distância relativa ao centro do bloco (toroidal) para uniformidade no oceano
+                                                vec2 wrappedPos = mod(vWorldPosition.xz + 1000.0, 2000.0) - 1000.0;
+                                                float dist = length(wrappedPos);
 
                                                 // Mistura entre areia e grama baseada no raio (praia larga)
                                                 float sandToGrassBlend = 1.0 - smoothstep(uGrassRadius, uBeachRadius, dist);
@@ -3897,7 +3897,7 @@
                                                 float deepStoneBlend = 1.0 - smoothstep(relStoneLevel, relStoneLevel + 1.0, vWorldPosition.y);
                                                 stoneBlend = max(stoneBlend, deepStoneBlend);
 
-                                                vec3 seabedSandMix = sandColor * 1.1; // Padronizado para areia clara em todo o fundo do mar
+                                                vec3 seabedSandMix = sandColor; // Padronizado para areia em todo o fundo do mar
                                                 // Tintamos a textura de terra da grama para verde
                                                 vec3 grassTinted = grassColor * vec3(0.7, 1.0, 0.4);
                                                 vec3 grassStoneMix = mix(grassTinted, stoneColor, stoneBlend);
@@ -6700,13 +6700,13 @@
             raftBodies.forEach(raft => {
                 const raftInWater = raft.position.y < waterLevel + 2.0 && hasWaterAt(raft.position.x, raft.position.z);
                 if (raftInWater) {
-                    const K_SPRING_RAFT = 25000;
-                    const C_DAMPING_RAFT = 2000;
+                    const K_SPRING_RAFT = 15000; // Rigidez aumentada para estabilidade
+                    const C_DAMPING_RAFT = 1000; // Amortecimento aumentado para reduzir oscilações
                     const gravityMagnitude = Math.abs(world.gravity.y);
 
                     let totalMass = raft.mass;
                     if (isDrivingRaft && raft === currentRaftBody) {
-                        totalMass += playerBody.mass;
+                        totalMass += playerBody.mass; // Adiciona o peso do jogador
                     }
 
                     const antiGravityForce = totalMass * gravityMagnitude;
@@ -6714,7 +6714,8 @@
                     // Sincroniza a flutuação com as ondas do shader
                     const uTimeNow = performance.now() / 1000;
                     const waveHeight = Math.sin(raft.position.x * 0.05 + uTimeNow * 2.0) * 0.15 + Math.cos(raft.position.z * 0.05 + uTimeNow * 1.5) * 0.15;
-                    const targetY = waterLevel + waveHeight + 0.5; // Offset elevado para garantir que a jangada nunca seja coberta
+                    const raftHeight = raft.userData.dimensions ? raft.userData.dimensions.height : 0.4;
+                    const targetY = waterLevel + waveHeight + (raftHeight / 2);
 
                     const displacement = raft.position.y - targetY;
                     const springForce = -K_SPRING_RAFT * displacement;
