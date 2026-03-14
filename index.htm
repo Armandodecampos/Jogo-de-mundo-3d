@@ -6710,7 +6710,13 @@
                     }
 
                     const antiGravityForce = totalMass * gravityMagnitude;
-                    const targetY = waterLevel; // Submersa até a metade para parecer mais pesada
+
+                    // Sincroniza a flutuação com as ondas do shader
+                    const uTimeNow = performance.now() / 1000;
+                    const waveHeight = Math.sin(raft.position.x * 0.05 + uTimeNow * 2.0) * 0.15 + Math.cos(raft.position.z * 0.05 + uTimeNow * 1.5) * 0.15;
+                    const raftHeight = raft.userData.dimensions ? raft.userData.dimensions.height : 0.4;
+                    const targetY = waterLevel + waveHeight + (raftHeight / 2);
+
                     const displacement = raft.position.y - targetY;
                     const springForce = -K_SPRING_RAFT * displacement;
                     const verticalVelocity = raft.velocity.y;
