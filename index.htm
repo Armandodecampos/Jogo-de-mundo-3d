@@ -1341,7 +1341,7 @@
 
         // NOVO: Função para ajustar as bordas da câmera de sombra dinamicamente
         function updateShadowCameras(distance) {
-            const margin = 1.5; // 50% de margem para cobrir cantos
+            const margin = 1.2; // 20% de margem
             const size = distance * margin;
 
             if (directionalLight) {
@@ -3570,8 +3570,8 @@
             directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); // Luz direcional (simula o sol)
             directionalLight.position.set(10, 15, 10); // Posição inicial
             directionalLight.castShadow = true;
-            directionalLight.shadow.mapSize.width = 2048;
-            directionalLight.shadow.mapSize.height = 2048;
+            directionalLight.shadow.mapSize.width = 1024;
+            directionalLight.shadow.mapSize.height = 1024;
             directionalLight.shadow.camera.near = 0.5;
             directionalLight.shadow.camera.far = 4000; // Aumentado para o sol orbitar longe
             directionalLight.shadow.bias = -0.0005;
@@ -3582,8 +3582,8 @@
             // Luz da Lua
             moonLight = new THREE.DirectionalLight(0x4444ff, 0.2);
             moonLight.castShadow = true;
-            moonLight.shadow.mapSize.width = 2048;
-            moonLight.shadow.mapSize.height = 2048;
+            moonLight.shadow.mapSize.width = 1024;
+            moonLight.shadow.mapSize.height = 1024;
             moonLight.shadow.camera.near = 0.5;
             moonLight.shadow.camera.far = 4000;
             moonLight.shadow.bias = -0.0005;
@@ -3820,12 +3820,12 @@
                                         texture.wrapS = THREE.RepeatWrapping;
                                         texture.wrapT = THREE.RepeatWrapping;
                                     });
-                                    groundTexture.repeat.set(1, 1);
-                                    seabedTexture.repeat.set(1, 1);
-                                    sandTexture.repeat.set(1, 1);
-                                    stoneTexture.repeat.set(1, 1);
-                                    grassTexture.repeat.set(1, 1);
-                                    inferiorDirtTexture.repeat.set(1, 1);
+                                    groundTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                                    seabedTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                                    sandTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                                    stoneTexture.repeat.set(islandRadiusTop / 16, islandRadiusTop / 16);
+                                    grassTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                                    inferiorDirtTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
 
                                     islandMeshMaterial.map = groundTexture;
                                     islandMeshMaterial.onBeforeCompile = (shader) => {
@@ -3881,13 +3881,11 @@
                                                 vec3 inferiorColor;
 
                                                 if (uUseTextures > 0.5) {
-                                                    // Usa UVs baseadas no mundo para garantir continuidade entre os tiles do terreno
-                                                    vec2 worldUv = vWorldPosition.xz * 0.25;
-                                                    seabedColor = texture2D(uSeabedTexture, worldUv).rgb;
-                                                    sandColor = texture2D(uSandTexture, worldUv).rgb;
-                                                    grassColor = texture2D(uGrassTexture, worldUv).rgb;
-                                                    stoneColor = texture2D(uStoneTexture, worldUv).rgb;
-                                                    inferiorColor = texture2D(uInferiorTexture, worldUv).rgb;
+                                                    seabedColor = texture2D(uSeabedTexture, vUv).rgb;
+                                                    sandColor = texture2D(uSandTexture, vUv).rgb;
+                                                    grassColor = texture2D(uGrassTexture, vUv).rgb;
+                                                    stoneColor = texture2D(uStoneTexture, vUv * 4.0).rgb;
+                                                    inferiorColor = texture2D(uInferiorTexture, vUv).rgb;
                                                 } else {
                                                     seabedColor = vec3(0.1, 0.2, 0.3); // Solid seabed
                                                     sandColor = vec3(0.8, 0.7, 0.4);  // Solid sand
@@ -3904,7 +3902,7 @@
                                                 float sandToGrassBlend = 1.0 - smoothstep(uGrassRadius, uBeachRadius, dist);
 
                                                 // Mistura fundo do mar baseada na altura
-                                                float seabedToSandBlend = smoothstep(uWaterLevel - 6.0, uWaterLevel - 1.0, vWorldPosition.y);
+                                                float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
 
                                                 // Mistura pedra para montanhas altas
                                                 float stoneBlend = smoothstep(20.0, 35.0, vWorldPosition.y);
@@ -3913,9 +3911,7 @@
                                                 float deepStoneBlend = 1.0 - smoothstep(relStoneLevel, relStoneLevel + 1.0, vWorldPosition.y);
                                                 stoneBlend = max(stoneBlend, deepStoneBlend);
 
-                                                // Seabed mix: Stone texture blended with a light blue-gray, brightened.
-                                                vec3 seabedBase = mix(stoneColor, vec3(0.3, 0.4, 0.6), 0.5);
-                                                vec3 seabedSandMix = mix(seabedBase * 1.5, sandColor, seabedToSandBlend);
+                                                vec3 seabedSandMix = sandColor; // Padronizado para areia em todo o fundo do mar
                                                 // Tintamos a textura de terra da grama para verde
                                                 vec3 grassTinted = grassColor * vec3(0.7, 1.0, 0.4);
                                                 vec3 grassStoneMix = mix(grassTinted, stoneColor, stoneBlend);
