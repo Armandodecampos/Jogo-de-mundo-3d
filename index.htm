@@ -3882,22 +3882,21 @@
 
                                                 vec2 worldUv = vWorldPosition.xz * 0.01875;
                                                 if (uUseTextures > 0.5) {
-                                                    seabedColor = texture2D(uSeabedTexture, worldUv).rgb;
+                                                    seabedColor = texture2D(uSeabedTexture, worldUv).rgb * 1.2; // Lighten seabed
                                                     sandColor = texture2D(uSandTexture, worldUv).rgb;
                                                     grassColor = texture2D(uGrassTexture, worldUv).rgb;
                                                     stoneColor = texture2D(uStoneTexture, worldUv * 4.0).rgb;
                                                     inferiorColor = texture2D(uInferiorTexture, worldUv).rgb;
                                                 } else {
-                                                    seabedColor = vec3(0.1, 0.2, 0.3); // Solid seabed
+                                                    seabedColor = vec3(0.2, 0.35, 0.5); // Lightened solid seabed
                                                     sandColor = vec3(0.8, 0.7, 0.4);  // Solid sand
                                                     grassColor = vec3(0.3, 0.5, 0.2); // Solid grass terra
                                                     stoneColor = vec3(0.5, 0.5, 0.5); // Solid stone
                                                     inferiorColor = vec3(0.4, 0.3, 0.2); // Solid dirt
                                                 }
 
-                                                // Calcula distância relativa ao centro do bloco (toroidal) para uniformidade no oceano
-                                                vec2 wrappedPos = mod(vWorldPosition.xz + 1000.0, 2000.0) - 1000.0;
-                                                float dist = length(wrappedPos);
+                                                // Usa distância absoluta para eliminar reflexos (ghost islands) nos blocos adjacentes
+                                                float dist = length(vWorldPosition.xz);
 
                                                 // Mistura entre areia e grama baseada no raio (praia larga)
                                                 float sandToGrassBlend = 1.0 - smoothstep(uGrassRadius, uBeachRadius, dist);
