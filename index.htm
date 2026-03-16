@@ -842,6 +842,7 @@
         // Variáveis de estado do jogo
         let gamePaused = false; // Novo: Flag para pausar/retomar a lógica do jogo
         let isClimbing = false; // NOVO: Flag para modo de escalada
+        let isFlying = false; // NOVO: Flag para modo de voo
         let climbingTreeBody = null; // NOVO: Referência à árvore que está sendo escalada
         let climbingOffset = new THREE.Vector3(); // NOVO: Vetor de offset para escalada (fora do tronco)
         let isDrivingRaft = false; // NOVO: Flag para modo de direção da jangada
@@ -3880,15 +3881,17 @@
                                                 vec3 stoneColor;
                                                 vec3 inferiorColor;
 
-                                                vec2 worldUv = vWorldPosition.xz * 0.01875;
+                                                // Use a periodic scale relative to worldSize (2000 * 0.02 = 40)
+                                                // This eliminates seams at mirrored world junctions
+                                                vec2 worldUv = vWorldPosition.xz * 0.02;
                                                 if (uUseTextures > 0.5) {
-                                                    seabedColor = texture2D(uSeabedTexture, worldUv).rgb * 1.2; // Lighten seabed
+                                                    seabedColor = texture2D(uSeabedTexture, worldUv).rgb * 1.4; // Lighten seabed more for uniformity
                                                     sandColor = texture2D(uSandTexture, worldUv).rgb;
                                                     grassColor = texture2D(uGrassTexture, worldUv).rgb;
                                                     stoneColor = texture2D(uStoneTexture, worldUv * 4.0).rgb;
                                                     inferiorColor = texture2D(uInferiorTexture, worldUv).rgb;
                                                 } else {
-                                                    seabedColor = vec3(0.2, 0.35, 0.5); // Lightened solid seabed
+                                                    seabedColor = vec3(0.25, 0.4, 0.6); // Lightened solid seabed
                                                     sandColor = vec3(0.8, 0.7, 0.4);  // Solid sand
                                                     grassColor = vec3(0.3, 0.5, 0.2); // Solid grass terra
                                                     stoneColor = vec3(0.5, 0.5, 0.5); // Solid stone
@@ -4371,6 +4374,23 @@
 
                     if (isHoldingSeed && ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
                         placeBlock(heldItem, selectedSlotIndex);
+                    }
+                }
+
+                // NOVO: Toggle voo com 'V'
+                if (event.key.toLowerCase() === 'v') {
+                    if (event.repeat) return;
+                    isFlying = !isFlying;
+                    if (isFlying) {
+                        isClimbing = false;
+                        climbingTreeBody = null;
+                        isDrivingRaft = false;
+                        currentRaftBody = null;
+                        playerBody.type = CANNON.Body.KINEMATIC;
+                        playerBody.collisionResponse = false;
+                    } else {
+                        playerBody.type = CANNON.Body.DYNAMIC;
+                        playerBody.collisionResponse = true;
                     }
                 }
 
@@ -5929,7 +5949,21 @@
             forward.normalize();
             right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
-            if (isClimbing && climbingTreeBody) {
+            if (isFlying) {
+                const flySpeed = 50;
+                let flyVector = new THREE.Vector3(0, 0, 0);
+                if (keysPressed['w']) flyVector.add(forward);
+                if (keysPressed['s']) flyVector.sub(forward);
+                if (keysPressed['a']) flyVector.sub(right);
+                if (keysPressed['d']) flyVector.add(right);
+                if (keysPressed[' ']) flyVector.y += 1;
+                if (keysPressed['shift']) flyVector.y -= 1;
+
+                playerBody.position.x += flyVector.x * flySpeed * delta;
+                playerBody.position.y += flyVector.y * flySpeed * delta;
+                playerBody.position.z += flyVector.z * flySpeed * delta;
+                playerBody.velocity.set(0, 0, 0);
+            } else if (isClimbing && climbingTreeBody) {
                 // Se a árvore sumir (destruída)
                 if (!placedConstructionBodies.includes(climbingTreeBody)) {
                     isClimbing = false;
@@ -7399,6 +7433,7 @@
 
             isWorldReady = true; window.isWorldReady = true;
             Object.defineProperty(window, 'isClimbing', { get: () => isClimbing, set: (v) => { isClimbing = v; } });
+            Object.defineProperty(window, 'isFlying', { get: () => isFlying, set: (v) => { isFlying = v; } });
             window.useInteractionHints = useInteractionHints;
             window.collectibleBoxes = collectibleBoxes;
             Object.defineProperty(window, 'isDestroying', { get: () => isDestroying });
@@ -7450,6 +7485,12 @@
             Object.defineProperty(window, 'currentMound', { get: () => currentMound });
             window.cobMaterialMesh = cobMaterialMesh;
             window.cubeMaterialMesh = cubeMaterialMesh;
+            window.renderer = renderer;
+            window.camera = camera;
+            window.scene = scene;
+            window.skyFog = skyFog;
+            window.waterMeshes = waterMeshes;
+            window.worldSize = worldSize;
             window.renderer = renderer;
             window.raycaster = raycaster;
             window.starField = starField;
