@@ -3880,12 +3880,13 @@
                                                 vec3 stoneColor;
                                                 vec3 inferiorColor;
 
+                                                vec2 worldUv = vWorldPosition.xz * 0.01875;
                                                 if (uUseTextures > 0.5) {
-                                                    seabedColor = texture2D(uSeabedTexture, vUv).rgb;
-                                                    sandColor = texture2D(uSandTexture, vUv).rgb;
-                                                    grassColor = texture2D(uGrassTexture, vUv).rgb;
-                                                    stoneColor = texture2D(uStoneTexture, vUv * 4.0).rgb;
-                                                    inferiorColor = texture2D(uInferiorTexture, vUv).rgb;
+                                                    seabedColor = texture2D(uSeabedTexture, worldUv).rgb;
+                                                    sandColor = texture2D(uSandTexture, worldUv).rgb;
+                                                    grassColor = texture2D(uGrassTexture, worldUv).rgb;
+                                                    stoneColor = texture2D(uStoneTexture, worldUv * 4.0).rgb;
+                                                    inferiorColor = texture2D(uInferiorTexture, worldUv).rgb;
                                                 } else {
                                                     seabedColor = vec3(0.1, 0.2, 0.3); // Solid seabed
                                                     sandColor = vec3(0.8, 0.7, 0.4);  // Solid sand
@@ -3911,7 +3912,7 @@
                                                 float deepStoneBlend = 1.0 - smoothstep(relStoneLevel, relStoneLevel + 1.0, vWorldPosition.y);
                                                 stoneBlend = max(stoneBlend, deepStoneBlend);
 
-                                                vec3 seabedSandMix = sandColor; // Padronizado para areia em todo o fundo do mar
+                                                vec3 seabedSandMix = mix(seabedColor, sandColor, seabedToSandBlend);
                                                 // Tintamos a textura de terra da grama para verde
                                                 vec3 grassTinted = grassColor * vec3(0.7, 1.0, 0.4);
                                                 vec3 grassStoneMix = mix(grassTinted, stoneColor, stoneBlend);
