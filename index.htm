@@ -3664,8 +3664,8 @@
                     // Transição de terra firme para um pouco abaixo do nível do mar
                     height = islandSurfaceHeight * (1 - t) + (waterLevel - 0.5) * t;
                 } else {
-                    // Gradiente suave até o fundo do mar
-                    const t = Math.min(1.0, (distance - beachRadius) / (worldSize * 0.4));
+                    // Gradiente suave até o fundo do mar. Flatten at distance 950 for seamless junctions.
+                    const t = Math.min(1.0, (distance - beachRadius) / 750.0);
                     height = (waterLevel - 0.5) * (1 - t) + seabedLevel * t;
                 }
 
@@ -3885,7 +3885,7 @@
                                                 // This eliminates seams at mirrored world junctions
                                                 vec2 worldUv = vWorldPosition.xz * 0.02;
                                                 if (uUseTextures > 0.5) {
-                                                    seabedColor = texture2D(uSeabedTexture, worldUv).rgb * 1.4; // Lighten seabed more for uniformity
+                                                    seabedColor = texture2D(uSeabedTexture, worldUv).rgb * 1.6; // Lighten seabed more for uniformity
                                                     sandColor = texture2D(uSandTexture, worldUv).rgb;
                                                     grassColor = texture2D(uGrassTexture, worldUv).rgb;
                                                     stoneColor = texture2D(uStoneTexture, worldUv * 4.0).rgb;
@@ -4388,9 +4388,15 @@
                         currentRaftBody = null;
                         playerBody.type = CANNON.Body.KINEMATIC;
                         playerBody.collisionResponse = false;
+                        playerBody.collisionFilterGroup = 0; // Don't collide with anything
+                        playerBody.collisionFilterMask = 0;
+                        playerBody.velocity.set(0, 0, 0);
                     } else {
                         playerBody.type = CANNON.Body.DYNAMIC;
                         playerBody.collisionResponse = true;
+                        playerBody.collisionFilterGroup = 1;
+                        playerBody.collisionFilterMask = 1;
+                        playerBody.wakeUp();
                     }
                 }
 
