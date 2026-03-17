@@ -3898,11 +3898,13 @@
                                                     inferiorColor = vec3(0.4, 0.3, 0.2); // Solid dirt
                                                 }
 
-                                                // Usa distância absoluta para eliminar reflexos (ghost islands) nos blocos adjacentes
-                                                float dist = length(vWorldPosition.xz);
+                                                // Usa distância periódica para que ilhas espelhadas sejam renderizadas corretamente
+                                                // O mundo se repete a cada 2000 unidades.
+                                                vec2 periodicPos = mod(vWorldPosition.xz + 1000.0, 2000.0) - 1000.0;
+                                                float dist = length(periodicPos);
 
                                                 // Mistura entre areia e grama baseada no raio (praia larga)
-                                                float sandToGrassBlend = 1.0 - smoothstep(uGrassRadius, uBeachRadius, dist);
+                                                float sandToGrassBlend = smoothstep(uGrassRadius, uBeachRadius, dist);
 
                                                 // Mistura fundo do mar baseada na altura
                                                 float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
@@ -3914,11 +3916,18 @@
                                                 float deepStoneBlend = 1.0 - smoothstep(relStoneLevel, relStoneLevel + 1.0, vWorldPosition.y);
                                                 stoneBlend = max(stoneBlend, deepStoneBlend);
 
-                                                vec3 seabedSandMix = mix(seabedColor, sandColor, seabedToSandBlend);
-                                                // Tintamos a textura de terra da grama para verde
+                                                // Lógica Corrigida:
+                                                // 1. Mistura Grama e Pedra (Land)
                                                 vec3 grassTinted = grassColor * vec3(0.7, 1.0, 0.4);
-                                                vec3 grassStoneMix = mix(grassTinted, stoneColor, stoneBlend);
-                                                vec3 terrainMix = mix(seabedSandMix, grassStoneMix, sandToGrassBlend);
+                                                vec3 landMix = mix(grassTinted, stoneColor, stoneBlend);
+
+                                                // 2. Mistura Fundo do Mar e Areia (Sea/Beach)
+                                                vec3 seaBeachMix = mix(seabedColor, sandColor, seabedToSandBlend);
+
+                                                // 3. Mistura final baseada na distância (periódica)
+                                                // Se dist < uGrassRadius -> landMix
+                                                // Se dist > uBeachRadius -> seaBeachMix (seabedColor se estiver fundo)
+                                                vec3 terrainMix = mix(landMix, seaBeachMix, sandToGrassBlend);
 
                                                 // NOVO: Aplica a textura inferior provisória se vColor.r < 1.0 (sinalizado por modificação)
                                                 #ifdef USE_COLOR
@@ -7497,7 +7506,6 @@
             window.skyFog = skyFog;
             window.waterMeshes = waterMeshes;
             window.worldSize = worldSize;
-            window.renderer = renderer;
             window.raycaster = raycaster;
             window.starField = starField;
             window.rainParticles = rainParticles;
