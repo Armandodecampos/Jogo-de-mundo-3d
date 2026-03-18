@@ -780,7 +780,7 @@
         let crouchPlayerShape;   // Para armazenar a forma agachada
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
-        const worldSize = 2000;
+        const worldSize = 500;
         let birds = []; // NOVO: Array para armazenar os pássaros
         let lastBirdSpawnCheck = 0; // NOVO: Controle de tempo para spawn de pássaros
         let birdBodyGeom, birdWingGeom, birdTailGeom, birdMat;
@@ -3574,7 +3574,7 @@
             directionalLight.shadow.mapSize.width = 1024;
             directionalLight.shadow.mapSize.height = 1024;
             directionalLight.shadow.camera.near = 0.5;
-            directionalLight.shadow.camera.far = 4000; // Aumentado para o sol orbitar longe
+            directionalLight.shadow.camera.far = 1000; // Aumentado para o sol orbitar longe
             directionalLight.shadow.bias = -0.0005;
             directionalLight.shadow.normalBias = 0.02;
             scene.add(directionalLight);
@@ -3586,7 +3586,7 @@
             moonLight.shadow.mapSize.width = 1024;
             moonLight.shadow.mapSize.height = 1024;
             moonLight.shadow.camera.near = 0.5;
-            moonLight.shadow.camera.far = 4000;
+            moonLight.shadow.camera.far = 1000;
             moonLight.shadow.bias = -0.0005;
             moonLight.shadow.normalBias = 0.02;
             scene.add(moonLight);
@@ -3664,8 +3664,8 @@
                     // Transição de terra firme para um pouco abaixo do nível do mar
                     height = islandSurfaceHeight * (1 - t) + (waterLevel - 0.5) * t;
                 } else {
-                    // Gradiente suave até o fundo do mar. Flatten at distance 950 for seamless junctions.
-                    const t = Math.min(1.0, (distance - beachRadius) / 750.0);
+                    // Gradiente suave até o fundo do mar. Flatten at distance 240 for seamless junctions.
+                    const t = Math.min(1.0, (distance - beachRadius) / 40.0);
                     height = (waterLevel - 0.5) * (1 - t) + seabedLevel * t;
                 }
 
@@ -3881,9 +3881,9 @@
                                                 vec3 stoneColor;
                                                 vec3 inferiorColor;
 
-                                                // Use a periodic scale relative to worldSize (2000 * 0.02 = 40)
+                                                // Use a periodic scale relative to worldSize (500 * 0.08 = 40)
                                                 // This eliminates seams at mirrored world junctions
-                                                vec2 worldUv = vWorldPosition.xz * 0.02;
+                                                vec2 worldUv = vWorldPosition.xz * 0.08;
                                                 if (uUseTextures > 0.5) {
                                                     seabedColor = texture2D(uSeabedTexture, worldUv).rgb * 1.6; // Lighten seabed more for uniformity
                                                     sandColor = texture2D(uSandTexture, worldUv).rgb;
@@ -3899,8 +3899,8 @@
                                                 }
 
                                                 // Usa distância periódica para que ilhas espelhadas sejam renderizadas corretamente
-                                                // O mundo se repete a cada 2000 unidades.
-                                                vec2 periodicPos = mod(vWorldPosition.xz + 1000.0, 2000.0) - 1000.0;
+                                                // O mundo se repete a cada 500 unidades.
+                                                vec2 periodicPos = mod(vWorldPosition.xz + 250.0, 500.0) - 250.0;
                                                 float dist = length(periodicPos);
 
                                                 // Mistura entre areia e grama baseada no raio (praia larga)
@@ -6221,7 +6221,7 @@
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
                 // Culling estrito para o terreno (um pouco maior que renderDistance para evitar buracos nas bordas)
-                tile.mesh.visible = dist <= renderDistance + 1000;
+                tile.mesh.visible = dist <= renderDistance + 250;
             });
 
             waterMeshes.forEach(tile => {
@@ -6229,7 +6229,7 @@
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + 1000;
+                tile.mesh.visible = dist <= renderDistance + 250;
             });
 
             seabedMeshes.forEach(tile => {
@@ -6237,7 +6237,7 @@
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + 1000;
+                tile.mesh.visible = dist <= renderDistance + 250;
             });
 
             const renderDistSq = renderDistance * renderDistance;
@@ -6321,7 +6321,7 @@
             capimInstancedMeshes.forEach(mesh => {
                 // Como são 9 tiles, verificamos a distância do centro do tile visual
                 const dist = camera.position.distanceTo(mesh.position);
-                mesh.visible = dist <= renderDistance + 1000;
+                mesh.visible = dist <= renderDistance + 250;
             });
 
             // NOVO: Lógica para fechar buracos inativos (curar terreno após 10 segundos)
@@ -6842,7 +6842,7 @@
             const theta = dayProgress * 2 * Math.PI;
 
             // Orbita do Sol e da Lua
-            const orbitRadius = 2000;
+            const orbitRadius = 500;
             const sunX = orbitRadius * Math.sin(theta);
             const sunY = orbitRadius * Math.cos(theta);
             const moonX = orbitRadius * Math.sin(theta + Math.PI);
