@@ -3697,8 +3697,7 @@
             const baseHeights = new Float32Array(islandGeometry.attributes.position.count);
             const posAttr = islandGeometry.attributes.position;
             for (let i = 0; i < posAttr.count; i++) {
-                // PlaneGeometry initial orientation is XY, so use X and Y for horizontal coordinates
-                baseHeights[i] = getSurfaceHeight(posAttr.getX(i), posAttr.getY(i));
+                baseHeights[i] = getSurfaceHeight(posAttr.getX(i), posAttr.getZ(i));
             }
             islandGeometry.setAttribute('aBaseHeight', new THREE.BufferAttribute(baseHeights, 1));
 
@@ -3844,22 +3843,21 @@
                                         shader.uniforms.uUseTextures = { value: useTextures ? 1.0 : 0.0 };
                                         islandMeshMaterial.userData.shader = shader;
 
-                                        shader.vertexShader = shader.vertexShader.replace(
-                                            '#include <common>',
-                                            `#include <common>
+                                        shader.vertexShader = `
                                             varying vec3 vWorldPosition;
                                             attribute float aBaseHeight;
-                                            varying float vBaseHeight;`
-                                        ).replace(
-                                            '#include <worldpos_vertex>',
-                                            `#include <worldpos_vertex>
+                                            varying float vBaseHeight;
+                                            ${shader.vertexShader}
+                                        `.replace(
+                                            `#include <worldpos_vertex>`,
+                                            `
+                                            #include <worldpos_vertex>
                                             vWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;
-                                            vBaseHeight = aBaseHeight;`
+                                            vBaseHeight = aBaseHeight;
+                                            `
                                         );
 
-                                        shader.fragmentShader = shader.fragmentShader.replace(
-                                            '#include <common>',
-                                            `#include <common>
+                                        shader.fragmentShader = `
                                             uniform sampler2D uSeabedTexture;
                                             uniform sampler2D uSandTexture;
                                             uniform sampler2D uStoneTexture;
@@ -3872,72 +3870,92 @@
                                             uniform float uBeachRadius;
                                             uniform float uUseTextures;
                                             varying vec3 vWorldPosition;
-                                            varying float vBaseHeight;`
-                                        ).replace(
-                                            '#include <normal_fragment_begin>',
-                                            `#include <normal_fragment_begin>
-                                            // Calculate vDist periodically in the fragment shader for perfect continuity
-                                            vec2 periodicPos = mod(vWorldPosition.xz + 1000.0, 2000.0) - 1000.0;
-                                            float vDist = length(periodicPos);
-                                            if (vDist > uBeachRadius + 10.0) {
-                                                normal = normalize(normalMatrix * vec3(0.0, 1.0, 0.0));
-                                            }`
-                                        ).replace(
-                                            '#include <color_fragment>',
-                                            `/* #include <color_fragment> disabled to avoid double-tinting */`
-                                        ).replace(
-                                            '#include <map_fragment>',
+                                            varying float vBaseHeight;
+                                            ${shader.fragmentShader}
+                                        `.replace(
+                                            `#include <map_fragment>`,
                                             `
-                                                vec2 periodicPos = mod(vWorldPosition.xz + 1000.0, 2000.0) - 1000.0;
-                                                float vDist = length(periodicPos);
-
                                                 vec3 seabedColor;
                                                 vec3 sandColor;
                                                 vec3 grassColor;
                                                 vec3 stoneColor;
                                                 vec3 inferiorColor;
 
+                                                // Use a periodic scale relative to worldSize (2000 * 0.02 = 40)
+                                                // This eliminates seams at mirrored world junctions
                                                 vec2 worldUv = vWorldPosition.xz * 0.02;
-
                                                 if (uUseTextures > 0.5) {
-                                                    seabedColor = texture2D(uSeabedTexture, worldUv).rgb * 1.6;
+                                                    seabedColor = texture2D(uSeabedTexture, worldUv).rgb * 1.6; // Lighten seabed more for uniformity
                                                     sandColor = texture2D(uSandTexture, worldUv).rgb;
                                                     grassColor = texture2D(uGrassTexture, worldUv).rgb;
                                                     stoneColor = texture2D(uStoneTexture, worldUv * 4.0).rgb;
                                                     inferiorColor = texture2D(uInferiorTexture, worldUv).rgb;
                                                 } else {
-                                                    seabedColor = vec3(0.25, 0.4, 0.6);
-                                                    sandColor = vec3(0.8, 0.7, 0.4);
-                                                    grassColor = vec3(0.3, 0.5, 0.2);
-                                                    stoneColor = vec3(0.5, 0.5, 0.5);
-                                                    inferiorColor = vec3(0.4, 0.3, 0.2);
+                                                    seabedColor = vec3(0.25, 0.4, 0.6); // Lightened solid seabed
+                                                    sandColor = vec3(0.8, 0.7, 0.4);  // Solid sand
+                                                    grassColor = vec3(0.3, 0.5, 0.2); // Solid grass terra
+                                                    stoneColor = vec3(0.5, 0.5, 0.5); // Solid stone
+                                                    inferiorColor = vec3(0.4, 0.3, 0.2); // Solid dirt
                                                 }
 
-                                                float sandToGrassBlend = smoothstep(uGrassRadius, uBeachRadius, vDist);
+                                                // Usa distância periódica para que ilhas espelhadas sejam renderizadas corretamente
+                                                // O mundo se repete a cada 2000 unidades.
+                                                vec2 periodicPos = mod(vWorldPosition.xz + 1000.0, 2000.0) - 1000.0;
+                                                float dist = length(periodicPos);
+
+                                                // Mistura entre areia e grama baseada no raio (praia larga)
+                                                float sandToGrassBlend = smoothstep(uGrassRadius, uBeachRadius, dist);
+
+                                                // Mistura fundo do mar baseada na altura
                                                 float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
+
+                                                // Mistura pedra para montanhas altas
                                                 float stoneBlend = smoothstep(20.0, 35.0, vWorldPosition.y);
+                                                // Camada de pedra profunda relativa à base
                                                 float relStoneLevel = vBaseHeight - uDirtToStoneDepth;
                                                 float deepStoneBlend = 1.0 - smoothstep(relStoneLevel, relStoneLevel + 1.0, vWorldPosition.y);
                                                 stoneBlend = max(stoneBlend, deepStoneBlend);
 
+                                                // Lógica Corrigida:
+                                                // 1. Mistura Grama e Pedra (Land)
                                                 vec3 grassTinted = grassColor * vec3(0.7, 1.0, 0.4);
                                                 vec3 landMix = mix(grassTinted, stoneColor, stoneBlend);
+
+                                                // 2. Mistura Fundo do Mar e Areia (Sea/Beach)
                                                 vec3 seaBeachMix = mix(seabedColor, sandColor, seabedToSandBlend);
+
+                                                // 3. Mistura final baseada na distância (periódica)
+                                                // Se dist < uGrassRadius -> landMix
+                                                // Se dist > uBeachRadius -> seaBeachMix (seabedColor se estiver fundo)
                                                 vec3 terrainMix = mix(landMix, seaBeachMix, sandToGrassBlend);
 
+                                                // NOVO: Aplica a textura inferior provisória se vColor.r < 1.0 (sinalizado por modificação)
                                                 #ifdef USE_COLOR
                                                     float inferiorFactor = clamp(1.0 - vColor.r, 0.0, 1.0);
+                                                    // Se estivermos na praia, a textura de "buraco" deve ser areia escura
                                                     vec3 holeColor = mix(sandColor * 0.8, inferiorColor, sandToGrassBlend);
                                                     vec3 currentInferior = (vWorldPosition.y < relStoneLevel) ? stoneColor : holeColor;
                                                     terrainMix = mix(terrainMix, currentInferior, inferiorFactor);
                                                 #endif
 
+                                                // NOVO: Camada de Bedrock (Camada escura indestrutível) relativa à base
                                                 float relBedrockLevel = vBaseHeight - uTotalBedrockDepth;
                                                 float bedrockBlend = 1.0 - smoothstep(relBedrockLevel, relBedrockLevel + 0.2, vWorldPosition.y);
-                                                vec3 bedrockColor = vec3(0.05, 0.05, 0.08);
+                                                vec3 bedrockColor = vec3(0.05, 0.05, 0.08); // Quase preto
                                                 terrainMix = mix(terrainMix, bedrockColor, bedrockBlend);
 
                                                 diffuseColor.rgb = terrainMix;
+                                            `
+                                        );
+
+                                        shader.fragmentShader = shader.fragmentShader.replace(
+                                            '#include <color_fragment>',
+                                            `
+                                            #ifdef USE_COLOR
+                                                // Bypassa a multiplicação por vColor para evitar o tom esverdeado na terra mexida
+                                                // O vColor.r agora é usado apenas como máscara no passo anterior
+                                                diffuseColor.rgb *= vec3(1.0);
+                                            #endif
                                             `
                                         );
                                     };
