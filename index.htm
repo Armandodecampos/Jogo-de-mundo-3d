@@ -2629,8 +2629,8 @@
 
             // Atualiza o volume e o filtro do áudio da chuva
             if (rainGainNode && rainFilterNode) {
-                // Volume proporcional à intensidade da chuva
-                const targetGain = rainIntensity * 0.4;
+                // Se o jogo estiver pausado, silencia a chuva
+                const targetGain = gamePaused ? 0 : (rainIntensity * 0.4);
                 rainGainNode.gain.setTargetAtTime(targetGain, rainAudioContext.currentTime, 0.1);
 
                 // Frequência do filtro aumenta com a intensidade (chuva mais forte é mais "aguda")
@@ -2681,7 +2681,7 @@
                         targetRainIntensity = 0.1 + Math.random() * 0.9;
                     }
                 } else {
-                    // Se já estiver chovendo, chance de parar ou mudar de intensidade
+                    // Se já estiver chovendo, chance de parar ou mudar de intensidade significativamente
                     if (Math.random() < 0.6) {
                         targetRainIntensity = 0;
                     } else {
@@ -2693,9 +2693,23 @@
                 randomBaseCloudCount = Math.floor(Math.random() * 30);
             }
 
-            // Quantidade de nuvens aumenta com a chuva para cobrir o céu/estrelas
-            const extraClouds = Math.floor(rainIntensity * 50); // Até +50 nuvens se chuva forte
+            // Oscilação aleatória constante durante a chuva para torná-la dinâmica
+            if (targetRainIntensity > 0) {
+                if (Math.random() < 0.005) {
+                    const fluctuation = (Math.random() - 0.5) * 0.3;
+                    targetRainIntensity = Math.max(0.1, Math.min(1.0, targetRainIntensity + fluctuation));
+                }
+            }
+
+            // Quantidade de nuvens aumenta com a chuva para cobrir o céu
+            // Se estiver chovendo muito forte (rainIntensity > 0.8), o céu DEVE estar cheio de nuvens
+            let extraClouds = Math.floor(rainIntensity * 60);
             targetCloudCount = randomBaseCloudCount + extraClouds;
+
+            if (rainIntensity > 0.7) {
+                // Força um mínimo de nuvens elevado para chuvas fortes
+                targetCloudCount = Math.max(targetCloudCount, 50 + Math.floor(rainIntensity * 30));
+            }
 
             // Transição suave para a intensidade alvo
             if (rainIntensity < targetRainIntensity) {
@@ -5636,8 +5650,15 @@
             // Sincroniza Birds e Clouds com worldSize real para despawn
             const despawnDist = worldSize * 0.8;
 
-            updateWeather(delta);
-            updateClouds(delta, despawnDist);
+            if (!gamePaused) {
+                updateWeather(delta);
+                updateClouds(delta, despawnDist);
+            } else {
+                // Se pausado, silencia a chuva imediatamente (updateRain continua rodando)
+                if (rainGainNode) {
+                    rainGainNode.gain.setTargetAtTime(0, rainAudioContext.currentTime, 0.05);
+                }
+            }
             updateRain(delta);
 
             if (typeof raycastTargetsNeedUpdate !== 'undefined' && raycastTargetsNeedUpdate) {
@@ -6947,32 +6968,34 @@
             moonLight.intensity = Math.max(0, moonAltitude * 0.3);
 
             // NOVO: Atualiza o sistema de pássaros (frequência reduzida pela metade)
-            if (sunAltitude > 0 && world.time - lastBirdSpawnCheck > 10) {
-                lastBirdSpawnCheck = world.time;
-                // Frequência reduzida: 15% de chance a cada 10 segundos
-                if (Math.random() < 0.15) {
-                    spawnBirdGroup();
+            if (!gamePaused) {
+                if (sunAltitude > 0 && world.time - lastBirdSpawnCheck > 10) {
+                    lastBirdSpawnCheck = world.time;
+                    // Frequência reduzida: 15% de chance a cada 10 segundos
+                    if (Math.random() < 0.15) {
+                        spawnBirdGroup();
+                    }
                 }
-            }
 
-            for (let i = birds.length - 1; i >= 0; i--) {
-                const bird = birds[i];
-                // Move o pássaro
-                bird.mesh.position.add(bird.velocity.clone().multiplyScalar(delta));
+                for (let i = birds.length - 1; i >= 0; i--) {
+                    const bird = birds[i];
+                    // Move o pássaro
+                    bird.mesh.position.add(bird.velocity.clone().multiplyScalar(delta));
 
-                // Aponta o pássaro para a direção da velocidade
-                const lookAtPos = bird.mesh.position.clone().add(bird.velocity);
-                bird.mesh.lookAt(lookAtPos);
+                    // Aponta o pássaro para a direção da velocidade
+                    const lookAtPos = bird.mesh.position.clone().add(bird.velocity);
+                    bird.mesh.lookAt(lookAtPos);
 
-                // Anima as asas
-                const flapAngle = Math.sin(world.time * bird.flapSpeed + bird.flapOffset) * 0.8;
-                bird.mesh.userData.leftWing.rotation.z = flapAngle;
-                bird.mesh.userData.rightWing.rotation.z = -flapAngle;
+                    // Anima as asas
+                    const flapAngle = Math.sin(world.time * bird.flapSpeed + bird.flapOffset) * 0.8;
+                    bird.mesh.userData.leftWing.rotation.z = flapAngle;
+                    bird.mesh.userData.rightWing.rotation.z = -flapAngle;
 
-                // Despawn se estiver muito longe
-                if (bird.mesh.position.distanceTo(camera.position) > despawnDist) {
-                    scene.remove(bird.mesh);
-                    birds.splice(i, 1);
+                    // Despawn se estiver muito longe
+                    if (bird.mesh.position.distanceTo(camera.position) > despawnDist) {
+                        scene.remove(bird.mesh);
+                        birds.splice(i, 1);
+                    }
                 }
             }
 
@@ -7508,6 +7531,11 @@
             }
 
             isWorldReady = true; window.isWorldReady = true;
+            window.initRainAudio = initRainAudio;
+            Object.defineProperty(window, 'gamePaused', { get: () => gamePaused, set: (v) => { gamePaused = v; } });
+            Object.defineProperty(window, 'rainGainNode', { get: () => rainGainNode });
+            Object.defineProperty(window, 'rainIntensity', { get: () => rainIntensity, set: (v) => { rainIntensity = v; } });
+            Object.defineProperty(window, 'targetRainIntensity', { get: () => targetRainIntensity, set: (v) => { targetRainIntensity = v; } });
             Object.defineProperty(window, 'isClimbing', { get: () => isClimbing, set: (v) => { isClimbing = v; } });
             Object.defineProperty(window, 'isFlying', { get: () => isFlying, set: (v) => { isFlying = v; } });
             window.useInteractionHints = useInteractionHints;
