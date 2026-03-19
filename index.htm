@@ -3693,14 +3693,6 @@
             }
             window.getSurfaceHeight = getSurfaceHeight;
 
-            // Adiciona atributo de altura base para cálculos relativos no shader
-            const baseHeights = new Float32Array(islandGeometry.attributes.position.count);
-            const posAttr = islandGeometry.attributes.position;
-            for (let i = 0; i < posAttr.count; i++) {
-                baseHeights[i] = getSurfaceHeight(posAttr.getX(i), posAttr.getZ(i));
-            }
-            islandGeometry.setAttribute('aBaseHeight', new THREE.BufferAttribute(baseHeights, 1));
-
             const hfMatrix = [];
             for (let i = 0; i < hfGridSize; i++) { // i é o índice X local do Cannon
                 hfMatrix[i] = [];
@@ -3715,6 +3707,15 @@
 
             // Gira a geometria para ficar no plano XZ.
             islandGeometry.rotateX(-Math.PI / 2);
+
+            // Adiciona atributo de altura base para cálculos relativos no shader
+            const baseHeights = new Float32Array(islandGeometry.attributes.position.count);
+            const posAttr = islandGeometry.attributes.position;
+            for (let i = 0; i < posAttr.count; i++) {
+                // Após rotateX(-PI/2), o plano XY original torna-se o plano XZ
+                baseHeights[i] = getSurfaceHeight(posAttr.getX(i), posAttr.getZ(i));
+            }
+            islandGeometry.setAttribute('aBaseHeight', new THREE.BufferAttribute(baseHeights, 1));
 
             // Define a altura de cada vértice na geometria para corresponder à matriz do Heightfield.
             const vertices = islandGeometry.attributes.position.array;
