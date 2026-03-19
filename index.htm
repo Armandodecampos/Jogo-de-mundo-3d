@@ -789,10 +789,15 @@
         let rainIntensity = 0; // Intensidade atual da chuva (0 a 1)
         let targetRainIntensity = 0; // Intensidade alvo para transições suaves
         let rainParticles = null; // Sistema de partículas da chuva
+        let rainAudioContext = null;
+        let rainNoiseNode = null;
+        let rainFilterNode = null;
+        let rainGainNode = null;
         let lastWeatherChange = 0; // Controle de tempo para mudanças climáticas
         let nextWeatherDuration = 60; // Duração da fase climática atual
         let cloudMaterial = null; // Material compartilhado das nuvens
         let targetCloudCount = 15; // NOVO: Quantidade alvo de nuvens
+        let randomBaseCloudCount = Math.floor(Math.random() * 30); // Base aleatória de nuvens
         const islandRadiusTop = 150; // NOVO: Raio do topo da ilha
         const islandRadiusBottom = 300; // NOVO: Raio da base da ilha
         const waterLevel = -8.0; // NOVO: Nível da água (baixado de -4.8)
@@ -2530,9 +2535,9 @@
 
             // Cor das nuvens baseada na chuva (mais escuras quando chove)
             if (cloudMaterial) {
-                const cloudGray = 1.0 - (rainIntensity * 0.6);
+                const cloudGray = 1.0 - (rainIntensity * 0.8); // Ficam mais escuras
                 cloudMaterial.color.setRGB(cloudGray, cloudGray, cloudGray);
-                // cloudMaterial.opacity = 0.8 + (rainIntensity * 0.2);
+                cloudMaterial.opacity = 0.8 + (rainIntensity * 0.2); // Ficam mais opacas
             }
 
             for (let i = clouds.length - 1; i >= 0; i--) {
@@ -2582,12 +2587,64 @@
             rainParticles.visible = false;
         }
 
+        function initRainAudio() {
+            try {
+                rainAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+                // Gerar ruído branco
+                const bufferSize = 2 * rainAudioContext.sampleRate;
+                const noiseBuffer = rainAudioContext.createBuffer(1, bufferSize, rainAudioContext.sampleRate);
+                const output = noiseBuffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = Math.random() * 2 - 1;
+                }
+
+                rainNoiseNode = rainAudioContext.createBufferSource();
+                rainNoiseNode.buffer = noiseBuffer;
+                rainNoiseNode.loop = true;
+
+                // Filtro passa-baixa para suavizar o ruído e simular chuva
+                rainFilterNode = rainAudioContext.createBiquadFilter();
+                rainFilterNode.type = 'lowpass';
+                rainFilterNode.frequency.value = 1000;
+                rainFilterNode.Q.value = 1;
+
+                // Controle de volume
+                rainGainNode = rainAudioContext.createGain();
+                rainGainNode.gain.value = 0;
+
+                // Conectar os nós
+                rainNoiseNode.connect(rainFilterNode);
+                rainFilterNode.connect(rainGainNode);
+                rainGainNode.connect(rainAudioContext.destination);
+
+                rainNoiseNode.start();
+            } catch (e) {
+                console.error("Erro ao inicializar áudio da chuva:", e);
+            }
+        }
+
         function updateRain(delta) {
             if (!rainParticles) return;
 
+            // Atualiza o volume e o filtro do áudio da chuva
+            if (rainGainNode && rainFilterNode) {
+                // Volume proporcional à intensidade da chuva
+                const targetGain = rainIntensity * 0.4;
+                rainGainNode.gain.setTargetAtTime(targetGain, rainAudioContext.currentTime, 0.1);
+
+                // Frequência do filtro aumenta com a intensidade (chuva mais forte é mais "aguda")
+                const targetFreq = 500 + (rainIntensity * 1500);
+                rainFilterNode.frequency.setTargetAtTime(targetFreq, rainAudioContext.currentTime, 0.1);
+            }
+
             if (rainIntensity > 0.05) {
                 rainParticles.visible = true;
-                rainParticles.material.opacity = rainIntensity * 0.6;
+                // Ajusta a quantidade de partículas visíveis e a opacidade
+                const totalParticles = 5000;
+                const visibleCount = Math.floor(rainIntensity * totalParticles);
+                rainParticles.geometry.setDrawRange(0, visibleCount);
+                rainParticles.material.opacity = 0.3 + (rainIntensity * 0.4);
 
                 const positions = rainParticles.geometry.attributes.position.array;
                 const velocities = rainParticles.userData.velocities;
@@ -2631,12 +2688,14 @@
                         targetRainIntensity = 0.1 + Math.random() * 0.9;
                     }
                 }
+
+                // Atualiza a quantidade base de nuvens de forma aleatória a cada mudança de ciclo
+                randomBaseCloudCount = Math.floor(Math.random() * 30);
             }
 
             // Quantidade de nuvens aumenta com a chuva para cobrir o céu/estrelas
-            const baseClouds = 15;
-            const extraClouds = Math.floor(rainIntensity * 45); // Até +45 nuvens se chuva forte
-            targetCloudCount = baseClouds + extraClouds;
+            const extraClouds = Math.floor(rainIntensity * 50); // Até +50 nuvens se chuva forte
+            targetCloudCount = randomBaseCloudCount + extraClouds;
 
             // Transição suave para a intensidade alvo
             if (rainIntensity < targetRainIntensity) {
@@ -7433,6 +7492,7 @@
             });
 
             createRainSystem();
+            initRainAudio();
             for (let i = 0; i < targetCloudCount; i++) {
                 spawnCloud(true);
             }
