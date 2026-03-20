@@ -782,9 +782,14 @@
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
         const worldSize = 2000;
         let birds = []; // NOVO: Array para armazenar os pássaros
+        let islandAmbientAudio = null; // Som ambiente da ilha (interior)
+        let beachAmbientAudio = null; // Som ambiente da praia/mar
         let lastBirdSpawnCheck = 0; // NOVO: Controle de tempo para spawn de pássaros
         let nextBirdSoundTime = 10 + Math.random() * 15; // Próximo tempo para som de pássaro
         let birdBodyGeom, birdWingGeom, birdTailGeom, birdMat;
+
+        const islandAmbientUrl = "https://dl.dropbox.com/scl/fi/3dolt8qlwr3rh51j5oy4l/wind_island_nature_t_-2-1774031396110.mp3?rlkey=u6kc916o88hg0f1tqf7kfkp52&st=yktjz581&dl=1";
+        const beachAmbientUrl = "https://dl.dropbox.com/scl/fi/3qs6wkjtqu39aoidghorr/wind_beach_island_-4-1774031023927.mp3?rlkey=ml8fmu53qoyxpmbpavb9ftg0w&st=akxmu8qk&dl=1";
 
         const birdSoundUrls = [
             "https://dl.dropbox.com/scl/fi/eqw59rwqync9f3ky3rdoa/bird_singing_-1-1774014921293.mp3?rlkey=s4g2iyvptt761ekbrq0f7tisl&st=1mvzcxbd&dl=1",
@@ -875,6 +880,7 @@
         let currentRaftBody = null; // NOVO: Referência à jangada atual sendo dirigida
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
         let isWorldReady = false; window.isWorldReady = isWorldReady; // NOVO: Flag para rastrear se o mundo está pronto para interações
+        const sounds = { playPlace: () => {} }; // NOVO: Objeto de sons básico para evitar erros
 
         // NOVO: Gerenciador de carregamento para rastrear quando todos os recursos são carregados
         const loadingManager = new THREE.LoadingManager();
@@ -5714,6 +5720,31 @@
             }
             updateRain(delta);
 
+            // Atualiza volume dos sons ambientais da ilha e da praia
+            if (islandAmbientAudio && beachAmbientAudio) {
+                if (gamePaused) {
+                    islandAmbientAudio.volume = 0;
+                    beachAmbientAudio.volume = 0;
+                } else {
+                    const playerPos = playerBody.position;
+                    const centerPos = new THREE.Vector3(0, playerPos.y, 0);
+                    const dist = calculateWrappedDistance(playerPos, centerPos);
+
+                    // Volume da praia: 0 em grassRadius (100) até 1 em beachRadius (200) e além
+                    let beachVol = Math.max(0, Math.min(1, (dist - grassRadius) / (beachRadius - grassRadius)));
+
+                    // Volume base da ilha: 1 no centro até 0 em beachRadius (200)
+                    let islandVolBase = Math.max(0, Math.min(1, 1 - (dist - grassRadius) / (beachRadius - grassRadius)));
+                    if (dist < grassRadius) islandVolBase = 1.0;
+
+                    // Aplica oscilação ao som da ilha
+                    const islandVol = islandVolBase * (0.8 + 0.2 * Math.sin(world.time * 0.5));
+
+                    islandAmbientAudio.volume = islandVol;
+                    beachAmbientAudio.volume = beachVol;
+                }
+            }
+
             if (typeof raycastTargetsNeedUpdate !== 'undefined' && raycastTargetsNeedUpdate) {
                 updateRaycastTargets();
                 raycastTargetsNeedUpdate = false;
@@ -7578,6 +7609,19 @@
 
             createRainSystem();
             initRainAudio();
+
+            // Inicializa e toca os sons ambientais da ilha e da praia
+            islandAmbientAudio = new Audio(islandAmbientUrl);
+            islandAmbientAudio.loop = true;
+            islandAmbientAudio.volume = 0;
+            islandAmbientAudio.play().catch(e => console.warn("Erro ao tocar som ambiente da ilha:", e));
+            window.islandAmbientAudio = islandAmbientAudio; // Expor para debug
+
+            beachAmbientAudio = new Audio(beachAmbientUrl);
+            beachAmbientAudio.loop = true;
+            beachAmbientAudio.volume = 0;
+            beachAmbientAudio.play().catch(e => console.warn("Erro ao tocar som ambiente da praia:", e));
+            window.beachAmbientAudio = beachAmbientAudio; // Expor para debug
             for (let i = 0; i < targetCloudCount; i++) {
                 spawnCloud(true);
             }
