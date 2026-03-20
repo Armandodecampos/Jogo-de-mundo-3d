@@ -783,7 +783,6 @@
         const worldSize = 2000;
         let birds = []; // NOVO: Array para armazenar os pássaros
         let lastBirdSpawnCheck = 0; // NOVO: Controle de tempo para spawn de pássaros
-        let lastBirdSoundTime = 0; // Controle de tempo para sons de pássaros
         let nextBirdSoundTime = 10 + Math.random() * 15; // Próximo tempo para som de pássaro
         let birdBodyGeom, birdWingGeom, birdTailGeom, birdMat;
 
@@ -7010,7 +7009,7 @@
 
             // NOVO: Atualiza o sistema de pássaros (frequência reduzida pela metade)
             if (!gamePaused) {
-                if (sunAltitude > 0) {
+                if (sunAltitude > 0 && rainIntensity <= 0.05) {
                     // Spawn de grupos de pássaros
                     if (world.time - lastBirdSpawnCheck > 10) {
                         lastBirdSpawnCheck = world.time;
@@ -7585,6 +7584,11 @@
             window.birdSoundUrls = birdSoundUrls;
             window.seagullSoundUrls = seagullSoundUrls;
             window.playAmbientBirdSound = playAmbientBirdSound;
+            window.world = world;
+            Object.defineProperty(window, 'nextBirdSoundTime', {
+                get: () => nextBirdSoundTime,
+                set: (v) => { nextBirdSoundTime = v; }
+            });
             Object.defineProperty(window, 'gamePaused', { get: () => gamePaused, set: (v) => { gamePaused = v; } });
             Object.defineProperty(window, 'rainGainNode', { get: () => rainGainNode });
             Object.defineProperty(window, 'rainIntensity', { get: () => rainIntensity, set: (v) => { rainIntensity = v; } });
