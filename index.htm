@@ -783,7 +783,29 @@
         const worldSize = 2000;
         let birds = []; // NOVO: Array para armazenar os pássaros
         let lastBirdSpawnCheck = 0; // NOVO: Controle de tempo para spawn de pássaros
+        let lastBirdSoundTime = 0; // Controle de tempo para sons de pássaros
+        let nextBirdSoundTime = 10 + Math.random() * 15; // Próximo tempo para som de pássaro
         let birdBodyGeom, birdWingGeom, birdTailGeom, birdMat;
+
+        const birdSoundUrls = [
+            "https://dl.dropbox.com/scl/fi/eqw59rwqync9f3ky3rdoa/bird_singing_-1-1774014921293.mp3?rlkey=s4g2iyvptt761ekbrq0f7tisl&st=1mvzcxbd&dl=1",
+            "https://dl.dropbox.com/scl/fi/h7umu8t5qhy4re96ko5h5/bird_singing_-1-1774014988894.mp3?rlkey=s1isgpwktij64orpw2nzc0gh6&st=jtdou74e&dl=1",
+            "https://dl.dropbox.com/scl/fi/rpuc4rerepx2gvimuoj2s/bird_singing_-2-1774014921296.mp3?rlkey=zh0xc1l1yvlskdx7p1v2tf380&st=jinklb7i&dl=1",
+            "https://dl.dropbox.com/scl/fi/bfrysq8qrw1uwq74hbg2y/bird_singing_-2-1774014988894.mp3?rlkey=p5lzxs5s0pzl123p0jnhxshph&st=im52oftu&dl=1",
+            "https://dl.dropbox.com/scl/fi/iq6oturglv3849u3hnp1m/bird_singing_-3-1774014921297.mp3?rlkey=lin41r7n53j6g53agyfejw6kp&st=g0lqng9k&dl=1",
+            "https://dl.dropbox.com/scl/fi/hvxwpml6taplx9clkeo1c/bird_singing_-3-1774014994145.mp3?rlkey=by8ih690lmsgzdmapg9r5ctyk&st=yz5uuo9p&dl=1",
+            "https://dl.dropbox.com/scl/fi/6p7rujaq4uhqgq7cx70bj/bird_singing_-4-1774014921299.mp3?rlkey=btekjl53b91gdxr08q78k5a54&st=xw2hbhn9&dl=1"
+        ];
+
+        const seagullSoundUrls = [
+            "https://dl.dropbox.com/scl/fi/7sdkj8o838kq5xfztb053/seagull_singing_-1-1774015239362.mp3?rlkey=9rm4z08mponj5kt601dwqobb1&st=zlsr9yu7&dl=1",
+            "https://dl.dropbox.com/scl/fi/qild2e5q5lhta9yw76owq/seagull_singing_-2-1774015126105.mp3?rlkey=3bfy02nmk8qwilx1bpzm6sw5c&st=ifnxntzh&dl=1",
+            "https://dl.dropbox.com/scl/fi/xffmhs0mfibs3104bz5y3/seagull_singing_-2-1774015258822.mp3?rlkey=lzdtshks3asgq2lw8zdsp0kk9&st=ec1373a8&dl=1",
+            "https://dl.dropbox.com/scl/fi/2golwy8w1zi31dyz576kn/seagull_singing_-3-1774015131709.mp3?rlkey=el46sinudoiupbc5vbxqjh46s&st=8lii8usi&dl=1",
+            "https://dl.dropbox.com/scl/fi/nva2bca2horfrlc2iwjma/seagull_singing_-3-1774015261564.mp3?rlkey=v3gp6tmi0lwflbpevvczjhiym&st=muacdwcv&dl=1",
+            "https://dl.dropbox.com/scl/fi/g5vwfka7mdpn6rnf8az7j/seagull_singing_-4-1774015140694.mp3?rlkey=fm4tfwblqi75uy4lr9d7349rb&st=kx3ytlh0&dl=1",
+            "https://dl.dropbox.com/scl/fi/obfs31s9qjsags3i811vg/seagull_singing_-4-1774015276361.mp3?rlkey=h05fz3tycrcgsu77jsq6m8dpl&st=rwghp6xx&dl=1"
+        ];
 
         let clouds = []; // NOVO: Array para armazenar as nuvens
         let rainIntensity = 0; // Intensidade atual da chuva (0 a 1)
@@ -2622,6 +2644,25 @@
             } catch (e) {
                 console.error("Erro ao inicializar áudio da chuva:", e);
             }
+        }
+
+        function playAmbientBirdSound() {
+            if (gamePaused) return;
+
+            // Determina se o jogador está sobre água ou terra
+            const isOverWater = hasWaterAt(camera.position.x, camera.position.z);
+            const pool = isOverWater ? seagullSoundUrls : birdSoundUrls;
+
+            const randomUrl = pool[Math.floor(Math.random() * pool.length)];
+            const audio = new Audio(randomUrl);
+
+            // Volume aleatório entre 0.1 e 0.5 para simular distância
+            audio.volume = 0.1 + Math.random() * 0.4;
+
+            audio.play().catch(e => {
+                // Silenciosamente falha se o áudio não puder ser tocado (ex: interação do usuário necessária)
+                // console.log("Erro ao tocar som de pássaro:", e);
+            });
         }
 
         function updateRain(delta) {
@@ -6969,11 +7010,20 @@
 
             // NOVO: Atualiza o sistema de pássaros (frequência reduzida pela metade)
             if (!gamePaused) {
-                if (sunAltitude > 0 && world.time - lastBirdSpawnCheck > 10) {
-                    lastBirdSpawnCheck = world.time;
-                    // Frequência reduzida: 15% de chance a cada 10 segundos
-                    if (Math.random() < 0.15) {
-                        spawnBirdGroup();
+                if (sunAltitude > 0) {
+                    // Spawn de grupos de pássaros
+                    if (world.time - lastBirdSpawnCheck > 10) {
+                        lastBirdSpawnCheck = world.time;
+                        // Frequência reduzida: 15% de chance a cada 10 segundos
+                        if (Math.random() < 0.15) {
+                            spawnBirdGroup();
+                        }
+                    }
+
+                    // Sons ambientais de pássaros (10-25 segundos de intervalo)
+                    if (world.time > nextBirdSoundTime) {
+                        playAmbientBirdSound();
+                        nextBirdSoundTime = world.time + 10 + Math.random() * 15;
                     }
                 }
 
@@ -7532,6 +7582,9 @@
 
             isWorldReady = true; window.isWorldReady = true;
             window.initRainAudio = initRainAudio;
+            window.birdSoundUrls = birdSoundUrls;
+            window.seagullSoundUrls = seagullSoundUrls;
+            window.playAmbientBirdSound = playAmbientBirdSound;
             Object.defineProperty(window, 'gamePaused', { get: () => gamePaused, set: (v) => { gamePaused = v; } });
             Object.defineProperty(window, 'rainGainNode', { get: () => rainGainNode });
             Object.defineProperty(window, 'rainIntensity', { get: () => rainIntensity, set: (v) => { rainIntensity = v; } });
