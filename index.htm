@@ -2648,9 +2648,23 @@
         function playAmbientBirdSound() {
             if (gamePaused) return;
 
-            // Determina se o jogador está sobre água ou terra
-            const isOverWater = hasWaterAt(camera.position.x, camera.position.z);
-            const pool = isOverWater ? seagullSoundUrls : birdSoundUrls;
+            const playerPos = camera.position;
+            const dist = calculateWrappedDistance(playerPos, new THREE.Vector3(0, playerPos.y, 0));
+
+            let pool = [];
+
+            if (dist < grassRadius) {
+                // Parte central da ilha (grama): apenas pássaros
+                pool = birdSoundUrls;
+            } else if (dist < beachRadius) {
+                // Parte da praia: gaivotas e pássaros
+                pool = birdSoundUrls.concat(seagullSoundUrls);
+            } else {
+                // No mar: apenas gaivotas
+                pool = seagullSoundUrls;
+            }
+
+            if (pool.length === 0) return;
 
             const randomUrl = pool[Math.floor(Math.random() * pool.length)];
             const audio = new Audio(randomUrl);
@@ -2659,8 +2673,7 @@
             audio.volume = 0.1 + Math.random() * 0.4;
 
             audio.play().catch(e => {
-                // Silenciosamente falha se o áudio não puder ser tocado (ex: interação do usuário necessária)
-                // console.log("Erro ao tocar som de pássaro:", e);
+                // Silenciosamente falha se o áudio não puder ser tocado
             });
         }
 
