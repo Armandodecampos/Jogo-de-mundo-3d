@@ -378,7 +378,7 @@
             border: 2px solid #FFD700; /* Gold border directly on the item icon */
         }
 
-        #backpackModal .close-button {
+        .close-button {
             position: absolute;
             top: 10px;
             right: 10px;
@@ -398,7 +398,7 @@
             margin: 0;
             z-index: 1001;
         }
-        #backpackModal .close-button:hover {
+        .close-button:hover {
             background-color: #c82333;
         }
 
@@ -532,6 +532,73 @@
             top: 2px;
             margin-left: -1px;
             transform-origin: 50% 38px;
+        }
+
+        /* Custom Confirmation Modal Styles */
+        #confirmDestructionModal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: none; /* Hidden by default */
+            justify-content: center;
+            align-items: center;
+            z-index: 5000;
+        }
+        #confirmDestructionContainer {
+            background-color: #2c3e50;
+            border: 3px solid #e74c3c;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+            color: white;
+            box-shadow: 0 0 20px rgba(231, 76, 60, 0.3);
+        }
+        #confirmDestructionContainer h3 {
+            margin-top: 0;
+            color: #e74c3c;
+            font-size: 1.5em;
+            margin-bottom: 15px;
+        }
+        #confirmDestructionContainer p {
+            font-size: 1.1em;
+            margin-bottom: 25px;
+            line-height: 1.4;
+        }
+        .confirm-actions {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+        .confirm-actions button {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.1s, background-color 0.2s;
+        }
+        .confirm-actions button:active {
+            transform: scale(0.95);
+        }
+        #confirmDestructionButton {
+            background-color: #e74c3c;
+            color: white;
+        }
+        #confirmDestructionButton:hover {
+            background-color: #c0392b;
+        }
+        #cancelDestructionButton {
+            background-color: #7f8c8d;
+            color: white;
+        }
+        #cancelDestructionButton:hover {
+            background-color: #95a5a6;
         }
 
     </style>
@@ -680,10 +747,10 @@
         <img id="floatingItemIcon" src="" style="width: 50px; height: 50px; object-fit: contain; background: rgba(0,0,0,0.3); border-radius: 8px; border: 2px solid #FFD700; padding: 5px;">
     </div>
 
-    <div id="chestModal" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-800/90 border-2 border-stone-600 rounded-lg p-4 z-[1001] w-4/5 max-w-4xl max-h-[80%] flex flex-col text-white">
+    <div id="chestModal" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-800/90 border-2 border-stone-600 rounded-lg p-4 pt-12 z-[1001] w-4/5 max-w-4xl max-h-[80%] flex flex-col text-white">
+        <button id="closeChestButton" class="close-button">X</button>
         <div class="flex justify-between items-center mb-4">
             <h2 class="text-2xl font-bold">Baú</h2>
-            <button id="closeChestButton" class="text-2xl font-bold">&times;</button>
         </div>
         <div class="flex-grow grid grid-cols-2 gap-4 overflow-y-auto">
             <!-- Painel do Baú -->
@@ -699,6 +766,18 @@
                 <div id="chestBackpackSlotsContainer" class="flex flex-col gap-1 bg-black/30 p-2 rounded-md h-[calc(100%-2.5rem)] overflow-y-auto">
                     <!-- Slots da mochila (no modo baú) serão preenchidos dinamicamente -->
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirmation Modal for Destruction -->
+    <div id="confirmDestructionModal">
+        <div id="confirmDestructionContainer">
+            <h3>Destruir Item?</h3>
+            <p id="confirmDestructionText">Tem certeza que deseja destruir este item?</p>
+            <div class="confirm-actions">
+                <button id="confirmDestructionButton">Destruir</button>
+                <button id="cancelDestructionButton">Cancelar</button>
             </div>
         </div>
     </div>
@@ -952,6 +1031,12 @@
         let backpackModal;
         let backpackSlotsContainer;
         let trashSlot;
+
+        // Variáveis para o modal de confirmação de destruição
+        let confirmDestructionModal;
+        let confirmDestructionText;
+        let confirmDestructionButton;
+        let cancelDestructionButton;
 
         // NOVO: Variáveis para o sistema de baú
         let chestModal;
@@ -4415,13 +4500,10 @@
             // Lógica da Lixeira
             trashSlot.addEventListener('click', (e) => {
                 e.stopPropagation();
-                if (selectedItem) {
-                    const itemName = itemDisplayNames[selectedItem.item.name] || selectedItem.item.name;
-                    const confirmMsg = `Tem certeza que deseja destruir ${selectedItem.item.quantity}x ${itemName.split('\n')[0]} permanentemente?`;
-                    if (window.confirm(confirmMsg)) {
-                        selectedItem = null;
-                        updateUI();
-                    }
+                if (window.selectedItem) {
+                    const itemName = itemDisplayNames[window.selectedItem.item.name] || window.selectedItem.item.name;
+                    confirmDestructionText.textContent = `Tem certeza que deseja destruir ${window.selectedItem.item.quantity}x ${itemName.split('\n')[0]} permanentemente?`;
+                    confirmDestructionModal.style.display = 'flex';
                 }
             });
 
@@ -7664,6 +7746,24 @@
 
             // O raycastTargets será atualizado no próximo quadro pelo animate()
 
+            // Pega elementos do modal de confirmação de destruição
+            confirmDestructionModal = document.getElementById('confirmDestructionModal');
+            confirmDestructionText = document.getElementById('confirmDestructionText');
+            confirmDestructionButton = document.getElementById('confirmDestructionButton');
+            cancelDestructionButton = document.getElementById('cancelDestructionButton');
+
+            confirmDestructionButton.addEventListener('click', () => {
+                if (window.selectedItem) {
+                    window.selectedItem = null;
+                    updateUI();
+                }
+                confirmDestructionModal.style.display = 'none';
+            });
+
+            cancelDestructionButton.addEventListener('click', () => {
+                confirmDestructionModal.style.display = 'none';
+            });
+
             // NOVO: Pega elementos do baú e adiciona listeners aqui, após o DOM estar pronto
             chestModal = document.getElementById('chestModal');
             closeChestButton = document.getElementById('closeChestButton');
@@ -7739,6 +7839,8 @@
             window.waterMatrix = waterMatrix;
             window.THREE = THREE;
             window.addItemToInventory = addItemToInventory;
+            window.openChest = openChest;
+            window.closeChest = closeChest;
             window.openBackpack = openBackpack;
             window.closeBackpack = closeBackpack;
             window.grabObject = grabObject;
