@@ -391,6 +391,33 @@
             background-color: #c82333;
         }
 
+        #trashSlot {
+            width: 100%;
+            height: auto;
+            min-height: 50px;
+            border: 2px solid #e74c3c;
+            border-radius: 8px;
+            background-color: rgba(231, 76, 60, 0.2);
+            display: flex;
+            flex-direction: row;
+            justify-content: flex-start;
+            align-items: center;
+            color: #fff;
+            font-size: 0.9em;
+            position: relative;
+            cursor: pointer;
+            padding: 5px 10px;
+            margin-top: 10px;
+            transition: background-color 0.2s;
+        }
+        #trashSlot:hover {
+            background-color: rgba(231, 76, 60, 0.4);
+        }
+        #trashSlot i {
+            font-size: 24px;
+            margin-right: 15px;
+        }
+
         /* Tooltip Style */
         #tooltip {
             position: absolute;
@@ -615,6 +642,10 @@
         <h2>Mochila</h2>
         <div id="backpackSlotsContainer">
             <!-- Backpack slots will be dynamically filled by JavaScript -->
+        </div>
+        <div id="trashSlot">
+            <i class="fas fa-trash"></i>
+            <span>Lixeira</span>
         </div>
     </div>
 
@@ -907,6 +938,7 @@
         // Variáveis para o sistema de mochila
         let backpackModal;
         let backpackSlotsContainer;
+        let trashSlot;
 
         // NOVO: Variáveis para o sistema de baú
         let chestModal;
@@ -4365,6 +4397,32 @@
             // Pega elementos da mochila
             backpackModal = document.getElementById('backpackModal');
             backpackSlotsContainer = document.getElementById('backpackSlotsContainer');
+            trashSlot = document.getElementById('trashSlot');
+
+            // Lógica da Lixeira
+            trashSlot.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (selectedItem) {
+                    const itemName = itemDisplayNames[selectedItem.item.name] || selectedItem.item.name;
+                    const confirmMsg = `Tem certeza que deseja destruir ${selectedItem.item.quantity}x ${itemName.split('\n')[0]} permanentemente?`;
+                    if (window.confirm(confirmMsg)) {
+                        selectedItem = null;
+                        updateUI();
+                    }
+                }
+            });
+
+            trashSlot.addEventListener('mouseenter', (e) => {
+                tooltipElement.textContent = "Lixeira\nClique com um item selecionado para destruí-lo permanentemente.";
+                tooltipElement.classList.add('visible');
+                const rect = e.currentTarget.getBoundingClientRect();
+                tooltipElement.style.left = `${rect.left + rect.width / 2 - tooltipElement.offsetWidth / 2}px`;
+                tooltipElement.style.top = `${rect.top - tooltipElement.offsetHeight - 5}px`;
+            });
+
+            trashSlot.addEventListener('mouseleave', () => {
+                tooltipElement.classList.remove('visible');
+            });
 
             // Add drop functionality when clicking the modal background
             backpackModal.addEventListener('click', (e) => {
