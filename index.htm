@@ -908,7 +908,7 @@
         let islandAmbientAudio = null; // Som ambiente da ilha (interior)
         let beachAmbientAudio = null; // Som ambiente da praia/mar
         let lastBirdSpawnCheck = 0; // NOVO: Controle de tempo para spawn de pássaros
-        let nextBirdSoundTime = 10 + Math.random() * 15; // Próximo tempo para som de pássaro
+        let nextBirdSoundTime = 5 + Math.random() * 10; // Próximo tempo para som de pássaro
         let birdBodyGeom, birdWingGeom, birdTailGeom, birdMat;
 
         const islandAmbientUrl = "https://dl.dropbox.com/scl/fi/3dolt8qlwr3rh51j5oy4l/wind_island_nature_t_-2-1774031396110.mp3?rlkey=u6kc916o88hg0f1tqf7kfkp52&st=yktjz581&dl=1";
@@ -5939,14 +5939,14 @@
                     let beachVolBase = Math.max(0, Math.min(1, (dist - grassRadius) / (beachRadius - grassRadius)));
 
                     // Aplica oscilação forte (30% a 100%) para dar impressão de onda e reduz o volume máximo
-                    const beachVol = beachVolBase * 0.4 * (0.65 + 0.35 * Math.sin(world.time * 0.5));
+                    const beachVol = beachVolBase * 0.2 * (0.65 + 0.35 * Math.sin(world.time * 0.5));
 
                     // Volume base da ilha: 1 no centro até 0 em beachRadius (200)
                     let islandVolBase = Math.max(0, Math.min(1, 1 - (dist - grassRadius) / (beachRadius - grassRadius)));
                     if (dist < grassRadius) islandVolBase = 1.0;
 
                     // Aplica oscilação ao som da ilha
-                    const islandVol = islandVolBase * (0.8 + 0.2 * Math.sin(world.time * 0.5));
+                    const islandVol = islandVolBase * 0.5 * (0.8 + 0.2 * Math.sin(world.time * 0.5));
 
                     islandGainNode.gain.setTargetAtTime(islandVol, gameAudioContext.currentTime, 0.1);
                     beachGainNode.gain.setTargetAtTime(beachVol, gameAudioContext.currentTime, 0.1);
@@ -7263,18 +7263,18 @@
             if (!gamePaused) {
                 if (sunAltitude > 0 && rainIntensity <= 0.05) {
                     // Spawn de grupos de pássaros
-                    if (world.time - lastBirdSpawnCheck > 5) {
+                    if (world.time - lastBirdSpawnCheck > 3) {
                         lastBirdSpawnCheck = world.time;
-                        // Frequência aumentada: 30% de chance a cada 5 segundos
-                        if (Math.random() < 0.3) {
+                        // Frequência aumentada: 40% de chance a cada 3 segundos
+                        if (Math.random() < 0.4) {
                             spawnBirdGroup();
                         }
                     }
 
-                    // Sons ambientais de pássaros (10-25 segundos de intervalo)
+                    // Sons ambientais de pássaros (5-15 segundos de intervalo)
                     if (world.time > nextBirdSoundTime) {
                         playAmbientBirdSound();
-                        nextBirdSoundTime = world.time + 10 + Math.random() * 15;
+                        nextBirdSoundTime = world.time + 5 + Math.random() * 10;
                     }
                 }
 
