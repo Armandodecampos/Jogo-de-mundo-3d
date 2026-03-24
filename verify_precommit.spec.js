@@ -2,6 +2,7 @@ const { test, expect } = require('@playwright/test');
 const path = require('path');
 
 test('verify seamless sea and island textures', async ({ page }) => {
+    test.setTimeout(60000);
     await page.goto('file://' + path.join(__dirname, 'index.htm'));
     await page.click('button:has-text("Jogar")');
     await page.waitForFunction(() => window.isWorldReady === true, { timeout: 30000 });

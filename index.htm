@@ -2782,9 +2782,20 @@
         }
 
         function playAmbientBirdSound() {
-            if (gamePaused) return;
+            if (gamePaused || birds.length === 0) return;
 
             const playerPos = camera.position;
+
+            // Encontra o pássaro mais próximo
+            let minBirdDist = Infinity;
+            birds.forEach(bird => {
+                const d = bird.mesh.position.distanceTo(playerPos);
+                if (d < minBirdDist) minBirdDist = d;
+            });
+
+            // Se o pássaro mais próximo estiver muito longe, não toca som
+            if (minBirdDist > 300) return;
+
             const dist = calculateWrappedDistance(playerPos, new THREE.Vector3(0, playerPos.y, 0));
 
             let pool = [];
@@ -2805,8 +2816,10 @@
             const randomUrl = pool[Math.floor(Math.random() * pool.length)];
             const audio = new Audio(randomUrl);
 
-            // Volume aleatório entre 0.1 e 0.5 para simular distância
-            audio.volume = 0.1 + Math.random() * 0.4;
+            // Volume baseado na distância do pássaro mais próximo, reduzido conforme solicitado
+            const volume = Math.max(0, 0.25 * (1 - minBirdDist / 300));
+            if (volume <= 0) return;
+            audio.volume = volume;
 
             audio.play().catch(e => {
                 // Silenciosamente falha se o áudio não puder ser tocado
@@ -5884,7 +5897,10 @@
                     const dist = calculateWrappedDistance(playerPos, centerPos);
 
                     // Volume da praia: 0 em grassRadius (100) até 1 em beachRadius (200) e além
-                    let beachVol = Math.max(0, Math.min(1, (dist - grassRadius) / (beachRadius - grassRadius)));
+                    let beachVolBase = Math.max(0, Math.min(1, (dist - grassRadius) / (beachRadius - grassRadius)));
+
+                    // Aplica oscilação forte para dar impressão de onda e reduz o volume máximo
+                    const beachVol = beachVolBase * 0.4 * (0.5 + 0.5 * Math.sin(world.time * 0.5));
 
                     // Volume base da ilha: 1 no centro até 0 em beachRadius (200)
                     let islandVolBase = Math.max(0, Math.min(1, 1 - (dist - grassRadius) / (beachRadius - grassRadius)));
