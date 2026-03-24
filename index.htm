@@ -938,7 +938,30 @@
         let rainIntensity = 0; // Intensidade atual da chuva (0 a 1)
         let targetRainIntensity = 0; // Intensidade alvo para transições suaves
         let rainParticles = null; // Sistema de partículas da chuva
-        let rainAudioContext = null;
+        let gameAudioContext = null;
+        let audioBuffers = {};
+        let islandGainNode = null;
+        let beachGainNode = null;
+        let islandSourceNode = null;
+        let beachSourceNode = null;
+
+        async function loadAudioBuffer(url) {
+            if (!gameAudioContext) {
+                gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioBuffers[url]) return audioBuffers[url];
+            try {
+                const response = await fetch(url);
+                const arrayBuffer = await response.arrayBuffer();
+                const audioBuffer = await gameAudioContext.decodeAudioData(arrayBuffer);
+                audioBuffers[url] = audioBuffer;
+                return audioBuffer;
+            } catch (e) {
+                console.error("Erro ao carregar áudio:", url, e);
+                return null;
+            }
+        }
+
         let rainNoiseNode = null;
         let rainFilterNode = null;
         let rainGainNode = null;
@@ -2746,34 +2769,34 @@
 
         function initRainAudio() {
             try {
-                rainAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+                gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
 
                 // Gerar ruído branco
-                const bufferSize = 2 * rainAudioContext.sampleRate;
-                const noiseBuffer = rainAudioContext.createBuffer(1, bufferSize, rainAudioContext.sampleRate);
+                const bufferSize = 2 * gameAudioContext.sampleRate;
+                const noiseBuffer = gameAudioContext.createBuffer(1, bufferSize, gameAudioContext.sampleRate);
                 const output = noiseBuffer.getChannelData(0);
                 for (let i = 0; i < bufferSize; i++) {
                     output[i] = Math.random() * 2 - 1;
                 }
 
-                rainNoiseNode = rainAudioContext.createBufferSource();
+                rainNoiseNode = gameAudioContext.createBufferSource();
                 rainNoiseNode.buffer = noiseBuffer;
                 rainNoiseNode.loop = true;
 
                 // Filtro passa-baixa para suavizar o ruído e simular chuva
-                rainFilterNode = rainAudioContext.createBiquadFilter();
+                rainFilterNode = gameAudioContext.createBiquadFilter();
                 rainFilterNode.type = 'lowpass';
                 rainFilterNode.frequency.value = 1000;
                 rainFilterNode.Q.value = 1;
 
                 // Controle de volume
-                rainGainNode = rainAudioContext.createGain();
+                rainGainNode = gameAudioContext.createGain();
                 rainGainNode.gain.value = 0;
 
                 // Conectar os nós
                 rainNoiseNode.connect(rainFilterNode);
                 rainFilterNode.connect(rainGainNode);
-                rainGainNode.connect(rainAudioContext.destination);
+                rainGainNode.connect(gameAudioContext.destination);
 
                 rainNoiseNode.start();
             } catch (e) {
@@ -2781,8 +2804,19 @@
             }
         }
 
+        function playOneShot(buffer, volume) {
+            if (!gameAudioContext || !buffer) return;
+            const source = gameAudioContext.createBufferSource();
+            const gainNode = gameAudioContext.createGain();
+            source.buffer = buffer;
+            gainNode.gain.setValueAtTime(volume, gameAudioContext.currentTime);
+            source.connect(gainNode);
+            gainNode.connect(gameAudioContext.destination);
+            source.start(0);
+        }
+
         function playAmbientBirdSound() {
-            if (gamePaused || birds.length === 0) return;
+            if (gamePaused || birds.length === 0 || !gameAudioContext) return;
 
             const playerPos = camera.position;
 
@@ -2814,16 +2848,15 @@
             if (pool.length === 0) return;
 
             const randomUrl = pool[Math.floor(Math.random() * pool.length)];
-            const audio = new Audio(randomUrl);
+            const buffer = audioBuffers[randomUrl];
 
-            // Volume baseado na distância do pássaro mais próximo, reduzido conforme solicitado
-            const volume = Math.max(0, 0.25 * (1 - minBirdDist / 300));
-            if (volume <= 0) return;
-            audio.volume = volume;
-
-            audio.play().catch(e => {
-                // Silenciosamente falha se o áudio não puder ser tocado
-            });
+            if (buffer) {
+                // Volume baseado na distância do pássaro mais próximo
+                const volume = Math.max(0, 0.25 * (1 - minBirdDist / 300));
+                if (volume > 0) {
+                    playOneShot(buffer, volume);
+                }
+            }
         }
 
         function updateRain(delta) {
@@ -2833,11 +2866,11 @@
             if (rainGainNode && rainFilterNode) {
                 // Se o jogo estiver pausado, silencia a chuva
                 const targetGain = gamePaused ? 0 : (rainIntensity * 0.4);
-                rainGainNode.gain.setTargetAtTime(targetGain, rainAudioContext.currentTime, 0.1);
+                rainGainNode.gain.setTargetAtTime(targetGain, gameAudioContext.currentTime, 0.1);
 
                 // Frequência do filtro aumenta com a intensidade (chuva mais forte é mais "aguda")
                 const targetFreq = 500 + (rainIntensity * 1500);
-                rainFilterNode.frequency.setTargetAtTime(targetFreq, rainAudioContext.currentTime, 0.1);
+                rainFilterNode.frequency.setTargetAtTime(targetFreq, gameAudioContext.currentTime, 0.1);
             }
 
             if (rainIntensity > 0.05) {
@@ -5616,6 +5649,12 @@
             document.getElementById('pauseSettingsButton').addEventListener('click', showSettingsScreen);
             document.getElementById('backToMenuButton').addEventListener('click', hideSettingsScreen);
 
+            document.getElementById('exitGameButton').addEventListener('click', () => {
+                if (gameAudioContext) {
+                    gameAudioContext.close();
+                }
+            });
+
             // NOVO: Listener para o slider de distância de renderização
             const renderDistanceSlider = document.getElementById('renderDistanceSlider');
             const renderDistanceValue = document.getElementById('renderDistanceValue');
@@ -5881,16 +5920,16 @@
             } else {
                 // Se pausado, silencia a chuva imediatamente (updateRain continua rodando)
                 if (rainGainNode) {
-                    rainGainNode.gain.setTargetAtTime(0, rainAudioContext.currentTime, 0.05);
+                    rainGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                 }
             }
             updateRain(delta);
 
             // Atualiza volume dos sons ambientais da ilha e da praia
-            if (islandAmbientAudio && beachAmbientAudio) {
+            if (islandGainNode && beachGainNode) {
                 if (gamePaused) {
-                    islandAmbientAudio.volume = 0;
-                    beachAmbientAudio.volume = 0;
+                    islandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                    beachGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                 } else {
                     const playerPos = playerBody.position;
                     const centerPos = new THREE.Vector3(0, playerPos.y, 0);
@@ -5909,8 +5948,8 @@
                     // Aplica oscilação ao som da ilha
                     const islandVol = islandVolBase * (0.8 + 0.2 * Math.sin(world.time * 0.5));
 
-                    islandAmbientAudio.volume = islandVol;
-                    beachAmbientAudio.volume = beachVol;
+                    islandGainNode.gain.setTargetAtTime(islandVol, gameAudioContext.currentTime, 0.1);
+                    beachGainNode.gain.setTargetAtTime(beachVol, gameAudioContext.currentTime, 0.1);
                 }
             }
 
@@ -7797,18 +7836,41 @@
             createRainSystem();
             initRainAudio();
 
-            // Inicializa e toca os sons ambientais da ilha e da praia
-            islandAmbientAudio = new Audio(islandAmbientUrl);
-            islandAmbientAudio.loop = true;
-            islandAmbientAudio.volume = 0;
-            islandAmbientAudio.play().catch(e => console.warn("Erro ao tocar som ambiente da ilha:", e));
-            window.islandAmbientAudio = islandAmbientAudio; // Expor para debug
+            // Inicializa e toca os sons ambientais da ilha e da praia via Web Audio API
+            islandGainNode = gameAudioContext.createGain();
+            islandGainNode.gain.value = 0;
+            islandGainNode.connect(gameAudioContext.destination);
 
-            beachAmbientAudio = new Audio(beachAmbientUrl);
-            beachAmbientAudio.loop = true;
-            beachAmbientAudio.volume = 0;
-            beachAmbientAudio.play().catch(e => console.warn("Erro ao tocar som ambiente da praia:", e));
-            window.beachAmbientAudio = beachAmbientAudio; // Expor para debug
+            beachGainNode = gameAudioContext.createGain();
+            beachGainNode.gain.value = 0;
+            beachGainNode.connect(gameAudioContext.destination);
+
+            async function startAmbientSounds() {
+                const islandBuf = await loadAudioBuffer(islandAmbientUrl);
+                const beachBuf = await loadAudioBuffer(beachAmbientUrl);
+
+                if (islandBuf) {
+                    islandSourceNode = gameAudioContext.createBufferSource();
+                    islandSourceNode.buffer = islandBuf;
+                    islandSourceNode.loop = true;
+                    islandSourceNode.connect(islandGainNode);
+                    islandSourceNode.start(0);
+                }
+
+                if (beachBuf) {
+                    beachSourceNode = gameAudioContext.createBufferSource();
+                    beachSourceNode.buffer = beachBuf;
+                    beachSourceNode.loop = true;
+                    beachSourceNode.connect(beachGainNode);
+                    beachSourceNode.start(0);
+                }
+
+                // Pre-load bird sounds
+                birdSoundUrls.forEach(url => loadAudioBuffer(url));
+                seagullSoundUrls.forEach(url => loadAudioBuffer(url));
+            }
+
+            startAmbientSounds();
             for (let i = 0; i < targetCloudCount; i++) {
                 spawnCloud(true);
             }
@@ -7835,6 +7897,8 @@
             });
             Object.defineProperty(window, 'gamePaused', { get: () => gamePaused, set: (v) => { gamePaused = v; } });
             Object.defineProperty(window, 'rainGainNode', { get: () => rainGainNode });
+            Object.defineProperty(window, 'islandGainNode', { get: () => islandGainNode });
+            Object.defineProperty(window, 'beachGainNode', { get: () => beachGainNode });
             Object.defineProperty(window, 'rainIntensity', { get: () => rainIntensity, set: (v) => { rainIntensity = v; } });
             Object.defineProperty(window, 'targetRainIntensity', { get: () => targetRainIntensity, set: (v) => { targetRainIntensity = v; } });
             Object.defineProperty(window, 'isClimbing', { get: () => isClimbing, set: (v) => { isClimbing = v; } });
