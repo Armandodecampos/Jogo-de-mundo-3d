@@ -1311,6 +1311,8 @@
         let cubeMaterial;
         let constructionMaterial;
         let debrisMaterial; // For flying dirt/stone chunks
+        let playerGroundContactMaterial;
+        let playerConstructionContactMaterial;
 
         // Define tree stages with base physics bounding box and visual geometry properties
         // These are base values that will be randomized for each tree instance
@@ -3753,7 +3755,7 @@
             constructionMaterial = new CANNON.Material('constructionMaterial'); // Novo material para cobs e pisos
 
             // Define material de contato entre jogador e terreno/estrada
-            const playerGroundContactMaterial = new CANNON.ContactMaterial(
+            window.playerGroundContactMaterial = playerGroundContactMaterial = new CANNON.ContactMaterial(
                 playerMaterial,
                 islandMaterial,
                 {
@@ -3766,7 +3768,7 @@
             world.addContactMaterial(playerGroundContactMaterial);
 
             // Material de contato entre jogador e blocos de construção (cobs/pisos)
-            const playerConstructionContactMaterial = new CANNON.ContactMaterial(
+            window.playerConstructionContactMaterial = playerConstructionContactMaterial = new CANNON.ContactMaterial(
                 playerMaterial,
                 constructionMaterial,
                 {
@@ -5918,8 +5920,9 @@
             // Sincroniza Birds e Clouds com worldSize real para despawn
             const despawnDist = worldSize * 0.8;
 
-            // Reset steep slope flag before physics step
+            // Reset slope flags before physics step
             window.onSteepSlope = onSteepSlope = false;
+            window.onWalkableGround = false;
 
             if (!gamePaused) {
                 updateWeather(delta);
@@ -6446,6 +6449,10 @@
                     currentRaftBody.wakeUp();
                 }
             } else if (keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d'] || keysPressed[' ']) {
+                // Restore zero friction for movement
+                if (playerGroundContactMaterial) playerGroundContactMaterial.friction = 0;
+                if (playerConstructionContactMaterial) playerConstructionContactMaterial.friction = 0;
+
                 // If any movement or jump key is pressed, we handle movement/jumping
                 // and avoid the stabilization (stop) logic in the 'else' block.
                 if (keysPressed['w']) movementVector.add(forward);
@@ -6479,16 +6486,21 @@
                     }
                 }
                 window.onSteepSlope = onSteepSlope;
+                window.onWalkableGround = onWalkableGround;
 
                 if (onWalkableGround) {
                     // Full stop on walkable ground to prevent zero-friction sliding and gravity drift
-                    // We only zero the horizontal velocity to avoid snapping during landing/falling
                     playerBody.velocity.x = 0;
                     playerBody.velocity.z = 0;
-                    // If vertical velocity is very small, zero it too to prevent jittering on slopes
                     if (Math.abs(playerBody.velocity.y) < 0.1) {
                         playerBody.velocity.y = 0;
                     }
+                    // Apply high friction while idle to prevent micro-sliding on slopes
+                    if (playerGroundContactMaterial) playerGroundContactMaterial.friction = 10.0;
+                    if (playerConstructionContactMaterial) playerConstructionContactMaterial.friction = 10.0;
+                    // Apply counter-gravity force to perfectly stabilize on slopes
+                    const antiGravity = new CANNON.Vec3(0, -world.gravity.y * playerBody.mass, 0);
+                    playerBody.applyForce(antiGravity);
                 } else if (!onSteepSlope) {
                     // Normal damping in the air or non-steep surfaces
                     playerBody.velocity.x *= 0.9;
@@ -6525,6 +6537,17 @@
 
             // Atualiza o mundo da física e o tempo simulado
             world.step(1 / 60, delta, 3);
+
+            // Re-apply zero velocity after physics step if player is supposed to be static
+            // to prevent tiny movements accumulated during the step on slopes.
+            if (!gamePaused && !isFlying && !isClimbing && !isDrivingRaft) {
+                const noMovementKeys = !(keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d'] || keysPressed[' ']);
+                if (noMovementKeys && window.onWalkableGround) {
+                    playerBody.velocity.x = 0;
+                    playerBody.velocity.z = 0;
+                    if (Math.abs(playerBody.velocity.y) < 0.1) playerBody.velocity.y = 0;
+                }
+            }
 
             // Sincroniza o jogador com a jangada APÓS o step da física para evitar jitter visual
             if (isDrivingRaft && currentRaftBody) {
