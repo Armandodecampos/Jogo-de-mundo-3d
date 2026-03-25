@@ -3757,7 +3757,7 @@
                 playerMaterial,
                 islandMaterial,
                 {
-                    friction: 0, // Attrition set to 0
+                    friction: 0.7, // Increased friction to prevent sliding on moderate slopes
                     restitution: 0,
                     contactEquationStiffness: 1e9, // Increased for higher rigidity
                     contactEquationRelaxation: 3
@@ -3770,7 +3770,7 @@
                 playerMaterial,
                 constructionMaterial,
                 {
-                    friction: 0, // CRUCIAL: Atrito zero para evitar que o jogador "cole"
+                    friction: 0.7, // Increased friction to prevent sliding on moderate slopes
                     restitution: 0,
                     contactEquationStiffness: 1e9, // Alta rigidez
                     contactEquationRelaxation: 3
@@ -3871,6 +3871,10 @@
                 }
             );
             world.addContactMaterial(debrisPlayerContactMaterial);
+
+            // Global flag for steep slope detection to adjust movement behavior
+            window.onSteepSlope = false;
+            let onSteepSlope = false;
 
 
             // Configuração das Luzes
@@ -5914,6 +5918,9 @@
             // Sincroniza Birds e Clouds com worldSize real para despawn
             const despawnDist = worldSize * 0.8;
 
+            // Reset steep slope flag before physics step
+            window.onSteepSlope = onSteepSlope = false;
+
             if (!gamePaused) {
                 updateWeather(delta);
                 updateClouds(delta, despawnDist);
@@ -6468,8 +6475,26 @@
                 playerBody.allowSleep = false; // Player is moving, keep active
             } else {
                 // If no movement keys are pressed, apply a small damping to stop horizontal movement
-                playerBody.velocity.x *= 0.9;
-                playerBody.velocity.z *= 0.9;
+                // EXCEPT on steep slopes to allow sliding/falling
+                window.onSteepSlope = onSteepSlope = false;
+                if (!isFlying && !isClimbing && !isDrivingRaft) {
+                    for (let i = 0; i < world.contacts.length; i++) {
+                        const c = world.contacts[i];
+                        if (c.bi === playerBody || c.bj === playerBody) {
+                            const surfaceNormalY = (c.bi === playerBody) ? -c.ni.y : c.ni.y;
+                            if (surfaceNormalY < 0.5) {
+                                window.onSteepSlope = onSteepSlope = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!onSteepSlope) {
+                    playerBody.velocity.x *= 0.9;
+                    playerBody.velocity.z *= 0.9;
+                }
+
                 if (pickedObjectBody === null && Math.abs(playerBody.velocity.y) < 0.1) {
                     playerBody.allowSleep = true;
                 } else {
@@ -6586,6 +6611,20 @@
             }
 
             // Atualiza as posições das malhas do terreno com base na posição envolvida do jogador
+            // Update onSteepSlope flag based on current contacts
+            if (!isFlying && !isClimbing && !isDrivingRaft) {
+                for (let i = 0; i < world.contacts.length; i++) {
+                    const c = world.contacts[i];
+                    if (c.bi === playerBody || c.bj === playerBody) {
+                        const surfaceNormalY = (c.bi === playerBody) ? -c.ni.y : c.ni.y;
+                        if (surfaceNormalY < 0.5) {
+                            window.onSteepSlope = onSteepSlope = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
             // Sincronização dos corpos de física movida para antes do world.step
             islandMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
