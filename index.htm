@@ -5919,7 +5919,7 @@
             const despawnDist = worldSize * 0.8;
 
             // Reset steep slope flag before physics step
-            window.onSteepSlope = onSteepSlope = false;
+            // Updated in the input logic section and sync section
 
             if (!gamePaused) {
                 updateWeather(delta);
@@ -6477,26 +6477,32 @@
                 // If no movement keys are pressed, apply a small damping or full stop
                 // to prevent sliding on moderate slopes when friction is 0.
                 let onWalkableGround = false;
-                let onSteepSlopeLocal = false;
+                onSteepSlope = false;
                 if (!isFlying && !isClimbing && !isDrivingRaft) {
                     for (let i = 0; i < world.contacts.length; i++) {
                         const c = world.contacts[i];
                         if (c.bi === playerBody || c.bj === playerBody) {
                             const surfaceNormalY = (c.bi === playerBody) ? -c.ni.y : c.ni.y;
-                            if (surfaceNormalY < 0.258) { // 75 degrees threshold (cos 75 approx 0.258)
-                                onSteepSlopeLocal = true;
+                            if (surfaceNormalY < 0.5) { // 60 degrees threshold (cos 60 = 0.5)
+                                onSteepSlope = true;
                             } else {
                                 onWalkableGround = true;
                             }
                         }
                     }
                 }
+                window.onSteepSlope = onSteepSlope;
 
                 if (onWalkableGround) {
-                    // Full stop on walkable ground to prevent zero-friction sliding
+                    // Full stop on walkable ground to prevent zero-friction sliding and gravity drift
+                    // We only zero the horizontal velocity to avoid snapping during landing/falling
                     playerBody.velocity.x = 0;
                     playerBody.velocity.z = 0;
-                } else if (!onSteepSlopeLocal) {
+                    // If vertical velocity is very small, zero it too to prevent jittering on slopes
+                    if (Math.abs(playerBody.velocity.y) < 0.1) {
+                        playerBody.velocity.y = 0;
+                    }
+                } else if (!onSteepSlope) {
                     // Normal damping in the air or non-steep surfaces
                     playerBody.velocity.x *= 0.9;
                     playerBody.velocity.z *= 0.9;
@@ -6624,7 +6630,7 @@
                     const c = world.contacts[i];
                     if (c.bi === playerBody || c.bj === playerBody) {
                         const surfaceNormalY = (c.bi === playerBody) ? -c.ni.y : c.ni.y;
-                        if (surfaceNormalY < 0.258) { // 75 degrees threshold
+                        if (surfaceNormalY < 0.5) { // 60 degrees threshold
                             window.onSteepSlope = onSteepSlope = true;
                             break;
                         }
