@@ -3757,7 +3757,7 @@
                 playerMaterial,
                 islandMaterial,
                 {
-                    friction: 0.7, // Increased friction to prevent sliding on moderate slopes
+                    friction: 0, // Restore zero friction to avoid slow movement
                     restitution: 0,
                     contactEquationStiffness: 1e9, // Increased for higher rigidity
                     contactEquationRelaxation: 3
@@ -3770,7 +3770,7 @@
                 playerMaterial,
                 constructionMaterial,
                 {
-                    friction: 0.7, // Increased friction to prevent sliding on moderate slopes
+                    friction: 0, // Restore zero friction to avoid slow movement
                     restitution: 0,
                     contactEquationStiffness: 1e9, // Alta rigidez
                     contactEquationRelaxation: 3
@@ -6474,23 +6474,30 @@
 
                 playerBody.allowSleep = false; // Player is moving, keep active
             } else {
-                // If no movement keys are pressed, apply a small damping to stop horizontal movement
-                // EXCEPT on steep slopes to allow sliding/falling
-                window.onSteepSlope = onSteepSlope = false;
+                // If no movement keys are pressed, apply a small damping or full stop
+                // to prevent sliding on moderate slopes when friction is 0.
+                let onWalkableGround = false;
+                let onSteepSlopeLocal = false;
                 if (!isFlying && !isClimbing && !isDrivingRaft) {
                     for (let i = 0; i < world.contacts.length; i++) {
                         const c = world.contacts[i];
                         if (c.bi === playerBody || c.bj === playerBody) {
                             const surfaceNormalY = (c.bi === playerBody) ? -c.ni.y : c.ni.y;
                             if (surfaceNormalY < 0.5) {
-                                window.onSteepSlope = onSteepSlope = true;
-                                break;
+                                onSteepSlopeLocal = true;
+                            } else {
+                                onWalkableGround = true;
                             }
                         }
                     }
                 }
 
-                if (!onSteepSlope) {
+                if (onWalkableGround) {
+                    // Full stop on walkable ground to prevent zero-friction sliding
+                    playerBody.velocity.x = 0;
+                    playerBody.velocity.z = 0;
+                } else if (!onSteepSlopeLocal) {
+                    // Normal damping in the air or non-steep surfaces
                     playerBody.velocity.x *= 0.9;
                     playerBody.velocity.z *= 0.9;
                 }
