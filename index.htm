@@ -5919,7 +5919,7 @@
             const despawnDist = worldSize * 0.8;
 
             // Reset steep slope flag before physics step
-            // Updated in the input logic section and sync section
+            window.onSteepSlope = onSteepSlope = false;
 
             if (!gamePaused) {
                 updateWeather(delta);
@@ -6445,39 +6445,26 @@
                     currentRaftBody.allowSleep = false;
                     currentRaftBody.wakeUp();
                 }
-            } else if (keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d']) {
+            } else if (keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d'] || keysPressed[' ']) {
+                // If any movement or jump key is pressed, we handle movement/jumping
+                // and avoid the stabilization (stop) logic in the 'else' block.
                 if (keysPressed['w']) movementVector.add(forward);
                 if (keysPressed['s']) movementVector.sub(forward);
                 if (keysPressed['a']) movementVector.sub(right);
                 if (keysPressed['d']) movementVector.add(right);
 
-                const normalizedMovementVector = movementVector.clone().normalize();
+                if (movementVector.lengthSq() > 0) {
+                    const normalizedMovementVector = movementVector.clone().normalize();
+                    // Direct velocity assignment for horizontal movement ensures a "fast" and responsive feel.
+                    playerBody.velocity.x = normalizedMovementVector.x * currentMoveSpeed;
+                    playerBody.velocity.z = normalizedMovementVector.z * currentMoveSpeed;
+                }
 
-                // Calculate desired velocity
-                const desiredVelocity = new CANNON.Vec3(
-                    normalizedMovementVector.x * currentMoveSpeed,
-                    playerBody.velocity.y, // Maintain current vertical velocity
-                    normalizedMovementVector.z * currentMoveSpeed
-                );
-
-                // Calculate velocity difference
-                const velocityDifference = new CANNON.Vec3();
-                desiredVelocity.vsub(playerBody.velocity, velocityDifference);
-
-                // Apply impulse to reach desired velocity
-                const impulse = new CANNON.Vec3(
-                    playerBody.mass * velocityDifference.x,
-                    playerBody.mass * velocityDifference.y,
-                    playerBody.mass * velocityDifference.z
-                );
-                playerBody.applyImpulse(impulse);
-
-                playerBody.allowSleep = false; // Player is moving, keep active
+                playerBody.allowSleep = false;
             } else {
                 // If no movement keys are pressed, apply a small damping or full stop
                 // to prevent sliding on moderate slopes when friction is 0.
                 let onWalkableGround = false;
-                onSteepSlope = false;
                 if (!isFlying && !isClimbing && !isDrivingRaft) {
                     for (let i = 0; i < world.contacts.length; i++) {
                         const c = world.contacts[i];
