@@ -7512,25 +7512,29 @@
                 hitLow = true;
             }
 
-            const rayOriginHigh = new CANNON.Vec3(
-                rayOriginLow.x,
-                playerBody.position.y - currentPlayerRadius + stepClimbHeight + 0.1,
-                rayOriginLow.z
-            );
-            const rayTargetHigh = new CANNON.Vec3(
-                rayOriginHigh.x,
-                rayOriginHigh.y - 0.05,
-                rayOriginHigh.z
-            );
-
-            let hitHigh = false;
-            const rayResultHigh = new CANNON.RaycastResult();
-            world.raycastAny(rayOriginHigh, rayTargetHigh, {}, rayResultHigh);
-            if (rayResultHigh.hasHit && rayResultHigh.body !== playerBody && rayResultHigh.body.collisionResponse) {
-                hitHigh = true;
+            let hitWall = false;
+            // Usa raios horizontais partindo do centro do jogador para detectar obstáculos altos (muros/pilhas)
+            const horizontalRayHeights = [0.6, 1.1, 1.6];
+            for (const h of horizontalRayHeights) {
+                const origin = new CANNON.Vec3(
+                    playerBody.position.x,
+                    playerBody.position.y - currentPlayerRadius + h,
+                    playerBody.position.z
+                );
+                const target = new CANNON.Vec3(
+                    origin.x + playerHorizontalForwardCannon.x * (playerHalfWidth + 0.2),
+                    origin.y,
+                    origin.z + playerHorizontalForwardCannon.z * (playerHalfWidth + 0.2)
+                );
+                const result = new CANNON.RaycastResult();
+                world.raycastClosest(origin, target, {}, result);
+                if (result.hasHit && result.body !== playerBody && result.body.collisionResponse) {
+                    hitWall = true;
+                    break;
+                }
             }
 
-            if (hitLow && !hitHigh && movementVector.lengthSq() > 0) {
+            if (hitLow && !hitWall && movementVector.lengthSq() > 0) {
                 // Verifica o nível do chão diretamente sob o jogador para evitar pular em terreno plano
                 // caso o corpo afunde ligeiramente devido à física.
                 const rayGroundOrigin = new CANNON.Vec3(playerBody.position.x, playerBody.position.y, playerBody.position.z);
