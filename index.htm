@@ -7532,13 +7532,17 @@
                 hitHigh = true;
             }
 
-            if (hitLow && !hitHigh && Math.abs(playerBody.velocity.y) < 0.1) {
+            if (hitLow && !hitHigh) {
                 const playerBottomY = playerBody.position.y - currentPlayerRadius;
                 const obstacleTopY = rayResultStep.hitPointWorld.y;
                 const stepHeight = obstacleTopY - playerBottomY;
 
                 if (stepHeight > 0.02 && stepHeight <= stepClimbHeight) {
-                    playerBody.velocity.y = 12; // Impulso para subir o degrau (g = -30)
+                    // Sobe verticalmente com uma velocidade constante e suave (6.0)
+                    // enquanto houver um obstáculo baixo à frente, tornando a subida mais fluida.
+                    if (playerBody.velocity.y < 6.0) {
+                        playerBody.velocity.y = 6.0;
+                    }
                 }
             }
 
