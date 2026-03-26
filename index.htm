@@ -4361,6 +4361,7 @@
                 const allGroundBodies = [...islandBodies, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies];
                 if (event.body !== pickedObjectBody && allGroundBodies.includes(event.body)) {
                     canJump = true; window.canJump = true;
+                    isJumpBoosting = false; // Landed on walkable ground, stop boosting
                 }
             });
 
@@ -6360,16 +6361,12 @@
 
             // Lógica de pulo proporcional
             if (isJumpBoosting) {
-                if (keysPressed[' '] && jumpBoostTimer < 0.2 && !isFlying && !isClimbing && !isDrivingRaft) {
+                if (keysPressed[' '] && jumpBoostTimer < 0.4 && !isFlying && !isClimbing && !isDrivingRaft) {
                     // Aplica uma força ascendente constante durante o período de boost
                     // 3500 é um valor que supera a gravidade (-30 * mass 80 = -2400) e fornece aceleração
                     playerBody.applyForce(new CANNON.Vec3(0, 3500, 0));
                     jumpBoostTimer += delta;
                 } else {
-                    isJumpBoosting = false;
-                }
-                // Se tocar o chão, cancela o boost
-                if (window.onWalkableGround) {
                     isJumpBoosting = false;
                 }
             }
