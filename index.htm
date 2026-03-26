@@ -886,6 +886,8 @@
 
         // Variável para controlar se o personagem pode pular
         let canJump = true; window.canJump = canJump;
+        let isJumpBoosting = false; // NOVO: Para controlar o pulo proporcional
+        let jumpBoostTimer = 0; // NOVO: Tempo do pulo proporcional
         let isWaterJumping = false; // NOVO: Para controlar o salto a partir da água
 
         // Variáveis globais para dimensões do jogador e vetor de direção horizontal
@@ -4813,11 +4815,16 @@
 
                     keysPressed[event.key.toLowerCase()] = true;
                     if (event.key.toLowerCase() === ' ') { // Pular
+                        if (event.repeat) return; // Impede pulos múltiplos por segurar a tecla (handled by boost logic)
                         const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
                         const isInWater = playerBottomY < waterLevel && hasWaterAt(playerBody.position.x, playerBody.position.z);
                         if (canJump || isInWater) {
-                            // Impulso de salto mais forte necessário para sair da água
-                            const jumpImpulse = isInWater ? 600 * 3 : 400 * 3;
+                            // Inicia o pulo proporcional
+                            isJumpBoosting = true;
+                            jumpBoostTimer = 0;
+
+                            // Impulso de salto inicial (mínimo)
+                            const jumpImpulse = isInWater ? 600 * 3 : 200 * 3;
                             playerBody.applyImpulse(new CANNON.Vec3(0, jumpImpulse, 0));
                             canJump = false; window.canJump = false; // Impede pulos múltiplos
                             if (isInWater) {
@@ -4832,6 +4839,10 @@
             window.addEventListener('keyup', (event) => {
                 // Sempre permite que os eventos de soltar tecla desregistrem as teclas, mesmo se pausado
                 keysPressed[event.key.toLowerCase()] = false;
+
+                if (event.key.toLowerCase() === ' ') {
+                    isJumpBoosting = false;
+                }
 
                 if (event.key.toLowerCase() === 'f') {
                     dropObject();
@@ -6347,6 +6358,22 @@
             forward.normalize();
             right.crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize();
 
+            // Lógica de pulo proporcional
+            if (isJumpBoosting) {
+                if (keysPressed[' '] && jumpBoostTimer < 0.2 && !isFlying && !isClimbing && !isDrivingRaft) {
+                    // Aplica uma força ascendente constante durante o período de boost
+                    // 3500 é um valor que supera a gravidade (-30 * mass 80 = -2400) e fornece aceleração
+                    playerBody.applyForce(new CANNON.Vec3(0, 3500, 0));
+                    jumpBoostTimer += delta;
+                } else {
+                    isJumpBoosting = false;
+                }
+                // Se tocar o chão, cancela o boost
+                if (window.onWalkableGround) {
+                    isJumpBoosting = false;
+                }
+            }
+
             if (isFlying) {
                 const flySpeed = 50;
                 let flyVector = new THREE.Vector3(0, 0, 0);
@@ -7453,8 +7480,8 @@
             }
 
 
-            // Lógica de subida de degraus (ajustada para permitir subir troncos e baús de 1.0 de altura)
-            const stepClimbHeight = 1.1;
+            // Lógica de subida de degraus (ajustada para permitir subir obstáculos de até 25% da altura do jogador)
+            const stepClimbHeight = playerBodyHeight * 0.25;
             const rayLength = playerHalfWidth + 0.1;
 
             // Usa a direção do movimento (teclas) se disponível, senão usa a velocidade atual
