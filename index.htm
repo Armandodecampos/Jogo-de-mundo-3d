@@ -7506,11 +7506,9 @@
 
             let hitLow = false;
             const rayResultStep = new CANNON.RaycastResult();
-            // Verifica colisão com terreno, blocos e construções - varre de cima para baixo até o nível dos pés
+            // Verifica colisão com qualquer corpo sólido que não seja o jogador
             world.raycastClosest(rayOriginLow, rayTargetLow, {}, rayResultStep);
-            const islandBodies = islandMeshes.map(m => m.body);
-            const stepClimbGroundBodies = [...islandBodies, ...collectibleBoxes.map(b => b.body), ...placedConstructionBodies, ...placedChests.map(c => c.body)];
-            if (rayResultStep.hasHit && stepClimbGroundBodies.includes(rayResultStep.body)) {
+            if (rayResultStep.hasHit && rayResultStep.body !== playerBody && rayResultStep.body.collisionResponse) {
                 hitLow = true;
             }
 
@@ -7528,7 +7526,7 @@
             let hitHigh = false;
             const rayResultHigh = new CANNON.RaycastResult();
             world.raycastAny(rayOriginHigh, rayTargetHigh, {}, rayResultHigh);
-            if (rayResultHigh.hasHit && stepClimbGroundBodies.includes(rayResultHigh.body)) {
+            if (rayResultHigh.hasHit && rayResultHigh.body !== playerBody && rayResultHigh.body.collisionResponse) {
                 hitHigh = true;
             }
 
