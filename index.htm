@@ -7532,14 +7532,24 @@
                 hitHigh = true;
             }
 
-            if (hitLow && !hitHigh) {
+            if (hitLow && !hitHigh && movementVector.lengthSq() > 0) {
+                // Verifica o nível do chão diretamente sob o jogador para evitar pular em terreno plano
+                // caso o corpo afunde ligeiramente devido à física.
+                const rayGroundOrigin = new CANNON.Vec3(playerBody.position.x, playerBody.position.y, playerBody.position.z);
+                const rayGroundTarget = new CANNON.Vec3(playerBody.position.x, playerBody.position.y - currentPlayerRadius - 0.5, playerBody.position.z);
+                const rayResultGround = new CANNON.RaycastResult();
+                world.raycastClosest(rayGroundOrigin, rayGroundTarget, {}, rayResultGround);
+
                 const playerBottomY = playerBody.position.y - currentPlayerRadius;
+                const groundUnderFeetY = rayResultGround.hasHit ? rayResultGround.hitPointWorld.y : playerBottomY;
+
                 const obstacleTopY = rayResultStep.hitPointWorld.y;
-                const stepHeight = obstacleTopY - playerBottomY;
+                // Usa o maior valor entre o fundo do jogador e o chão real como referência
+                const stepHeight = obstacleTopY - Math.max(playerBottomY, groundUnderFeetY);
 
                 if (stepHeight > 0.02 && stepHeight <= stepClimbHeight) {
                     // Sobe verticalmente com uma velocidade constante e suave (6.0)
-                    // enquanto houver um obstáculo baixo à frente, tornando a subida mais fluida.
+                    // enquanto houver um obstáculo baixo à frente e o jogador estiver tentando se mover.
                     if (playerBody.velocity.y < 6.0) {
                         playerBody.velocity.y = 6.0;
                     }
