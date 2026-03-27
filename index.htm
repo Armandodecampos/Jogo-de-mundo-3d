@@ -4346,9 +4346,7 @@
                 linearDamping: 0.5, // Reduzido de 0.9 para melhor movimentação
                 angularDamping: 0.9,
                 fixedRotation: true, // Mantém rotação fixa para a câmera
-                allowSleep: true, // Permite que o jogador entre em modo de "sono"
-                sleepSpeedLimit: 0.01, // Velocidade linear mínima para "acordar"
-                sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer"
+                allowSleep: false // O jogador nunca deve dormir
             });
             // Posição inicial: centro da esfera em playerRadius + islandSurfaceHeight
             const spawnHeight = getSurfaceHeight(0, 0);
@@ -4907,7 +4905,6 @@
                         // Ao soltar o objeto, zera a velocidade do jogador para evitar arrasto residual
                         playerBody.velocity.set(0,0,0);
                         playerBody.angularVelocity.set(0,0,0);
-                        playerBody.allowSleep = true; // Permite que o jogador volte a dormir se estiver parado
                         return; // Sai da função para evitar pegar outro objeto imediatamente
                     }
 
@@ -6493,7 +6490,6 @@
                     playerBody.velocity.z = normalizedMovementVector.z * currentMoveSpeed;
                 }
 
-                playerBody.allowSleep = false;
             } else {
                 // If no movement keys are pressed, apply a small damping or full stop
                 // to prevent sliding on moderate slopes when friction is 0.
@@ -6533,11 +6529,6 @@
                     playerBody.velocity.z *= 0.9;
                 }
 
-                if (pickedObjectBody === null && Math.abs(playerBody.velocity.y) < 0.1) {
-                    playerBody.allowSleep = true;
-                } else {
-                    playerBody.allowSleep = false;
-                }
             }
 
             // --- SINCRONIZAÇÃO E WRAPPING ANTES DO STEP DE FÍSICA ---
