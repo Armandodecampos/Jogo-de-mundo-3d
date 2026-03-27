@@ -4717,9 +4717,46 @@
                         playerBody.wakeUp();
                         return;
                     }
-                    const interacted = interact();
-                    if (!interacted && !pickedObjectBody) {
+
+                    // Tenta pegar objeto (agarrar fisicamente)
+                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                    const intersects = raycaster.intersectObjects(raycastTargets, true);
+                    let foundCollectible = false;
+                    for (const intersect of intersects) {
+                        if (intersect.distance > pickUpDistance) continue;
+                        let body = null;
+                        let current = intersect.object;
+                        while (current) {
+                            if (current.userData && current.userData.physicsBody) {
+                                body = current.userData.physicsBody;
+                                break;
+                            }
+                            current = current.parent;
+                        }
+                        if (body && body.userData && body.userData.isCollectible) {
+                            if (body.userData.isChest && body.userData.inventory) {
+                                const isEmpty = body.userData.inventory.every(slot => slot === null);
+                                if (!isEmpty) {
+                                    showCenterMessage("Esvazie o caixote e tente novamente");
+                                    return;
+                                }
+                            }
+                            grabObject();
+                            foundCollectible = true;
+                            break;
+                        }
+                    }
+                    if (!foundCollectible && !pickedObjectBody) {
                         grabObject();
+                    }
+                }
+
+                if (event.key.toLowerCase() === 'r') {
+                    if (event.repeat) return;
+                    if (!chestModal.classList.contains('hidden')) {
+                        closeChest();
+                    } else {
+                        interact(); // 'interact' handles opening chests/rafts
                     }
                 }
 
@@ -4814,18 +4851,6 @@
                                 climbingOffset.copy(dir.multiplyScalar(climbDist));
                                 break;
                             }
-                            // NOVO: Pegar caixotes (agarrar fisicamente)
-                            if (body && body.userData && body.userData.isCollectible) {
-                                if (body.userData.isChest && body.userData.inventory) {
-                                    const isEmpty = body.userData.inventory.every(slot => slot === null);
-                                    if (!isEmpty) {
-                                        showCenterMessage("Esvazio o báu e tente novamente");
-                                        return;
-                                    }
-                                }
-                                grabObject();
-                                break;
-                            }
                         }
                     }
                 }
@@ -4874,7 +4899,9 @@
                 }
 
                 if (event.key.toLowerCase() === 'f') {
-                    dropObject();
+                    if (pickedObjectBody) {
+                        dropObject();
+                    }
                 }
             });
 
@@ -5427,7 +5454,7 @@
                     if (clickedBody.userData.isChest && clickedBody.userData.inventory) {
                         const isEmpty = clickedBody.userData.inventory.every(slot => slot === null);
                         if (!isEmpty) {
-                            showCenterMessage("Esvazio o báu e tente novamente");
+                            showCenterMessage("Esvazie o caixote e tente novamente");
                             return;
                         }
                     }
@@ -5485,7 +5512,7 @@
                         current = current.parent;
                     }
 
-                    if (body && allPickableBodies.includes(body)) {
+                    if (body && (allPickableBodies.includes(body) || (body.userData && body.userData.isCollectible))) {
                         if (intersects[i].distance <= pickUpDistance) {
                             pickedObjectBody = body;
                             pickedObjectMesh = intersects[i].object;
@@ -6970,11 +6997,11 @@
 
                         if (body && body.userData) {
                             if (body.userData.isChest && body.userData.isCollectible) {
-                                interactionHintText = "(F) Abrir / (G) Guardar / (P) Pegar";
+                                interactionHintText = "(F) Pegar / (R) Abrir / (G) Guardar";
                                 break;
                             }
                             if (body.userData.isChest) {
-                                interactionHintText = "(F) Abrir";
+                                interactionHintText = "(R) Abrir";
                                 break;
                             }
                             if (body.userData.isRaft) {
