@@ -801,6 +801,7 @@
         let playerBody;
 
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
+        let lastTileX = NaN, lastTileZ = NaN; // NOVO: Para otimizar atualização de posição do terreno
         let raftBodies = []; // NOVO: Array para armazenar corpos das jangadas
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
         let islandGeometry; // Geometria compartilhada do terreno
@@ -2131,11 +2132,11 @@
                 mass: initialCubeMass,
                 shape: cubeShape,
                 material: cubeMaterial,
-                linearDamping: 0.3,
-                angularDamping: 0.3,
+                linearDamping: 0.5,
+                angularDamping: 0.5,
                 allowSleep: true,
-                sleepSpeedLimit: 0.01,
-                sleepTimeLimit: 1.0
+                sleepSpeedLimit: 0.1,
+                sleepTimeLimit: 0.5
             });
             boxBody.position.copy(position);
             if (quaternion) {
@@ -3747,8 +3748,9 @@
             // Configuração do Mundo Cannon-es (física)
             world = new CANNON.World();
             window.world = world;
+            world.allowSleep = true;
             world.gravity.set(0, -30, 0); // Define a gravidade (para baixo), aumentada para -30
-            world.solver.iterations = 20; // Aumentado para melhor estabilidade de empilhamento
+            world.solver.iterations = 40; // Aumentado para melhor estabilidade de empilhamento
 
             // Inicializa os materiais de física
             playerMaterial = new CANNON.Material('playerMaterial');
@@ -3787,7 +3789,7 @@
                 cubeMaterial,
                 islandMaterial,
                 {
-                    friction: 0.7,
+                    friction: 1.0,
                     restitution: 0,
                     contactEquationStiffness: 1e8, // Aumenta a rigidez para evitar que os objectos se "afundem"
                     contactEquationRelaxation: 4    // Proporciona um ligeiro "amortecimento" para evitar o ressalto
@@ -6554,10 +6556,14 @@
             // Sincroniza a posição de todos os 9 corpos de física da ilha com o tile atual do jogador
             const currentTileX = Math.round(playerBody.position.x / worldSize) * worldSize;
             const currentTileZ = Math.round(playerBody.position.z / worldSize) * worldSize;
-            islandMeshes.forEach(tile => {
-                tile.body.position.set(currentTileX + tile.offsetX - worldSize / 2, 0, currentTileZ + tile.offsetZ + worldSize / 2);
-                tile.body.updateAABB();
-            });
+            if (currentTileX !== lastTileX || currentTileZ !== lastTileZ) {
+                islandMeshes.forEach(tile => {
+                    tile.body.position.set(currentTileX + tile.offsetX - worldSize / 2, 0, currentTileZ + tile.offsetZ + worldSize / 2);
+                    tile.body.updateAABB();
+                });
+                lastTileX = currentTileX;
+                lastTileZ = currentTileZ;
+            }
 
             // Atualiza o mundo da física e o tempo simulado
             world.step(1 / 60, delta, 3);
@@ -6592,10 +6598,11 @@
                     return;
                 }
                 // Cubos devem ser dinâmicos quando não estão sendo pegos
-                body.mass = body.userData.originalMass;
-                body.type = CANNON.Body.DYNAMIC;
+                if (body.type !== CANNON.Body.DYNAMIC) {
+                    body.mass = body.userData.originalMass;
+                    body.type = CANNON.Body.DYNAMIC;
+                }
                 body.allowSleep = true; // Permite que cubos "durmam" para otimização
-                body.wakeUp(); // Garante que esteja ativo se houver movimento
                 body.collisionResponse = true; // Garante que a resposta de colisão esteja sempre ativada
             });
 
