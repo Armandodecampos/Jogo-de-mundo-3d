@@ -4751,7 +4751,7 @@
                     }
                 }
 
-                if (event.key.toLowerCase() === 'r') {
+                if (event.key.toLowerCase() === 'e') {
                     if (event.repeat) return;
                     if (!chestModal.classList.contains('hidden')) {
                         closeChest();
@@ -4855,15 +4855,21 @@
                     }
                 }
 
-                // NOVO: Seleção de slots com Q e E
+                // NOVO: Seleção de slots com 1 e 2
                 if (!gamePaused && !backpackModal.classList.contains('active')) {
-                    if (event.key.toLowerCase() === 'q') {
+                    if (event.key === '1') {
                         if (selectedSlotIndex !== 0) stopDestruction();
                         selectedSlotIndex = 0;
                         updateBeltDisplay();
-                    } else if (event.key.toLowerCase() === 'e') {
+                    } else if (event.key === '2') {
                         if (selectedSlotIndex !== 1) stopDestruction();
                         selectedSlotIndex = 1;
+                        updateBeltDisplay();
+                    }
+                    // Toggle com Q
+                    if (event.key.toLowerCase() === 'q') {
+                        stopDestruction();
+                        selectedSlotIndex = (selectedSlotIndex === 0) ? 1 : 0;
                         updateBeltDisplay();
                     }
 
@@ -6126,6 +6132,19 @@
                                     mound.height = 0;
                                     terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
                                     mound.flattened = true;
+
+                                    // NOVO: Faz objetos subirem se o chão subir (removendo buraco)
+                                    collectibleBoxes.forEach(box => {
+                                        if (calculateWrappedDistance(box.body.position, mound.position) < 2.0) {
+                                            const boxHeight = (box.body.userData.dimensions ? box.body.userData.dimensions.height : 1.0);
+                                            const currentGroundLevel = islandSurfaceHeight + mound.height;
+                                            const bottomY = box.body.position.y - boxHeight / 2;
+                                            if (bottomY < currentGroundLevel) {
+                                                box.body.position.y = currentGroundLevel + boxHeight / 2;
+                                                box.body.velocity.y = 0;
+                                            }
+                                        }
+                                    });
                                     if (mound.mesh) scene.remove(mound.mesh);
                                     const vIndex = visualMounds.indexOf(mound);
                                     if (vIndex !== -1) visualMounds.splice(vIndex, 1);
@@ -6137,7 +6156,7 @@
                                     progressContainer.style.display = 'none';
                                     currentMound = null;
                                 } else {
-                                    const maxHeight = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
+                                    const maxHeight = 1.0;
                                     mound.height = maxHeight * mound.growthStage / moundGrowthStages.length;
                                     if (mound.mesh) {
                                         const baseScale = moundGrowthStages[mound.growthStage - 1];
@@ -6146,6 +6165,21 @@
                                     }
                                     terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
                                     destroyProgress = 0;
+
+                                    // NOVO: Faz objetos subirem se o chão subir (removendo buraco)
+                                    if (mound.height >= 0) {
+                                        collectibleBoxes.forEach(box => {
+                                            if (calculateWrappedDistance(box.body.position, mound.position) < 2.0) {
+                                                const boxHeight = (box.body.userData.dimensions ? box.body.userData.dimensions.height : 1.0);
+                                                const currentGroundLevel = islandSurfaceHeight + mound.height;
+                                                const bottomY = box.body.position.y - boxHeight / 2;
+                                                if (bottomY < currentGroundLevel) {
+                                                    box.body.position.y = currentGroundLevel + boxHeight / 2;
+                                                    box.body.velocity.y = 0;
+                                                }
+                                            }
+                                        });
+                                    }
                                 }
                             } else {
                                 // Criando um monte (positivo)
@@ -6166,6 +6200,21 @@
                                     mound.mesh.scale.set(baseScale, baseScale, baseScale);
                                 }
                                 terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+
+                                // NOVO: Faz objetos subirem se o chão subir
+                                if (mound.height > 0) {
+                                    collectibleBoxes.forEach(box => {
+                                        if (calculateWrappedDistance(box.body.position, mound.position) < 2.0) {
+                                            const boxHeight = (box.body.userData.dimensions ? box.body.userData.dimensions.height : 1.0);
+                                            const currentGroundLevel = islandSurfaceHeight + mound.height;
+                                            const bottomY = box.body.position.y - boxHeight / 2;
+                                            if (bottomY < currentGroundLevel) {
+                                                box.body.position.y = currentGroundLevel + boxHeight / 2;
+                                                box.body.velocity.y = 0;
+                                            }
+                                        }
+                                    });
+                                }
                             }
 
                             // Consome o item Terra
@@ -6259,6 +6308,15 @@
                         }
 
                         terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+
+                        // NOVO: Faz objetos caírem se o chão descer
+                        if (mound.height < 0) {
+                            collectibleBoxes.forEach(box => {
+                                if (calculateWrappedDistance(box.body.position, mound.position) < 2.0) {
+                                    box.body.wakeUp();
+                                }
+                            });
+                        }
                     } else if (destroyTargetMountainInfo) {
                         createDustCloud(destroyTargetMountainInfo.position, destroyTargetColor);
                         addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
@@ -6997,11 +7055,11 @@
 
                         if (body && body.userData) {
                             if (body.userData.isChest && body.userData.isCollectible) {
-                                interactionHintText = "(F) Pegar / (R) Abrir / (G) Guardar";
+                                interactionHintText = "(F) Pegar / (E) Abrir / (G) Guardar";
                                 break;
                             }
                             if (body.userData.isChest) {
-                                interactionHintText = "(R) Abrir";
+                                interactionHintText = "(E) Abrir";
                                 break;
                             }
                             if (body.userData.isRaft) {
