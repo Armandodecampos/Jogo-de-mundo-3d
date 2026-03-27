@@ -697,6 +697,7 @@
 
     <div id="crosshair"></div>
     <div id="interactionHint"></div>
+    <div id="centerMessage" style="position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 1.5em; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; z-index: 2000; display: none; text-align: center;"></div>
 
     <div id="clockContainer">
         <div id="clockFace">
@@ -1698,6 +1699,18 @@
             }
         }
 
+        function showCenterMessage(text) {
+            const msgEl = document.getElementById('centerMessage');
+            if (!msgEl) return;
+            msgEl.textContent = text;
+            msgEl.style.display = 'block';
+            if (window.centerMessageTimeout) clearTimeout(window.centerMessageTimeout);
+            window.centerMessageTimeout = setTimeout(() => {
+                msgEl.style.display = 'none';
+            }, 3000);
+        }
+        window.showCenterMessage = showCenterMessage;
+
         // NOVO: Função para abrir o baú
         function openChest(chestBody) {
             openedChest = chestBody;
@@ -2146,6 +2159,9 @@
             boxBody.userData = {
                 isCollectible: true,
                 type: boxItemName,
+                isChest: true,
+                inventory: new Array(numChestSlots).fill(null),
+                isDestructible: false,
                 originalMass: initialCubeMass,
                 initialPosition: new CANNON.Vec3().copy(boxBody.position)
             };
@@ -4798,6 +4814,18 @@
                                 climbingOffset.copy(dir.multiplyScalar(climbDist));
                                 break;
                             }
+                            // NOVO: Pegar caixotes (agarrar fisicamente)
+                            if (body && body.userData && body.userData.isCollectible) {
+                                if (body.userData.isChest && body.userData.inventory) {
+                                    const isEmpty = body.userData.inventory.every(slot => slot === null);
+                                    if (!isEmpty) {
+                                        showCenterMessage("Esvazio o báu e tente novamente");
+                                        return;
+                                    }
+                                }
+                                grabObject();
+                                break;
+                            }
                         }
                     }
                 }
@@ -5395,6 +5423,14 @@
                     if (!clickedBody || !clickedBody.userData) continue;
 
                     if (!clickedBody.userData.isCollectible && !clickedBody.userData.isRaft) continue;
+
+                    if (clickedBody.userData.isChest && clickedBody.userData.inventory) {
+                        const isEmpty = clickedBody.userData.inventory.every(slot => slot === null);
+                        if (!isEmpty) {
+                            showCenterMessage("Esvazio o báu e tente novamente");
+                            return;
+                        }
+                    }
 
                     const itemType = clickedBody.userData.type;
                     const itemQuantity = clickedBody.userData.quantity || 1; // Padrão para 1 se não especificado
@@ -6933,6 +6969,10 @@
                         }
 
                         if (body && body.userData) {
+                            if (body.userData.isChest && body.userData.isCollectible) {
+                                interactionHintText = "(F) Abrir / (G) Guardar / (P) Pegar";
+                                break;
+                            }
                             if (body.userData.isChest) {
                                 interactionHintText = "(F) Abrir";
                                 break;
