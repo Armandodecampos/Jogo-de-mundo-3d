@@ -792,7 +792,8 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 256; // Resolução global do terreno (equilíbrio entre precisão e performance)
+        const hfGridSize = 160; // Resolução global do terreno (otimizada para evitar travamentos)
+        const safeMod = (n, m) => ((n % m) + m) % m;
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -2083,8 +2084,8 @@
 
             // Calcula os índices do heightfield para o ponto de impacto (coordenadas locais do heightfield)
             const step = worldSize / (hfGridSize - 1);
-            const mx = (hitPoint.x + worldSize / 2) / step;
-            const mz = (worldSize / 2 - hitPoint.z) / step;
+            const mx = safeMod((hitPoint.x + worldSize / 2) / step, hfGridSize - 1);
+            const mz = safeMod((worldSize / 2 - hitPoint.z) / step, hfGridSize - 1);
 
             // Calcula a posição exata do vértice para alinhar o visual e a física
             const vx = (mx / (hfGridSize - 1) - 0.5) * worldSize;
@@ -3412,28 +3413,29 @@
         }
 
         // Function to create a smoke effect at a given position
+        let smokeGeometryShared = null;
+        let smokeMaterialShared = null;
         function createSmokeEffect(position, colorOverride = null) {
-            if (!position) return;
+            if (!position || smokeParticles.length > 100) return; // Cap total particles
 
-            const smokeCount = 6; // Reduzido para melhor performance
-            const smokeGeometry = new THREE.SphereGeometry(0.15, 8, 8); // Tripled the size
-            const smokeMaterial = new THREE.MeshBasicMaterial({
-                color: colorOverride !== null ? colorOverride : 0xA0522D, // Cor herdada ou padrão terra
-                transparent: true,
-                opacity: 0.3, // Mais transparente
-                depthWrite: false // Important for transparent objects
-            });
+            if (!smokeGeometryShared) smokeGeometryShared = new THREE.SphereGeometry(0.15, 6, 6);
 
+            const smokeCount = 4;
             for (let i = 0; i < smokeCount; i++) {
-                const particle = new THREE.Mesh(smokeGeometry, smokeMaterial.clone()); // Clone material for individual opacity
+                const mat = new THREE.MeshBasicMaterial({
+                    color: colorOverride !== null ? colorOverride : 0xA0522D,
+                    transparent: true,
+                    opacity: 0.3,
+                    depthWrite: false
+                });
+                const particle = new THREE.Mesh(smokeGeometryShared, mat);
                 particle.position.copy(position);
-                // Give particles a slight random initial velocity
                 particle.userData.velocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.5, // Increased spread
-                    Math.random() * 0.1 + 0.1,   // Increased upward velocity
-                    (Math.random() - 0.5) * 0.5  // Increased spread
+                    (Math.random() - 0.5) * 0.5,
+                    Math.random() * 0.1 + 0.1,
+                    (Math.random() - 0.5) * 0.5
                 );
-                particle.userData.lifetime = 4.5; // Increased lifetime for a larger cloud
+                particle.userData.lifetime = 2.0; // Reduced lifetime
                 particlesGroup.add(particle);
                 smokeParticles.push(particle);
             }
@@ -3443,63 +3445,42 @@
 
         let currentHfMatrix = null;
         let waterMatrix = new Uint8Array(hfGridSize * hfGridSize);
-
+        let waterQueue = new Int32Array(hfGridSize * hfGridSize * 2); // Pre-alocado para performance
         function updateWaterConnectivity() {
             if (!currentHfMatrix) return;
             waterMatrix.fill(0);
-            const queue = [];
-
-            // Inicia a partir das bordas do mapa (oceano aberto)
-            for (let i = 0; i < hfGridSize; i++) {
-                // Borda de Cannon j=0 (z = -worldSize/2) e j=255 (z = worldSize/2)
-                if (currentHfMatrix[i][0] < waterLevel) {
-                    if (waterMatrix[i * hfGridSize + 0] === 0) {
-                        waterMatrix[i * hfGridSize + 0] = 1;
-                        queue.push(i, 0);
-                    }
-                }
-                if (currentHfMatrix[i][hfGridSize - 1] < waterLevel) {
-                    if (waterMatrix[i * hfGridSize + (hfGridSize - 1)] === 0) {
-                        waterMatrix[i * hfGridSize + (hfGridSize - 1)] = 1;
-                        queue.push(i, hfGridSize - 1);
-                    }
-                }
-            }
-            for (let j = 0; j < hfGridSize; j++) {
-                // Borda de Cannon i=0 (x = -worldSize/2) e i=255 (x = worldSize/2)
-                if (currentHfMatrix[0][j] < waterLevel) {
-                    if (waterMatrix[0 * hfGridSize + j] === 0) {
-                        waterMatrix[0 * hfGridSize + j] = 1;
-                        queue.push(0, j);
-                    }
-                }
-                if (currentHfMatrix[hfGridSize - 1][j] < waterLevel) {
-                    if (waterMatrix[(hfGridSize - 1) * hfGridSize + j] === 0) {
-                        waterMatrix[(hfGridSize - 1) * hfGridSize + j] = 1;
-                        queue.push(hfGridSize - 1, j);
-                    }
-                }
-            }
-
-
             let head = 0;
-            while (head < queue.length) {
-                const i = queue[head++];
-                const j = queue[head++];
+            let tail = 0;
 
-                // Vizinhos com wrapping toroidal
-                const ni = [(i - 1 + hfGridSize) % hfGridSize, (i + 1) % hfGridSize, i, i];
-                const nj = [j, j, (j - 1 + hfGridSize) % hfGridSize, (j + 1) % hfGridSize];
-
-                for (let k = 0; k < 4; k++) {
-                    const r = ni[k];
-                    const c = nj[k];
-                    const idx = r * hfGridSize + c;
-                    if (waterMatrix[idx] === 0 && currentHfMatrix[r][c] < waterLevel) {
-                        waterMatrix[idx] = 1;
-                        queue.push(r, c);
-                    }
+            const pushToQueue = (i, j) => {
+                const idx = i * hfGridSize + j;
+                if (waterMatrix[idx] === 0 && currentHfMatrix[i][j] < waterLevel) {
+                    waterMatrix[idx] = 1;
+                    waterQueue[tail++] = i;
+                    waterQueue[tail++] = j;
                 }
+            };
+
+            for (let i = 0; i < hfGridSize; i++) {
+                pushToQueue(i, 0);
+                pushToQueue(i, hfGridSize - 1);
+            }
+            for (let j = 1; j < hfGridSize - 1; j++) {
+                pushToQueue(0, j);
+                pushToQueue(hfGridSize - 1, j);
+            }
+
+            while (head < tail) {
+                const i = waterQueue[head++];
+                const j = waterQueue[head++];
+                const iMinus = (i - 1 + hfGridSize) % hfGridSize;
+                const iPlus = (i + 1) % hfGridSize;
+                const jMinus = (j - 1 + hfGridSize) % hfGridSize;
+                const jPlus = (j + 1) % hfGridSize;
+                pushToQueue(iMinus, j);
+                pushToQueue(iPlus, j);
+                pushToQueue(i, jMinus);
+                pushToQueue(i, jPlus);
             }
         }
 
@@ -3564,58 +3545,100 @@
         window.mounds = mounds;
 
         let lastHeightfieldUpdateTime = 0;
+        let modifiedVerticesMap = new Map(); // Otimização: O(1) para busca de vértices modificados
         function updateIslandGeometry(affectedMound = null) {
-            // Inicializa a matriz se necessário
             if (!currentHfMatrix || currentHfMatrix.length !== hfGridSize) {
                 currentHfMatrix = new Array(hfGridSize);
                 for (let i = 0; i < hfGridSize; i++) currentHfMatrix[i] = new Float32Array(hfGridSize);
                 window.currentHfMatrix = currentHfMatrix;
             }
 
-            // Otimização: Se um mound específico for afetado, limpamos e recalculamos apenas a área de influência
-            if (affectedMound) {
-                const rInt = Math.ceil(affectedMound.radius) + 1;
-                const minX = Math.floor(affectedMound.x - rInt);
-                const maxX = Math.ceil(affectedMound.x + rInt);
-                const minZ = Math.floor(affectedMound.z - rInt);
-                const maxZ = Math.ceil(affectedMound.z + rInt);
+            if (affectedMound && isFinite(affectedMound.x) && isFinite(affectedMound.z)) {
+                const r = Math.min(Math.max(affectedMound.radius || 1, 0.1), 10);
+                const rInt = Math.ceil(r) + 2;
+                const centerX = Math.round(affectedMound.x);
+                const centerZ = Math.round(affectedMound.z);
 
-                // 1. Reseta a área para a base original
-                for (let i = minX; i <= maxX; i++) {
-                    for (let j = minZ; j <= maxZ; j++) {
-                        const ii = (i + hfGridSize) % hfGridSize;
-                        const jj = (j + hfGridSize) % hfGridSize;
-                        currentHfMatrix[ii][jj] = baseMatrix[ii][jj];
+                // Filtra mounds relevantes apenas uma vez
+                const relevantMounds = mounds.filter(m => {
+                    if (m.flattened || !isFinite(m.x) || !isFinite(m.z)) return false;
+                    const mR = Math.min(m.radius || 1, 10);
+                    let dx = Math.abs(m.x - affectedMound.x);
+                    let dz = Math.abs(m.z - affectedMound.z);
+                    if (dx > hfGridSize / 2) dx = hfGridSize - dx;
+                    if (dz > hfGridSize / 2) dz = hfGridSize - dz;
+                    return dx <= mR + rInt && dz <= mR + rInt;
+                });
+
+                for (let di = -rInt; di <= rInt; di++) {
+                    const curX = centerX + di;
+                    const ii = safeMod(curX, hfGridSize);
+                    for (let dj = -rInt; dj <= rInt; dj++) {
+                        const curZ = centerZ + dj;
+                        const jj = safeMod(curZ, hfGridSize);
+
+                        let h = baseMatrix[ii][jj];
+                        // Primeiro aplica mounds aditivos
+                        for (const m of relevantMounds) {
+                            if (m.isPrecise) continue;
+                            let dx = Math.abs(curX - m.x);
+                            let dz = Math.abs(curZ - m.z);
+                            if (dx > hfGridSize / 2) dx = hfGridSize - dx;
+                            if (dz > hfGridSize / 2) dz = hfGridSize - dz;
+                            const mr = m.radius || 1;
+                            const distSq = dx * dx + dz * dz;
+                            if (distSq < mr * mr) {
+                                h += Math.sqrt(mr * mr - distSq) * (m.height / mr);
+                            }
+                        }
+                        // Depois aplica mounds precisos (que usam Math.min)
+                        for (const m of relevantMounds) {
+                            if (!m.isPrecise) continue;
+                            const xBase = Math.floor(m.x);
+                            const zBase = Math.floor(m.z);
+                            // Checa se este ponto (curX, curZ) é um dos 4 pontos do precise 2x2
+                            // Precisamos lidar com wrapping aqui também se o precise estiver na borda
+                            const isPart = (safeMod(xBase, hfGridSize) === ii || safeMod(xBase+1, hfGridSize) === ii) &&
+                                           (safeMod(zBase, hfGridSize) === jj || safeMod(zBase+1, hfGridSize) === jj);
+
+                            if (isPart) {
+                                const targetHeight = (m.targetFloorHeight !== undefined ? m.targetFloorHeight : m.originalHeight) + m.height;
+                                h = Math.min(h, targetHeight);
+                            }
+                        }
+
+                        const relBedrockLevel = baseMatrix[ii][jj] - TOTAL_BEDROCK_DEPTH;
+                        currentHfMatrix[ii][jj] = Math.max(h, relBedrockLevel);
                     }
                 }
-
-                // 2. Reaplica TODOS os mounds que cruzam essa área para garantir consistência
+            } else {
+                for (let i = 0; i < hfGridSize; i++) {
+                    currentHfMatrix[i].set(baseMatrix[i]);
+                }
                 for (const m of mounds) {
-                    if (m.flattened) continue;
-                    // Verifica se o mound m sobrepõe a caixa delimitadora da área afetada
-                    const mR = m.radius + 1;
-                    if (m.x + mR < minX || m.x - mR > maxX || m.z + mR < minZ || m.z - mR > maxZ) continue;
-
+                    if (m.flattened || !isFinite(m.x) || !isFinite(m.z)) continue;
                     if (m.isPrecise) {
                         const xBase = Math.floor(m.x);
                         const zBase = Math.floor(m.z);
                         const targetHeight = (m.targetFloorHeight !== undefined ? m.targetFloorHeight : m.originalHeight) + m.height;
                         for (let di = 0; di <= 1; di++) {
                             for (let dj = 0; dj <= 1; dj++) {
-                                const ii = (xBase + di + hfGridSize) % hfGridSize;
-                                const jj = (zBase + dj + hfGridSize) % hfGridSize;
+                                const ii = safeMod(xBase + di, hfGridSize);
+                                const jj = safeMod(zBase + dj, hfGridSize);
                                 currentHfMatrix[ii][jj] = Math.min(currentHfMatrix[ii][jj], targetHeight);
                             }
                         }
                     } else {
-                        const mrInt = Math.ceil(m.radius);
+                        const mrInt = Math.min(Math.ceil(m.radius || 1), 10);
                         const mRadiusSq = m.radius * m.radius;
+                        const mCenterX = Math.round(m.x);
+                        const mCenterZ = Math.round(m.z);
                         for (let di = -mrInt; di <= mrInt; di++) {
                             for (let dj = -mrInt; dj <= mrInt; dj++) {
-                                const ii = (Math.round(m.x) + di + hfGridSize) % hfGridSize;
-                                const jj = (Math.round(m.z) + dj + hfGridSize) % hfGridSize;
-                                const dx = (Math.round(m.x) + di) - m.x;
-                                const dz = (Math.round(m.z) + dj) - m.z;
+                                const ii = safeMod(mCenterX + di, hfGridSize);
+                                const jj = safeMod(mCenterZ + dj, hfGridSize);
+                                const dx = (mCenterX + di) - m.x;
+                                const dz = (mCenterZ + dj) - m.z;
                                 const distSq = dx * dx + dz * dz;
                                 if (distSq < mRadiusSq) {
                                     currentHfMatrix[ii][jj] += Math.sqrt(mRadiusSq - distSq) * (m.height / m.radius);
@@ -3624,52 +3647,6 @@
                         }
                     }
                 }
-
-                // 3. Clamping global para o bedrock após todas as adições na área
-                for (let i = minX; i <= maxX; i++) {
-                    for (let j = minZ; j <= maxZ; j++) {
-                        const ii = (i + hfGridSize) % hfGridSize;
-                        const jj = (j + hfGridSize) % hfGridSize;
-                        const relBedrockLevel = baseMatrix[ii][jj] - TOTAL_BEDROCK_DEPTH;
-                        if (currentHfMatrix[ii][jj] < relBedrockLevel) currentHfMatrix[ii][jj] = relBedrockLevel;
-                    }
-                }
-            } else {
-                // Atualização total (rara, usada no início ou se muitos objetos mudarem)
-                for (let i = 0; i < hfGridSize; i++) {
-                    currentHfMatrix[i].set(baseMatrix[i]);
-                }
-                for (const m of mounds) {
-                    if (m.flattened) continue;
-                    if (m.isPrecise) {
-                        const xBase = Math.floor(m.x);
-                        const zBase = Math.floor(m.z);
-                        const targetHeight = (m.targetFloorHeight !== undefined ? m.targetFloorHeight : m.originalHeight) + m.height;
-                        for (let di = 0; di <= 1; di++) {
-                            for (let dj = 0; dj <= 1; dj++) {
-                                const ii = (xBase + di + hfGridSize) % hfGridSize;
-                                const jj = (zBase + dj + hfGridSize) % hfGridSize;
-                                currentHfMatrix[ii][jj] = Math.min(currentHfMatrix[ii][jj], targetHeight);
-                            }
-                        }
-                    } else {
-                        const rInt = Math.ceil(m.radius);
-                        const radiusSq = m.radius * m.radius;
-                        for (let di = -rInt; di <= rInt; di++) {
-                            for (let dj = -rInt; dj <= rInt; dj++) {
-                                const ii = (Math.round(m.x) + di + hfGridSize) % hfGridSize;
-                                const jj = (Math.round(m.z) + dj + hfGridSize) % hfGridSize;
-                                const dx = (Math.round(m.x) + di) - m.x;
-                                const dz = (Math.round(m.z) + dj) - m.z;
-                                const distSq = dx * dx + dz * dz;
-                                if (distSq < radiusSq) {
-                                    currentHfMatrix[ii][jj] += Math.sqrt(radiusSq - distSq) * (m.height / m.radius);
-                                }
-                            }
-                        }
-                    }
-                }
-                // Bedrock clamping total
                 for (let i = 0; i < hfGridSize; i++) {
                     for (let j = 0; j < hfGridSize; j++) {
                         const relBedrockLevel = baseMatrix[i][j] - TOTAL_BEDROCK_DEPTH;
@@ -3678,43 +3655,42 @@
                 }
             }
 
-            // Otimização: Só atualiza a física a 10Hz ou se for um mound estático finalizado
             const nowTime = performance.now();
             if (nowTime - lastHeightfieldUpdateTime > 100 || !affectedMound || (affectedMound && (affectedMound.growthStage === 0 || affectedMound.growthStage >= 4))) {
                 lastHeightfieldUpdateTime = nowTime;
-
-                // NOVO: Atualiza o Heightfield existente em vez de criar um novo objeto
-                islandMeshes.forEach(tile => {
-                    const hf = tile.body.shapes[0];
+                if (islandMeshes.length > 0) {
+                    const hf = islandMeshes[0].body.shapes[0];
                     if (hf && hf.data === currentHfMatrix) {
                         hf.update();
                     } else {
                         const newHfShape = new CANNON.Heightfield(currentHfMatrix, {
                             elementSize: worldSize / (hfGridSize - 1)
                         });
-                        if (tile.body.shapes.length > 0) tile.body.removeShape(tile.body.shapes[0]);
-                        tile.body.addShape(newHfShape);
+                        // Todas as malhas compartilham o mesmo hfShape, mas por segurança atualizamos todas
+                        islandMeshes.forEach(tile => {
+                            if (tile.body.shapes.length > 0) tile.body.removeShape(tile.body.shapes[0]);
+                            tile.body.addShape(newHfShape);
+                        });
                     }
-                    tile.body.updateAABB();
-                });
+                    // AABB deve ser atualizado para todos os corpos
+                    islandMeshes.forEach(tile => tile.body.updateAABB());
+                }
             }
 
-            // Atualiza a malha visual (geometria compartilhada)
             if (islandMeshes.length > 0) {
                 const geom = islandMeshes[0].mesh.geometry;
                 const vertices = geom.attributes.position.array;
                 const colors = geom.attributes.color.array;
+                const now = Date.now();
 
-                if (affectedMound) {
-                    // Otimização: Atualiza apenas a região afetada pelo mound modificado (com suporte toroidal)
-                    const rInt = Math.ceil(affectedMound.radius);
-                    const now = Date.now();
-
+                if (affectedMound && isFinite(affectedMound.x) && isFinite(affectedMound.z)) {
+                    const rInt = Math.min(Math.ceil(affectedMound.radius || 1), 10);
+                    const centerX = Math.round(affectedMound.x);
+                    const centerZ = Math.round(affectedMound.z);
                     for (let di = -rInt; di <= rInt; di++) {
                         for (let dj_cannon = -rInt; dj_cannon <= rInt; dj_cannon++) {
-                            const cannonI = (Math.round(affectedMound.x) + di + hfGridSize) % hfGridSize;
-                            const cannonJ = (Math.round(affectedMound.z) + dj_cannon + hfGridSize) % hfGridSize;
-
+                            const cannonI = safeMod(centerX + di, hfGridSize);
+                            const cannonJ = safeMod(centerZ + dj_cannon, hfGridSize);
                             const j = (hfGridSize - 1) - cannonJ;
                             const i = cannonI;
                             const h_val = currentHfMatrix[i][cannonJ];
@@ -3723,22 +3699,15 @@
                             if (vertices[index + 1] === h_val) continue;
                             vertices[index + 1] = h_val;
 
-                            // Feedback visual temporário
                             const vx = (i / (hfGridSize - 1) - 0.5) * worldSize;
                             const vz = (j / (hfGridSize - 1) - 0.5) * worldSize;
-                            const dist = Math.sqrt(vx * vx + vz * vz);
-                            if (dist < 280.0) {
+                            if (Math.sqrt(vx * vx + vz * vz) < 280.0) {
                                 colors[vIdx * 3] = 0.0;
-                                const existingIdx = modifiedVertices.findIndex(mv => mv.index === vIdx);
-                                if (existingIdx !== -1) {
-                                    modifiedVertices[existingIdx].time = now;
-                                } else {
-                                    modifiedVertices.push({ index: vIdx, time: now });
-                                }
-                                geom.attributes.color.needsUpdate = true;
+                                modifiedVerticesMap.set(vIdx, now);
                             }
                         }
                     }
+                    geom.attributes.color.needsUpdate = true;
                 } else {
                     // Sincronização completa
                     for (let j = 0; j < hfGridSize; j++) {
@@ -3758,8 +3727,8 @@
                 }
             }
 
-            // Otimização: Só atualiza água a cada 200ms ou em mudanças finais
-            if (nowTime - (window.lastWaterUpdateTime || 0) > 200 || !affectedMound) {
+            // Otimização: Só atualiza água a cada 1000ms ou em mudanças finais (reduzindo frequência para evitar lag severo)
+            if (nowTime - (window.lastWaterUpdateTime || 0) > 1000 || (!affectedMound && nowTime - (window.lastWaterUpdateTime || 0) > 200)) {
                 window.lastWaterUpdateTime = nowTime;
                 updateWaterConnectivity();
                 updateWaterVisuals();
@@ -5247,8 +5216,8 @@
 
                         // Alinha o ponto de impacto para busca precisa (agora com suporte a sub-grid)
                         const step = worldSize / (hfGridSize - 1);
-                        const mx = (hitPoint.x + worldSize / 2) / step;
-                        const mz = (worldSize / 2 - hitPoint.z) / step;
+                        const mx = safeMod((hitPoint.x + worldSize / 2) / step, hfGridSize - 1);
+                        const mz = safeMod((worldSize / 2 - hitPoint.z) / step, hfGridSize - 1);
                         // Para busca de mounds existentes, ainda usamos uma pequena tolerância
                         const vx = (mx / (hfGridSize - 1) - 0.5) * worldSize;
                         const vz = (0.5 - mz / (hfGridSize - 1)) * worldSize;
@@ -6123,8 +6092,7 @@
 
                 terrainNeedsUpdate = false;
                 terrainAffectedMounds = [];
-                updateWaterConnectivity();
-                updateWaterVisuals();
+                // updateWaterConnectivity() e updateWaterVisuals() são pesados e agora são chamados dentro de updateIslandGeometry com throttling
             }
 
             // Atualiza exibição de peso (mesmo se pausado, para refletir mudanças no inventário)
@@ -7979,48 +7947,30 @@
             }
             crosshairElement.style.setProperty('--crosshair-color', crosshairColor);
 
-            // NOVO: Atualiza o temporizador e fade da textura de modificação do terreno
-            if (modifiedVertices.length > 0) {
+            // NOVO: Atualiza o temporizador e fade da textura de modificação do terreno (Otimizado)
+            if (modifiedVerticesMap.size > 0) {
                 const now = Date.now();
                 const geom = islandGeometry;
                 const colors = geom.attributes.color.array;
-                const fadeDuration = 30000; // 30 segundos para o fade completo
+                const fadeDuration = 30000;
                 let colorsChanged = false;
 
-                for (let i = modifiedVertices.length - 1; i >= 0; i--) {
-                    const vIdx = modifiedVertices[i].index;
+                // Não resetamos mais o tempo aqui para evitar o loop O(N) pesado com math toroidal
+                // O tempo é resetado em updateIslandGeometry para o affectedMound
 
-                    // NOVO: Se estivermos modificando o terreno ativamente, reseta o tempo dos vértices afetados
-                    // Isso evita que a textura comece a desaparecer entre os estágios da cavagem/construção
-                    if (isDestroying && !destructionComplete && destroyTargetDigInfo) {
-                        const m = destroyTargetDigInfo.mound;
-                        const vi = vIdx % hfGridSize;
-                        const vj = Math.floor(vIdx / hfGridSize);
-                        const v_cannon_j = (hfGridSize - 1) - vj;
-
-                        if (vi >= Math.floor(m.x - m.radius) && vi <= Math.ceil(m.x + m.radius) &&
-                            v_cannon_j >= Math.floor(m.z - m.radius) && v_cannon_j <= Math.ceil(m.z + m.radius)) {
-                            modifiedVertices[i].time = now;
-                        }
-                    }
-
-                    const elapsed = now - modifiedVertices[i].time;
-                    const progress = Math.min(1.0, elapsed / fadeDuration);
-
-                    if (colors[vIdx * 3] < progress || (progress === 0.0 && colors[vIdx * 3] > 0.0)) {
+                for (let [vIdx, time] of modifiedVerticesMap) {
+                    const progress = Math.min(1.0, (now - time) / fadeDuration);
+                    if (colors[vIdx * 3] < progress) {
                         colors[vIdx * 3] = progress;
                         colorsChanged = true;
                     }
-
                     if (progress >= 1.0) {
                         colors[vIdx * 3] = 1.0;
-                        modifiedVertices.splice(i, 1);
+                        modifiedVerticesMap.delete(vIdx);
                         colorsChanged = true;
                     }
                 }
-                if (colorsChanged) {
-                    geom.attributes.color.needsUpdate = true;
-                }
+                if (colorsChanged) geom.attributes.color.needsUpdate = true;
             }
 
             // Update ghostBlockMesh visibility and geometry
