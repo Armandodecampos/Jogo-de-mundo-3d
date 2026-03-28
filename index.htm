@@ -2411,7 +2411,7 @@
                 material: cubeMaterial,
                 linearDamping: 0.1,
                 angularDamping: 0.1,
-                allowSleep: false,
+                allowSleep: true,
                 sleepSpeedLimit: 0.01,
                 sleepTimeLimit: 1.0
             });
@@ -3764,9 +3764,9 @@
             // Configuração do Mundo Cannon-es (física)
             world = new CANNON.World();
             window.world = world;
-            world.allowSleep = false;
+            world.allowSleep = true;
             world.gravity.set(0, -30, 0); // Define a gravidade (para baixo), aumentada para -30
-            world.solver.iterations = 40; // Aumentado para melhor estabilidade de empilhamento
+            world.solver.iterations = 25; // Reduzido para melhor performance
 
             // Inicializa os materiais de física
             playerMaterial = new CANNON.Material('playerMaterial');
@@ -6678,7 +6678,7 @@
             }
 
             // Atualiza o mundo da física e o tempo simulado
-            world.step(1 / 60, delta, 3);
+            world.step(1 / 60, delta, 10);
 
             // Re-apply zero velocity after physics step if player is supposed to be static
             // to prevent tiny movements accumulated during the step on slopes.
@@ -6931,21 +6931,23 @@
                 const currentGroundLevel = islandSurfaceHeight + mound.height;
 
                 // NOVO: Empurra objetos para cima se o buraco estiver fechando (apenas se o terreno subir)
-                const pushRadius = 2.0;
+                const pushRadius = 5.0; // Aumentado para acordar objetos próximos
                 const moundWorldPos = { x: mound.position.x, y: mound.position.y, z: mound.position.z };
 
                 // Empurra o jogador
                 const playerDist = calculateWrappedDistance(playerBody.position, moundWorldPos);
                 if (playerDist < pushRadius) {
+                    playerBody.wakeUp();
                     const bottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
                     if (bottomY < currentGroundLevel) {
                         playerBody.position.y = currentGroundLevel + (isCrouching ? crouchRadius : playerRadius);
                     }
                 }
-                // Empurra caixotes
+                // Empurra caixotes e outros objetos coletáveis
                 collectibleBoxes.forEach(box => {
                     const boxDist = calculateWrappedDistance(box.body.position, moundWorldPos);
                     if (boxDist < pushRadius) {
+                        box.body.wakeUp();
                         const boxHeight = (box.body.userData.dimensions ? box.body.userData.dimensions.height : 1.0);
                         const bottomY = box.body.position.y - boxHeight / 2;
                         if (bottomY < currentGroundLevel) {
@@ -6957,6 +6959,7 @@
                 placedConstructionBodies.forEach(body => {
                     const bodyDist = calculateWrappedDistance(body.position, moundWorldPos);
                     if (bodyDist < pushRadius) {
+                        body.wakeUp();
                         const bodyHeight = (body.userData.dimensions ? body.userData.dimensions.height : (body.userData.isChest ? 1.0 : 0.4));
                         const bottomY = body.position.y - bodyHeight / 2;
                         if (bottomY < currentGroundLevel) {
