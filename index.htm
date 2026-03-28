@@ -632,9 +632,9 @@
             <div class="option-item">
                 <label for="renderDistanceSlider" class="flex justify-between w-full">
                     <span>Distância de Visão</span>
-                    <span id="renderDistanceValue">600</span>
+                    <span id="renderDistanceValue">400</span>
                 </label>
-                <input type="range" id="renderDistanceSlider" min="40" max="2000" value="600" class="w-full">
+                <input type="range" id="renderDistanceSlider" min="40" max="2000" value="400" class="w-full">
             </div>
             <div class="option-item">
                 <label for="grassDensitySlider" class="flex justify-between w-full">
@@ -792,7 +792,7 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 200; // Resolução global do terreno equilibrada
+        const hfGridSize = 128; // Resolução global do terreno (reduzido de 200 para melhor performance)
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -982,7 +982,7 @@
         const TOTAL_BEDROCK_DEPTH = 15.0; // NOVO: Profundidade total até a camada indestrutível
         const grassRadius = 100.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
         const beachRadius = 200.0; window.beachRadius = beachRadius; // NOVO: Raio da praia (aumentado de 120.0)
-        let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 600; // Distância de renderização para objetos
+        let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 400; // Distância de renderização reduzida para fluidez
         let frameCount = 0;
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
@@ -3520,7 +3520,7 @@
         function updateWaterVisuals() {
             if (!window.waterGeometry) return;
             const indices = [];
-            const waterRes = 64; // Segmentos visuais (reduzido para performance)
+            const waterRes = 32; // Segmentos visuais (reduzido de 64 para 32 para melhor performance)
             const step = (hfGridSize - 1) / waterRes;
 
             for (let j = 0; j < waterRes; j++) {
@@ -3766,7 +3766,7 @@
             window.world = world;
             world.allowSleep = true;
             world.gravity.set(0, -30, 0); // Define a gravidade (para baixo), aumentada para -30
-            world.solver.iterations = 25; // Reduzido para melhor performance
+            world.solver.iterations = 15; // Reduzido de 25 para 15 para melhor performance
 
             // Inicializa os materiais de física
             playerMaterial = new CANNON.Material('playerMaterial');
@@ -4304,7 +4304,7 @@
             }, undefined, (error) => console.error('Falha ao carregar a textura do solo:', error));
 
             // Cria a Água (resolução reduzida para performance visual, mantendo alta resolução na matriz de conectividade)
-            const waterRes = 64;
+            const waterRes = 32;
             const waterGeometry = new THREE.PlaneGeometry(worldSize, worldSize, waterRes, waterRes);
             waterGeometry.rotateX(-Math.PI / 2);
             window.waterGeometry = waterGeometry;
