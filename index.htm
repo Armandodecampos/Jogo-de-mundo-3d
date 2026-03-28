@@ -792,7 +792,7 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 128; // Resolução global do terreno (reduzido de 200 para melhor performance)
+        const hfGridSize = 512; // Resolução global do terreno (aumentada para buracos menores e mais precisos)
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -2101,7 +2101,7 @@
             let holeMesh = null;
             if (holeGeometryTemplate && holeMaterial) {
                 holeMesh = new THREE.Mesh(holeGeometryTemplate, holeMaterial);
-                holeMesh.scale.set(isHorizontal ? 0.08 : 0.1, isHorizontal ? 0.08 : 0.1, isHorizontal ? 0.08 : 0.1); // Inicia menor se for preciso
+                holeMesh.scale.set(isHorizontal ? 0.03 : 0.04, isHorizontal ? 0.03 : 0.04, isHorizontal ? 0.03 : 0.04); // Inicia menor se for preciso
                 if (isHorizontal) {
                     holeMesh.rotation.x = Math.PI / 2; // Gira para ficar vertical na parede
                 }
@@ -2111,7 +2111,7 @@
             const newMound = {
                 x: mx,
                 z: mz,
-                radius: (isHorizontal ? 3.0 : 4.0) * (hfGridSize / worldSize), // Raio reduzido para cavagem precisa em paredes
+                radius: (isHorizontal ? 1.0 : 1.5) * (hfGridSize / worldSize), // Raio reduzido para buracos menores
                 isPrecise: isHorizontal,
                 originalHeight: naturalY,
                 targetFloorHeight: naturalY,
@@ -6160,7 +6160,7 @@
                                     mound.height = maxHeight * mound.growthStage / moundGrowthStages.length;
                                     if (mound.mesh) {
                                         const baseScale = moundGrowthStages[mound.growthStage - 1];
-                                        const finalScale = mound.isPrecise ? baseScale * 0.8 : baseScale;
+                                        const finalScale = mound.isPrecise ? baseScale * 0.3 : baseScale * 0.4;
                                         mound.mesh.scale.set(finalScale, finalScale, finalScale);
                                     }
                                     terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
@@ -6284,7 +6284,7 @@
                                 if (mound.growthStage >= moundGrowthStages.length) {
                                     mound.height = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
                                     if (mound.mesh) {
-                                        const finalScale = mound.isPrecise ? 0.8 : 1.0;
+                                        const finalScale = mound.isPrecise ? 0.3 : 0.4;
                                         mound.mesh.scale.set(finalScale, finalScale, finalScale);
                                     }
 
@@ -6297,7 +6297,7 @@
                                 } else {
                                     const baseScale = moundGrowthStages[mound.growthStage - 1];
                                     if (mound.mesh) {
-                                        const finalScale = mound.isPrecise ? baseScale * 0.8 : baseScale;
+                                        const finalScale = mound.isPrecise ? baseScale * 0.3 : baseScale * 0.4;
                                         mound.mesh.scale.set(finalScale, finalScale, finalScale);
                                     }
                                     destroyProgress = 0; // Reinicia para o próximo estágio
@@ -6971,7 +6971,7 @@
                 // Atualiza a escala visual suavemente
                 const currentScale = Math.abs(mound.height / (mound.maxHeightChange || -1.0));
                 if (mound.mesh) {
-                    const finalScale = mound.isPrecise ? currentScale * 0.8 : currentScale;
+                    const finalScale = mound.isPrecise ? currentScale * 0.3 : currentScale * 0.4;
                     // Mantém um tamanho mínimo para não desaparecer antes da hora e evitar erros de escala zero
                     const s = Math.max(0.001, finalScale);
                     mound.mesh.scale.set(s, s, s);
