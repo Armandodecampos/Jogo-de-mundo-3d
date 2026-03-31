@@ -792,7 +792,10 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 256; // Resolução global do terreno (estável e performática)
+        const hfGridSize = 128; // Resolução global base (agora menor para performance)
+        const detailGridSize = 1024; // Resolução da área de detalhe (1024x1024)
+        const detailSize = 100; // Tamanho da área de detalhe em metros (50m de raio)
+        const detailRadius = 50.0;
         const safeMod = (n, m) => ((n % m) + m) % m;
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
@@ -807,6 +810,10 @@
         let raftBodies = []; // NOVO: Array para armazenar corpos das jangadas
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
         let islandGeometry; // Geometria compartilhada do terreno
+        let detailMesh; // Malha de alta resolução que segue o jogador
+        let detailGeometry;
+        let detailBody;
+        let detailHfMatrix;
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let waterMaterialShader = null;
@@ -1453,6 +1460,7 @@
         function updateRaycastTargets() {
             if (typeof raycastTargets === 'undefined') return;
             raycastTargets.length = 0;
+            if (detailMesh) raycastTargets.push(detailMesh);
             islandMeshes.forEach(tile => raycastTargets.push(tile.mesh));
             waterMeshes.forEach(tile => raycastTargets.push(tile.mesh)); // NOVO: Água para colocação de jangada
             raycastTargets.push(...placedConstructionMeshes);
@@ -3553,46 +3561,9 @@
                 window.currentHfMatrix = currentHfMatrix;
             }
 
-            // OTIMIZAÇÃO MOUND-CENTRIC: Reconstroi a matriz de forma eficiente O(sum de áreas de mounds)
-            // 1. Reseta para a base
+            // A grade base agora é apenas a superfície natural (os buracos ficam na grade de detalhe)
             for (let i = 0; i < hfGridSize; i++) {
                 currentHfMatrix[i].set(baseMatrix[i]);
-            }
-
-            // 2. Aplica mounds aditivos primeiro
-            for (const m of mounds) {
-                if (m.flattened || m.isPrecise || !isFinite(m.x) || !isFinite(m.z)) continue;
-                const r = m.radius || 1;
-                const rInt = Math.ceil(r) + 1;
-                const centerX = Math.round(m.x);
-                const centerZ = Math.round(m.z);
-                for (let di = -rInt; di <= rInt; di++) {
-                    const ii = safeMod(centerX + di, hfGridSize);
-                    for (let dj = -rInt; dj <= rInt; dj++) {
-                        const jj = safeMod(centerZ + dj, hfGridSize);
-                        const dx = (centerX + di) - m.x;
-                        const dz = (centerZ + dj) - m.z;
-                        const distSq = dx * dx + dz * dz;
-                        if (distSq < r * r) {
-                            currentHfMatrix[ii][jj] += Math.sqrt(r * r - distSq) * (m.height / r);
-                        }
-                    }
-                }
-            }
-
-            // 3. Aplica mounds precisos (clipping)
-            for (const m of mounds) {
-                if (m.flattened || !m.isPrecise || !isFinite(m.x) || !isFinite(m.z)) continue;
-                const xBase = Math.floor(m.x);
-                const zBase = Math.floor(m.z);
-                const targetHeight = (m.targetFloorHeight !== undefined ? m.targetFloorHeight : m.originalHeight) + m.height;
-                for (let di = 0; di <= 1; di++) {
-                    const ii = safeMod(xBase + di, hfGridSize);
-                    for (let dj = 0; dj <= 1; dj++) {
-                        const jj = safeMod(zBase + dj, hfGridSize);
-                        currentHfMatrix[ii][jj] = Math.min(currentHfMatrix[ii][jj], targetHeight);
-                    }
-                }
             }
 
             // 4. Clamping global (Bedrock)
@@ -3679,7 +3650,6 @@
                 }
             }
 
-            // Otimização: Só atualiza água e normais em intervalos controlados para evitar hangs
             // Forçamos um intervalo mínimo de 2 segundos para cálculos pesados.
             if (nowTime - (window.lastHeavyUpdateTime || 0) > 2000) {
                 window.lastHeavyUpdateTime = nowTime;
@@ -4097,6 +4067,33 @@
             // Define islandBody como o tile central para compatibilidade
             window.islandBody = islandBody = islandMeshes[Math.floor(islandMeshes.length / 2)].body;
 
+            // --- Inicialização do Terreno de Detalhe (1024x1024) ---
+            detailGeometry = new THREE.PlaneGeometry(detailSize, detailSize, detailGridSize - 1, detailGridSize - 1);
+            detailGeometry.rotateX(-Math.PI / 2);
+            // Adiciona atributo de cor e altura base para o shader (igual ao terreno base)
+            const detailColors = new Float32Array(detailGeometry.attributes.position.count * 3);
+            detailColors.fill(1.0);
+            detailGeometry.setAttribute('color', new THREE.BufferAttribute(detailColors, 3));
+            const detailBaseHeights = new Float32Array(detailGeometry.attributes.position.count);
+            detailGeometry.setAttribute('aBaseHeight', new THREE.BufferAttribute(detailBaseHeights, 1));
+
+            detailMesh = new THREE.Mesh(detailGeometry, islandMeshMaterial);
+            detailMesh.receiveShadow = true;
+            detailMesh.renderOrder = 1; // Renderizar após o terreno base
+            scene.add(detailMesh);
+
+            detailHfMatrix = new Array(detailGridSize);
+            for (let i = 0; i < detailGridSize; i++) detailHfMatrix[i] = new Float32Array(detailGridSize);
+
+            const detailHfShape = new CANNON.Heightfield(detailHfMatrix, {
+                elementSize: detailSize / (detailGridSize - 1)
+            });
+            detailBody = new CANNON.Body({ mass: 0, material: islandMaterial });
+            detailBody.addShape(detailHfShape);
+            detailBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+            world.addBody(detailBody);
+            detailMesh.userData.physicsBody = detailBody;
+
             // Inicializa o sistema de capim instanciado (Passo 3)
             const maxCapimInstances = maxCapimClusters * bladesPerCluster;
             const capimGeometry = capimSharedGeometry;
@@ -4170,6 +4167,8 @@
                                         shader.uniforms.uGrassRadius = { value: grassRadius };
                                         shader.uniforms.uBeachRadius = { value: beachRadius };
                                         shader.uniforms.uUseTextures = { value: useTextures ? 1.0 : 0.0 };
+                                        shader.uniforms.uPlayerPos = { value: new THREE.Vector3() };
+                                        shader.uniforms.uDetailRadius = { value: detailRadius };
                                         islandMeshMaterial.userData.shader = shader;
 
                                         shader.vertexShader = `
@@ -4198,6 +4197,8 @@
                                             uniform float uGrassRadius;
                                             uniform float uBeachRadius;
                                             uniform float uUseTextures;
+                                            uniform vec3 uPlayerPos;
+                                            uniform float uDetailRadius;
                                             varying vec3 vWorldPosition;
                                             varying float vBaseHeight;
                                             ${shader.fragmentShader}
@@ -4225,6 +4226,25 @@
                                                     grassColor = vec3(0.3, 0.5, 0.2); // Solid grass terra
                                                     stoneColor = vec3(0.5, 0.5, 0.5); // Solid stone
                                                     inferiorColor = vec3(0.4, 0.3, 0.2); // Solid dirt
+                                                }
+
+                                                // Descarta o terreno base se estiver na área de detalhe (50m de raio)
+                                                // Só descarta se a malha NÃO for a malha de detalhe (renderOrder == 0)
+                                                float distToPlayer = length(vWorldPosition.xz - uPlayerPos.xz);
+                                                // Como o mundo é toroidal, precisamos checar a distância com wrap
+                                                vec2 dxz = abs(vWorldPosition.xz - uPlayerPos.xz);
+                                                dxz = min(dxz, 2000.0 - dxz);
+                                                float wrappedDistToPlayer = length(dxz);
+
+                                                // Se for terreno base (renderOrder=0) e estiver perto do player, descarta
+                                                // Usamos um pequeno fade ou discard bruto
+                                                if (wrappedDistToPlayer < uDetailRadius - 0.5) {
+                                                     // Verificação simplificada: se não for a malha de detalhe
+                                                     // (estamos usando o mesmo material, então precisamos de uma forma de distinguir)
+                                                     // Usaremos a posição da malha como dica
+                                                     if (length(modelMatrix[3].xz - uPlayerPos.xz) > 1.0) {
+                                                         discard;
+                                                     }
                                                 }
 
                                                 // Usa distância periódica para que ilhas espelhadas sejam renderizadas corretamente
@@ -5095,7 +5115,7 @@
                     const hitPoint = intersects[i].point;
 
                     // Verifica se é o terreno
-                    const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
+                    const isIslandMesh = islandMeshes.some(m => m.mesh === obj) || obj === detailMesh;
                     if (isIslandMesh) {
                         // Verifica se há capim perto para priorizar
                         let nearCapim = null;
@@ -5965,6 +5985,129 @@
         // Função para atualizar as posições de todas as malhas visuais para um dado corpo de cubo/bloco
 
         // NOVO: Função para calcular a distância em um mundo que se envolve (toroidal)
+        function updateDetailTerrain() {
+            if (!detailMesh || !playerBody) return;
+
+            const playerX = playerBody.position.x;
+            const playerZ = playerBody.position.z;
+            const snap = 1.0;
+            const centerX = Math.round(playerX / snap) * snap;
+            const centerZ = Math.round(playerZ / snap) * snap;
+
+            detailMesh.position.set(centerX, 0, centerZ);
+            detailBody.position.set(centerX, 0, centerZ);
+            detailBody.updateAABB();
+
+            const halfSize = detailSize / 2;
+            const step = detailSize / (detailGridSize - 1);
+            const vertices = detailGeometry.attributes.position.array;
+            const baseHeights = detailGeometry.attributes.aBaseHeight.array;
+            const colors = detailGeometry.attributes.color.array;
+            const now = Date.now();
+
+            // 1. Amostra alturas base e reseta cores
+            for (let j = 0; j < detailGridSize; j++) {
+                const worldZ = centerZ + (j / (detailGridSize - 1) - 0.5) * detailSize;
+                for (let i = 0; i < detailGridSize; i++) {
+                    const worldX = centerX + (i / (detailGridSize - 1) - 0.5) * detailSize;
+                    const h = getSurfaceHeight(worldX, worldZ);
+                    const cannonJ = (detailGridSize - 1) - j;
+                    detailHfMatrix[i][cannonJ] = h;
+                    const vIdx = (j * detailGridSize + i);
+                    vertices[vIdx * 3 + 1] = h;
+                    baseHeights[vIdx] = h;
+                    // Reset gradual das cores (efeito de cura visual)
+                    const timeSinceMod = now - (modifiedVerticesMap.get(vIdx + 1000000) || 0);
+                    colors[vIdx * 3] = Math.min(1.0, timeSinceMod / 30000);
+                }
+            }
+
+            // 2. Aplica mounds (buracos e montes) ativos
+            for (const m of mounds) {
+                if (m.flattened) continue;
+                // Distância toroidal ao centro do detalhe
+                const dx = Math.abs(m.position.x - centerX);
+                const dz = Math.abs(m.position.z - centerZ);
+                const wrappedDx = Math.min(dx, worldSize - dx);
+                const wrappedDz = Math.min(dz, worldSize - dz);
+
+                if (wrappedDx > halfSize + m.radius && wrappedDz > halfSize + m.radius) continue;
+
+                if (m.isPrecise) {
+                    // Mounds precisos (clipping)
+                    const xBase = Math.floor((m.position.x - (centerX - halfSize)) / step);
+                    const zBase = Math.floor(((centerZ + halfSize) - m.position.z) / step);
+                    const targetHeight = (m.targetFloorHeight !== undefined ? m.targetFloorHeight : m.originalHeight) + m.height;
+
+                    for (let di = -1; di <= 2; di++) {
+                        const ii = xBase + di;
+                        if (ii < 0 || ii >= detailGridSize) continue;
+                        for (let dj = -1; dj <= 2; dj++) {
+                            const jj = zBase + dj;
+                            if (jj < 0 || jj >= detailGridSize) continue;
+
+                            detailHfMatrix[ii][jj] = Math.min(detailHfMatrix[ii][jj], targetHeight);
+                            const threeJ = (detailGridSize - 1) - jj;
+                            const vIdx = (threeJ * detailGridSize + ii);
+                            vertices[vIdx * 3 + 1] = detailHfMatrix[ii][jj];
+                            colors[vIdx * 3] = 0.0;
+                            modifiedVerticesMap.set(vIdx + 1000000, now);
+                        }
+                    }
+                } else {
+                    // Mounds aditivos
+                    const r = m.radius || 1;
+                    const rInt = Math.ceil(r / step) + 1;
+                    const mIdxX = Math.round((m.position.x - (centerX - halfSize)) / step);
+                    const mIdxZ = Math.round(((centerZ + halfSize) - m.position.z) / step);
+
+                    for (let di = -rInt; di <= rInt; di++) {
+                        const ii = mIdxX + di;
+                        if (ii < 0 || ii >= detailGridSize) continue;
+                        for (let dj = -rInt; dj <= rInt; dj++) {
+                            const jj = mIdxZ + dj;
+                            if (jj < 0 || jj >= detailGridSize) continue;
+
+                            const worldX = centerX - halfSize + ii * step;
+                            const worldZ = centerZ + halfSize - jj * step;
+                            const distSq = Math.pow(worldX - m.position.x, 2) + Math.pow(worldZ - m.position.z, 2);
+
+                            if (distSq < r * r) {
+                                const hChange = Math.sqrt(r * r - distSq) * (m.height / r);
+                                detailHfMatrix[ii][jj] += hChange;
+                                const threeJ = (detailGridSize - 1) - jj;
+                                const vIdx = (threeJ * detailGridSize + ii);
+                                vertices[vIdx * 3 + 1] = detailHfMatrix[ii][jj];
+                                colors[vIdx * 3] = 0.0;
+                                modifiedVerticesMap.set(vIdx + 1000000, now);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 3. Bedrock Clamping (Otimizado)
+            const relBedrockLevelOffset = TOTAL_BEDROCK_DEPTH;
+            for (let i = 0; i < detailGridSize; i++) {
+                const worldX = centerX - halfSize + i * step;
+                for (let j = 0; j < detailGridSize; j++) {
+                    const cannonJ = (detailGridSize - 1) - j;
+                    const worldZ = centerZ + (j / (detailGridSize - 1) - 0.5) * detailSize;
+                    const baseH = getSurfaceHeight(worldX, worldZ);
+                    if (detailHfMatrix[i][cannonJ] < baseH - relBedrockLevelOffset) {
+                        detailHfMatrix[i][cannonJ] = baseH - relBedrockLevelOffset;
+                        vertices[(j * detailGridSize + i) * 3 + 1] = detailHfMatrix[i][cannonJ];
+                    }
+                }
+            }
+
+            detailGeometry.attributes.position.needsUpdate = true;
+            detailGeometry.attributes.aBaseHeight.needsUpdate = true;
+            detailGeometry.attributes.color.needsUpdate = true;
+            detailGeometry.computeVertexNormals();
+            detailBody.shapes[0].update();
+        }
+
         function calculateWrappedDistance(pos1, pos2) {
             const dx = Math.abs(pos1.x - pos2.x);
             const dy = Math.abs(pos1.y - pos2.y); // O eixo Y não se envolve
@@ -6012,6 +6155,11 @@
             }
             updateRain(delta);
 
+            // Atualiza a posição do jogador no shader para descarte de pixels do terreno base
+            if (islandMeshMaterial.userData.shader && playerBody) {
+                islandMeshMaterial.userData.shader.uniforms.uPlayerPos.value.copy(playerBody.position);
+            }
+
             // Atualiza volume dos sons ambientais da ilha e da praia
             if (islandGainNode && beachGainNode) {
                 if (gamePaused) {
@@ -6046,11 +6194,39 @@
             }
 
             if (terrainNeedsUpdate) {
-                const uniqueMounds = [...new Set(terrainAffectedMounds)];
-                // Batch all affected mounds into a single geometry update call
-                updateIslandGeometry(uniqueMounds);
+                // No novo sistema, os mounds são tratados pela grade de detalhe
+                updateDetailTerrain();
                 terrainNeedsUpdate = false;
                 terrainAffectedMounds = [];
+            }
+
+            // Cura instantânea: remove mounds fora do raio de detalhe
+            if (frameCount % 60 === 0 && playerBody) {
+                let moundsRemoved = false;
+                for (let i = mounds.length - 1; i >= 0; i--) {
+                    const m = mounds[i];
+                    if (m.flattened) continue;
+                    const dist = calculateWrappedDistance(playerBody.position, m.position);
+                    if (dist > detailRadius + 10.0) { // 10m de buffer para evitar piscar nas bordas
+                        if (m.mesh) scene.remove(m.mesh);
+                        const vIdx = visualMounds.indexOf(m);
+                        if (vIdx !== -1) visualMounds.splice(vIdx, 1);
+                        mounds.splice(i, 1);
+                        moundsRemoved = true;
+                    }
+                }
+                if (moundsRemoved) updateDetailTerrain();
+            }
+
+            // Atualiza terreno de detalhe conforme o jogador se move
+            if (playerBody && !gamePaused) {
+                const playerX = playerBody.position.x;
+                const playerZ = playerBody.position.z;
+                if (!window.lastDetailX || Math.abs(playerX - window.lastDetailX) > 2.0 || Math.abs(playerZ - window.lastDetailZ) > 2.0) {
+                    updateDetailTerrain();
+                    window.lastDetailX = playerX;
+                    window.lastDetailZ = playerZ;
+                }
             }
 
             // Atualiza exibição de peso (mesmo se pausado, para refletir mudanças no inventário)
@@ -7070,7 +7246,7 @@
                         }
 
                         // Verificação de terreno (Cavar / Colher Grama)
-                        const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
+                        const isIslandMesh = islandMeshes.some(m => m.mesh === obj) || obj === detailMesh;
                         if (isIslandMesh) {
                             // Verifica se há capim perto
                             let nearCapim = false;
@@ -7792,7 +7968,7 @@
                             let obj = intersects[i].object;
 
                             // Check for mountain/ground
-                            const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
+                            const isIslandMesh = islandMeshes.some(m => m.mesh === obj) || obj === detailMesh;
 
                             if (isIslandMesh) {
                                 canDestroy = true;
@@ -7854,7 +8030,7 @@
                         }
 
                         // Check for mining/digging with hand
-                        const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
+                        const isIslandMesh = islandMeshes.some(m => m.mesh === obj) || obj === detailMesh;
 
                         if (isIslandMesh) {
                             // Verifica se há capim perto para a cor do crosshair
