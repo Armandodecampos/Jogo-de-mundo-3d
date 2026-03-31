@@ -792,9 +792,9 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 64; // Resolução global base (agora menor para performance)
+        const hfGridSize = 32; // Resolução global base (agora menor para performance)
         const detailGridSize = 1024; // Resolução da área de detalhe (1024x1024)
-        const detailSize = 100; // Tamanho da área de detalhe em metros (50m de raio)
+        const detailSize = 120.0; // Tamanho da malha (10m de margem para o raio de 50m)
         const detailRadius = 50.0;
         const safeMod = (n, m) => ((n % m) + m) % m;
 
@@ -814,7 +814,7 @@
         let detailGeometry;
         let detailBody;
         let detailHfMatrix;
-        let islandMeshMaterial; // Material compartilhado do terreno
+        let islandMeshMaterial, islandMeshMaterialDetail;
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let waterMaterialShader = null;
@@ -1472,6 +1472,8 @@
         function applyTextureSettings() {
             window.useTextures = useTextures;
             // Update materials
+            if (islandMeshMaterial) islandMeshMaterial.map = useTextures ? (texturesRegistry.ground || null) : null;
+            if (islandMeshMaterialDetail) islandMeshMaterialDetail.map = useTextures ? (texturesRegistry.ground || null) : null;
             if (cubeMaterialMesh) cubeMaterialMesh.map = useTextures ? (texturesRegistry.cube || null) : null;
             if (cobMaterialMesh) cobMaterialMesh.map = useTextures ? (texturesRegistry.cob || null) : null;
             if (floorMaterialMesh) floorMaterialMesh.map = useTextures ? (texturesRegistry.floor || null) : null;
@@ -3620,10 +3622,11 @@
                 const moundsToProcess = Array.isArray(affectedMounds) ? affectedMounds : (affectedMounds ? [affectedMounds] : []);
                 if (moundsToProcess.length > 0) {
                     for (const tm of moundsToProcess) {
-                        if (!isFinite(tm.x) || !isFinite(tm.z)) continue;
+                    const pos = tm.position || { x: tm.x, z: tm.z };
+                    if (!isFinite(pos.x) || !isFinite(pos.z)) continue;
                         const rInt = Math.ceil(tm.radius || 1) + 1;
-                        const centerX = Math.round(tm.x);
-                        const centerZ = Math.round(tm.z);
+                    const centerX = Math.round(pos.x);
+                    const centerZ = Math.round(pos.z);
                         for (let di = -rInt; di <= rInt; di++) {
                             for (let dj_cannon = -rInt; dj_cannon <= rInt; dj_cannon++) {
                                 const cannonI = safeMod(centerX + di, hfGridSize);
@@ -4042,7 +4045,8 @@
             islandMeshMaterial = new THREE.MeshStandardMaterial({
                 color: 0xffffff,
                 vertexColors: true
-            }); // Grass color placeholder
+            });
+            islandMeshMaterialDetail = islandMeshMaterial.clone();
 
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
@@ -4078,7 +4082,7 @@
             const detailBaseHeights = new Float32Array(detailGeometry.attributes.position.count);
             detailGeometry.setAttribute('aBaseHeight', new THREE.BufferAttribute(detailBaseHeights, 1));
 
-            detailMesh = new THREE.Mesh(detailGeometry, islandMeshMaterial);
+            detailMesh = new THREE.Mesh(detailGeometry, islandMeshMaterialDetail);
             detailMesh.receiveShadow = true;
             detailMesh.renderOrder = 1; // Renderizar após o terreno base
             scene.add(detailMesh);
@@ -4155,7 +4159,12 @@
                                     grassTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
                                     inferiorDirtTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
 
-                                    islandMeshMaterial.map = groundTexture;
+                                    islandMeshMaterial.map = islandMeshMaterialDetail.map = groundTexture;
+                                    islandMeshMaterialDetail.onBeforeCompile = (shader) => {
+                                        islandMeshMaterial.onBeforeCompile(shader);
+                                        shader.uniforms.uIsDetail = { value: 1.0 };
+                                        islandMeshMaterialDetail.userData.shader = shader;
+                                    };
                                     islandMeshMaterial.onBeforeCompile = (shader) => {
                                         shader.uniforms.uSeabedTexture = { value: seabedTexture };
                                         shader.uniforms.uSandTexture = { value: sandTexture };
@@ -4170,7 +4179,13 @@
                                         shader.uniforms.uUseTextures = { value: useTextures ? 1.0 : 0.0 };
                                         shader.uniforms.uPlayerPos = { value: new THREE.Vector3() };
                                         shader.uniforms.uDetailRadius = { value: detailRadius };
+                                        shader.uniforms.uIsDetail = { value: 0.0 };
                                         islandMeshMaterial.userData.shader = shader;
+
+                                        // Ensure high-resolution patch uses the same uniforms
+                                        if (islandMeshMaterialDetail.userData.shader) {
+                                            islandMeshMaterialDetail.userData.shader.uniforms.uDetailRadius.value = detailRadius;
+                                        }
 
                                         shader.vertexShader = `
                                             varying vec3 vWorldPosition;
@@ -4200,6 +4215,7 @@
                                             uniform float uUseTextures;
                                             uniform vec3 uPlayerPos;
                                             uniform float uDetailRadius;
+                                            uniform float uIsDetail;
                                             varying vec3 vWorldPosition;
                                             varying float vBaseHeight;
                                             ${shader.fragmentShader}
@@ -4230,22 +4246,15 @@
                                                 }
 
                                                 // Descarta o terreno base se estiver na área de detalhe (50m de raio)
-                                                // Só descarta se a malha NÃO for a malha de detalhe (renderOrder == 0)
-                                                float distToPlayer = length(vWorldPosition.xz - uPlayerPos.xz);
-                                                // Como o mundo é toroidal, precisamos checar a distância com wrap
+                                                // E descarta a área de detalhe se estiver fora do raio para evitar Z-fighting
                                                 vec2 dxz = abs(vWorldPosition.xz - uPlayerPos.xz);
                                                 dxz = min(dxz, 2000.0 - dxz);
                                                 float wrappedDistToPlayer = length(dxz);
 
-                                                // Se for terreno base (renderOrder=0) e estiver perto do player, descarta
-                                                // Usamos um pequeno fade ou discard bruto
-                                                if (wrappedDistToPlayer < uDetailRadius - 0.5) {
-                                                     // Verificação simplificada: se não for a malha de detalhe
-                                                     // (estamos usando o mesmo material, então precisamos de uma forma de distinguir)
-                                                     // Usaremos a posição da malha como dica
-                                                     if (length(modelMatrix[3].xz - uPlayerPos.xz) > 1.0) {
-                                                         discard;
-                                                     }
+                                                if (uIsDetail < 0.5) {
+                                                    if (wrappedDistToPlayer < uDetailRadius) discard;
+                                                } else {
+                                                    if (wrappedDistToPlayer >= uDetailRadius) discard;
                                                 }
 
                                                 // Usa distância periódica para que ilhas espelhadas sejam renderizadas corretamente
@@ -6157,8 +6166,11 @@
             updateRain(delta);
 
             // Atualiza a posição do jogador no shader para descarte de pixels do terreno base
-            if (islandMeshMaterial.userData.shader && playerBody) {
+            if (islandMeshMaterial && islandMeshMaterial.userData.shader && playerBody) {
                 islandMeshMaterial.userData.shader.uniforms.uPlayerPos.value.copy(playerBody.position);
+            }
+            if (islandMeshMaterialDetail && islandMeshMaterialDetail.userData.shader && playerBody) {
+                islandMeshMaterialDetail.userData.shader.uniforms.uPlayerPos.value.copy(playerBody.position);
             }
 
             // Atualiza volume dos sons ambientais da ilha e da praia
@@ -6201,14 +6213,15 @@
                 terrainAffectedMounds = [];
             }
 
-            // Cura instantânea: remove mounds fora do raio de detalhe
-            if (frameCount % 60 === 0 && playerBody) {
+            // Cura instantânea: remove mounds fora do raio de detalhe (agora em cada frame)
+            if (playerBody) {
                 let moundsRemoved = false;
                 for (let i = mounds.length - 1; i >= 0; i--) {
                     const m = mounds[i];
                     if (m.flattened) continue;
                     const dist = calculateWrappedDistance(playerBody.position, m.position);
-                    if (dist > detailRadius + 10.0) { // 10m de buffer para evitar piscar nas bordas
+                    // Cura instantânea: remove assim que sai do raio de detalhe
+                    if (dist > detailRadius + 1.0) {
                         if (m.mesh) scene.remove(m.mesh);
                         const vIdx = visualMounds.indexOf(m);
                         if (vIdx !== -1) visualMounds.splice(vIdx, 1);
@@ -6223,6 +6236,7 @@
             if (playerBody && !gamePaused) {
                 const playerX = playerBody.position.x;
                 const playerZ = playerBody.position.z;
+                // Atualiza a cada 2 metros para manter o desempenho com 1024x1024
                 if (!window.lastDetailX || Math.abs(playerX - window.lastDetailX) > 2.0 || Math.abs(playerZ - window.lastDetailZ) > 2.0) {
                     updateDetailTerrain();
                     window.lastDetailX = playerX;
@@ -8264,23 +8278,44 @@
             window.seagullSoundUrls = seagullSoundUrls;
             window.playAmbientBirdSound = playAmbientBirdSound;
             window.world = world;
-            Object.defineProperty(window, 'nextBirdSoundTime', {
-                get: () => nextBirdSoundTime,
-                set: (v) => { nextBirdSoundTime = v; }
-            });
-            Object.defineProperty(window, 'gamePaused', { get: () => gamePaused, set: (v) => { gamePaused = v; } });
-            Object.defineProperty(window, 'rainGainNode', { get: () => rainGainNode });
-            Object.defineProperty(window, 'islandGainNode', { get: () => islandGainNode });
-            Object.defineProperty(window, 'beachGainNode', { get: () => beachGainNode });
-            Object.defineProperty(window, 'rainIntensity', { get: () => rainIntensity, set: (v) => { rainIntensity = v; } });
-            Object.defineProperty(window, 'targetRainIntensity', { get: () => targetRainIntensity, set: (v) => { targetRainIntensity = v; } });
-            Object.defineProperty(window, 'isClimbing', { get: () => isClimbing, set: (v) => { isClimbing = v; } });
-            Object.defineProperty(window, 'isFlying', { get: () => isFlying, set: (v) => { isFlying = v; } });
+
+            if(!window.is_window_exposed) {
+                const props = {
+                    nextBirdSoundTime: () => nextBirdSoundTime,
+                    gamePaused: () => gamePaused,
+                    rainGainNode: () => rainGainNode,
+                    islandGainNode: () => islandGainNode,
+                    beachGainNode: () => beachGainNode,
+                    rainIntensity: () => rainIntensity,
+                    targetRainIntensity: () => targetRainIntensity,
+                    isClimbing: () => isClimbing,
+                    isFlying: () => isFlying,
+                    isDestroying: () => isDestroying,
+                    destroyProgress: () => destroyProgress,
+                    targetDestroyTime: () => targetDestroyTime,
+                    selectedItem: () => selectedItem,
+                    isAttemptingToDestroy: () => isAttemptingToDestroy,
+                    isDrivingRaft: () => isDrivingRaft,
+                    currentRaftBody: () => currentRaftBody,
+                    currentMound: () => currentMound,
+                    targetCloudCount: () => targetCloudCount
+                };
+
+                for (let key in props) {
+                    if (!window.hasOwnProperty(key)) {
+                        Object.defineProperty(window, key, {
+                            get: props[key],
+                            set: (v) => { eval(key + " = v;"); },
+                            configurable: true
+                        });
+                    }
+                }
+                window.is_window_exposed = true;
+            }
+
+
             window.useInteractionHints = useInteractionHints;
             window.collectibleBoxes = collectibleBoxes;
-            Object.defineProperty(window, 'isDestroying', { get: () => isDestroying });
-            Object.defineProperty(window, 'destroyProgress', { get: () => destroyProgress });
-            Object.defineProperty(window, 'targetDestroyTime', { get: () => targetDestroyTime });
             window.capimClusters = capimClusters;
             window.capimInstancedMeshes = capimInstancedMeshes;
             window.raycastTargets = raycastTargets;
@@ -8306,14 +8341,6 @@
             window.updateUI = updateUI;
             window.coconutTrees = coconutTrees;
             window.selectedSlotIndex = selectedSlotIndex;
-            Object.defineProperty(window, 'selectedItem', {
-                get: () => selectedItem,
-                set: (v) => { selectedItem = v; }
-            });
-            Object.defineProperty(window, 'isAttemptingToDestroy', {
-                get: () => isAttemptingToDestroy,
-                set: (v) => { isAttemptingToDestroy = v; }
-            });
             window.dirtMountains = dirtMountains;
             window.useTextures = useTextures;
             window.createBox = createBox;
@@ -8322,15 +8349,6 @@
             window.animate = animate;
             window.createRaft = createRaft;
             window.raftBodies = raftBodies;
-            Object.defineProperty(window, 'isDrivingRaft', {
-                get: () => isDrivingRaft,
-                set: (v) => { isDrivingRaft = v; }
-            });
-            Object.defineProperty(window, 'currentRaftBody', {
-                get: () => currentRaftBody,
-                set: (v) => { currentRaftBody = v; }
-            });
-            Object.defineProperty(window, 'currentMound', { get: () => currentMound });
             window.cobMaterialMesh = cobMaterialMesh;
             window.cubeMaterialMesh = cubeMaterialMesh;
             window.renderer = renderer;
@@ -8344,22 +8362,8 @@
             window.rainParticles = rainParticles;
             window.sunMesh = sunMesh;
             window.moonMesh = moonMesh;
-
-            // Weather exposure
             window.clouds = clouds;
             window.birds = birds;
-            Object.defineProperty(window, 'targetCloudCount', {
-                get: () => targetCloudCount,
-                set: (v) => { targetCloudCount = v; }
-            });
-            Object.defineProperty(window, 'rainIntensity', {
-                get: () => rainIntensity,
-                set: (v) => { rainIntensity = v; }
-            });
-            Object.defineProperty(window, 'targetRainIntensity', {
-                get: () => targetRainIntensity,
-                set: (v) => { targetRainIntensity = v; }
-            });
             window.updateWeather = updateWeather;
             window.spawnBirdGroup = spawnBirdGroup;
         }
