@@ -632,9 +632,9 @@
             <div class="option-item">
                 <label for="renderDistanceSlider" class="flex justify-between w-full">
                     <span>Distância de Visão</span>
-                    <span id="renderDistanceValue">400</span>
+                    <span id="renderDistanceValue">600</span>
                 </label>
-                <input type="range" id="renderDistanceSlider" min="40" max="2000" value="400" class="w-full">
+                <input type="range" id="renderDistanceSlider" min="40" max="2000" value="600" class="w-full">
             </div>
             <div class="option-item">
                 <label for="grassDensitySlider" class="flex justify-between w-full">
@@ -697,7 +697,6 @@
 
     <div id="crosshair"></div>
     <div id="interactionHint"></div>
-    <div id="centerMessage" style="position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 1.5em; font-weight: bold; text-shadow: 2px 2px 4px rgba(0,0,0,0.8); pointer-events: none; z-index: 2000; display: none; text-align: center;"></div>
 
     <div id="clockContainer">
         <div id="clockFace">
@@ -792,11 +791,7 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 32; // Resolução global base (agora menor para performance)
-        const detailGridSize = 512; // Resolução da área de detalhe (512x512)
-        const detailSize = 80.0; // Tamanho da malha
-        const detailRadius = 35.0;
-        const safeMod = (n, m) => ((n % m) + m) % m;
+        const hfGridSize = 200; // Resolução global do terreno equilibrada
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -806,16 +801,9 @@
         let playerBody;
 
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
-        let lastTileX = NaN, lastTileZ = NaN; // NOVO: Para otimizar atualização de posição do terreno
         let raftBodies = []; // NOVO: Array para armazenar corpos das jangadas
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
         let islandGeometry; // Geometria compartilhada do terreno
-        let detailMesh; // Malha de alta resolução que segue o jogador
-        let detailGeometry;
-        let detailBody;
-        let detailHfMatrix;
-        let islandMeshMaterial, islandMeshMaterialDetail;
-        let modifiedVerticesMap = new Map(); // Otimização: O(1) para busca de vértices modificados
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let waterMaterialShader = null;
@@ -992,7 +980,7 @@
         const TOTAL_BEDROCK_DEPTH = 15.0; // NOVO: Profundidade total até a camada indestrutível
         const grassRadius = 100.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
         const beachRadius = 200.0; window.beachRadius = beachRadius; // NOVO: Raio da praia (aumentado de 120.0)
-        let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 400; // Distância de renderização reduzida para fluidez
+        let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 600; // Distância de renderização para objetos
         let frameCount = 0;
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
@@ -1260,29 +1248,29 @@
         const minTreePlacementDistance = 0.1; // Reduzido para permitir colocar árvores próximas
 
         // URLs das texturas
-        const cubeTextureURL = 'https://dl.dropbox.com/scl/fi/gj6zul0y5tl74dbyysnz8/caixote.jpg?rlkey=4v81yak0nb08mllkfh1eceijw&st=lqj60d8g&dl=1';
-        const cobTextureURL = 'https://dl.dropbox.com/scl/fi/cp3ueclujrd32o6hv8d73/Cob-2.png?rlkey=5x29w33xvgol1aoxqk3p9jdkm&st=1kahc5pq&dl=1';
-        const floorTextureURL = 'https://dl.dropbox.com/scl/fi/cp3ueclujrd32o6hv8d73/Cob-2.png?rlkey=5x29w33xvgol1aoxqk3p9jdkm&st=1kahc5pq&dl=1'; // Nova textura para pisos (exemplo)
-        const treeSaplingTextureURL = 'https://dl.dropbox.com/scl/fi/pjdpuxo189igkd5wyvp0z/icone-de-muda-de-arvore.png?rlkey=9bvfgukhymi4qo02965pt3zl4&st=xs4n6qwo&dl=1'; // Dark green placeholder for tree icon
+        const cubeTextureURL = 'https://dl.dropbox.com/scl/fi/gj6zul0y5tl74dbyysnz8/caixote.jpg?rlkey=4v81yak0nb08mllkfh1eceijw&st=lqj60d8g&dl=0';
+        const cobTextureURL = 'https://dl.dropbox.com/scl/fi/cp3ueclujrd32o6hv8d73/Cob-2.png?rlkey=5x29w33xvgol1aoxqk3p9jdkm&st=1kahc5pq&dl=0';
+        const floorTextureURL = 'https://dl.dropbox.com/scl/fi/cp3ueclujrd32o6hv8d73/Cob-2.png?rlkey=5x29w33xvgol1aoxqk3p9jdkm&st=1kahc5pq&dl=0'; // Nova textura para pisos (exemplo)
+        const treeSaplingTextureURL = 'https://dl.dropbox.com/scl/fi/pjdpuxo189igkd5wyvp0z/icone-de-muda-de-arvore.png?rlkey=9bvfgukhymi4qo02965pt3zl4&st=xs4n6qwo&dl=0'; // Dark green placeholder for tree icon
         const capimImageURL = 'https://placehold.co/100x100/2d5a27/FFFFFF?text=Capim';
-        const axeImageURL = 'https://dl.dropbox.com/scl/fi/6td6rpc8n54j6sz62w383/icone-de-machado.png?rlkey=zepycmnfyohef27tp7f5urnx0&st=7kbd3no2&dl=1'; // Placeholder for axe image
-        const hammerImageURL = 'https://dl.dropbox.com/scl/fi/vadd8ztbnmzfqi18ml1cl/icone-de-martelo.png?rlkey=45l4k78t728fh4w4fkd4tvlef&st=cbi6paz9&dl=1'; // Placeholder for hammer image
+        const axeImageURL = 'https://dl.dropbox.com/scl/fi/6td6rpc8n54j6sz62w383/icone-de-machado.png?rlkey=zepycmnfyohef27tp7f5urnx0&st=7kbd3no2&dl=0'; // Placeholder for axe image
+        const hammerImageURL = 'https://dl.dropbox.com/scl/fi/vadd8ztbnmzfqi18ml1cl/icone-de-martelo.png?rlkey=45l4k78t728fh4w4fkd4tvlef&st=cbi6paz9&dl=0'; // Placeholder for hammer image
         const stoneImageURL = 'https://dl.dropbox.com/scl/fi/m1fkx9ccbjxlwyvcrdbio/Textura-de-pedra.png?rlkey=vlbwqpy001vcjqiedh1wrdo53&st=sy0pevfr&dl=1'; // NOVO: Imagem para a pedra
         const dirtImageURL = 'https://placehold.co/100x100/A0522D/FFFFFF?text=Terra'; // NOVO: Imagem para a terra
         const sandImageURL = 'https://placehold.co/100x100/c2b280/FFFFFF?text=Areia'; // NOVO: Imagem para a areia
         const shovelImageURL = 'https://placehold.co/100x100/808080/FFFFFF?text=Pá'; // NOVO: Imagem para a pá
         const pickaxeImageURL = 'https://file.loading.io/resources/icon/whnsbw.svg'; // NOVO: Imagem para a picareta
-        const treeBarkTextureURL = 'https://dl.dropbox.com/scl/fi/njc60aje7lvqcju60ug8s/ChatGPT-Image-6-de-fev.-de-2026-21_52_132.png?rlkey=3ji8sf4ipjyjymhak24203mr5&st=lh4h3hc8&dl=1'; // Corrected URL
-        const treeLeavesTextureURL = 'https://dl.dropbox.com/scl/fi/u636vo3d674wnbku37w0f/ChatGPT-Image-6-de-fev.-de-2026-21_55_222.png?rlkey=ia0p0yck3kgec32olpezpov16&st=d5u2tnhg&dl=1'; // Corrected URL
-        const handImageURL = 'https://dl.dropbox.com/scl/fi/adirqfks81emnagkoljcw/m-o-direita.png?rlkey=pj17lswbeg8lene1n5ypdbmob&st=i2qtxssr&dl=1';
+        const treeBarkTextureURL = 'https://dl.dropbox.com/scl/fi/njc60aje7lvqcju60ug8s/ChatGPT-Image-6-de-fev.-de-2026-21_52_132.png?rlkey=3ji8sf4ipjyjymhak24203mr5&st=lh4h3hc8&dl=0'; // Corrected URL
+        const treeLeavesTextureURL = 'https://dl.dropbox.com/scl/fi/u636vo3d674wnbku37w0f/ChatGPT-Image-6-de-fev.-de-2026-21_55_222.png?rlkey=ia0p0yck3kgec32olpezpov16&st=d5u2tnhg&dl=0'; // Corrected URL
+        const handImageURL = 'https://dl.dropbox.com/scl/fi/adirqfks81emnagkoljcw/m-o-direita.png?rlkey=pj17lswbeg8lene1n5ypdbmob&st=i2qtxssr&dl=0';
         const branchImageURL = 'https://placehold.co/100x100/8B4513/FFFFFF?text=Galho'; // NOVO: Ícone para o galho
-        const treeTrunkImageURL = 'https://dl.dropbox.com/scl/fi/njc60aje7lvqcju60ug8s/ChatGPT-Image-6-de-fev.-de-2026-21_52_132.png?rlkey=3ji8sf4ipjyjymhak24203mr5&st=lh4h3hc8&dl=1'; // NOVO: Ícone para o tronco de árvore (placeholder)
-        const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=1'; // NOVO: Ícone para as tábuas
-        const chestTextureURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=1'; // NOVO: URL da textura do baú
+        const treeTrunkImageURL = 'https://dl.dropbox.com/scl/fi/njc60aje7lvqcju60ug8s/ChatGPT-Image-6-de-fev.-de-2026-21_52_132.png?rlkey=3ji8sf4ipjyjymhak24203mr5&st=lh4h3hc8&dl=0'; // NOVO: Ícone para o tronco de árvore (placeholder)
+        const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
+        const chestTextureURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // NOVO: URL da textura do baú
         const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/m1fkx9ccbjxlwyvcrdbio/Textura-de-pedra.png?rlkey=vlbwqpy001vcjqiedh1wrdo53&st=sy0pevfr&dl=1'; // NOVO: Textura de pedra para aplicar
         const holeTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&dl=1";
         const stoneBlockTextureURL = 'https://dl.dropbox.com/scl/fi/m1fkx9ccbjxlwyvcrdbio/Textura-de-pedra.png?rlkey=vlbwqpy001vcjqiedh1wrdo53&st=sy0pevfr&dl=1';
-        const woodenBlockTextureURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=1';
+        const woodenBlockTextureURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0';
         const stoneFloorTextureURL = 'https://dl.dropbox.com/scl/fi/m1fkx9ccbjxlwyvcrdbio/Textura-de-pedra.png?rlkey=vlbwqpy001vcjqiedh1wrdo53&st=sy0pevfr&dl=1';
 
         // Geometrias e materiais compartilhados
@@ -1462,7 +1450,6 @@
         function updateRaycastTargets() {
             if (typeof raycastTargets === 'undefined') return;
             raycastTargets.length = 0;
-            if (detailMesh) raycastTargets.push(detailMesh);
             islandMeshes.forEach(tile => raycastTargets.push(tile.mesh));
             waterMeshes.forEach(tile => raycastTargets.push(tile.mesh)); // NOVO: Água para colocação de jangada
             raycastTargets.push(...placedConstructionMeshes);
@@ -1473,8 +1460,6 @@
         function applyTextureSettings() {
             window.useTextures = useTextures;
             // Update materials
-            if (islandMeshMaterial) islandMeshMaterial.map = useTextures ? (texturesRegistry.ground || null) : null;
-            if (islandMeshMaterialDetail) islandMeshMaterialDetail.map = useTextures ? (texturesRegistry.ground || null) : null;
             if (cubeMaterialMesh) cubeMaterialMesh.map = useTextures ? (texturesRegistry.cube || null) : null;
             if (cobMaterialMesh) cobMaterialMesh.map = useTextures ? (texturesRegistry.cob || null) : null;
             if (floorMaterialMesh) floorMaterialMesh.map = useTextures ? (texturesRegistry.floor || null) : null;
@@ -1711,18 +1696,6 @@
                 document.getElementById('startScreen').style.display = 'flex';
             }
         }
-
-        function showCenterMessage(text) {
-            const msgEl = document.getElementById('centerMessage');
-            if (!msgEl) return;
-            msgEl.textContent = text;
-            msgEl.style.display = 'block';
-            if (window.centerMessageTimeout) clearTimeout(window.centerMessageTimeout);
-            window.centerMessageTimeout = setTimeout(() => {
-                msgEl.style.display = 'none';
-            }, 3000);
-        }
-        window.showCenterMessage = showCenterMessage;
 
         // NOVO: Função para abrir o baú
         function openChest(chestBody) {
@@ -2096,8 +2069,8 @@
 
             // Calcula os índices do heightfield para o ponto de impacto (coordenadas locais do heightfield)
             const step = worldSize / (hfGridSize - 1);
-            const mx = safeMod((hitPoint.x + worldSize / 2) / step, hfGridSize - 1);
-            const mz = safeMod((worldSize / 2 - hitPoint.z) / step, hfGridSize - 1);
+            const mx = (hitPoint.x + worldSize / 2) / step;
+            const mz = (worldSize / 2 - hitPoint.z) / step;
 
             // Calcula a posição exata do vértice para alinhar o visual e a física
             const vx = (mx / (hfGridSize - 1) - 0.5) * worldSize;
@@ -2114,7 +2087,7 @@
             let holeMesh = null;
             if (holeGeometryTemplate && holeMaterial) {
                 holeMesh = new THREE.Mesh(holeGeometryTemplate, holeMaterial);
-                holeMesh.scale.set(isHorizontal ? 0.03 : 0.04, isHorizontal ? 0.03 : 0.04, isHorizontal ? 0.03 : 0.04); // Inicia menor se for preciso
+                holeMesh.scale.set(isHorizontal ? 0.08 : 0.1, isHorizontal ? 0.08 : 0.1, isHorizontal ? 0.08 : 0.1); // Inicia menor se for preciso
                 if (isHorizontal) {
                     holeMesh.rotation.x = Math.PI / 2; // Gira para ficar vertical na parede
                 }
@@ -2124,7 +2097,7 @@
             const newMound = {
                 x: mx,
                 z: mz,
-                radius: (isHorizontal ? 0.5 : 0.7), // Ajustado para hfGridSize=256
+                radius: (isHorizontal ? 3.0 : 4.0) * (hfGridSize / worldSize), // Raio reduzido para cavagem precisa em paredes
                 isPrecise: isHorizontal,
                 originalHeight: naturalY,
                 targetFloorHeight: naturalY,
@@ -2158,11 +2131,11 @@
                 mass: initialCubeMass,
                 shape: cubeShape,
                 material: cubeMaterial,
-                linearDamping: 0.5,
-                angularDamping: 0.5,
-                allowSleep: false,
-                sleepSpeedLimit: 0.1,
-                sleepTimeLimit: 0.5
+                linearDamping: 0.3,
+                angularDamping: 0.3,
+                allowSleep: true,
+                sleepSpeedLimit: 0.01,
+                sleepTimeLimit: 1.0
             });
             boxBody.position.copy(position);
             if (quaternion) {
@@ -2172,9 +2145,6 @@
             boxBody.userData = {
                 isCollectible: true,
                 type: boxItemName,
-                isChest: true,
-                inventory: new Array(numChestSlots).fill(null),
-                isDestructible: false,
                 originalMass: initialCubeMass,
                 initialPosition: new CANNON.Vec3().copy(boxBody.position)
             };
@@ -2246,7 +2216,7 @@
                 material: constructionMaterial,
                 linearDamping: 0.99,
                 angularDamping: 0.99,
-                allowSleep: false,
+                allowSleep: true,
                 sleepSpeedLimit: 0.01,
                 sleepTimeLimit: 1.0
             });
@@ -2381,7 +2351,7 @@
                 material: constructionMaterial,
                 linearDamping: 0.3, // Reduzido para deslizar mais suavemente
                 angularDamping: 0.3,
-                allowSleep: false,
+                allowSleep: true,
                 sleepSpeedLimit: 0.01,
                 sleepTimeLimit: 1.0,
                 collisionFilterGroup: 1,
@@ -3277,7 +3247,7 @@
                 material: constructionMaterial, // Usar o novo material de construção
                 linearDamping: 0.99,
                 angularDamping: 0.99,
-                allowSleep: false,
+                allowSleep: true,
                 sleepSpeedLimit: 0.01,
                 sleepTimeLimit: 1.0
             });
@@ -3418,36 +3388,35 @@
         function clearSmokeEffects() {
             smokeParticles.forEach(particle => {
                 particlesGroup.remove(particle);
-                // No need to dispose shared geometry
+                if (particle.geometry) particle.geometry.dispose();
                 if (particle.material) particle.material.dispose();
             });
             smokeParticles.length = 0;
         }
 
         // Function to create a smoke effect at a given position
-        let smokeGeometryShared = null;
-        let smokeMaterialShared = null;
         function createSmokeEffect(position, colorOverride = null) {
-            if (!position || smokeParticles.length > 100) return; // Cap total particles
+            if (!position) return;
 
-            if (!smokeGeometryShared) smokeGeometryShared = new THREE.SphereGeometry(0.15, 6, 6);
+            const smokeCount = 6; // Reduzido para melhor performance
+            const smokeGeometry = new THREE.SphereGeometry(0.15, 8, 8); // Tripled the size
+            const smokeMaterial = new THREE.MeshBasicMaterial({
+                color: colorOverride !== null ? colorOverride : 0xA0522D, // Cor herdada ou padrão terra
+                transparent: true,
+                opacity: 0.3, // Mais transparente
+                depthWrite: false // Important for transparent objects
+            });
 
-            const smokeCount = 4;
             for (let i = 0; i < smokeCount; i++) {
-                const mat = new THREE.MeshBasicMaterial({
-                    color: colorOverride !== null ? colorOverride : 0xA0522D,
-                    transparent: true,
-                    opacity: 0.3,
-                    depthWrite: false
-                });
-                const particle = new THREE.Mesh(smokeGeometryShared, mat);
+                const particle = new THREE.Mesh(smokeGeometry, smokeMaterial.clone()); // Clone material for individual opacity
                 particle.position.copy(position);
+                // Give particles a slight random initial velocity
                 particle.userData.velocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.5,
-                    Math.random() * 0.1 + 0.1,
-                    (Math.random() - 0.5) * 0.5
+                    (Math.random() - 0.5) * 0.5, // Increased spread
+                    Math.random() * 0.1 + 0.1,   // Increased upward velocity
+                    (Math.random() - 0.5) * 0.5  // Increased spread
                 );
-                particle.userData.lifetime = 2.0; // Reduced lifetime
+                particle.userData.lifetime = 4.5; // Increased lifetime for a larger cloud
                 particlesGroup.add(particle);
                 smokeParticles.push(particle);
             }
@@ -3457,42 +3426,63 @@
 
         let currentHfMatrix = null;
         let waterMatrix = new Uint8Array(hfGridSize * hfGridSize);
-        let waterQueue = new Int32Array(hfGridSize * hfGridSize * 2); // Pre-alocado para performance
+
         function updateWaterConnectivity() {
             if (!currentHfMatrix) return;
             waterMatrix.fill(0);
-            let head = 0;
-            let tail = 0;
+            const queue = [];
 
-            const pushToQueue = (i, j) => {
-                const idx = i * hfGridSize + j;
-                if (waterMatrix[idx] === 0 && currentHfMatrix[i][j] < waterLevel) {
-                    waterMatrix[idx] = 1;
-                    waterQueue[tail++] = i;
-                    waterQueue[tail++] = j;
-                }
-            };
-
+            // Inicia a partir das bordas do mapa (oceano aberto)
             for (let i = 0; i < hfGridSize; i++) {
-                pushToQueue(i, 0);
-                pushToQueue(i, hfGridSize - 1);
+                // Borda de Cannon j=0 (z = -worldSize/2) e j=255 (z = worldSize/2)
+                if (currentHfMatrix[i][0] < waterLevel) {
+                    if (waterMatrix[i * hfGridSize + 0] === 0) {
+                        waterMatrix[i * hfGridSize + 0] = 1;
+                        queue.push(i, 0);
+                    }
+                }
+                if (currentHfMatrix[i][hfGridSize - 1] < waterLevel) {
+                    if (waterMatrix[i * hfGridSize + (hfGridSize - 1)] === 0) {
+                        waterMatrix[i * hfGridSize + (hfGridSize - 1)] = 1;
+                        queue.push(i, hfGridSize - 1);
+                    }
+                }
             }
-            for (let j = 1; j < hfGridSize - 1; j++) {
-                pushToQueue(0, j);
-                pushToQueue(hfGridSize - 1, j);
+            for (let j = 0; j < hfGridSize; j++) {
+                // Borda de Cannon i=0 (x = -worldSize/2) e i=255 (x = worldSize/2)
+                if (currentHfMatrix[0][j] < waterLevel) {
+                    if (waterMatrix[0 * hfGridSize + j] === 0) {
+                        waterMatrix[0 * hfGridSize + j] = 1;
+                        queue.push(0, j);
+                    }
+                }
+                if (currentHfMatrix[hfGridSize - 1][j] < waterLevel) {
+                    if (waterMatrix[(hfGridSize - 1) * hfGridSize + j] === 0) {
+                        waterMatrix[(hfGridSize - 1) * hfGridSize + j] = 1;
+                        queue.push(hfGridSize - 1, j);
+                    }
+                }
             }
 
-            while (head < tail) {
-                const i = waterQueue[head++];
-                const j = waterQueue[head++];
-                const iMinus = (i - 1 + hfGridSize) % hfGridSize;
-                const iPlus = (i + 1) % hfGridSize;
-                const jMinus = (j - 1 + hfGridSize) % hfGridSize;
-                const jPlus = (j + 1) % hfGridSize;
-                pushToQueue(iMinus, j);
-                pushToQueue(iPlus, j);
-                pushToQueue(i, jMinus);
-                pushToQueue(i, jPlus);
+
+            let head = 0;
+            while (head < queue.length) {
+                const i = queue[head++];
+                const j = queue[head++];
+
+                // Vizinhos com wrapping toroidal
+                const ni = [(i - 1 + hfGridSize) % hfGridSize, (i + 1) % hfGridSize, i, i];
+                const nj = [j, j, (j - 1 + hfGridSize) % hfGridSize, (j + 1) % hfGridSize];
+
+                for (let k = 0; k < 4; k++) {
+                    const r = ni[k];
+                    const c = nj[k];
+                    const idx = r * hfGridSize + c;
+                    if (waterMatrix[idx] === 0 && currentHfMatrix[r][c] < waterLevel) {
+                        waterMatrix[idx] = 1;
+                        queue.push(r, c);
+                    }
+                }
             }
         }
 
@@ -3513,7 +3503,7 @@
         function updateWaterVisuals() {
             if (!window.waterGeometry) return;
             const indices = [];
-            const waterRes = 32; // Segmentos visuais (reduzido de 64 para 32 para melhor performance)
+            const waterRes = 64; // Segmentos visuais (reduzido para performance)
             const step = (hfGridSize - 1) / waterRes;
 
             for (let j = 0; j < waterRes; j++) {
@@ -3556,114 +3546,139 @@
         window.hfGridSize = hfGridSize;
         window.mounds = mounds;
 
-        let lastHeightfieldUpdateTime = 0;
-        function updateIslandGeometry(affectedMounds = null) {
+        function updateIslandGeometry(affectedMound = null) {
+            // Inicializa a matriz se necessário
             if (!currentHfMatrix || currentHfMatrix.length !== hfGridSize) {
                 currentHfMatrix = new Array(hfGridSize);
-                for (let i = 0; i < hfGridSize; i++) currentHfMatrix[i] = new Float32Array(hfGridSize);
+                for (let i = 0; i < hfGridSize; i++) currentHfMatrix[i] = new Array(hfGridSize).fill(0);
                 window.currentHfMatrix = currentHfMatrix;
             }
 
-            // A grade base agora é apenas a superfície natural (os buracos ficam na grade de detalhe)
+            // Recalcula a matriz a partir da base + todos os mounds ativos
             for (let i = 0; i < hfGridSize; i++) {
-                currentHfMatrix[i].set(baseMatrix[i]);
-            }
-
-            // 4. Clamping global (Bedrock)
-            const relBedrockLevelOffset = TOTAL_BEDROCK_DEPTH;
-            for (let i = 0; i < hfGridSize; i++) {
-                const row = currentHfMatrix[i];
-                const baseRow = baseMatrix[i];
                 for (let j = 0; j < hfGridSize; j++) {
-                    const minH = baseRow[j] - relBedrockLevelOffset;
-                    if (row[j] < minH) row[j] = minH;
+                    currentHfMatrix[i][j] = baseMatrix[i][j];
                 }
             }
 
-            const nowTime = performance.now();
-            const now = Date.now();
+            for (const mound of mounds) {
+                if (mound.flattened) continue;
 
-            // Sincronização com a Física (throttled)
-            if (nowTime - lastHeightfieldUpdateTime > 100) {
-                lastHeightfieldUpdateTime = nowTime;
-                if (islandMeshes.length > 0) {
-                    const hf = islandMeshes[0].body.shapes[0];
-                    if (hf && hf.data === currentHfMatrix) {
-                        hf.update();
-                    } else {
-                        const newHfShape = new CANNON.Heightfield(currentHfMatrix, {
-                            elementSize: worldSize / (hfGridSize - 1)
-                        });
-                        islandMeshes.forEach(tile => {
-                            if (tile.body.shapes.length > 0) tile.body.removeShape(tile.body.shapes[0]);
-                            tile.body.addShape(newHfShape);
-                        });
+                if (mound.isPrecise) {
+                    // Cavagem precisa (horizontal): afeta os 4 vértices ao redor para criar um caminho plano de 3x3m
+                    const xBase = Math.floor(mound.x);
+                    const zBase = Math.floor(mound.z);
+                    const targetHeight = (mound.targetFloorHeight !== undefined ? mound.targetFloorHeight : mound.originalHeight) + mound.height;
+
+                    for (let di = 0; di <= 1; di++) {
+                        for (let dj = 0; dj <= 1; dj++) {
+                            const i = (xBase + di + hfGridSize) % hfGridSize;
+                            const j = (zBase + dj + hfGridSize) % hfGridSize;
+                            currentHfMatrix[i][j] = Math.min(currentHfMatrix[i][j], targetHeight);
+                            const relBedrockLevel = baseMatrix[i][j] - TOTAL_BEDROCK_DEPTH;
+                            if (currentHfMatrix[i][j] < relBedrockLevel) currentHfMatrix[i][j] = relBedrockLevel;
+                        }
                     }
-                    islandMeshes.forEach(tile => tile.body.updateAABB());
+                    continue;
+                }
+
+                const rInt = Math.ceil(mound.radius);
+                const radiusSq = mound.radius * mound.radius;
+                const centerX = Math.round(mound.x);
+                const centerZ = Math.round(mound.z);
+
+                for (let di = -rInt; di <= rInt; di++) {
+                    for (let dj = -rInt; dj <= rInt; dj++) {
+                        const i = (centerX + di + hfGridSize) % hfGridSize;
+                        const j = (centerZ + dj + hfGridSize) % hfGridSize;
+
+                        // Coordenada do vértice real para cálculo de distância precisa
+                        const vertexX = centerX + di;
+                        const vertexZ = centerZ + dj;
+                        const dx = vertexX - mound.x;
+                        const dz = vertexZ - mound.z;
+                        const distSq = dx * dx + dz * dz;
+
+                        if (distSq < radiusSq) {
+                            currentHfMatrix[i][j] += Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
+                        }
+                        // Clamp at bedrock
+                        const relBedrockLevel = baseMatrix[i][j] - TOTAL_BEDROCK_DEPTH;
+                        if (currentHfMatrix[i][j] < relBedrockLevel) currentHfMatrix[i][j] = relBedrockLevel;
+                    }
                 }
             }
 
-            // Atualização da Malha Visual (Otimizada)
+            // Atualiza a física de todos os 9 tiles do terreno
+            const newHfShape = new CANNON.Heightfield(currentHfMatrix, {
+                elementSize: worldSize / (hfGridSize - 1)
+            });
+
+            islandMeshes.forEach(tile => {
+                if (tile.body.shapes.length > 0) {
+                    tile.body.removeShape(tile.body.shapes[0]);
+                }
+                tile.body.addShape(newHfShape);
+                tile.body.updateAABB();
+            });
+
+            // Atualiza a malha visual (geometria compartilhada)
             if (islandMeshes.length > 0) {
                 const geom = islandMeshes[0].mesh.geometry;
                 const vertices = geom.attributes.position.array;
                 const colors = geom.attributes.color.array;
 
-                // Sync vertex heights
-                for (let j = 0; j < hfGridSize; j++) {
-                    const cannonJ = (hfGridSize - 1) - j;
-                    for (let i = 0; i < hfGridSize; i++) {
-                        vertices[(j * hfGridSize + i) * 3 + 1] = currentHfMatrix[i][cannonJ];
-                    }
-                }
-                geom.attributes.position.needsUpdate = true;
+                if (affectedMound) {
+                    // Otimização: Atualiza apenas a região afetada pelo mound modificado (com suporte toroidal)
+                    const rInt = Math.ceil(affectedMound.radius);
+                    const now = Date.now();
 
-                // Process special visual feedback for the affected mounds
-                const moundsToProcess = Array.isArray(affectedMounds) ? affectedMounds : (affectedMounds ? [affectedMounds] : []);
-                if (moundsToProcess.length > 0) {
-                    for (const tm of moundsToProcess) {
-                    const pos = tm.position || { x: tm.x, z: tm.z };
-                    if (!isFinite(pos.x) || !isFinite(pos.z)) continue;
-                        const rInt = Math.ceil(tm.radius || 1) + 1;
-                    const centerX = Math.round(pos.x);
-                    const centerZ = Math.round(pos.z);
-                        for (let di = -rInt; di <= rInt; di++) {
-                            for (let dj_cannon = -rInt; dj_cannon <= rInt; dj_cannon++) {
-                                const cannonI = safeMod(centerX + di, hfGridSize);
-                                const cannonJ = safeMod(centerZ + dj_cannon, hfGridSize);
-                                const j = (hfGridSize - 1) - cannonJ;
-                                const i = cannonI;
-                                const vIdx = (j * hfGridSize + i);
+                    for (let di = -rInt; di <= rInt; di++) {
+                        for (let dj_cannon = -rInt; dj_cannon <= rInt; dj_cannon++) {
+                            const cannonI = (Math.round(affectedMound.x) + di + hfGridSize) % hfGridSize;
+                            const cannonJ = (Math.round(affectedMound.z) + dj_cannon + hfGridSize) % hfGridSize;
 
-                                const vx = (i / (hfGridSize - 1) - 0.5) * worldSize;
-                                const vz = (j / (hfGridSize - 1) - 0.5) * worldSize;
-                                if (vx * vx + vz * vz < 78400.0) { // 280^2
-                                    colors[vIdx * 3] = 0.0;
-                                    modifiedVerticesMap.set(vIdx, now);
+                            const j = (hfGridSize - 1) - cannonJ;
+                            const i = cannonI;
+                            const height = currentHfMatrix[i][cannonJ];
+                            const vIdx = (j * hfGridSize + i);
+                            const index = vIdx * 3;
+                            vertices[index + 1] = height;
+
+                            // Feedback visual temporário
+                            const vx = (i / (hfGridSize - 1) - 0.5) * worldSize;
+                            const vz = (j / (hfGridSize - 1) - 0.5) * worldSize;
+                            const dist = Math.sqrt(vx * vx + vz * vz);
+                            if (dist < 280.0) {
+                                colors[vIdx * 3] = 0.0;
+                                const existingIdx = modifiedVertices.findIndex(mv => mv.index === vIdx);
+                                if (existingIdx !== -1) {
+                                    modifiedVertices[existingIdx].time = now;
+                                } else {
+                                    modifiedVertices.push({ index: vIdx, time: now });
                                 }
+                                geom.attributes.color.needsUpdate = true;
                             }
                         }
                     }
-                    geom.attributes.color.needsUpdate = true;
+                } else {
+                    // Sincronização completa
+                    for (let j = 0; j < hfGridSize; j++) {
+                        const cannonJ = (hfGridSize - 1) - j;
+                        for (let i = 0; i < hfGridSize; i++) {
+                            const height = currentHfMatrix[i][cannonJ];
+                            const index = (j * hfGridSize + i) * 3;
+                            vertices[index + 1] = height;
+                        }
+                    }
                 }
                 geom.attributes.position.needsUpdate = true;
-                // Só recalcula as normais se for um update completo (sem afetado) ou se passou tempo suficiente
-                if (!affectedMounds || nowTime - (geom.userData.lastNormalUpdate || 0) > 150) {
-                    geom.computeVertexNormals();
-                    geom.userData.lastNormalUpdate = nowTime;
-                }
+                geom.computeVertexNormals();
             }
 
-            // Forçamos um intervalo mínimo de 2 segundos para cálculos pesados.
-            if (nowTime - (window.lastHeavyUpdateTime || 0) > 2000) {
-                window.lastHeavyUpdateTime = nowTime;
-                updateWaterConnectivity();
-                updateWaterVisuals();
-                if (islandMeshes.length > 0) {
-                    const geom = islandMeshes[0].mesh.geometry;
-                    geom.computeVertexNormals();
-                }
-            }
+            // Atualiza a conectividade e o visual da água quando o terreno muda
+            updateWaterConnectivity();
+            updateWaterVisuals();
         }
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
@@ -3732,9 +3747,8 @@
             // Configuração do Mundo Cannon-es (física)
             world = new CANNON.World();
             window.world = world;
-            world.allowSleep = true;
             world.gravity.set(0, -30, 0); // Define a gravidade (para baixo), aumentada para -30
-            world.solver.iterations = 10; // Reduzido para 10 para melhor performance
+            world.solver.iterations = 10; // Reduzido para performance
 
             // Inicializa os materiais de física
             playerMaterial = new CANNON.Material('playerMaterial');
@@ -3773,7 +3787,7 @@
                 cubeMaterial,
                 islandMaterial,
                 {
-                    friction: 1.0,
+                    friction: 0.7,
                     restitution: 0,
                     contactEquationStiffness: 1e8, // Aumenta a rigidez para evitar que os objectos se "afundem"
                     contactEquationRelaxation: 4    // Proporciona um ligeiro "amortecimento" para evitar o ressalto
@@ -3799,7 +3813,7 @@
                 cubeMaterial,
                 cubeMaterial,
                 {
-                    friction: 1.0,
+                    friction: 0,
                     restitution: 0,
                     contactEquationStiffness: 1e8,
                     contactEquationRelaxation: 3
@@ -3956,56 +3970,57 @@
             dirtMountains = [];
             // Geração de montanhas procedurais desativada a pedido do usuário
 
-            function getSurfaceHeight(x, z) {
-                const distanceSq = x * x + z * z;
-                const distance = Math.sqrt(distanceSq);
+            window.getSurfaceHeight = function(x, z) {
+                const distance = Math.sqrt(x * x + z * z);
                 let height;
 
                 if (distance <= grassRadius) {
                     height = islandSurfaceHeight;
                 } else if (distance <= beachRadius) {
                     const t = (distance - grassRadius) / (beachRadius - grassRadius);
+                    // Transição de terra firme para um pouco abaixo do nível do mar
                     height = islandSurfaceHeight * (1 - t) + (waterLevel - 0.5) * t;
                 } else {
+                    // Gradiente suave até o fundo do mar. Flatten at distance 950 for seamless junctions.
                     const t = Math.min(1.0, (distance - beachRadius) / 750.0);
                     height = (waterLevel - 0.5) * (1 - t) + seabedLevel * t;
                 }
 
                 let mountainHeight = 0;
-                if (distance < stoneMountain.r) {
-                    const hVal = stoneMountain.h * 0.5 * (1 + Math.cos(Math.PI * distance / stoneMountain.r));
+
+                // Central Stone Mountain (Formato suave de sino/cosseno para evitar bordas serrilhadas)
+                const dStone = Math.sqrt(x * x + z * z);
+                if (dStone < stoneMountain.r) {
+                    const hVal = stoneMountain.h * 0.5 * (1 + Math.cos(Math.PI * dStone / stoneMountain.r));
                     mountainHeight = hVal;
                 }
 
-                for (let i = 0; i < dirtMountains.length; i++) {
-                    const m = dirtMountains[i];
+                // Random Dirt Mountains (Formato suave de sino/cosseno)
+                dirtMountains.forEach(m => {
                     const dx = x - m.x;
                     const dz = z - m.z;
-                    const dSq = dx * dx + dz * dz;
-                    if (dSq < m.r * m.r) {
-                        const d = Math.sqrt(dSq);
+                    const d = Math.sqrt(dx * dx + dz * dz);
+                    if (d < m.r) {
                         const hVal = m.h * 0.5 * (1 + Math.cos(Math.PI * d / m.r));
                         mountainHeight = Math.max(mountainHeight, hVal);
                     }
-                }
+                });
 
                 return height + mountainHeight;
             }
             window.getSurfaceHeight = getSurfaceHeight;
 
             const hfMatrix = [];
-            baseMatrix = new Array(hfGridSize);
             for (let i = 0; i < hfGridSize; i++) { // i é o índice X local do Cannon
-                hfMatrix[i] = new Float32Array(hfGridSize);
-                baseMatrix[i] = new Float32Array(hfGridSize);
-                for (let j = 0; j < hfGridSize; j++) {
+                hfMatrix[i] = [];
+                for (let j = 0; j < hfGridSize; j++) { // j é o índice Y local do Cannon
+                    // Mapeia os índices da grelha para coordenadas do mundo
                     const x = (i / (hfGridSize - 1) - 0.5) * worldSize;
                     const z = (0.5 - j / (hfGridSize - 1)) * worldSize;
-                    const val = getSurfaceHeight(x, z);
-                    hfMatrix[i][j] = val;
-                    baseMatrix[i][j] = val;
+                    hfMatrix[i][j] = getSurfaceHeight(x, z);
                 }
             }
+            baseMatrix = JSON.parse(JSON.stringify(hfMatrix)); // Armazena a geometria inicial
 
             // Gira a geometria para ficar no plano XZ.
             islandGeometry.rotateX(-Math.PI / 2);
@@ -4036,17 +4051,16 @@
                 elementSize: worldSize / (hfGridSize - 1)
             });
 
-            const groundTextureURL = "https://dl.dropbox.com/scl/fi/9vs85irmh6wxvcybemvc6/textura-de-terra.png?rlkey=oidjt8wp9dkf5vsxh1r3xaec9&st=wn7x7au3&dl=1";
-            const sandTextureURL = "https://dl.dropbox.com/scl/fi/glmbudn8mnv7b7hrc41zp/Textura-de-areia.png?rlkey=gag1m2x82xv99kejun0f6f86t&st=iff4jjst&dl=1";
-            const grassTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=1"; // Textura de grama atualizada conforme solicitado
+            const groundTextureURL = "https://dl.dropbox.com/scl/fi/9vs85irmh6wxvcybemvc6/textura-de-terra.png?rlkey=oidjt8wp9dkf5vsxh1r3xaec9&st=wn7x7au3&dl=0";
+            const sandTextureURL = "https://dl.dropbox.com/scl/fi/glmbudn8mnv7b7hrc41zp/Textura-de-areia.png?rlkey=gag1m2x82xv99kejun0f6f86t&st=iff4jjst&dl=0";
+            const grassTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=0"; // Textura de grama atualizada conforme solicitado
             const inferiorDirtTextureURL = holeTextureURL; // Usar a textura de terra 2 solicitada
             const seabedTextureURL = sandTextureURL;
 
-            islandMeshMaterial = new THREE.MeshStandardMaterial({
+            const islandMeshMaterial = new THREE.MeshStandardMaterial({
                 color: 0xffffff,
                 vertexColors: true
-            });
-            islandMeshMaterialDetail = islandMeshMaterial.clone();
+            }); // Grass color placeholder
 
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
@@ -4071,33 +4085,6 @@
             }
             // Define islandBody como o tile central para compatibilidade
             window.islandBody = islandBody = islandMeshes[Math.floor(islandMeshes.length / 2)].body;
-
-            // --- Inicialização do Terreno de Detalhe (1024x1024) ---
-            detailGeometry = new THREE.PlaneGeometry(detailSize, detailSize, detailGridSize - 1, detailGridSize - 1);
-            detailGeometry.rotateX(-Math.PI / 2);
-            // Adiciona atributo de cor e altura base para o shader (igual ao terreno base)
-            const detailColors = new Float32Array(detailGeometry.attributes.position.count * 3);
-            detailColors.fill(1.0);
-            detailGeometry.setAttribute('color', new THREE.BufferAttribute(detailColors, 3));
-            const detailBaseHeights = new Float32Array(detailGeometry.attributes.position.count);
-            detailGeometry.setAttribute('aBaseHeight', new THREE.BufferAttribute(detailBaseHeights, 1));
-
-            detailMesh = new THREE.Mesh(detailGeometry, islandMeshMaterialDetail);
-            detailMesh.receiveShadow = true;
-            detailMesh.renderOrder = 1; // Renderizar após o terreno base
-            scene.add(detailMesh);
-
-            detailHfMatrix = new Array(detailGridSize);
-            for (let i = 0; i < detailGridSize; i++) detailHfMatrix[i] = new Float32Array(detailGridSize);
-
-            const detailHfShape = new CANNON.Heightfield(detailHfMatrix, {
-                elementSize: detailSize / (detailGridSize - 1)
-            });
-            detailBody = new CANNON.Body({ mass: 0, material: islandMaterial });
-            detailBody.addShape(detailHfShape);
-            detailBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-            world.addBody(detailBody);
-            detailMesh.userData.physicsBody = detailBody;
 
             // Inicializa o sistema de capim instanciado (Passo 3)
             const maxCapimInstances = maxCapimClusters * bladesPerCluster;
@@ -4159,12 +4146,7 @@
                                     grassTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
                                     inferiorDirtTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
 
-                                    islandMeshMaterial.map = islandMeshMaterialDetail.map = groundTexture;
-                                    islandMeshMaterialDetail.onBeforeCompile = (shader) => {
-                                        islandMeshMaterial.onBeforeCompile(shader);
-                                        shader.uniforms.uIsDetail = { value: 1.0 };
-                                        islandMeshMaterialDetail.userData.shader = shader;
-                                    };
+                                    islandMeshMaterial.map = groundTexture;
                                     islandMeshMaterial.onBeforeCompile = (shader) => {
                                         shader.uniforms.uSeabedTexture = { value: seabedTexture };
                                         shader.uniforms.uSandTexture = { value: sandTexture };
@@ -4177,15 +4159,7 @@
                                         shader.uniforms.uGrassRadius = { value: grassRadius };
                                         shader.uniforms.uBeachRadius = { value: beachRadius };
                                         shader.uniforms.uUseTextures = { value: useTextures ? 1.0 : 0.0 };
-                                        shader.uniforms.uPlayerPos = { value: new THREE.Vector3() };
-                                        shader.uniforms.uDetailRadius = { value: detailRadius };
-                                        shader.uniforms.uIsDetail = { value: 0.0 };
                                         islandMeshMaterial.userData.shader = shader;
-
-                                        // Ensure high-resolution patch uses the same uniforms
-                                        if (islandMeshMaterialDetail.userData.shader) {
-                                            islandMeshMaterialDetail.userData.shader.uniforms.uDetailRadius.value = detailRadius;
-                                        }
 
                                         shader.vertexShader = `
                                             varying vec3 vWorldPosition;
@@ -4213,9 +4187,6 @@
                                             uniform float uGrassRadius;
                                             uniform float uBeachRadius;
                                             uniform float uUseTextures;
-                                            uniform vec3 uPlayerPos;
-                                            uniform float uDetailRadius;
-                                            uniform float uIsDetail;
                                             varying vec3 vWorldPosition;
                                             varying float vBaseHeight;
                                             ${shader.fragmentShader}
@@ -4243,18 +4214,6 @@
                                                     grassColor = vec3(0.3, 0.5, 0.2); // Solid grass terra
                                                     stoneColor = vec3(0.5, 0.5, 0.5); // Solid stone
                                                     inferiorColor = vec3(0.4, 0.3, 0.2); // Solid dirt
-                                                }
-
-                                                // Descarta o terreno base se estiver na área de detalhe (50m de raio)
-                                                // E descarta a área de detalhe se estiver fora do raio para evitar Z-fighting
-                                                vec2 dxz = abs(vWorldPosition.xz - uPlayerPos.xz);
-                                                dxz = min(dxz, 2000.0 - dxz);
-                                                float wrappedDistToPlayer = length(dxz);
-
-                                                if (uIsDetail < 0.5) {
-                                                    if (wrappedDistToPlayer < uDetailRadius) discard;
-                                                } else {
-                                                    if (wrappedDistToPlayer >= uDetailRadius) discard;
                                                 }
 
                                                 // Usa distância periódica para que ilhas espelhadas sejam renderizadas corretamente
@@ -4327,7 +4286,7 @@
             }, undefined, (error) => console.error('Falha ao carregar a textura do solo:', error));
 
             // Cria a Água (resolução reduzida para performance visual, mantendo alta resolução na matriz de conectividade)
-            const waterRes = 32;
+            const waterRes = 64;
             const waterGeometry = new THREE.PlaneGeometry(worldSize, worldSize, waterRes, waterRes);
             waterGeometry.rotateX(-Math.PI / 2);
             window.waterGeometry = waterGeometry;
@@ -4353,7 +4312,7 @@
             };
 
             // Inicializa a conectividade da água
-            currentHfMatrix = baseMatrix.map(row => new Float32Array(row));
+            currentHfMatrix = JSON.parse(JSON.stringify(baseMatrix));
             window.currentHfMatrix = currentHfMatrix;
             updateWaterConnectivity();
             updateWaterVisuals();
@@ -4385,7 +4344,9 @@
                 linearDamping: 0.5, // Reduzido de 0.9 para melhor movimentação
                 angularDamping: 0.9,
                 fixedRotation: true, // Mantém rotação fixa para a câmera
-                allowSleep: false // O jogador nunca deve dormir
+                allowSleep: true, // Permite que o jogador entre em modo de "sono"
+                sleepSpeedLimit: 0.01, // Velocidade linear mínima para "acordar"
+                sleepTimeLimit: 1.0 // Tempo mínimo em repouso para "adormecer"
             });
             // Posição inicial: centro da esfera em playerRadius + islandSurfaceHeight
             const spawnHeight = getSurfaceHeight(0, 0);
@@ -4740,46 +4701,9 @@
                         playerBody.wakeUp();
                         return;
                     }
-
-                    // Tenta pegar objeto (agarrar fisicamente)
-                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                    const intersects = raycaster.intersectObjects(raycastTargets, true);
-                    let foundCollectible = false;
-                    for (const intersect of intersects) {
-                        if (intersect.distance > pickUpDistance) continue;
-                        let body = null;
-                        let current = intersect.object;
-                        while (current) {
-                            if (current.userData && current.userData.physicsBody) {
-                                body = current.userData.physicsBody;
-                                break;
-                            }
-                            current = current.parent;
-                        }
-                        if (body && body.userData && body.userData.isCollectible) {
-                            if (body.userData.isChest && body.userData.inventory) {
-                                const isEmpty = body.userData.inventory.every(slot => slot === null);
-                                if (!isEmpty) {
-                                    showCenterMessage("Esvazie o caixote e tente novamente");
-                                    return;
-                                }
-                            }
-                            grabObject();
-                            foundCollectible = true;
-                            break;
-                        }
-                    }
-                    if (!foundCollectible && !pickedObjectBody) {
+                    const interacted = interact();
+                    if (!interacted && !pickedObjectBody) {
                         grabObject();
-                    }
-                }
-
-                if (event.key.toLowerCase() === 'e') {
-                    if (event.repeat) return;
-                    if (!chestModal.classList.contains('hidden')) {
-                        closeChest();
-                    } else {
-                        interact(); // 'interact' handles opening chests/rafts
                     }
                 }
 
@@ -4878,21 +4802,15 @@
                     }
                 }
 
-                // NOVO: Seleção de slots com 1 e 2
+                // NOVO: Seleção de slots com Q e E
                 if (!gamePaused && !backpackModal.classList.contains('active')) {
-                    if (event.key === '1') {
+                    if (event.key.toLowerCase() === 'q') {
                         if (selectedSlotIndex !== 0) stopDestruction();
                         selectedSlotIndex = 0;
                         updateBeltDisplay();
-                    } else if (event.key === '2') {
+                    } else if (event.key.toLowerCase() === 'e') {
                         if (selectedSlotIndex !== 1) stopDestruction();
                         selectedSlotIndex = 1;
-                        updateBeltDisplay();
-                    }
-                    // Toggle com Q
-                    if (event.key.toLowerCase() === 'q') {
-                        stopDestruction();
-                        selectedSlotIndex = (selectedSlotIndex === 0) ? 1 : 0;
                         updateBeltDisplay();
                     }
 
@@ -4928,9 +4846,7 @@
                 }
 
                 if (event.key.toLowerCase() === 'f') {
-                    if (pickedObjectBody) {
-                        dropObject();
-                    }
+                    dropObject();
                 }
             });
 
@@ -4981,7 +4897,7 @@
                         }
                         // O objeto já é dinâmico, então não precisamos restaurar massa/tipo
                         pickedObjectBody.wakeUp();
-                        pickedObjectBody.allowSleep = false;
+                        pickedObjectBody.allowSleep = true;
 
                         pickedObjectBody = null;
                         pickedObjectMesh = null;
@@ -4989,6 +4905,7 @@
                         // Ao soltar o objeto, zera a velocidade do jogador para evitar arrasto residual
                         playerBody.velocity.set(0,0,0);
                         playerBody.angularVelocity.set(0,0,0);
+                        playerBody.allowSleep = true; // Permite que o jogador volte a dormir se estiver parado
                         return; // Sai da função para evitar pegar outro objeto imediatamente
                     }
 
@@ -5087,7 +5004,6 @@
             function startDestruction() {
                 clearSmokeEffects(); // Reseta a fumaça ao iniciar uma nova ação
                 destructionComplete = false;
-                currentMound = null;
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 // Usa raycastTargets para evitar colidir com partículas ou o bloco fantasma
                 const intersects = raycaster.intersectObjects(raycastTargets, true);
@@ -5125,7 +5041,7 @@
                     const hitPoint = intersects[i].point;
 
                     // Verifica se é o terreno
-                    const isIslandMesh = islandMeshes.some(m => m.mesh === obj) || obj === detailMesh;
+                    const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
                     if (isIslandMesh) {
                         // Verifica se há capim perto para priorizar
                         let nearCapim = null;
@@ -5173,20 +5089,6 @@
                 }
 
                 if (target) {
-                    if (target.isDigging) {
-                        const hitPoint = target.intersect.point;
-                        // Usa calculateWrappedDistance para considerar o wrap-around toroidal
-                        const distToCenter = calculateWrappedDistance({ x: 0, y: 0, z: 0 }, { x: hitPoint.x + visualOffsetX, y: 0, z: hitPoint.z + visualOffsetZ });
-                        if (distToCenter > grassRadius) {
-                            window.showCenterMessage("O solo é muito duro/molhado para cavar aqui.");
-                            stopDestruction();
-                            return;
-                        }
-                    }
-
-                    if (target.isDigging && !currentMound) {
-                        // Se não for possível criar ou encontrar um mound, cancela
-                    }
                     isDestroying = true;
                     if (target.isDigging) {
                         destroyTargetPosition = target.intersect.point.clone();
@@ -5218,8 +5120,8 @@
 
                         // Alinha o ponto de impacto para busca precisa (agora com suporte a sub-grid)
                         const step = worldSize / (hfGridSize - 1);
-                        const mx = safeMod((hitPoint.x + worldSize / 2) / step, hfGridSize - 1);
-                        const mz = safeMod((worldSize / 2 - hitPoint.z) / step, hfGridSize - 1);
+                        const mx = (hitPoint.x + worldSize / 2) / step;
+                        const mz = (worldSize / 2 - hitPoint.z) / step;
                         // Para busca de mounds existentes, ainda usamos uma pequena tolerância
                         const vx = (mx / (hfGridSize - 1) - 0.5) * worldSize;
                         const vz = (0.5 - mz / (hfGridSize - 1)) * worldSize;
@@ -5235,16 +5137,6 @@
                             return;
                         }
 
-                        // Bloqueia cavagem fora da ilha (raio da grama)
-                        // Usa calculateWrappedDistance para considerar o wrap-around toroidal
-                        const distToCenter = calculateWrappedDistance({ x: 0, y: 0, z: 0 }, { x: hitPoint.x + visualOffsetX, y: 0, z: hitPoint.z + visualOffsetZ });
-                        if (distToCenter > grassRadius) {
-                            window.showCenterMessage("O solo é muito duro/molhado para cavar aqui.");
-                            isDestroying = false;
-                            progressContainer.style.display = 'none';
-                            return;
-                        }
-
                         let existingMoundAtPos = null;
                         for (const mound of moundsToSearch) {
                             // Calcula a distância horizontal para o ponto de impacto preciso
@@ -5253,7 +5145,7 @@
                             const distSq = dx * dx + dz * dz;
 
                             // Se estiver muito perto do centro de um mound existente, reusa ele
-                            if (distSq < 1.0) { // 1.0m de tolerância para evitar duplicados
+                            if (distSq < 0.25) { // 0.5m de tolerância
                                 existingMoundAtPos = mound;
                                 if (isBuilding) {
                                     // Se estiver construindo:
@@ -5505,14 +5397,6 @@
 
                     if (!clickedBody.userData.isCollectible && !clickedBody.userData.isRaft) continue;
 
-                    if (clickedBody.userData.isChest && clickedBody.userData.inventory) {
-                        const isEmpty = clickedBody.userData.inventory.every(slot => slot === null);
-                        if (!isEmpty) {
-                            showCenterMessage("Esvazie o caixote e tente novamente");
-                            return;
-                        }
-                    }
-
                     const itemType = clickedBody.userData.type;
                     const itemQuantity = clickedBody.userData.quantity || 1; // Padrão para 1 se não especificado
 
@@ -5566,7 +5450,7 @@
                         current = current.parent;
                     }
 
-                    if (body && (allPickableBodies.includes(body) || (body.userData && body.userData.isCollectible))) {
+                    if (body && allPickableBodies.includes(body)) {
                         if (intersects[i].distance <= pickUpDistance) {
                             pickedObjectBody = body;
                             pickedObjectMesh = intersects[i].object;
@@ -6016,129 +5900,6 @@
         // Função para atualizar as posições de todas as malhas visuais para um dado corpo de cubo/bloco
 
         // NOVO: Função para calcular a distância em um mundo que se envolve (toroidal)
-        function updateDetailTerrain() {
-            if (!detailMesh || !playerBody) return;
-
-            const playerX = playerBody.position.x;
-            const playerZ = playerBody.position.z;
-            const snap = 1.0;
-            const centerX = Math.round(playerX / snap) * snap;
-            const centerZ = Math.round(playerZ / snap) * snap;
-
-            detailMesh.position.set(centerX, 0, centerZ);
-            detailBody.position.set(centerX, 0, centerZ);
-            detailBody.updateAABB();
-
-            const halfSize = detailSize / 2;
-            const step = detailSize / (detailGridSize - 1);
-            const vertices = detailGeometry.attributes.position.array;
-            const baseHeights = detailGeometry.attributes.aBaseHeight.array;
-            const colors = detailGeometry.attributes.color.array;
-            const now = Date.now();
-
-            // 1. Amostra alturas base e reseta cores
-            for (let j = 0; j < detailGridSize; j++) {
-                const worldZ = centerZ + (j / (detailGridSize - 1) - 0.5) * detailSize;
-                for (let i = 0; i < detailGridSize; i++) {
-                    const worldX = centerX + (i / (detailGridSize - 1) - 0.5) * detailSize;
-                    const h = getSurfaceHeight(worldX, worldZ);
-                    const cannonJ = (detailGridSize - 1) - j;
-                    detailHfMatrix[i][cannonJ] = h;
-                    const vIdx = (j * detailGridSize + i);
-                    vertices[vIdx * 3 + 1] = h;
-                    baseHeights[vIdx] = h;
-                    // Reset gradual das cores (efeito de cura visual)
-                    const timeSinceMod = now - (modifiedVerticesMap.get(vIdx + 1000000) || 0);
-                    colors[vIdx * 3] = Math.min(1.0, timeSinceMod / 30000);
-                }
-            }
-
-            // 2. Aplica mounds (buracos e montes) ativos
-            for (const m of mounds) {
-                if (m.flattened) continue;
-                // Distância toroidal ao centro do detalhe
-                const dx = Math.abs(m.position.x - centerX);
-                const dz = Math.abs(m.position.z - centerZ);
-                const wrappedDx = Math.min(dx, worldSize - dx);
-                const wrappedDz = Math.min(dz, worldSize - dz);
-
-                if (wrappedDx > halfSize + m.radius || wrappedDz > halfSize + m.radius) continue;
-
-                if (m.isPrecise) {
-                    // Mounds precisos (clipping)
-                    const xBase = Math.floor((m.position.x - (centerX - halfSize)) / step);
-                    const zBase = Math.floor(((centerZ + halfSize) - m.position.z) / step);
-                    const targetHeight = (m.targetFloorHeight !== undefined ? m.targetFloorHeight : m.originalHeight) + m.height;
-
-                    for (let di = -1; di <= 2; di++) {
-                        const ii = xBase + di;
-                        if (ii < 0 || ii >= detailGridSize) continue;
-                        for (let dj = -1; dj <= 2; dj++) {
-                            const jj = zBase + dj;
-                            if (jj < 0 || jj >= detailGridSize) continue;
-
-                            detailHfMatrix[ii][jj] = Math.min(detailHfMatrix[ii][jj], targetHeight);
-                            const threeJ = (detailGridSize - 1) - jj;
-                            const vIdx = (threeJ * detailGridSize + ii);
-                            vertices[vIdx * 3 + 1] = detailHfMatrix[ii][jj];
-                            colors[vIdx * 3] = 0.0;
-                            modifiedVerticesMap.set(vIdx + 1000000, now);
-                        }
-                    }
-                } else {
-                    // Mounds aditivos
-                    const r = m.radius || 1;
-                    const rInt = Math.ceil(r / step) + 1;
-                    const mIdxX = Math.round((m.position.x - (centerX - halfSize)) / step);
-                    const mIdxZ = Math.round(((centerZ + halfSize) - m.position.z) / step);
-
-                    for (let di = -rInt; di <= rInt; di++) {
-                        const ii = mIdxX + di;
-                        if (ii < 0 || ii >= detailGridSize) continue;
-                        for (let dj = -rInt; dj <= rInt; dj++) {
-                            const jj = mIdxZ + dj;
-                            if (jj < 0 || jj >= detailGridSize) continue;
-
-                            const worldX = centerX - halfSize + ii * step;
-                            const worldZ = centerZ + halfSize - jj * step;
-                            const distSq = Math.pow(worldX - m.position.x, 2) + Math.pow(worldZ - m.position.z, 2);
-
-                            if (distSq < r * r) {
-                                const hChange = Math.sqrt(r * r - distSq) * (m.height / r);
-                                detailHfMatrix[ii][jj] += hChange;
-                                const threeJ = (detailGridSize - 1) - jj;
-                                const vIdx = (threeJ * detailGridSize + ii);
-                                vertices[vIdx * 3 + 1] = detailHfMatrix[ii][jj];
-                                colors[vIdx * 3] = 0.0;
-                                modifiedVerticesMap.set(vIdx + 1000000, now);
-                            }
-                        }
-                    }
-                }
-            }
-
-            // 3. Bedrock Clamping (Otimizado)
-            const relBedrockLevelOffset = TOTAL_BEDROCK_DEPTH;
-            for (let i = 0; i < detailGridSize; i++) {
-                const worldX = centerX - halfSize + i * step;
-                for (let j = 0; j < detailGridSize; j++) {
-                    const cannonJ = (detailGridSize - 1) - j;
-                    const worldZ = centerZ + (j / (detailGridSize - 1) - 0.5) * detailSize;
-                    const baseH = getSurfaceHeight(worldX, worldZ);
-                    if (detailHfMatrix[i][cannonJ] < baseH - relBedrockLevelOffset) {
-                        detailHfMatrix[i][cannonJ] = baseH - relBedrockLevelOffset;
-                        vertices[(j * detailGridSize + i) * 3 + 1] = detailHfMatrix[i][cannonJ];
-                    }
-                }
-            }
-
-            detailGeometry.attributes.position.needsUpdate = true;
-            detailGeometry.attributes.aBaseHeight.needsUpdate = true;
-            detailGeometry.attributes.color.needsUpdate = true;
-            detailGeometry.computeVertexNormals();
-            detailBody.shapes[0].update();
-        }
-
         function calculateWrappedDistance(pos1, pos2) {
             const dx = Math.abs(pos1.x - pos2.x);
             const dy = Math.abs(pos1.y - pos2.y); // O eixo Y não se envolve
@@ -6186,14 +5947,6 @@
             }
             updateRain(delta);
 
-            // Atualiza a posição do jogador no shader para descarte de pixels do terreno base
-            if (islandMeshMaterial && islandMeshMaterial.userData.shader && playerBody) {
-                islandMeshMaterial.userData.shader.uniforms.uPlayerPos.value.copy(playerBody.position);
-            }
-            if (islandMeshMaterialDetail && islandMeshMaterialDetail.userData.shader && playerBody) {
-                islandMeshMaterialDetail.userData.shader.uniforms.uPlayerPos.value.copy(playerBody.position);
-            }
-
             // Atualiza volume dos sons ambientais da ilha e da praia
             if (islandGainNode && beachGainNode) {
                 if (gamePaused) {
@@ -6228,41 +5981,15 @@
             }
 
             if (terrainNeedsUpdate) {
-                // No novo sistema, os mounds são tratados pela grade de detalhe
-                updateDetailTerrain();
+                // Process batched terrain updates
+                const uniqueMounds = [...new Set(terrainAffectedMounds)];
+                // Call once for all mounds. If only one mound, pass it for visual optimization.
+                updateIslandGeometry(uniqueMounds.length === 1 ? uniqueMounds[0] : null);
+
                 terrainNeedsUpdate = false;
                 terrainAffectedMounds = [];
-            }
-
-            // Cura instantânea: remove mounds fora do raio de detalhe (agora em cada frame)
-            if (playerBody) {
-                let moundsRemoved = false;
-                for (let i = mounds.length - 1; i >= 0; i--) {
-                    const m = mounds[i];
-                    if (m.flattened) continue;
-                    const dist = calculateWrappedDistance(playerBody.position, m.position);
-                    // Cura instantânea: remove assim que sai do raio de detalhe
-                    if (dist > detailRadius + 1.0) {
-                        if (m.mesh) scene.remove(m.mesh);
-                        const vIdx = visualMounds.indexOf(m);
-                        if (vIdx !== -1) visualMounds.splice(vIdx, 1);
-                        mounds.splice(i, 1);
-                        moundsRemoved = true;
-                    }
-                }
-                if (moundsRemoved) updateDetailTerrain();
-            }
-
-            // Atualiza terreno de detalhe conforme o jogador se move
-            if (playerBody && !gamePaused) {
-                const playerX = playerBody.position.x;
-                const playerZ = playerBody.position.z;
-                // Atualiza a cada 2 metros para manter o desempenho com 1024x1024
-                if (!window.lastDetailX || Math.abs(playerX - window.lastDetailX) > 2.0 || Math.abs(playerZ - window.lastDetailZ) > 2.0) {
-                    updateDetailTerrain();
-                    window.lastDetailX = playerX;
-                    window.lastDetailZ = playerZ;
-                }
+                updateWaterConnectivity();
+                updateWaterVisuals();
             }
 
             // Atualiza exibição de peso (mesmo se pausado, para refletir mudanças no inventário)
@@ -6324,7 +6051,7 @@
 
 
                 if (destroyProgress >= targetDestroyTime) {
-                     if (destroyTargetDigInfo && destroyTargetDigInfo.mound) {
+                     if (destroyTargetDigInfo) {
                         const mound = destroyTargetDigInfo.mound;
                         const isBuilding = destroyTargetDigInfo.isBuilding;
 
@@ -6337,19 +6064,6 @@
                                     mound.height = 0;
                                     terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
                                     mound.flattened = true;
-
-                                    // NOVO: Faz objetos subirem se o chão subir (removendo buraco)
-                                    collectibleBoxes.forEach(box => {
-                                        if (calculateWrappedDistance(box.body.position, mound.position) < 2.0) {
-                                            const boxHeight = (box.body.userData.dimensions ? box.body.userData.dimensions.height : 1.0);
-                                            const currentGroundLevel = islandSurfaceHeight + mound.height;
-                                            const bottomY = box.body.position.y - boxHeight / 2;
-                                            if (bottomY < currentGroundLevel) {
-                                                box.body.position.y = currentGroundLevel + boxHeight / 2;
-                                                box.body.velocity.y = 0;
-                                            }
-                                        }
-                                    });
                                     if (mound.mesh) scene.remove(mound.mesh);
                                     const vIndex = visualMounds.indexOf(mound);
                                     if (vIndex !== -1) visualMounds.splice(vIndex, 1);
@@ -6357,32 +6071,19 @@
                                     if (mIndex !== -1) mounds.splice(mIndex, 1);
 
                                     destructionComplete = true;
-                                    stopDestruction();
+                                    isDestroying = false;
+                                    progressContainer.style.display = 'none';
+                                    currentMound = null;
                                 } else {
-                                    const maxHeight = 1.0;
+                                    const maxHeight = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
                                     mound.height = maxHeight * mound.growthStage / moundGrowthStages.length;
                                     if (mound.mesh) {
                                         const baseScale = moundGrowthStages[mound.growthStage - 1];
-                                        const finalScale = mound.isPrecise ? baseScale * 0.3 : baseScale * 0.4;
+                                        const finalScale = mound.isPrecise ? baseScale * 0.8 : baseScale;
                                         mound.mesh.scale.set(finalScale, finalScale, finalScale);
                                     }
                                     terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
                                     destroyProgress = 0;
-
-                                    // NOVO: Faz objetos subirem se o chão subir (removendo buraco)
-                                    if (mound.height >= 0) {
-                                        collectibleBoxes.forEach(box => {
-                                            if (calculateWrappedDistance(box.body.position, mound.position) < 2.0) {
-                                                const boxHeight = (box.body.userData.dimensions ? box.body.userData.dimensions.height : 1.0);
-                                                const currentGroundLevel = islandSurfaceHeight + mound.height;
-                                                const bottomY = box.body.position.y - boxHeight / 2;
-                                                if (bottomY < currentGroundLevel) {
-                                                    box.body.position.y = currentGroundLevel + boxHeight / 2;
-                                                    box.body.velocity.y = 0;
-                                                }
-                                            }
-                                        });
-                                    }
                                 }
                             } else {
                                 // Criando um monte (positivo)
@@ -6390,7 +6091,9 @@
                                 if (mound.growthStage >= moundGrowthStages.length) {
                                     mound.height = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : 1.0);
                                     destructionComplete = true;
-                                    stopDestruction();
+                                    isDestroying = false;
+                                    progressContainer.style.display = 'none';
+                                    currentMound = null;
                                 } else {
                                     mound.height = 1.0 * mound.growthStage / moundGrowthStages.length;
                                     destroyProgress = 0;
@@ -6401,21 +6104,6 @@
                                     mound.mesh.scale.set(baseScale, baseScale, baseScale);
                                 }
                                 terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
-
-                                // NOVO: Faz objetos subirem se o chão subir
-                                if (mound.height > 0) {
-                                    collectibleBoxes.forEach(box => {
-                                        if (calculateWrappedDistance(box.body.position, mound.position) < 2.0) {
-                                            const boxHeight = (box.body.userData.dimensions ? box.body.userData.dimensions.height : 1.0);
-                                            const currentGroundLevel = islandSurfaceHeight + mound.height;
-                                            const bottomY = box.body.position.y - boxHeight / 2;
-                                            if (bottomY < currentGroundLevel) {
-                                                box.body.position.y = currentGroundLevel + boxHeight / 2;
-                                                box.body.velocity.y = 0;
-                                            }
-                                        }
-                                    });
-                                }
                             }
 
                             // Consome o item Terra
@@ -6446,7 +6134,9 @@
                                     if (mIndex !== -1) mounds.splice(mIndex, 1);
 
                                     destructionComplete = true;
-                                    stopDestruction();
+                                    isDestroying = false;
+                                    progressContainer.style.display = 'none';
+                                    currentMound = null;
                                 } else {
                                     const maxHeight = 1.0;
                                     mound.height = maxHeight * mound.growthStage / moundGrowthStages.length;
@@ -6483,17 +6173,20 @@
                                 if (mound.growthStage >= moundGrowthStages.length) {
                                     mound.height = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : -1.0);
                                     if (mound.mesh) {
-                                        const finalScale = mound.isPrecise ? 0.3 : 0.4;
+                                        const finalScale = mound.isPrecise ? 0.8 : 1.0;
                                         mound.mesh.scale.set(finalScale, finalScale, finalScale);
                                     }
 
 
                                     destructionComplete = true;
-                                    stopDestruction();
+                                    isDestroying = false;
+                                    progressContainer.style.display = 'none';
+                                    mound.lastDugAt = world.time;
+                                    currentMound = null;
                                 } else {
                                     const baseScale = moundGrowthStages[mound.growthStage - 1];
                                     if (mound.mesh) {
-                                        const finalScale = mound.isPrecise ? baseScale * 0.3 : baseScale * 0.4;
+                                        const finalScale = mound.isPrecise ? baseScale * 0.8 : baseScale;
                                         mound.mesh.scale.set(finalScale, finalScale, finalScale);
                                     }
                                     destroyProgress = 0; // Reinicia para o próximo estágio
@@ -6504,15 +6197,6 @@
                         }
 
                         terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
-
-                        // NOVO: Faz objetos caírem se o chão descer
-                        if (mound.height < 0) {
-                            collectibleBoxes.forEach(box => {
-                                if (calculateWrappedDistance(box.body.position, mound.position) < 2.0) {
-                                    box.body.wakeUp();
-                                }
-                            });
-                        }
                     } else if (destroyTargetMountainInfo) {
                         createDustCloud(destroyTargetMountainInfo.position, destroyTargetColor);
                         addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
@@ -6542,7 +6226,8 @@
                             respawnCapim(); // Respawn trigger to maintain population
                         }
                         destructionComplete = true;
-                        stopDestruction();
+                        isDestroying = false;
+                        progressContainer.style.display = 'none';
                     }
                     // Lógica para outros objetos destrutíveis (depósitos, blocos)
                     else {
@@ -6629,7 +6314,8 @@
                         updateBackpackDisplay();
                         if(position) createSmokeEffect(position, destroyTargetColor);
                         destructionComplete = true;
-                        stopDestruction();
+                        isDestroying = false;
+                        progressContainer.style.display = 'none';
                     }
                 } else {
                     // Atualiza a barra de progresso
@@ -6805,6 +6491,7 @@
                     playerBody.velocity.z = normalizedMovementVector.z * currentMoveSpeed;
                 }
 
+                playerBody.allowSleep = false;
             } else {
                 // If no movement keys are pressed, apply a small damping or full stop
                 // to prevent sliding on moderate slopes when friction is 0.
@@ -6844,6 +6531,11 @@
                     playerBody.velocity.z *= 0.9;
                 }
 
+                if (pickedObjectBody === null && Math.abs(playerBody.velocity.y) < 0.1) {
+                    playerBody.allowSleep = true;
+                } else {
+                    playerBody.allowSleep = false;
+                }
             }
 
             // --- SINCRONIZAÇÃO E WRAPPING ANTES DO STEP DE FÍSICA ---
@@ -6862,17 +6554,13 @@
             // Sincroniza a posição de todos os 9 corpos de física da ilha com o tile atual do jogador
             const currentTileX = Math.round(playerBody.position.x / worldSize) * worldSize;
             const currentTileZ = Math.round(playerBody.position.z / worldSize) * worldSize;
-            if (currentTileX !== lastTileX || currentTileZ !== lastTileZ) {
-                islandMeshes.forEach(tile => {
-                    tile.body.position.set(currentTileX + tile.offsetX - worldSize / 2, 0, currentTileZ + tile.offsetZ + worldSize / 2);
-                    tile.body.updateAABB();
-                });
-                lastTileX = currentTileX;
-                lastTileZ = currentTileZ;
-            }
+            islandMeshes.forEach(tile => {
+                tile.body.position.set(currentTileX + tile.offsetX - worldSize / 2, 0, currentTileZ + tile.offsetZ + worldSize / 2);
+                tile.body.updateAABB();
+            });
 
-            // Atualiza o mundo da física e o tempo simulado (reduzido sub-steps para 5 para performance)
-            world.step(1 / 60, delta, 5);
+            // Atualiza o mundo da física e o tempo simulado
+            world.step(1 / 60, delta, 3);
 
             // Re-apply zero velocity after physics step if player is supposed to be static
             // to prevent tiny movements accumulated during the step on slopes.
@@ -6904,11 +6592,10 @@
                     return;
                 }
                 // Cubos devem ser dinâmicos quando não estão sendo pegos
-                if (body.type !== CANNON.Body.DYNAMIC) {
-                    body.mass = body.userData.originalMass;
-                    body.type = CANNON.Body.DYNAMIC;
-                }
-                body.allowSleep = false; // Garante que os cubos não entrem em estado de "sono"
+                body.mass = body.userData.originalMass;
+                body.type = CANNON.Body.DYNAMIC;
+                body.allowSleep = true; // Permite que cubos "durmam" para otimização
+                body.wakeUp(); // Garante que esteja ativo se houver movimento
                 body.collisionResponse = true; // Garante que a resposta de colisão esteja sempre ativada
             });
 
@@ -7097,51 +6784,49 @@
             });
 
             // NOVO: Lógica para fechar buracos inativos (curar terreno após 10 segundos)
-            // Otimização: Só processa 1 encerramento por frame para manter 60fps
-            if (frameCount % 2 === 0) {
-                for (let i = visualMounds.length - 1; i >= 0; i--) {
-                    const mound = visualMounds[i];
-                    if (mound !== currentMound && mound.maxHeightChange < 0 && world.time - mound.lastDugAt > 30) {
-                        mound.closingStartTime = undefined;
-                        closingMounds.push(mound);
-                        visualMounds.splice(i, 1);
-                        break;
-                    }
+            for (let i = visualMounds.length - 1; i >= 0; i--) {
+                const mound = visualMounds[i];
+                // Cura apenas buracos (maxHeightChange < 0) após 30 segundos de inatividade
+                if (mound !== currentMound && mound.maxHeightChange < 0 && world.time - mound.lastDugAt > 30) {
+                    mound.closingStartTime = undefined;
+                    closingMounds.push(mound);
+                    visualMounds.splice(i, 1);
                 }
             }
 
-            const activeClosingCount = Math.min(closingMounds.length, 5); // Limita cura ativa
-            for (let i = activeClosingCount - 1; i >= 0; i--) {
+            for (let i = closingMounds.length - 1; i >= 0; i--) {
                 const mound = closingMounds[i];
 
+                // Inicializa o temporizador e a altura inicial de cura
                 if (mound.closingStartTime === undefined) {
                     mound.closingStartTime = world.time;
                     mound.startHeight = mound.height;
                 }
 
-                const duration = 5.0;
+                const duration = 5.0; // 5 segundos para curar suavemente
                 const elapsed = world.time - mound.closingStartTime;
                 const progress = Math.min(1.0, elapsed / duration);
 
+                const oldHeight = mound.height;
                 mound.height = mound.startHeight * (1 - progress);
                 const currentGroundLevel = islandSurfaceHeight + mound.height;
 
-                const pushRadius = 5.0;
+                // NOVO: Empurra objetos para cima se o buraco estiver fechando (apenas se o terreno subir)
+                const pushRadius = 2.0;
                 const moundWorldPos = { x: mound.position.x, y: mound.position.y, z: mound.position.z };
 
+                // Empurra o jogador
                 const playerDist = calculateWrappedDistance(playerBody.position, moundWorldPos);
                 if (playerDist < pushRadius) {
-                    playerBody.wakeUp();
                     const bottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
                     if (bottomY < currentGroundLevel) {
                         playerBody.position.y = currentGroundLevel + (isCrouching ? crouchRadius : playerRadius);
                     }
                 }
-
+                // Empurra caixotes
                 collectibleBoxes.forEach(box => {
                     const boxDist = calculateWrappedDistance(box.body.position, moundWorldPos);
                     if (boxDist < pushRadius) {
-                        box.body.wakeUp();
                         const boxHeight = (box.body.userData.dimensions ? box.body.userData.dimensions.height : 1.0);
                         const bottomY = box.body.position.y - boxHeight / 2;
                         if (bottomY < currentGroundLevel) {
@@ -7149,11 +6834,10 @@
                         }
                     }
                 });
-
+                // Empurra construções (como baús e blocos)
                 placedConstructionBodies.forEach(body => {
                     const bodyDist = calculateWrappedDistance(body.position, moundWorldPos);
                     if (bodyDist < pushRadius) {
-                        body.wakeUp();
                         const bodyHeight = (body.userData.dimensions ? body.userData.dimensions.height : (body.userData.isChest ? 1.0 : 0.4));
                         const bottomY = body.position.y - bodyHeight / 2;
                         if (bottomY < currentGroundLevel) {
@@ -7162,22 +6846,21 @@
                     }
                 });
 
+                // Atualiza a escala visual suavemente
                 const currentScale = Math.abs(mound.height / (mound.maxHeightChange || -1.0));
                 if (mound.mesh) {
-                    const finalScale = mound.isPrecise ? currentScale * 0.3 : currentScale * 0.4;
+                    const finalScale = mound.isPrecise ? currentScale * 0.8 : currentScale;
+                    // Mantém um tamanho mínimo para não desaparecer antes da hora e evitar erros de escala zero
                     const s = Math.max(0.001, finalScale);
-                    if (Math.abs(mound.mesh.scale.x - s) > 0.005) {
-                        mound.mesh.scale.set(s, s, s);
-                    }
+                    mound.mesh.scale.set(s, s, s);
                 }
 
-                if (now - (mound.lastPhysicsUpdateTime || 0) > 1000) {
-                    terrainNeedsUpdate = true;
-                    terrainAffectedMounds.push(mound);
-                    mound.lastPhysicsUpdateTime = now;
-                }
+                // Sincronização de física em tempo real
+                terrainNeedsUpdate = true;
+                terrainAffectedMounds.push(mound);
 
                 if (progress >= 1.0) {
+                    // Remove o mound completamente ao fim da cura
                     scene.remove(mound.mesh);
                     const mIndex = mounds.indexOf(mound);
                     if (mIndex !== -1) mounds.splice(mIndex, 1);
@@ -7252,12 +6935,8 @@
                         }
 
                         if (body && body.userData) {
-                            if (body.userData.isChest && body.userData.isCollectible) {
-                                interactionHintText = "(F) Pegar / (E) Abrir / (G) Guardar";
-                                break;
-                            }
                             if (body.userData.isChest) {
-                                interactionHintText = "(E) Abrir";
+                                interactionHintText = "(F) Abrir";
                                 break;
                             }
                             if (body.userData.isRaft) {
@@ -7282,7 +6961,7 @@
                         }
 
                         // Verificação de terreno (Cavar / Colher Grama)
-                        const isIslandMesh = islandMeshes.some(m => m.mesh === obj) || obj === detailMesh;
+                        const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
                         if (isIslandMesh) {
                             // Verifica se há capim perto
                             let nearCapim = false;
@@ -7499,13 +7178,6 @@
 
                                     // NOVO: Verifica se a posição está em área protegida
                                     if (isProtected(placementPosition.x + visualOffsetX, placementPosition.z + visualOffsetZ)) {
-                                        canPlace = false;
-                                    }
-
-                                    // Bloqueia colocação fora da ilha (raio da grama)
-                                    // Usa calculateWrappedDistance para considerar o wrap-around toroidal
-                                    const distToCenter = calculateWrappedDistance({ x: 0, y: 0, z: 0 }, { x: placementPosition.x + visualOffsetX, y: 0, z: placementPosition.z + visualOffsetZ });
-                                    if (distToCenter > grassRadius) {
                                         canPlace = false;
                                     }
 
@@ -7796,16 +7468,13 @@
             if (isDrivingRaft && keysPressed['escape']) {
                 isDrivingRaft = false;
                 currentRaftBody = null;
+                // Restaura colisão e dinâmica do jogador
                 playerBody.type = CANNON.Body.DYNAMIC;
                 playerBody.collisionResponse = true;
                 playerBody.collisionFilterGroup = 1;
                 playerBody.collisionFilterMask = 1;
                 playerBody.wakeUp();
             }
-
-            // OTIMIZAÇÃO CRÍTICA: Desativa temporariamente cálculos pesados se houver muitos mounds ativos
-            const heavyTraffic = mounds.length > 50;
-            const skipHeavyFrame = heavyTraffic && (frameCount % 2 !== 0);
 
 
             // Lógica de subida de degraus (ajustada para permitir subir obstáculos de até 25% da altura do jogador)
@@ -8011,7 +7680,7 @@
                             let obj = intersects[i].object;
 
                             // Check for mountain/ground
-                            const isIslandMesh = islandMeshes.some(m => m.mesh === obj) || obj === detailMesh;
+                            const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
 
                             if (isIslandMesh) {
                                 canDestroy = true;
@@ -8073,7 +7742,7 @@
                         }
 
                         // Check for mining/digging with hand
-                        const isIslandMesh = islandMeshes.some(m => m.mesh === obj) || obj === detailMesh;
+                        const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
 
                         if (isIslandMesh) {
                             // Verifica se há capim perto para a cor do crosshair
@@ -8113,31 +7782,47 @@
             }
             crosshairElement.style.setProperty('--crosshair-color', crosshairColor);
 
-            // NOVO: Atualiza o temporizador e fade da textura de modificação do terreno (Otimizado)
-            if (modifiedVerticesMap.size > 0 && !skipHeavyFrame) {
+            // NOVO: Atualiza o temporizador e fade da textura de modificação do terreno
+            if (modifiedVertices.length > 0) {
                 const now = Date.now();
                 const geom = islandGeometry;
-                if (geom) {
-                    const colors = geom.attributes.color.array;
-                    const fadeDuration = 30000;
-                    let colorsChanged = false;
-                    let count = 0;
-                    const maxPerFrame = 250;
+                const colors = geom.attributes.color.array;
+                const fadeDuration = 30000; // 30 segundos para o fade completo
+                let colorsChanged = false;
 
-                    for (let [vIdx, time] of modifiedVerticesMap) {
-                        if (count++ > maxPerFrame) break;
-                        const progress = Math.min(1.0, (now - time) / fadeDuration);
-                        if (colors[vIdx * 3] < progress) {
-                            colors[vIdx * 3] = progress;
-                            colorsChanged = true;
-                        }
-                        if (progress >= 1.0) {
-                            colors[vIdx * 3] = 1.0;
-                            modifiedVerticesMap.delete(vIdx);
-                            colorsChanged = true;
+                for (let i = modifiedVertices.length - 1; i >= 0; i--) {
+                    const vIdx = modifiedVertices[i].index;
+
+                    // NOVO: Se estivermos modificando o terreno ativamente, reseta o tempo dos vértices afetados
+                    // Isso evita que a textura comece a desaparecer entre os estágios da cavagem/construção
+                    if (isDestroying && !destructionComplete && destroyTargetDigInfo) {
+                        const m = destroyTargetDigInfo.mound;
+                        const vi = vIdx % hfGridSize;
+                        const vj = Math.floor(vIdx / hfGridSize);
+                        const v_cannon_j = (hfGridSize - 1) - vj;
+
+                        if (vi >= Math.floor(m.x - m.radius) && vi <= Math.ceil(m.x + m.radius) &&
+                            v_cannon_j >= Math.floor(m.z - m.radius) && v_cannon_j <= Math.ceil(m.z + m.radius)) {
+                            modifiedVertices[i].time = now;
                         }
                     }
-                    if (colorsChanged) geom.attributes.color.needsUpdate = true;
+
+                    const elapsed = now - modifiedVertices[i].time;
+                    const progress = Math.min(1.0, elapsed / fadeDuration);
+
+                    if (colors[vIdx * 3] < progress || (progress === 0.0 && colors[vIdx * 3] > 0.0)) {
+                        colors[vIdx * 3] = progress;
+                        colorsChanged = true;
+                    }
+
+                    if (progress >= 1.0) {
+                        colors[vIdx * 3] = 1.0;
+                        modifiedVertices.splice(i, 1);
+                        colorsChanged = true;
+                    }
+                }
+                if (colorsChanged) {
+                    geom.attributes.color.needsUpdate = true;
                 }
             }
 
@@ -8306,41 +7991,23 @@
             window.seagullSoundUrls = seagullSoundUrls;
             window.playAmbientBirdSound = playAmbientBirdSound;
             window.world = world;
-
-            // Expose properties for testing safely using closures
-            const exposed = {
-                nextBirdSoundTime: () => nextBirdSoundTime,
-                gamePaused: () => gamePaused,
-                rainGainNode: () => rainGainNode,
-                islandGainNode: () => islandGainNode,
-                beachGainNode: () => beachGainNode,
-                rainIntensity: () => rainIntensity,
-                targetRainIntensity: () => targetRainIntensity,
-                isClimbing: () => isClimbing,
-                isFlying: () => isFlying,
-                isDestroying: () => isDestroying,
-                destroyProgress: () => destroyProgress,
-                targetDestroyTime: () => targetDestroyTime,
-                selectedItem: () => selectedItem,
-                isAttemptingToDestroy: () => isAttemptingToDestroy,
-                isDrivingRaft: () => isDrivingRaft,
-                currentRaftBody: () => currentRaftBody,
-                currentMound: () => currentMound,
-                targetCloudCount: () => targetCloudCount
-            };
-
-            Object.keys(exposed).forEach(key => {
-                if (!window.hasOwnProperty(key)) {
-                    Object.defineProperty(window, key, {
-                        get: exposed[key],
-                        configurable: true
-                    });
-                }
+            Object.defineProperty(window, 'nextBirdSoundTime', {
+                get: () => nextBirdSoundTime,
+                set: (v) => { nextBirdSoundTime = v; }
             });
-
-
+            Object.defineProperty(window, 'gamePaused', { get: () => gamePaused, set: (v) => { gamePaused = v; } });
+            Object.defineProperty(window, 'rainGainNode', { get: () => rainGainNode });
+            Object.defineProperty(window, 'islandGainNode', { get: () => islandGainNode });
+            Object.defineProperty(window, 'beachGainNode', { get: () => beachGainNode });
+            Object.defineProperty(window, 'rainIntensity', { get: () => rainIntensity, set: (v) => { rainIntensity = v; } });
+            Object.defineProperty(window, 'targetRainIntensity', { get: () => targetRainIntensity, set: (v) => { targetRainIntensity = v; } });
+            Object.defineProperty(window, 'isClimbing', { get: () => isClimbing, set: (v) => { isClimbing = v; } });
+            Object.defineProperty(window, 'isFlying', { get: () => isFlying, set: (v) => { isFlying = v; } });
             window.useInteractionHints = useInteractionHints;
             window.collectibleBoxes = collectibleBoxes;
+            Object.defineProperty(window, 'isDestroying', { get: () => isDestroying });
+            Object.defineProperty(window, 'destroyProgress', { get: () => destroyProgress });
+            Object.defineProperty(window, 'targetDestroyTime', { get: () => targetDestroyTime });
             window.capimClusters = capimClusters;
             window.capimInstancedMeshes = capimInstancedMeshes;
             window.raycastTargets = raycastTargets;
@@ -8366,6 +8033,14 @@
             window.updateUI = updateUI;
             window.coconutTrees = coconutTrees;
             window.selectedSlotIndex = selectedSlotIndex;
+            Object.defineProperty(window, 'selectedItem', {
+                get: () => selectedItem,
+                set: (v) => { selectedItem = v; }
+            });
+            Object.defineProperty(window, 'isAttemptingToDestroy', {
+                get: () => isAttemptingToDestroy,
+                set: (v) => { isAttemptingToDestroy = v; }
+            });
             window.dirtMountains = dirtMountains;
             window.useTextures = useTextures;
             window.createBox = createBox;
@@ -8374,6 +8049,15 @@
             window.animate = animate;
             window.createRaft = createRaft;
             window.raftBodies = raftBodies;
+            Object.defineProperty(window, 'isDrivingRaft', {
+                get: () => isDrivingRaft,
+                set: (v) => { isDrivingRaft = v; }
+            });
+            Object.defineProperty(window, 'currentRaftBody', {
+                get: () => currentRaftBody,
+                set: (v) => { currentRaftBody = v; }
+            });
+            Object.defineProperty(window, 'currentMound', { get: () => currentMound });
             window.cobMaterialMesh = cobMaterialMesh;
             window.cubeMaterialMesh = cubeMaterialMesh;
             window.renderer = renderer;
@@ -8387,8 +8071,22 @@
             window.rainParticles = rainParticles;
             window.sunMesh = sunMesh;
             window.moonMesh = moonMesh;
+
+            // Weather exposure
             window.clouds = clouds;
             window.birds = birds;
+            Object.defineProperty(window, 'targetCloudCount', {
+                get: () => targetCloudCount,
+                set: (v) => { targetCloudCount = v; }
+            });
+            Object.defineProperty(window, 'rainIntensity', {
+                get: () => rainIntensity,
+                set: (v) => { rainIntensity = v; }
+            });
+            Object.defineProperty(window, 'targetRainIntensity', {
+                get: () => targetRainIntensity,
+                set: (v) => { targetRainIntensity = v; }
+            });
             window.updateWeather = updateWeather;
             window.spawnBirdGroup = spawnBirdGroup;
         }
