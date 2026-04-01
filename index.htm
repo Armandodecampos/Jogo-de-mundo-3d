@@ -793,9 +793,9 @@
         window.CANNON = CANNON;
 
         const hfGridSize = 32; // Resolução global base (agora menor para performance)
-        const detailGridSize = 1024; // Resolução da área de detalhe (1024x1024)
-        const detailSize = 120.0; // Tamanho da malha (10m de margem para o raio de 50m)
-        const detailRadius = 50.0;
+        const detailGridSize = 512; // Resolução da área de detalhe (512x512)
+        const detailSize = 80.0; // Tamanho da malha
+        const detailRadius = 35.0;
         const safeMod = (n, m) => ((n % m) + m) % m;
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
@@ -815,6 +815,7 @@
         let detailBody;
         let detailHfMatrix;
         let islandMeshMaterial, islandMeshMaterialDetail;
+        let modifiedVerticesMap = new Map(); // Otimização: O(1) para busca de vértices modificados
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let waterMaterialShader = null;
@@ -3556,7 +3557,6 @@
         window.mounds = mounds;
 
         let lastHeightfieldUpdateTime = 0;
-        let modifiedVerticesMap = new Map(); // Otimização: O(1) para busca de vértices modificados
         function updateIslandGeometry(affectedMounds = null) {
             if (!currentHfMatrix || currentHfMatrix.length !== hfGridSize) {
                 currentHfMatrix = new Array(hfGridSize);
@@ -5173,6 +5173,17 @@
                 }
 
                 if (target) {
+                    if (target.isDigging) {
+                        const hitPoint = target.intersect.point;
+                        // Usa calculateWrappedDistance para considerar o wrap-around toroidal
+                        const distToCenter = calculateWrappedDistance({ x: 0, y: 0, z: 0 }, { x: hitPoint.x + visualOffsetX, y: 0, z: hitPoint.z + visualOffsetZ });
+                        if (distToCenter > grassRadius) {
+                            window.showCenterMessage("O solo é muito duro/molhado para cavar aqui.");
+                            stopDestruction();
+                            return;
+                        }
+                    }
+
                     if (target.isDigging && !currentMound) {
                         // Se não for possível criar ou encontrar um mound, cancela
                     }
@@ -5219,6 +5230,16 @@
                         const moundsToSearch = mounds.filter(m => !m.flattened);
 
                         if (isProtected(hitPoint.x + visualOffsetX, hitPoint.z + visualOffsetZ)) {
+                            isDestroying = false;
+                            progressContainer.style.display = 'none';
+                            return;
+                        }
+
+                        // Bloqueia cavagem fora da ilha (raio da grama)
+                        // Usa calculateWrappedDistance para considerar o wrap-around toroidal
+                        const distToCenter = calculateWrappedDistance({ x: 0, y: 0, z: 0 }, { x: hitPoint.x + visualOffsetX, y: 0, z: hitPoint.z + visualOffsetZ });
+                        if (distToCenter > grassRadius) {
+                            window.showCenterMessage("O solo é muito duro/molhado para cavar aqui.");
                             isDestroying = false;
                             progressContainer.style.display = 'none';
                             return;
@@ -6041,7 +6062,7 @@
                 const wrappedDx = Math.min(dx, worldSize - dx);
                 const wrappedDz = Math.min(dz, worldSize - dz);
 
-                if (wrappedDx > halfSize + m.radius && wrappedDz > halfSize + m.radius) continue;
+                if (wrappedDx > halfSize + m.radius || wrappedDz > halfSize + m.radius) continue;
 
                 if (m.isPrecise) {
                     // Mounds precisos (clipping)
@@ -7481,6 +7502,13 @@
                                         canPlace = false;
                                     }
 
+                                    // Bloqueia colocação fora da ilha (raio da grama)
+                                    // Usa calculateWrappedDistance para considerar o wrap-around toroidal
+                                    const distToCenter = calculateWrappedDistance({ x: 0, y: 0, z: 0 }, { x: placementPosition.x + visualOffsetX, y: 0, z: placementPosition.z + visualOffsetZ });
+                                    if (distToCenter > grassRadius) {
+                                        canPlace = false;
+                                    }
+
                                     // Se for uma muda de árvore, verifica a distância das outras árvores
                                     if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName) {
                                         for (const existingBody of placedConstructionBodies) {
@@ -8279,39 +8307,36 @@
             window.playAmbientBirdSound = playAmbientBirdSound;
             window.world = world;
 
-            if(!window.is_window_exposed) {
-                const props = {
-                    nextBirdSoundTime: () => nextBirdSoundTime,
-                    gamePaused: () => gamePaused,
-                    rainGainNode: () => rainGainNode,
-                    islandGainNode: () => islandGainNode,
-                    beachGainNode: () => beachGainNode,
-                    rainIntensity: () => rainIntensity,
-                    targetRainIntensity: () => targetRainIntensity,
-                    isClimbing: () => isClimbing,
-                    isFlying: () => isFlying,
-                    isDestroying: () => isDestroying,
-                    destroyProgress: () => destroyProgress,
-                    targetDestroyTime: () => targetDestroyTime,
-                    selectedItem: () => selectedItem,
-                    isAttemptingToDestroy: () => isAttemptingToDestroy,
-                    isDrivingRaft: () => isDrivingRaft,
-                    currentRaftBody: () => currentRaftBody,
-                    currentMound: () => currentMound,
-                    targetCloudCount: () => targetCloudCount
-                };
+            // Expose properties for testing safely using closures
+            const exposed = {
+                nextBirdSoundTime: () => nextBirdSoundTime,
+                gamePaused: () => gamePaused,
+                rainGainNode: () => rainGainNode,
+                islandGainNode: () => islandGainNode,
+                beachGainNode: () => beachGainNode,
+                rainIntensity: () => rainIntensity,
+                targetRainIntensity: () => targetRainIntensity,
+                isClimbing: () => isClimbing,
+                isFlying: () => isFlying,
+                isDestroying: () => isDestroying,
+                destroyProgress: () => destroyProgress,
+                targetDestroyTime: () => targetDestroyTime,
+                selectedItem: () => selectedItem,
+                isAttemptingToDestroy: () => isAttemptingToDestroy,
+                isDrivingRaft: () => isDrivingRaft,
+                currentRaftBody: () => currentRaftBody,
+                currentMound: () => currentMound,
+                targetCloudCount: () => targetCloudCount
+            };
 
-                for (let key in props) {
-                    if (!window.hasOwnProperty(key)) {
-                        Object.defineProperty(window, key, {
-                            get: props[key],
-                            set: (v) => { eval(key + " = v;"); },
-                            configurable: true
-                        });
-                    }
+            Object.keys(exposed).forEach(key => {
+                if (!window.hasOwnProperty(key)) {
+                    Object.defineProperty(window, key, {
+                        get: exposed[key],
+                        configurable: true
+                    });
                 }
-                window.is_window_exposed = true;
-            }
+            });
 
 
             window.useInteractionHints = useInteractionHints;
