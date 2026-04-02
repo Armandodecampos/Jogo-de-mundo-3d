@@ -791,11 +791,7 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 1200; // Resolução global do terreno equilibrada
-        const backgroundGridSize = 128; // Resolução reduzida para o fundo
-        const detailGridSize = 512; // Resolução da malha de detalhe
-        const detailSize = 80; // Tamanho físico da malha de detalhe
-        const detailRadius = 35; // Raio de influência visual da malha de detalhe
+        const hfGridSize = 200; // Resolução global do terreno equilibrada
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -805,11 +801,9 @@
         let playerBody;
 
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
-        let detailBody, detailMesh, detailGeometry; // Malha de alta resolução para o jogador
         let raftBodies = []; // NOVO: Array para armazenar corpos das jangadas
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
         let islandGeometry; // Geometria compartilhada do terreno
-        let islandMeshMaterial; // Material compartilhado do terreno
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
         let waterMaterialShader = null;
@@ -1304,8 +1298,7 @@
         let dirtTextureForHole; // NOVO: Textura de terra para o buraco
 
         let mounds = [];
-        const modifiedVerticesMap = new Map(); // NOVO: Controla a textura temporária do terreno {index: time}
-        window.modifiedVerticesMap = modifiedVerticesMap;
+        let modifiedVertices = []; // NOVO: Controla a textura temporária do terreno [{index, time}]
         let dirtMountains = []; // Exposto globalmente
         let visualMounds = []; // NOVO: Para os montes de terra visuais
         let closingMounds = []; // NOVO: Para animar o fechamento dos buracos
@@ -1457,7 +1450,6 @@
         function updateRaycastTargets() {
             if (typeof raycastTargets === 'undefined') return;
             raycastTargets.length = 0;
-            if (detailMesh) raycastTargets.push(detailMesh);
             islandMeshes.forEach(tile => raycastTargets.push(tile.mesh));
             waterMeshes.forEach(tile => raycastTargets.push(tile.mesh)); // NOVO: Água para colocação de jangada
             raycastTargets.push(...placedConstructionMeshes);
@@ -3554,85 +3546,44 @@
         window.hfGridSize = hfGridSize;
         window.mounds = mounds;
 
-        function updateDetailTerrain() {
-            if (!detailGeometry || !playerBody) return;
-
-            const px = playerBody.position.x;
-            const pz = playerBody.position.z;
-
-            // Snap para a grade de 1.0m para estabilidade absoluta
-            const snapX = Math.round(px);
-            const snapZ = Math.round(pz);
-
-            detailMesh.position.set(snapX, 0, snapZ);
-            detailBody.position.set(snapX - detailSize / 2, 0, snapZ + detailSize / 2);
-
-            const vertices = detailGeometry.attributes.position.array;
-            const colors = detailGeometry.attributes.color.array;
-            const baseHeights = detailGeometry.attributes.aBaseHeight.array;
-            const step = detailSize / (detailGridSize - 1);
-            const hfStep = worldSize / (hfGridSize - 1);
-            const now = Date.now();
-
-            const detailMatrix = [];
-            for (let i = 0; i < detailGridSize; i++) {
-                detailMatrix[i] = new Float32Array(detailGridSize);
-                const xWorld = (snapX - detailSize / 2) + (i * step);
-                const cannonI = Math.round(((xWorld + worldSize / 2) % worldSize + worldSize) % worldSize / hfStep) % hfGridSize;
-
-                for (let j = 0; j < detailGridSize; j++) {
-                    const zWorld = (snapZ + detailSize / 2) - (j * step);
-                    const cannonJ = Math.round(((worldSize / 2 - zWorld) % worldSize + worldSize) % worldSize / hfStep) % hfGridSize;
-
-                    const height = currentHfMatrix[cannonI][cannonJ];
-                    detailMatrix[i][j] = height;
-
-                    const vIdx = (j * detailGridSize + i);
-                    vertices[vIdx * 3 + 1] = height;
-                    baseHeights[vIdx] = baseMatrix[cannonI][cannonJ];
-
-                    // Inicializa a cor baseada no modifiedVerticesMap
-                    const globalIdx = cannonI + cannonJ * hfGridSize;
-                    if (modifiedVerticesMap.has(globalIdx)) {
-                        colors[vIdx * 3] = 0.0;
-                    } else {
-                        colors[vIdx * 3] = 1.0;
-                    }
-                }
-            }
-
-            detailGeometry.attributes.position.needsUpdate = true;
-            detailGeometry.attributes.color.needsUpdate = true;
-            detailGeometry.attributes.aBaseHeight.needsUpdate = true;
-            detailGeometry.computeVertexNormals();
-
-            if (detailBody.shapes.length > 0) detailBody.removeShape(detailBody.shapes[0]);
-            const detailShape = new CANNON.Heightfield(detailMatrix, { elementSize: step });
-            detailBody.addShape(detailShape);
-            detailBody.updateAABB();
-        }
-
-        function updateIslandGeometry(affectedMounds = null) {
+        function updateIslandGeometry(affectedMound = null) {
             // Inicializa a matriz se necessário
             if (!currentHfMatrix || currentHfMatrix.length !== hfGridSize) {
                 currentHfMatrix = new Array(hfGridSize);
-                for (let i = 0; i < hfGridSize; i++) {
-                    currentHfMatrix[i] = new Float32Array(hfGridSize);
-                    for (let j = 0; j < hfGridSize; j++) {
-                        currentHfMatrix[i][j] = baseMatrix[i][j];
-                    }
-                }
+                for (let i = 0; i < hfGridSize; i++) currentHfMatrix[i] = new Array(hfGridSize).fill(0);
                 window.currentHfMatrix = currentHfMatrix;
             }
 
-            let moundsToProcess = [];
-            if (affectedMounds) {
-                moundsToProcess = Array.isArray(affectedMounds) ? affectedMounds : [affectedMounds];
+            // Recalcula a matriz a partir da base + todos os mounds ativos
+            for (let i = 0; i < hfGridSize; i++) {
+                for (let j = 0; j < hfGridSize; j++) {
+                    currentHfMatrix[i][j] = baseMatrix[i][j];
+                }
             }
 
-            // Otimização: Atualiza apenas as regiões dos mounds processados
-            moundsToProcess.forEach(mound => {
-                const rInt = Math.ceil(mound.radius) + 1;
+            for (const mound of mounds) {
+                if (mound.flattened) continue;
+
+                if (mound.isPrecise) {
+                    // Cavagem precisa (horizontal): afeta os 4 vértices ao redor para criar um caminho plano de 3x3m
+                    const xBase = Math.floor(mound.x);
+                    const zBase = Math.floor(mound.z);
+                    const targetHeight = (mound.targetFloorHeight !== undefined ? mound.targetFloorHeight : mound.originalHeight) + mound.height;
+
+                    for (let di = 0; di <= 1; di++) {
+                        for (let dj = 0; dj <= 1; dj++) {
+                            const i = (xBase + di + hfGridSize) % hfGridSize;
+                            const j = (zBase + dj + hfGridSize) % hfGridSize;
+                            currentHfMatrix[i][j] = Math.min(currentHfMatrix[i][j], targetHeight);
+                            const relBedrockLevel = baseMatrix[i][j] - TOTAL_BEDROCK_DEPTH;
+                            if (currentHfMatrix[i][j] < relBedrockLevel) currentHfMatrix[i][j] = relBedrockLevel;
+                        }
+                    }
+                    continue;
+                }
+
+                const rInt = Math.ceil(mound.radius);
+                const radiusSq = mound.radius * mound.radius;
                 const centerX = Math.round(mound.x);
                 const centerZ = Math.round(mound.z);
 
@@ -3641,118 +3592,82 @@
                         const i = (centerX + di + hfGridSize) % hfGridSize;
                         const j = (centerZ + dj + hfGridSize) % hfGridSize;
 
-                        // Reset local para a base
-                        currentHfMatrix[i][j] = baseMatrix[i][j];
+                        // Coordenada do vértice real para cálculo de distância precisa
+                        const vertexX = centerX + di;
+                        const vertexZ = centerZ + dj;
+                        const dx = vertexX - mound.x;
+                        const dz = vertexZ - mound.z;
+                        const distSq = dx * dx + dz * dz;
 
-                        // Reaplica mounds locais
-                        for (const m of mounds) {
-                            if (m.flattened) continue;
-
-                            // Verificação simplificada para ver se o mound m afeta este ponto (i, j)
-                            const mRInt = Math.ceil(m.radius) + 1;
-                            const mCenterX = Math.round(m.x);
-                            const mCenterZ = Math.round(m.z);
-
-                            // Consideração toroidal para a verificação de proximidade
-                            let di_m = Math.abs(i - mCenterX);
-                            if (di_m > hfGridSize / 2) di_m = hfGridSize - di_m;
-                            let dj_m = Math.abs(j - mCenterZ);
-                            if (dj_m > hfGridSize / 2) dj_m = hfGridSize - dj_m;
-
-                            if (di_m <= mRInt && dj_m <= mRInt) {
-                                if (m.isPrecise) {
-                                    // Para simplificar, assumimos que isPrecise não cruza as bordas do hfGridSize de forma complexa
-                                    const xBase = Math.floor(m.x);
-                                    const zBase = Math.floor(m.z);
-                                    if (i >= xBase && i <= xBase + 1 && j >= zBase && j <= zBase + 1) {
-                                        const targetHeight = (m.targetFloorHeight !== undefined ? m.targetFloorHeight : m.originalHeight) + m.height;
-                                        currentHfMatrix[i][j] = Math.min(currentHfMatrix[i][j], targetHeight);
-                                    }
-                                } else {
-                                    const distSq = di_m * di_m + dj_m * dj_m;
-                                    const mRadiusSq = m.radius * m.radius;
-                                    if (distSq < mRadiusSq) {
-                                        currentHfMatrix[i][j] += Math.sqrt(mRadiusSq - distSq) * (m.height / m.radius);
-                                    }
-                                }
-                            }
+                        if (distSq < radiusSq) {
+                            currentHfMatrix[i][j] += Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
                         }
-
+                        // Clamp at bedrock
                         const relBedrockLevel = baseMatrix[i][j] - TOTAL_BEDROCK_DEPTH;
                         if (currentHfMatrix[i][j] < relBedrockLevel) currentHfMatrix[i][j] = relBedrockLevel;
                     }
                 }
-            });
-
-            // Atualiza a física dos 9 tiles de fundo em baixa resolução
-            const lowResMatrix = [];
-            for (let i = 0; i < backgroundGridSize; i++) {
-                lowResMatrix[i] = [];
-                const cannonI = Math.round((i / (backgroundGridSize - 1)) * (hfGridSize - 1));
-                for (let j = 0; j < backgroundGridSize; j++) {
-                    const cannonJ = Math.round((j / (backgroundGridSize - 1)) * (hfGridSize - 1));
-                    lowResMatrix[i][j] = currentHfMatrix[cannonI][cannonJ];
-                }
             }
 
-            const lowResHfShape = new CANNON.Heightfield(lowResMatrix, {
-                elementSize: worldSize / (backgroundGridSize - 1)
+            // Atualiza a física de todos os 9 tiles do terreno
+            const newHfShape = new CANNON.Heightfield(currentHfMatrix, {
+                elementSize: worldSize / (hfGridSize - 1)
             });
 
             islandMeshes.forEach(tile => {
                 if (tile.body.shapes.length > 0) {
                     tile.body.removeShape(tile.body.shapes[0]);
                 }
-                tile.body.addShape(lowResHfShape);
+                tile.body.addShape(newHfShape);
                 tile.body.updateAABB();
             });
 
-            // Atualiza a malha de detalhe
-            updateDetailTerrain();
-
+            // Atualiza a malha visual (geometria compartilhada)
             if (islandMeshes.length > 0) {
                 const geom = islandMeshes[0].mesh.geometry;
                 const vertices = geom.attributes.position.array;
                 const colors = geom.attributes.color.array;
-                const now = Date.now();
 
-                if (moundsToProcess.length > 0) {
-                    moundsToProcess.forEach(mound => {
-                        // Calcula a área afetada na geometria de baixa resolução
-                        const rInt = Math.ceil(mound.radius * (backgroundGridSize / hfGridSize)) + 2;
-                        const centerX_bg = Math.round(mound.x * (backgroundGridSize - 1) / (hfGridSize - 1));
-                        const centerZ_bg = Math.round(mound.z * (backgroundGridSize - 1) / (hfGridSize - 1));
+                if (affectedMound) {
+                    // Otimização: Atualiza apenas a região afetada pelo mound modificado (com suporte toroidal)
+                    const rInt = Math.ceil(affectedMound.radius);
+                    const now = Date.now();
 
-                        for (let di = -rInt; di <= rInt; di++) {
-                            for (let dj_bg = -rInt; dj_bg <= rInt; dj_bg++) {
-                                const i_bg = (centerX_bg + di + backgroundGridSize) % backgroundGridSize;
-                                const j_bg = (centerZ_bg + dj_bg + backgroundGridSize) % backgroundGridSize;
+                    for (let di = -rInt; di <= rInt; di++) {
+                        for (let dj_cannon = -rInt; dj_cannon <= rInt; dj_cannon++) {
+                            const cannonI = (Math.round(affectedMound.x) + di + hfGridSize) % hfGridSize;
+                            const cannonJ = (Math.round(affectedMound.z) + dj_cannon + hfGridSize) % hfGridSize;
 
-                                const cannonI = Math.round((i_bg / (backgroundGridSize - 1)) * (hfGridSize - 1));
-                                const cannonJ = Math.round((j_bg / (backgroundGridSize - 1)) * (hfGridSize - 1));
+                            const j = (hfGridSize - 1) - cannonJ;
+                            const i = cannonI;
+                            const height = currentHfMatrix[i][cannonJ];
+                            const vIdx = (j * hfGridSize + i);
+                            const index = vIdx * 3;
+                            vertices[index + 1] = height;
 
-                                const threeJ = j_bg;
-                                const height = currentHfMatrix[cannonI][cannonJ];
-                                const vIdx = (threeJ * backgroundGridSize + i_bg);
-                                const index = vIdx * 3;
-                                vertices[index + 1] = height;
-
-                                // Feedback visual (pintura) - Usamos o índice global do hfGridSize para persistência
-                                const globalIdx = cannonI + cannonJ * hfGridSize;
+                            // Feedback visual temporário
+                            const vx = (i / (hfGridSize - 1) - 0.5) * worldSize;
+                            const vz = (j / (hfGridSize - 1) - 0.5) * worldSize;
+                            const dist = Math.sqrt(vx * vx + vz * vz);
+                            if (dist < 280.0) {
                                 colors[vIdx * 3] = 0.0;
-                                modifiedVerticesMap.set(globalIdx, now);
+                                const existingIdx = modifiedVertices.findIndex(mv => mv.index === vIdx);
+                                if (existingIdx !== -1) {
+                                    modifiedVertices[existingIdx].time = now;
+                                } else {
+                                    modifiedVertices.push({ index: vIdx, time: now });
+                                }
                                 geom.attributes.color.needsUpdate = true;
                             }
                         }
-                    });
+                    }
                 } else {
-                    for (let j = 0; j < backgroundGridSize; j++) {
-                        const cannonJ = Math.round((j / (backgroundGridSize - 1)) * (hfGridSize - 1));
-                        const threeJ = j;
-                        for (let i = 0; i < backgroundGridSize; i++) {
-                            const cannonI = Math.round((i / (backgroundGridSize - 1)) * (hfGridSize - 1));
-                            const height = currentHfMatrix[cannonI][cannonJ];
-                            const index = (threeJ * backgroundGridSize + i) * 3;
+                    // Sincronização completa
+                    for (let j = 0; j < hfGridSize; j++) {
+                        const cannonJ = (hfGridSize - 1) - j;
+                        for (let i = 0; i < hfGridSize; i++) {
+                            const height = currentHfMatrix[i][cannonJ];
+                            const index = (j * hfGridSize + i) * 3;
                             vertices[index + 1] = height;
                         }
                     }
@@ -4039,8 +3954,8 @@
             scene.add(starField);
 
             // Cria o Terreno (Ilha Redonda)
-            // A geometria visual de fundo é de baixa resolução para performance
-            islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, backgroundGridSize - 1, backgroundGridSize - 1);
+            // A geometria visual é agora um plano segmentado cujos vértices correspondem ao Heightfield.
+            islandGeometry = new THREE.PlaneGeometry(worldSize, worldSize, hfGridSize - 1, hfGridSize - 1);
             window.islandGeometry = islandGeometry;
 
             // Adiciona atributo de cor para feedback visual de modificação (1.0 = normal, 0.0 = modificado)
@@ -4121,12 +4036,11 @@
 
             // Define a altura de cada vértice na geometria para corresponder à matriz do Heightfield.
             const vertices = islandGeometry.attributes.position.array;
-            for (let j = 0; j < backgroundGridSize; j++) {
-                const cannonJ = Math.round((j / (backgroundGridSize - 1)) * (hfGridSize - 1));
-                for (let i = 0; i < backgroundGridSize; i++) {
-                    const cannonI = Math.round((i / (backgroundGridSize - 1)) * (hfGridSize - 1));
-                    const height = hfMatrix[cannonI][cannonJ];
-                    const index = (j * backgroundGridSize + i) * 3;
+            for (let j = 0; j < hfGridSize; j++) { // j é o índice da linha do Three.js (Z de -W/2 a W/2)
+                const cannonJ = (hfGridSize - 1) - j; // Inversão necessária para alinhar com Cannon-es
+                for (let i = 0; i < hfGridSize; i++) { // i é o índice da coluna do Three.js (X de -W/2 a W/2)
+                    const height = hfMatrix[i][cannonJ];
+                    const index = (j * hfGridSize + i) * 3;
                     vertices[index + 1] = height; // Atualiza a coordenada Y
                 }
             }
@@ -4143,34 +4057,10 @@
             const inferiorDirtTextureURL = holeTextureURL; // Usar a textura de terra 2 solicitada
             const seabedTextureURL = sandTextureURL;
 
-            islandMeshMaterial = new THREE.MeshStandardMaterial({
+            const islandMeshMaterial = new THREE.MeshStandardMaterial({
                 color: 0xffffff,
                 vertexColors: true
             }); // Grass color placeholder
-
-            // --- Inicialização da Malha de Detalhe (Alta Resolução) ---
-            detailGeometry = new THREE.PlaneGeometry(detailSize, detailSize, detailGridSize - 1, detailGridSize - 1);
-            detailGeometry.rotateX(-Math.PI / 2);
-
-            // Adiciona atributos necessários para o shader
-            const detailColors = new Float32Array(detailGeometry.attributes.position.count * 3);
-            detailColors.fill(1.0);
-            detailGeometry.setAttribute('color', new THREE.BufferAttribute(detailColors, 3));
-            const detailBaseHeights = new Float32Array(detailGeometry.attributes.position.count);
-            detailGeometry.setAttribute('aBaseHeight', new THREE.BufferAttribute(detailBaseHeights, 1));
-
-            detailMesh = new THREE.Mesh(detailGeometry, islandMeshMaterial.clone());
-            detailMesh.receiveShadow = true;
-            detailMesh.castShadow = true;
-            detailMesh.frustumCulled = false;
-            scene.add(detailMesh);
-
-            detailBody = new CANNON.Body({ mass: 0, material: islandMaterial });
-            detailBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-            world.addBody(detailBody);
-            window.detailMesh = detailMesh;
-            window.detailBody = detailBody;
-            window.baseMatrix = baseMatrix;
 
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
@@ -4257,7 +4147,7 @@
                                     inferiorDirtTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
 
                                     islandMeshMaterial.map = groundTexture;
-                                    const commonOnBeforeCompile = (shader, isDetail) => {
+                                    islandMeshMaterial.onBeforeCompile = (shader) => {
                                         shader.uniforms.uSeabedTexture = { value: seabedTexture };
                                         shader.uniforms.uSandTexture = { value: sandTexture };
                                         shader.uniforms.uStoneTexture = { value: stoneTexture };
@@ -4269,9 +4159,7 @@
                                         shader.uniforms.uGrassRadius = { value: grassRadius };
                                         shader.uniforms.uBeachRadius = { value: beachRadius };
                                         shader.uniforms.uUseTextures = { value: useTextures ? 1.0 : 0.0 };
-                                        shader.uniforms.uPlayerPos = { value: new THREE.Vector3() };
-                                        shader.uniforms.uDetailRadius = { value: detailRadius };
-                                        shader.uniforms.uIsDetailMesh = { value: isDetail ? 1.0 : 0.0 };
+                                        islandMeshMaterial.userData.shader = shader;
 
                                         shader.vertexShader = `
                                             varying vec3 vWorldPosition;
@@ -4299,28 +4187,12 @@
                                             uniform float uGrassRadius;
                                             uniform float uBeachRadius;
                                             uniform float uUseTextures;
-                                            uniform vec3 uPlayerPos;
-                                            uniform float uDetailRadius;
-                                            uniform float uIsDetailMesh;
                                             varying vec3 vWorldPosition;
                                             varying float vBaseHeight;
-
-                                            float calculateWrappedDistance(vec3 p1, vec3 p2, float size) {
-                                                vec3 d = abs(p1 - p2);
-                                                d.x = min(d.x, size - d.x);
-                                                d.z = min(d.z, size - d.z);
-                                                return length(d);
-                                            }
-
                                             ${shader.fragmentShader}
                                         `.replace(
                                             `#include <map_fragment>`,
                                             `
-                                                if (uIsDetailMesh < 0.5) {
-                                                    float distToPlayer = calculateWrappedDistance(vWorldPosition, uPlayerPos, 2000.0);
-                                                    if (distToPlayer < uDetailRadius) discard;
-                                                }
-
                                                 vec3 seabedColor;
                                                 vec3 sandColor;
                                                 vec3 grassColor;
@@ -4405,10 +4277,7 @@
                                             `
                                         );
                                     };
-                                    islandMeshMaterial.onBeforeCompile = (shader) => commonOnBeforeCompile(shader, false);
-                                    detailMesh.material.onBeforeCompile = (shader) => commonOnBeforeCompile(shader, true);
                                     islandMeshMaterial.needsUpdate = true;
-                                    detailMesh.material.needsUpdate = true;
                                 }, undefined, (error) => console.error('Falha ao carregar a textura de terra inferior:', error));
                             }, undefined, (error) => console.error('Falha ao carregar a textura de grama:', error));
                         }, undefined, (error) => console.error('Falha ao carregar a textura de pedra:', error));
@@ -5172,7 +5041,7 @@
                     const hitPoint = intersects[i].point;
 
                     // Verifica se é o terreno
-                    const isIslandMesh = islandMeshes.some(m => m.mesh === obj) || obj === detailMesh;
+                    const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
                     if (isIslandMesh) {
                         // Verifica se há capim perto para priorizar
                         let nearCapim = null;
@@ -6150,24 +6019,6 @@
                 return;
             }
 
-            // Atualiza uniformes do shader de terreno
-            const playerPos = playerBody.position;
-            if (islandMeshMaterial.userData.shader) {
-                islandMeshMaterial.userData.shader.uniforms.uPlayerPos.value.copy(playerPos);
-            }
-            if (detailMesh && detailMesh.material.userData.shader) {
-                detailMesh.material.userData.shader.uniforms.uPlayerPos.value.copy(playerPos);
-            }
-
-            // Atualiza a malha de detalhe para seguir o jogador (com snapping de 1.0m para estabilidade)
-            const detailSnapX = Math.round(playerBody.position.x);
-            const detailSnapZ = Math.round(playerBody.position.z);
-            if (detailMesh && (detailMesh.userData.lastSnapX !== detailSnapX || detailMesh.userData.lastSnapZ !== detailSnapZ)) {
-                updateDetailTerrain();
-                detailMesh.userData.lastSnapX = detailSnapX;
-                detailMesh.userData.lastSnapZ = detailSnapZ;
-            }
-
             // Lógica de destruição progressiva
             // NOVO: Adiciona a verificação `isAttemptingToDestroy` e a lógica de reinício repetida.
             if (isAttemptingToDestroy) {
@@ -6704,7 +6555,6 @@
             const currentTileX = Math.round(playerBody.position.x / worldSize) * worldSize;
             const currentTileZ = Math.round(playerBody.position.z / worldSize) * worldSize;
             islandMeshes.forEach(tile => {
-                // Cannon-es Heightfield position after rotation
                 tile.body.position.set(currentTileX + tile.offsetX - worldSize / 2, 0, currentTileZ + tile.offsetZ + worldSize / 2);
                 tile.body.updateAABB();
             });
@@ -7111,7 +6961,7 @@
                         }
 
                         // Verificação de terreno (Cavar / Colher Grama)
-                        const isIslandMesh = islandMeshes.some(m => m.mesh === obj) || obj === detailMesh;
+                        const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
                         if (isIslandMesh) {
                             // Verifica se há capim perto
                             let nearCapim = false;
@@ -7830,7 +7680,7 @@
                             let obj = intersects[i].object;
 
                             // Check for mountain/ground
-                            const isIslandMesh = islandMeshes.some(m => m.mesh === obj) || obj === detailMesh;
+                            const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
 
                             if (isIslandMesh) {
                                 canDestroy = true;
@@ -7892,7 +7742,7 @@
                         }
 
                         // Check for mining/digging with hand
-                        const isIslandMesh = islandMeshes.some(m => m.mesh === obj) || obj === detailMesh;
+                        const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
 
                         if (isIslandMesh) {
                             // Verifica se há capim perto para a cor do crosshair
@@ -7933,54 +7783,46 @@
             crosshairElement.style.setProperty('--crosshair-color', crosshairColor);
 
             // NOVO: Atualiza o temporizador e fade da textura de modificação do terreno
-            if (modifiedVerticesMap.size > 0) {
+            if (modifiedVertices.length > 0) {
                 const now = Date.now();
-                const fadeDuration = 30000;
+                const geom = islandGeometry;
+                const colors = geom.attributes.color.array;
+                const fadeDuration = 30000; // 30 segundos para o fade completo
+                let colorsChanged = false;
 
-                // Processa a pintura para as duas resoluções (background e detail)
-                const geomsToUpdate = [];
-                if (islandGeometry) geomsToUpdate.push({ geom: islandGeometry, grid: backgroundGridSize });
-                if (detailGeometry) geomsToUpdate.push({ geom: detailGeometry, grid: detailGridSize });
+                for (let i = modifiedVertices.length - 1; i >= 0; i--) {
+                    const vIdx = modifiedVertices[i].index;
 
-                geomsToUpdate.forEach(({ geom, grid }) => {
-                    const colors = geom.attributes.color.array;
-                    let colorsChanged = false;
+                    // NOVO: Se estivermos modificando o terreno ativamente, reseta o tempo dos vértices afetados
+                    // Isso evita que a textura comece a desaparecer entre os estágios da cavagem/construção
+                    if (isDestroying && !destructionComplete && destroyTargetDigInfo) {
+                        const m = destroyTargetDigInfo.mound;
+                        const vi = vIdx % hfGridSize;
+                        const vj = Math.floor(vIdx / hfGridSize);
+                        const v_cannon_j = (hfGridSize - 1) - vj;
 
-                    for (const [globalIdx, time] of modifiedVerticesMap.entries()) {
-                        const gI = globalIdx % hfGridSize;
-                        const gJ = Math.floor(globalIdx / hfGridSize);
-
-                        // Verifica se este ponto global existe nesta malha específica (aproximação)
-                        const localI = Math.round(gI * (grid - 1) / (hfGridSize - 1));
-                        const localJ = Math.round(gJ * (grid - 1) / (hfGridSize - 1));
-                        const vIdx = localJ * grid + localI;
-
-                        let vertexTime = time;
-
-                        // Se estivermos modificando o terreno ativamente, reseta o tempo
-                        if (isDestroying && !destructionComplete && destroyTargetDigInfo) {
-                            const m = destroyTargetDigInfo.mound;
-                            if (gI >= Math.floor(m.x - m.radius) && gI <= Math.ceil(m.x + m.radius) &&
-                                gJ >= Math.floor(m.z - m.radius) && gJ <= Math.ceil(m.z + m.radius)) {
-                                vertexTime = now;
-                                modifiedVerticesMap.set(globalIdx, now);
-                            }
-                        }
-
-                        const elapsed = now - vertexTime;
-                        const progress = Math.min(1.0, elapsed / fadeDuration);
-
-                        if (colors[vIdx * 3] < progress || (progress === 0.0 && colors[vIdx * 3] > 0.0)) {
-                            colors[vIdx * 3] = progress;
-                            colorsChanged = true;
+                        if (vi >= Math.floor(m.x - m.radius) && vi <= Math.ceil(m.x + m.radius) &&
+                            v_cannon_j >= Math.floor(m.z - m.radius) && v_cannon_j <= Math.ceil(m.z + m.radius)) {
+                            modifiedVertices[i].time = now;
                         }
                     }
-                    if (colorsChanged) geom.attributes.color.needsUpdate = true;
-                });
 
-                // Limpeza de entradas expiradas
-                for (const [globalIdx, time] of modifiedVerticesMap.entries()) {
-                    if (now - time >= fadeDuration) modifiedVerticesMap.delete(globalIdx);
+                    const elapsed = now - modifiedVertices[i].time;
+                    const progress = Math.min(1.0, elapsed / fadeDuration);
+
+                    if (colors[vIdx * 3] < progress || (progress === 0.0 && colors[vIdx * 3] > 0.0)) {
+                        colors[vIdx * 3] = progress;
+                        colorsChanged = true;
+                    }
+
+                    if (progress >= 1.0) {
+                        colors[vIdx * 3] = 1.0;
+                        modifiedVertices.splice(i, 1);
+                        colorsChanged = true;
+                    }
+                }
+                if (colorsChanged) {
+                    geom.attributes.color.needsUpdate = true;
                 }
             }
 
@@ -8236,6 +8078,14 @@
             Object.defineProperty(window, 'targetCloudCount', {
                 get: () => targetCloudCount,
                 set: (v) => { targetCloudCount = v; }
+            });
+            Object.defineProperty(window, 'rainIntensity', {
+                get: () => rainIntensity,
+                set: (v) => { rainIntensity = v; }
+            });
+            Object.defineProperty(window, 'targetRainIntensity', {
+                get: () => targetRainIntensity,
+                set: (v) => { targetRainIntensity = v; }
             });
             window.updateWeather = updateWeather;
             window.spawnBirdGroup = spawnBirdGroup;
