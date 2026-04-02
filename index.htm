@@ -791,7 +791,7 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 200; // Resolução global do terreno equilibrada
+        const hfGridSize = 256; // Resolução global do terreno equilibrada
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -905,7 +905,7 @@
         let crouchPlayerShape;   // Para armazenar a forma agachada
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
-        const worldSize = 600;
+        const worldSize = 770;
         let birds = []; // NOVO: Array para armazenar os pássaros
         let islandAmbientAudio = null; // Som ambiente da ilha (interior)
         let beachAmbientAudio = null; // Som ambiente da praia/mar
@@ -2828,7 +2828,7 @@
             });
 
             // Se o pássaro mais próximo estiver muito longe, não toca som
-            if (minBirdDist > 300) return;
+            if (minBirdDist > worldSize / 2) return;
 
             const dist = calculateWrappedDistance(playerPos, new THREE.Vector3(0, playerPos.y, 0));
 
@@ -2852,7 +2852,7 @@
 
             if (buffer) {
                 // Volume baseado na distância do pássaro mais próximo
-                const volume = Math.max(0, 0.325 * (1 - minBirdDist / 300));
+                const volume = Math.max(0, 0.325 * (1 - minBirdDist / (worldSize / 2)));
                 if (volume > 0) {
                     playOneShot(buffer, volume);
                 }
@@ -4194,8 +4194,8 @@
                                                 }
 
                                                 // Usa distância periódica para que ilhas espelhadas sejam renderizadas corretamente
-                                                // O mundo se repete a cada 600 unidades.
-                                                vec2 periodicPos = mod(vWorldPosition.xz + 300.0, 600.0) - 300.0;
+                                                // O mundo se repete a cada 770 unidades.
+                                                vec2 periodicPos = mod(vWorldPosition.xz + 385.0, 770.0) - 385.0;
                                                 float dist = length(periodicPos);
 
                                                 // Mistura entre areia e grama baseada no raio (praia larga)
@@ -5883,8 +5883,8 @@
             const halfSize = worldSize / 2;
             let tx = ((x + halfSize) % worldSize + worldSize) % worldSize - halfSize;
             let tz = ((z + halfSize) % worldSize + worldSize) % worldSize - halfSize;
-            // Protected area: a small square at one "corner" (approx 280, 280)
-            return (tx > 270 && tz > 270);
+            // Protected area: a small square at one "corner"
+            return (tx > (halfSize - 30) && tz > (halfSize - 30));
         }
         window.isProtected = isProtected;
 
@@ -6646,7 +6646,7 @@
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
                 // Culling estrito para o terreno (um pouco maior que renderDistance para evitar buracos nas bordas)
-                tile.mesh.visible = dist <= renderDistance + 600;
+                tile.mesh.visible = dist <= renderDistance + worldSize;
             });
 
             waterMeshes.forEach(tile => {
@@ -6654,7 +6654,7 @@
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + 600;
+                tile.mesh.visible = dist <= renderDistance + worldSize;
             });
 
             seabedMeshes.forEach(tile => {
@@ -6662,7 +6662,7 @@
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + 600;
+                tile.mesh.visible = dist <= renderDistance + worldSize;
             });
 
             const renderDistSq = renderDistance * renderDistance;
@@ -6746,7 +6746,7 @@
             capimInstancedMeshes.forEach(mesh => {
                 // Como são 9 tiles, verificamos a distância do centro do tile visual
                 const dist = camera.position.distanceTo(mesh.position);
-                mesh.visible = dist <= renderDistance + 600;
+                mesh.visible = dist <= renderDistance + worldSize;
             });
 
             // NOVO: Lógica para fechar buracos inativos (curar terreno após 10 segundos)
