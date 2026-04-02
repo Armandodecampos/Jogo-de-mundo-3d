@@ -840,6 +840,9 @@
         let raycastTargetsNeedUpdate = true;
         let terrainNeedsUpdate = false;
         let terrainAffectedMounds = [];
+        let currentHfMatrix = null;
+        let lastHfUpdateTime = 0;
+        let lastTileX = NaN, lastTileZ = NaN;
         let visualOffsetX = 0;
         let visualOffsetZ = 0;
 
@@ -3542,136 +3545,181 @@
         window.mounds = mounds;
 
         function updateIslandGeometry(affectedMound = null) {
-            // Inicializa a matriz se necessário
             if (!currentHfMatrix || currentHfMatrix.length !== hfGridSize) {
                 currentHfMatrix = new Array(hfGridSize);
                 for (let i = 0; i < hfGridSize; i++) currentHfMatrix[i] = new Array(hfGridSize).fill(0);
                 window.currentHfMatrix = currentHfMatrix;
             }
 
-            // Recalcula a matriz a partir da base + todos os mounds ativos
-            for (let i = 0; i < hfGridSize; i++) {
-                for (let j = 0; j < hfGridSize; j++) {
-                    currentHfMatrix[i][j] = baseMatrix[i][j];
+            if (!affectedMound) {
+                for (let i = 0; i < hfGridSize; i++) {
+                    for (let j = 0; j < hfGridSize; j++) {
+                        currentHfMatrix[i][j] = baseMatrix[i][j];
+                    }
+                }
+
+                for (const mound of mounds) {
+                    if (mound.flattened) continue;
+                    applyMoundToMatrix(mound, currentHfMatrix);
+                }
+            } else {
+                const affectedRect = getMoundAffectedRect(affectedMound);
+                for (let i = affectedRect.minI; i <= affectedRect.maxI; i++) {
+                    for (let j = affectedRect.minJ; j <= affectedRect.maxJ; j++) {
+                        const cannonI = (i + hfGridSize) % hfGridSize;
+                        const cannonJ = (j + hfGridSize) % hfGridSize;
+                        currentHfMatrix[cannonI][cannonJ] = baseMatrix[cannonI][cannonJ];
+                    }
+                }
+                for (const mound of mounds) {
+                    if (mound.flattened) continue;
+                    applyMoundToMatrix(mound, currentHfMatrix, affectedRect);
                 }
             }
 
-            for (const mound of mounds) {
-                if (mound.flattened) continue;
-
-                if (mound.isPrecise) {
-                    // Cavagem precisa (horizontal): afeta os 4 vértices ao redor para criar um caminho plano de 3x3m
-                    const xBase = Math.floor(mound.x);
-                    const zBase = Math.floor(mound.z);
-                    const targetHeight = (mound.targetFloorHeight !== undefined ? mound.targetFloorHeight : mound.originalHeight) + mound.height;
-
-                    for (let di = 0; di <= 1; di++) {
-                        for (let dj = 0; dj <= 1; dj++) {
-                            const i = (xBase + di + hfGridSize) % hfGridSize;
-                            const j = (zBase + dj + hfGridSize) % hfGridSize;
-                            currentHfMatrix[i][j] = Math.min(currentHfMatrix[i][j], targetHeight);
-                            if (currentHfMatrix[i][j] < bedrockLevel) currentHfMatrix[i][j] = bedrockLevel;
-                        }
-                    }
-                    continue;
-                }
-
-                const rInt = Math.ceil(mound.radius);
-                const radiusSq = mound.radius * mound.radius;
-                const centerX = Math.round(mound.x);
-                const centerZ = Math.round(mound.z);
-
-                for (let di = -rInt; di <= rInt; di++) {
-                    for (let dj = -rInt; dj <= rInt; dj++) {
-                        const i = (centerX + di + hfGridSize) % hfGridSize;
-                        const j = (centerZ + dj + hfGridSize) % hfGridSize;
-
-                        // Coordenada do vértice real para cálculo de distância precisa
-                        const vertexX = centerX + di;
-                        const vertexZ = centerZ + dj;
-                        const dx = vertexX - mound.x;
-                        const dz = vertexZ - mound.z;
-                        const distSq = dx * dx + dz * dz;
-
-                        if (distSq < radiusSq) {
-                            currentHfMatrix[i][j] += Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
-                        }
-                        // Clamp at bedrock
-                        if (currentHfMatrix[i][j] < bedrockLevel) currentHfMatrix[i][j] = bedrockLevel;
-                    }
-                }
+            const now = Date.now();
+            if (now - lastHfUpdateTime > 150 || !affectedMound) {
+                const newHfShape = new CANNON.Heightfield(currentHfMatrix, {
+                    elementSize: worldSize / (hfGridSize - 1)
+                });
+                islandMeshes.forEach(tile => {
+                    if (tile.body.shapes.length > 0) tile.body.removeShape(tile.body.shapes[0]);
+                    tile.body.addShape(newHfShape);
+                    tile.body.updateAABB();
+                });
+                lastHfUpdateTime = now;
             }
 
-            // Atualiza a física de todos os 9 tiles do terreno
-            const newHfShape = new CANNON.Heightfield(currentHfMatrix, {
-                elementSize: worldSize / (hfGridSize - 1)
-            });
-
-            islandMeshes.forEach(tile => {
-                if (tile.body.shapes.length > 0) {
-                    tile.body.removeShape(tile.body.shapes[0]);
-                }
-                tile.body.addShape(newHfShape);
-                tile.body.updateAABB();
-            });
-
-            // Atualiza a malha visual (geometria compartilhada)
             if (islandMeshes.length > 0) {
                 const geom = islandMeshes[0].mesh.geometry;
                 const vertices = geom.attributes.position.array;
                 const colors = geom.attributes.color.array;
 
                 if (affectedMound) {
-                    // Otimização: Atualiza apenas a região afetada pelo mound modificado (com suporte toroidal)
                     const rInt = Math.ceil(affectedMound.radius);
-                    const now = Date.now();
+                    const nowTime = Date.now();
+                    const centerX = Math.round(affectedMound.x);
+                    const centerZ = Math.round(affectedMound.z);
 
                     for (let di = -rInt; di <= rInt; di++) {
                         for (let dj_cannon = -rInt; dj_cannon <= rInt; dj_cannon++) {
-                            const cannonI = (Math.round(affectedMound.x) + di + hfGridSize) % hfGridSize;
-                            const cannonJ = (Math.round(affectedMound.z) + dj_cannon + hfGridSize) % hfGridSize;
-
+                            const cannonI = (centerX + di + hfGridSize) % hfGridSize;
+                            const cannonJ = (centerZ + dj_cannon + hfGridSize) % hfGridSize;
                             const j = (hfGridSize - 1) - cannonJ;
                             const i = cannonI;
-                            const height = currentHfMatrix[i][cannonJ];
                             const vIdx = (j * hfGridSize + i);
-                            const index = vIdx * 3;
-                            vertices[index + 1] = height;
+                            vertices[vIdx * 3 + 1] = currentHfMatrix[i][cannonJ];
 
-                            // Feedback visual temporário
                             const vx = (i / (hfGridSize - 1) - 0.5) * worldSize;
                             const vz = (j / (hfGridSize - 1) - 0.5) * worldSize;
-                            const dist = Math.sqrt(vx * vx + vz * vz);
-                            if (dist < beachRadius) { // Usando beachRadius em vez de fixo 280
+                            if (Math.sqrt(vx * vx + vz * vz) < beachRadius) {
                                 colors[vIdx * 3] = 0.0;
                                 const existingIdx = modifiedVertices.findIndex(mv => mv.index === vIdx);
-                                if (existingIdx !== -1) {
-                                    modifiedVertices[existingIdx].time = now;
-                                } else {
-                                    modifiedVertices.push({ index: vIdx, time: now });
-                                }
+                                if (existingIdx !== -1) modifiedVertices[existingIdx].time = nowTime;
+                                else modifiedVertices.push({ index: vIdx, time: nowTime });
                                 geom.attributes.color.needsUpdate = true;
                             }
                         }
                     }
+                    computeLocalizedNormals(geom, affectedMound);
                 } else {
-                    // Sincronização completa
                     for (let j = 0; j < hfGridSize; j++) {
                         const cannonJ = (hfGridSize - 1) - j;
                         for (let i = 0; i < hfGridSize; i++) {
-                            const height = currentHfMatrix[i][cannonJ];
-                            const index = (j * hfGridSize + i) * 3;
-                            vertices[index + 1] = height;
+                            vertices[(j * hfGridSize + i) * 3 + 1] = currentHfMatrix[i][cannonJ];
+                        }
+                    }
+                    geom.computeVertexNormals();
+                }
+                geom.attributes.position.needsUpdate = true;
+            }
+            updateWaterConnectivity();
+            updateWaterVisuals();
+        }
+
+        function getMoundAffectedRect(mound) {
+            const rInt = Math.ceil(mound.radius);
+            const centerX = Math.round(mound.x);
+            const centerZ = Math.round(mound.z);
+            return {
+                minI: centerX - rInt, maxI: centerX + rInt,
+                minJ: centerZ - rInt, maxJ: centerZ + rInt
+            };
+        }
+
+        function applyMoundToMatrix(mound, matrix, clipRect = null) {
+            if (mound.isPrecise) {
+                const xBase = Math.floor(mound.x);
+                const zBase = Math.floor(mound.z);
+                const targetHeight = (mound.targetFloorHeight !== undefined ? mound.targetFloorHeight : mound.originalHeight) + mound.height;
+                for (let di = 0; di <= 1; di++) {
+                    for (let dj = 0; dj <= 1; dj++) {
+                        const i = xBase + di;
+                        const j = zBase + dj;
+                        if (clipRect && (i < clipRect.minI || i > clipRect.maxI || j < clipRect.minJ || j > clipRect.maxJ)) continue;
+                        const cannonI = (i + hfGridSize) % hfGridSize;
+                        const cannonJ = (j + hfGridSize) % hfGridSize;
+                        matrix[cannonI][cannonJ] = Math.min(matrix[cannonI][cannonJ], targetHeight);
+                        if (matrix[cannonI][cannonJ] < bedrockLevel) matrix[cannonI][cannonJ] = bedrockLevel;
+                    }
+                }
+            } else {
+                const rInt = Math.ceil(mound.radius);
+                const radiusSq = mound.radius * mound.radius;
+                const centerX = Math.round(mound.x);
+                const centerZ = Math.round(mound.z);
+                for (let di = -rInt; di <= rInt; di++) {
+                    for (let dj = -rInt; dj <= rInt; dj++) {
+                        const i = centerX + di;
+                        const j = centerZ + dj;
+                        if (clipRect && (i < clipRect.minI || i > clipRect.maxI || j < clipRect.minJ || j > clipRect.maxJ)) continue;
+                        const dx = i - mound.x;
+                        const dz = j - mound.z;
+                        const distSq = dx * dx + dz * dz;
+                        if (distSq < radiusSq) {
+                            const cannonI = (i + hfGridSize) % hfGridSize;
+                            const cannonJ = (j + hfGridSize) % hfGridSize;
+                            matrix[cannonI][cannonJ] += Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
+                            if (matrix[cannonI][cannonJ] < bedrockLevel) matrix[cannonI][cannonJ] = bedrockLevel;
                         }
                     }
                 }
-                geom.attributes.position.needsUpdate = true;
-                geom.computeVertexNormals();
             }
+        }
 
-            // Atualiza a conectividade e o visual da água quando o terreno muda
-            updateWaterConnectivity();
-            updateWaterVisuals();
+        function computeLocalizedNormals(geom, mound) {
+            const vertices = geom.attributes.position.array;
+            const normals = geom.attributes.normal.array;
+            const rInt = Math.ceil(mound.radius) + 2;
+            const centerX = Math.round(mound.x);
+            const centerZ = Math.round(mound.z);
+
+            for (let di = -rInt; di <= rInt; di++) {
+                for (let dj = -rInt; dj <= rInt; dj++) {
+                    const i = (centerX + di + hfGridSize) % hfGridSize;
+                    const j_cannon = (centerZ + dj + hfGridSize) % hfGridSize;
+                    const j = (hfGridSize - 1) - j_cannon;
+                    const vIdx = j * hfGridSize + i;
+
+                    const hL = getVertexHeight(i - 1, j_cannon);
+                    const hR = getVertexHeight(i + 1, j_cannon);
+                    const hD = getVertexHeight(i, j_cannon - 1);
+                    const hU = getVertexHeight(i, j_cannon + 1);
+
+                    const step = worldSize / (hfGridSize - 1);
+                    const normal = new THREE.Vector3(hL - hR, 2 * step, hD - hU).normalize();
+                    normals[vIdx * 3] = normal.x;
+                    normals[vIdx * 3 + 1] = normal.y;
+                    normals[vIdx * 3 + 2] = normal.z;
+                }
+            }
+            geom.attributes.normal.needsUpdate = true;
+        }
+
+        function getVertexHeight(i, j_cannon) {
+            const ci = (i + hfGridSize) % hfGridSize;
+            const cj = (j_cannon + hfGridSize) % hfGridSize;
+            return currentHfMatrix[ci][cj];
         }
 
         // Função de inicialização para cena, câmera, renderizador e mundo da física
@@ -3734,7 +3782,7 @@
             renderer.setPixelRatio(window.devicePixelRatio);
             renderer.setSize(window.innerWidth, window.innerHeight); // Define o tamanho do renderizador para o tamanho da janela
             renderer.shadowMap.enabled = useShadows;
-            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            renderer.shadowMap.type = THREE.PCFShadowMap;
             document.body.appendChild(renderer.domElement); // Adiciona o canvas ao corpo do documento
 
             // Configuração do Mundo Cannon-es (física)
@@ -6520,10 +6568,15 @@
             // Sincroniza a posição de todos os 9 corpos de física da ilha com o tile atual do jogador
             const currentTileX = Math.round(playerBody.position.x / worldSize) * worldSize;
             const currentTileZ = Math.round(playerBody.position.z / worldSize) * worldSize;
-            islandMeshes.forEach(tile => {
-                tile.body.position.set(currentTileX + tile.offsetX - worldSize / 2, 0, currentTileZ + tile.offsetZ + worldSize / 2);
-                tile.body.updateAABB();
-            });
+            const tileChanged = (lastTileX !== currentTileX || lastTileZ !== currentTileZ);
+            if (tileChanged) {
+                lastTileX = currentTileX;
+                lastTileZ = currentTileZ;
+                islandMeshes.forEach(tile => {
+                    tile.body.position.set(currentTileX + tile.offsetX - worldSize / 2, 0, currentTileZ + tile.offsetZ + worldSize / 2);
+                    tile.body.updateAABB();
+                });
+            }
 
             // Atualiza o mundo da física e o tempo simulado
             world.step(1 / 60, delta, 3);
@@ -6667,6 +6720,7 @@
 
             const renderDistSq = renderDistance * renderDistance;
             const halfWorldSize = worldSize / 2;
+            const visibilityThrottle = (frameCount % 3 === 0);
 
             // Otimização: Wrapping de instância única para todos os objetos e culling estrito
             collectibleBoxes.forEach(box => {
@@ -6680,17 +6734,17 @@
                 if (Math.abs(dx) > halfWorldSize) wrappedX += (dx > 0 ? -worldSize : worldSize);
                 if (Math.abs(dz) > halfWorldSize) wrappedZ += (dz > 0 ? -worldSize : worldSize);
 
-                const fDx = wrappedX - playerBody.position.x;
-                const fDz = wrappedZ - playerBody.position.z;
-                const fDy = body.position.y - playerBody.position.y;
-                const distSq = fDx*fDx + fDy*fDy + fDz*fDz;
+                if (visibilityThrottle || !mesh.visible) {
+                    const fDx = wrappedX - playerBody.position.x;
+                    const fDz = wrappedZ - playerBody.position.z;
+                    const fDy = body.position.y - playerBody.position.y;
+                    const distSq = fDx*fDx + fDy*fDy + fDz*fDz;
+                    mesh.visible = distSq <= renderDistSq;
+                }
 
-                if (distSq > renderDistSq) {
-                    mesh.visible = false;
-                } else {
+                if (mesh.visible) {
                     mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
                     mesh.quaternion.copy(body.quaternion);
-                    mesh.visible = true;
                 }
             });
 
@@ -6704,17 +6758,17 @@
                 if (Math.abs(dx) > halfWorldSize) wrappedX += (dx > 0 ? -worldSize : worldSize);
                 if (Math.abs(dz) > halfWorldSize) wrappedZ += (dz > 0 ? -worldSize : worldSize);
 
-                const fDx = wrappedX - playerBody.position.x;
-                const fDz = wrappedZ - playerBody.position.z;
-                const fDy = body.position.y - playerBody.position.y;
-                const distSq = fDx*fDx + fDy*fDy + fDz*fDz;
+                if (visibilityThrottle || !mesh.visible) {
+                    const fDx = wrappedX - playerBody.position.x;
+                    const fDz = wrappedZ - playerBody.position.z;
+                    const fDy = body.position.y - playerBody.position.y;
+                    const distSq = fDx*fDx + fDy*fDy + fDz*fDz;
+                    mesh.visible = distSq <= renderDistSq;
+                }
 
-                if (distSq > renderDistSq) {
-                    mesh.visible = false;
-                } else {
+                if (mesh.visible) {
                     mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
                     mesh.quaternion.copy(body.quaternion);
-                    mesh.visible = true;
                 }
             });
 
@@ -6728,17 +6782,17 @@
                 if (Math.abs(dx) > halfWorldSize) wrappedX += (dx > 0 ? -worldSize : worldSize);
                 if (Math.abs(dz) > halfWorldSize) wrappedZ += (dz > 0 ? -worldSize : worldSize);
 
-                const fDx = wrappedX - playerBody.position.x;
-                const fDz = wrappedZ - playerBody.position.z;
-                const fDy = mound.position.y - playerBody.position.y;
-                const distSq = fDx*fDx + fDy*fDy + fDz*fDz;
+                if (visibilityThrottle || !mound.mesh.visible) {
+                    const fDx = wrappedX - playerBody.position.x;
+                    const fDz = wrappedZ - playerBody.position.z;
+                    const fDy = mound.position.y - playerBody.position.y;
+                    const distSq = fDx*fDx + fDy*fDy + fDz*fDz;
+                    mound.mesh.visible = distSq <= renderDistSq;
+                }
 
-                if (distSq > renderDistSq) {
-                    mound.mesh.visible = false;
-                } else {
+                if (mound.mesh.visible) {
                     mound.mesh.position.set(wrappedX - visualOffsetX, mound.position.y, wrappedZ - visualOffsetZ);
                     mound.mesh.quaternion.copy(mound.quaternion);
-                    mound.mesh.visible = true;
                 }
             });
 
