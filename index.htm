@@ -632,16 +632,16 @@
             <div class="option-item">
                 <label for="renderDistanceSlider" class="flex justify-between w-full">
                     <span>Distância de Visão</span>
-                    <span id="renderDistanceValue">600</span>
+                    <span id="renderDistanceValue">250</span>
                 </label>
-                <input type="range" id="renderDistanceSlider" min="40" max="2000" value="600" class="w-full">
+                <input type="range" id="renderDistanceSlider" min="40" max="400" value="250" class="w-full">
             </div>
             <div class="option-item">
                 <label for="grassDensitySlider" class="flex justify-between w-full">
                     <span>Densidade de Grama</span>
-                    <span id="grassDensityValue">300</span>
+                    <span id="grassDensityValue">1000</span>
                 </label>
-                <input type="range" id="grassDensitySlider" min="1" max="10000" value="300" class="w-full">
+                <input type="range" id="grassDensitySlider" min="1" max="10000" value="1000" class="w-full">
             </div>
             <div class="option-item">
                 <label for="treeDensitySlider" class="flex justify-between w-full">
@@ -905,7 +905,7 @@
         let crouchPlayerShape;   // Para armazenar a forma agachada
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
-        const worldSize = 2000;
+        const worldSize = 600;
         let birds = []; // NOVO: Array para armazenar os pássaros
         let islandAmbientAudio = null; // Som ambiente da ilha (interior)
         let beachAmbientAudio = null; // Som ambiente da praia/mar
@@ -976,11 +976,11 @@
         const islandRadiusBottom = 300; // NOVO: Raio da base da ilha
         const waterLevel = -8.0; // NOVO: Nível da água (baixado de -4.8)
         const seabedLevel = -20.0; // NOVO: Nível do fundo do mar
-        const DIRT_TO_STONE_DEPTH = 5.0; // NOVO: Profundidade para chegar na pedra
-        const TOTAL_BEDROCK_DEPTH = 15.0; // NOVO: Profundidade total até a camada indestrutível
+        let stoneLayerLevel = -4.2; // NOVO: Nível onde começa a pedra (5 unidades de terra)
+        const bedrockLevel = -20.0; // NOVO: Camada indestrutível (10 unidades de pedra depois da terra)
         const grassRadius = 100.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
         const beachRadius = 200.0; window.beachRadius = beachRadius; // NOVO: Raio da praia (aumentado de 120.0)
-        let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 600; // Distância de renderização para objetos
+        let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 250; // Distância de renderização para objetos
         let frameCount = 0;
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
@@ -1295,17 +1295,13 @@
         let holeMaterial; // NOVO: Material para o buraco cavado
         let stoneHoleMaterial;
         let holeGeometryTemplate = null; // NOVO: Para armazenar a geometria do modelo do buraco
-        let dirtTextureForHole; // NOVO: Textura de terra para o buraco
 
         let mounds = [];
         let modifiedVertices = []; // NOVO: Controla a textura temporária do terreno [{index, time}]
         let dirtMountains = []; // Exposto globalmente
         let visualMounds = []; // NOVO: Para os montes de terra visuais
         let closingMounds = []; // NOVO: Para animar o fechamento dos buracos
-        let moundDomes = [];
         let baseMatrix = []; // NOVO: Para armazenar a geometria base da ilha
-        let splatMap; // NOVO: Máscara de textura para pintar os buracos
-        let splatMapData; // NOVO: Dados brutos para a máscara de textura
 
         // Declare physics materials globally
         let playerMaterial;
@@ -3541,8 +3537,7 @@
         window.updateWaterVisuals = updateWaterVisuals;
         window.currentHfMatrix = currentHfMatrix;
         window.updateIslandGeometry = updateIslandGeometry;
-        window.DIRT_TO_STONE_DEPTH = DIRT_TO_STONE_DEPTH;
-        window.TOTAL_BEDROCK_DEPTH = TOTAL_BEDROCK_DEPTH;
+        window.stoneLayerLevel = stoneLayerLevel;
         window.hfGridSize = hfGridSize;
         window.mounds = mounds;
 
@@ -3575,8 +3570,7 @@
                             const i = (xBase + di + hfGridSize) % hfGridSize;
                             const j = (zBase + dj + hfGridSize) % hfGridSize;
                             currentHfMatrix[i][j] = Math.min(currentHfMatrix[i][j], targetHeight);
-                            const relBedrockLevel = baseMatrix[i][j] - TOTAL_BEDROCK_DEPTH;
-                            if (currentHfMatrix[i][j] < relBedrockLevel) currentHfMatrix[i][j] = relBedrockLevel;
+                            if (currentHfMatrix[i][j] < bedrockLevel) currentHfMatrix[i][j] = bedrockLevel;
                         }
                     }
                     continue;
@@ -3603,8 +3597,7 @@
                             currentHfMatrix[i][j] += Math.sqrt(radiusSq - distSq) * (mound.height / mound.radius);
                         }
                         // Clamp at bedrock
-                        const relBedrockLevel = baseMatrix[i][j] - TOTAL_BEDROCK_DEPTH;
-                        if (currentHfMatrix[i][j] < relBedrockLevel) currentHfMatrix[i][j] = relBedrockLevel;
+                        if (currentHfMatrix[i][j] < bedrockLevel) currentHfMatrix[i][j] = bedrockLevel;
                     }
                 }
             }
@@ -3649,7 +3642,7 @@
                             const vx = (i / (hfGridSize - 1) - 0.5) * worldSize;
                             const vz = (j / (hfGridSize - 1) - 0.5) * worldSize;
                             const dist = Math.sqrt(vx * vx + vz * vz);
-                            if (dist < 280.0) {
+                            if (dist < beachRadius) { // Usando beachRadius em vez de fixo 280
                                 colors[vIdx * 3] = 0.0;
                                 const existingIdx = modifiedVertices.findIndex(mv => mv.index === vIdx);
                                 if (existingIdx !== -1) {
@@ -3981,8 +3974,8 @@
                     // Transição de terra firme para um pouco abaixo do nível do mar
                     height = islandSurfaceHeight * (1 - t) + (waterLevel - 0.5) * t;
                 } else {
-                    // Gradiente suave até o fundo do mar. Flatten at distance 950 for seamless junctions.
-                    const t = Math.min(1.0, (distance - beachRadius) / 750.0);
+                    // Gradiente suave até o fundo do mar
+                    const t = Math.min(1.0, (distance - beachRadius) / (worldSize * 0.4));
                     height = (waterLevel - 0.5) * (1 - t) + seabedLevel * t;
                 }
 
@@ -4024,15 +4017,6 @@
 
             // Gira a geometria para ficar no plano XZ.
             islandGeometry.rotateX(-Math.PI / 2);
-
-            // Adiciona atributo de altura base para cálculos relativos no shader
-            const baseHeights = new Float32Array(islandGeometry.attributes.position.count);
-            const posAttr = islandGeometry.attributes.position;
-            for (let i = 0; i < posAttr.count; i++) {
-                // Após rotateX(-PI/2), o plano XY original torna-se o plano XZ
-                baseHeights[i] = getSurfaceHeight(posAttr.getX(i), posAttr.getZ(i));
-            }
-            islandGeometry.setAttribute('aBaseHeight', new THREE.BufferAttribute(baseHeights, 1));
 
             // Define a altura de cada vértice na geometria para corresponder à matriz do Heightfield.
             const vertices = islandGeometry.attributes.position.array;
@@ -4154,8 +4138,8 @@
                                         shader.uniforms.uGrassTexture = { value: grassTexture };
                                         shader.uniforms.uInferiorTexture = { value: inferiorDirtTexture };
                                         shader.uniforms.uWaterLevel = { value: waterLevel };
-                                        shader.uniforms.uDirtToStoneDepth = { value: DIRT_TO_STONE_DEPTH };
-                                        shader.uniforms.uTotalBedrockDepth = { value: TOTAL_BEDROCK_DEPTH };
+                                        shader.uniforms.uStoneLayerLevel = { value: stoneLayerLevel };
+                                        shader.uniforms.uBedrockLevel = { value: bedrockLevel };
                                         shader.uniforms.uGrassRadius = { value: grassRadius };
                                         shader.uniforms.uBeachRadius = { value: beachRadius };
                                         shader.uniforms.uUseTextures = { value: useTextures ? 1.0 : 0.0 };
@@ -4163,15 +4147,12 @@
 
                                         shader.vertexShader = `
                                             varying vec3 vWorldPosition;
-                                            attribute float aBaseHeight;
-                                            varying float vBaseHeight;
                                             ${shader.vertexShader}
                                         `.replace(
                                             `#include <worldpos_vertex>`,
                                             `
                                             #include <worldpos_vertex>
                                             vWorldPosition = (modelMatrix * vec4(transformed, 1.0)).xyz;
-                                            vBaseHeight = aBaseHeight;
                                             `
                                         );
 
@@ -4182,13 +4163,12 @@
                                             uniform sampler2D uGrassTexture;
                                             uniform sampler2D uInferiorTexture;
                                             uniform float uWaterLevel;
-                                            uniform float uDirtToStoneDepth;
-                                            uniform float uTotalBedrockDepth;
+                                            uniform float uStoneLayerLevel;
+                                            uniform float uBedrockLevel;
                                             uniform float uGrassRadius;
                                             uniform float uBeachRadius;
                                             uniform float uUseTextures;
                                             varying vec3 vWorldPosition;
-                                            varying float vBaseHeight;
                                             ${shader.fragmentShader}
                                         `.replace(
                                             `#include <map_fragment>`,
@@ -4199,17 +4179,14 @@
                                                 vec3 stoneColor;
                                                 vec3 inferiorColor;
 
-                                                // Use a periodic scale relative to worldSize (2000 * 0.02 = 40)
-                                                // This eliminates seams at mirrored world junctions
-                                                vec2 worldUv = vWorldPosition.xz * 0.02;
                                                 if (uUseTextures > 0.5) {
-                                                    seabedColor = texture2D(uSeabedTexture, worldUv).rgb * 1.6; // Lighten seabed more for uniformity
-                                                    sandColor = texture2D(uSandTexture, worldUv).rgb;
-                                                    grassColor = texture2D(uGrassTexture, worldUv).rgb;
-                                                    stoneColor = texture2D(uStoneTexture, worldUv * 4.0).rgb;
-                                                    inferiorColor = texture2D(uInferiorTexture, worldUv).rgb;
+                                                    seabedColor = texture2D(uSeabedTexture, vUv).rgb;
+                                                    sandColor = texture2D(uSandTexture, vUv).rgb;
+                                                    grassColor = texture2D(uGrassTexture, vUv).rgb;
+                                                    stoneColor = texture2D(uStoneTexture, vUv * 4.0).rgb;
+                                                    inferiorColor = texture2D(uInferiorTexture, vUv).rgb;
                                                 } else {
-                                                    seabedColor = vec3(0.25, 0.4, 0.6); // Lightened solid seabed
+                                                    seabedColor = vec3(0.1, 0.2, 0.3); // Solid seabed
                                                     sandColor = vec3(0.8, 0.7, 0.4);  // Solid sand
                                                     grassColor = vec3(0.3, 0.5, 0.2); // Solid grass terra
                                                     stoneColor = vec3(0.5, 0.5, 0.5); // Solid stone
@@ -4217,48 +4194,39 @@
                                                 }
 
                                                 // Usa distância periódica para que ilhas espelhadas sejam renderizadas corretamente
-                                                // O mundo se repete a cada 2000 unidades.
-                                                vec2 periodicPos = mod(vWorldPosition.xz + 1000.0, 2000.0) - 1000.0;
+                                                // O mundo se repete a cada 600 unidades.
+                                                vec2 periodicPos = mod(vWorldPosition.xz + 300.0, 600.0) - 300.0;
                                                 float dist = length(periodicPos);
 
                                                 // Mistura entre areia e grama baseada no raio (praia larga)
-                                                float sandToGrassBlend = smoothstep(uGrassRadius, uBeachRadius, dist);
+                                                float sandToGrassBlend = 1.0 - smoothstep(uGrassRadius, uBeachRadius, dist);
 
                                                 // Mistura fundo do mar baseada na altura
                                                 float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
 
                                                 // Mistura pedra para montanhas altas
                                                 float stoneBlend = smoothstep(20.0, 35.0, vWorldPosition.y);
-                                                // Camada de pedra profunda relativa à base
-                                                float relStoneLevel = vBaseHeight - uDirtToStoneDepth;
-                                                float deepStoneBlend = 1.0 - smoothstep(relStoneLevel, relStoneLevel + 1.0, vWorldPosition.y);
+                                                // Camada de pedra profunda
+                                                float deepStoneBlend = 1.0 - smoothstep(uStoneLayerLevel, uStoneLayerLevel + 1.0, vWorldPosition.y);
                                                 stoneBlend = max(stoneBlend, deepStoneBlend);
 
-                                                // Lógica Corrigida:
-                                                // 1. Mistura Grama e Pedra (Land)
+                                                vec3 seabedSandMix = mix(seabedColor, sandColor, seabedToSandBlend);
+                                                // Tintamos a textura de terra da grama para verde
                                                 vec3 grassTinted = grassColor * vec3(0.7, 1.0, 0.4);
-                                                vec3 landMix = mix(grassTinted, stoneColor, stoneBlend);
-
-                                                // 2. Mistura Fundo do Mar e Areia (Sea/Beach)
-                                                vec3 seaBeachMix = mix(seabedColor, sandColor, seabedToSandBlend);
-
-                                                // 3. Mistura final baseada na distância (periódica)
-                                                // Se dist < uGrassRadius -> landMix
-                                                // Se dist > uBeachRadius -> seaBeachMix (seabedColor se estiver fundo)
-                                                vec3 terrainMix = mix(landMix, seaBeachMix, sandToGrassBlend);
+                                                vec3 grassStoneMix = mix(grassTinted, stoneColor, stoneBlend);
+                                                vec3 terrainMix = mix(seabedSandMix, grassStoneMix, sandToGrassBlend);
 
                                                 // NOVO: Aplica a textura inferior provisória se vColor.r < 1.0 (sinalizado por modificação)
                                                 #ifdef USE_COLOR
                                                     float inferiorFactor = clamp(1.0 - vColor.r, 0.0, 1.0);
                                                     // Se estivermos na praia, a textura de "buraco" deve ser areia escura
                                                     vec3 holeColor = mix(sandColor * 0.8, inferiorColor, sandToGrassBlend);
-                                                    vec3 currentInferior = (vWorldPosition.y < relStoneLevel) ? stoneColor : holeColor;
+                                                    vec3 currentInferior = (vWorldPosition.y < uStoneLayerLevel) ? stoneColor : holeColor;
                                                     terrainMix = mix(terrainMix, currentInferior, inferiorFactor);
                                                 #endif
 
-                                                // NOVO: Camada de Bedrock (Camada escura indestrutível) relativa à base
-                                                float relBedrockLevel = vBaseHeight - uTotalBedrockDepth;
-                                                float bedrockBlend = 1.0 - smoothstep(relBedrockLevel, relBedrockLevel + 0.2, vWorldPosition.y);
+                                                // NOVO: Camada de Bedrock (Camada escura indestrutível)
+                                                float bedrockBlend = 1.0 - smoothstep(uBedrockLevel, uBedrockLevel + 0.2, vWorldPosition.y);
                                                 vec3 bedrockColor = vec3(0.05, 0.05, 0.08); // Quase preto
                                                 terrainMix = mix(terrainMix, bedrockColor, bedrockBlend);
 
@@ -5115,7 +5083,6 @@
                     if (target.isDigging) {
                         const intersect = target.intersect;
                         const hitPoint = intersect.point;
-                        const volcanoOuterRadiusAtBottom = 1.5;
                         const isBuilding = (heldItemName === dirtItemName);
 
                         // Alinha o ponto de impacto para busca precisa (agora com suporte a sub-grid)
@@ -5199,7 +5166,7 @@
                         if (currentMound) {
                             destroyTargetDigInfo = { mound: currentMound, isBuilding: isBuilding };
                             const surfaceHeight = getSurfaceHeight(hitPoint.x, hitPoint.z);
-                            const isStoneLayer = hitPoint.y < (surfaceHeight - DIRT_TO_STONE_DEPTH);
+                            const isStoneLayer = hitPoint.y < stoneLayerLevel;
                             materialType = isStoneLayer ? 'stone' : 'earth';
                             // Aumentado para garantir que a barra de progresso seja visível e sentida
                             baseDurability = isBuilding ? 0.3 : (isStoneLayer ? 3.0 : 1.5);
@@ -6158,9 +6125,8 @@
                                 // Gain 20 terras, sands or stones for each stage of digging
                                 const currentDigHeight = mound.position.y + (mound.height || 0);
                                 const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
-                                const surfaceHeightAtMound = getSurfaceHeight(mound.position.x, mound.position.z);
                                 let itemToGive;
-                                if (currentDigHeight < (surfaceHeightAtMound - DIRT_TO_STONE_DEPTH)) {
+                                if (currentDigHeight < stoneLayerLevel) {
                                     itemToGive = stoneItemName;
                                 } else if (distFromCenter > grassRadius) {
                                     itemToGive = sandItemName;
@@ -6680,7 +6646,7 @@
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
                 // Culling estrito para o terreno (um pouco maior que renderDistance para evitar buracos nas bordas)
-                tile.mesh.visible = dist <= renderDistance + 1000;
+                tile.mesh.visible = dist <= renderDistance + 600;
             });
 
             waterMeshes.forEach(tile => {
@@ -6688,7 +6654,7 @@
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + 1000;
+                tile.mesh.visible = dist <= renderDistance + 600;
             });
 
             seabedMeshes.forEach(tile => {
@@ -6696,7 +6662,7 @@
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + 1000;
+                tile.mesh.visible = dist <= renderDistance + 600;
             });
 
             const renderDistSq = renderDistance * renderDistance;
@@ -6780,7 +6746,7 @@
             capimInstancedMeshes.forEach(mesh => {
                 // Como são 9 tiles, verificamos a distância do centro do tile visual
                 const dist = camera.position.distanceTo(mesh.position);
-                mesh.visible = dist <= renderDistance + 1000;
+                mesh.visible = dist <= renderDistance + 600;
             });
 
             // NOVO: Lógica para fechar buracos inativos (curar terreno após 10 segundos)
@@ -6986,10 +6952,8 @@
                             } else {
                                 const hitPoint = intersect.point;
                                 const distFromCenter = Math.sqrt(hitPoint.x ** 2 + hitPoint.z ** 2);
-                                const surfaceHeightAtMound = getSurfaceHeight(hitPoint.x, hitPoint.z);
-
                                 let material = "Terra";
-                                if (hitPoint.y < (surfaceHeightAtMound - DIRT_TO_STONE_DEPTH)) {
+                                if (hitPoint.y < stoneLayerLevel) {
                                     material = "Pedra";
                                 } else if (distFromCenter > grassRadius) {
                                     material = "Areia";
@@ -7301,7 +7265,7 @@
             const theta = dayProgress * 2 * Math.PI;
 
             // Orbita do Sol e da Lua
-            const orbitRadius = 2000;
+            const orbitRadius = 500;
             const sunX = orbitRadius * Math.sin(theta);
             const sunY = orbitRadius * Math.cos(theta);
             const moonX = orbitRadius * Math.sin(theta + Math.PI);
@@ -8058,6 +8022,10 @@
                 set: (v) => { currentRaftBody = v; }
             });
             Object.defineProperty(window, 'currentMound', { get: () => currentMound });
+            Object.defineProperty(window, 'stoneLayerLevel', {
+                get: () => stoneLayerLevel,
+                set: (v) => { stoneLayerLevel = v; }
+            });
             window.cobMaterialMesh = cobMaterialMesh;
             window.cubeMaterialMesh = cubeMaterialMesh;
             window.renderer = renderer;
@@ -8078,14 +8046,6 @@
             Object.defineProperty(window, 'targetCloudCount', {
                 get: () => targetCloudCount,
                 set: (v) => { targetCloudCount = v; }
-            });
-            Object.defineProperty(window, 'rainIntensity', {
-                get: () => rainIntensity,
-                set: (v) => { rainIntensity = v; }
-            });
-            Object.defineProperty(window, 'targetRainIntensity', {
-                get: () => targetRainIntensity,
-                set: (v) => { targetRainIntensity = v; }
             });
             window.updateWeather = updateWeather;
             window.spawnBirdGroup = spawnBirdGroup;
