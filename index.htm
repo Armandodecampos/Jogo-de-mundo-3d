@@ -791,7 +791,7 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 256; // Resolução global do terreno equilibrada
+        const hfGridSize = 340; // Resolução global do terreno equilibrada
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -905,7 +905,7 @@
         let crouchPlayerShape;   // Para armazenar a forma agachada
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
-        const worldSize = 770;
+        const worldSize = 1030;
         let birds = []; // NOVO: Array para armazenar os pássaros
         let islandAmbientAudio = null; // Som ambiente da ilha (interior)
         let beachAmbientAudio = null; // Som ambiente da praia/mar
@@ -3541,6 +3541,56 @@
         window.hfGridSize = hfGridSize;
         window.mounds = mounds;
 
+        function fixToroidalNormals(geom) {
+            if (!geom.attributes.normal) return;
+            const normals = geom.attributes.normal.array;
+            const count = hfGridSize;
+
+            // Sync left and right edges (i=0 and i=hfGridSize-1)
+            for (let j = 0; j < count; j++) {
+                const idxLeft = (j * count + 0) * 3;
+                const idxRight = (j * count + (count - 1)) * 3;
+
+                const avgX = (normals[idxLeft] + normals[idxRight]) / 2;
+                const avgY = (normals[idxLeft + 1] + normals[idxRight + 1]) / 2;
+                const avgZ = (normals[idxLeft + 2] + normals[idxRight + 2]) / 2;
+
+                normals[idxLeft] = normals[idxRight] = avgX;
+                normals[idxLeft + 1] = normals[idxRight + 1] = avgY;
+                normals[idxLeft + 2] = normals[idxRight + 2] = avgZ;
+            }
+
+            // Sync top and bottom edges (j=0 and j=hfGridSize-1)
+            for (let i = 0; i < count; i++) {
+                const idxTop = (0 * count + i) * 3;
+                const idxBottom = ((count - 1) * count + i) * 3;
+
+                const avgX = (normals[idxTop] + normals[idxBottom]) / 2;
+                const avgY = (normals[idxTop + 1] + normals[idxBottom + 1]) / 2;
+                const avgZ = (normals[idxTop + 2] + normals[idxBottom + 2]) / 2;
+
+                normals[idxTop] = normals[idxBottom] = avgX;
+                normals[idxTop + 1] = normals[idxBottom + 1] = avgY;
+                normals[idxTop + 2] = normals[idxBottom + 2] = avgZ;
+            }
+
+            // Corner case: sync all 4 corners
+            const idx00 = (0 * count + 0) * 3;
+            const idx0W = (0 * count + (count - 1)) * 3;
+            const idxH0 = ((count - 1) * count + 0) * 3;
+            const idxHW = ((count - 1) * count + (count - 1)) * 3;
+
+            const avgX = (normals[idx00] + normals[idx0W] + normals[idxH0] + normals[idxHW]) / 4;
+            const avgY = (normals[idx00 + 1] + normals[idx0W + 1] + normals[idxH0 + 1] + normals[idxHW + 1]) / 4;
+            const avgZ = (normals[idx00 + 2] + normals[idx0W + 2] + normals[idxH0 + 2] + normals[idxHW + 2]) / 4;
+
+            normals[idx00] = normals[idx0W] = normals[idxH0] = normals[idxHW] = avgX;
+            normals[idx00 + 1] = normals[idx0W + 1] = normals[idxH0 + 1] = normals[idxHW + 1] = avgY;
+            normals[idx00 + 2] = normals[idx0W + 2] = normals[idxH0 + 2] = normals[idxHW + 2] = avgZ;
+
+            geom.attributes.normal.needsUpdate = true;
+        }
+
         function updateIslandGeometry(affectedMound = null) {
             // Inicializa a matriz se necessário
             if (!currentHfMatrix || currentHfMatrix.length !== hfGridSize) {
@@ -3667,6 +3717,7 @@
                 }
                 geom.attributes.position.needsUpdate = true;
                 geom.computeVertexNormals();
+                fixToroidalNormals(geom);
             }
 
             // Atualiza a conectividade e o visual da água quando o terreno muda
@@ -3975,7 +4026,7 @@
                     height = islandSurfaceHeight * (1 - t) + (waterLevel - 0.5) * t;
                 } else {
                     // Gradiente suave até o fundo do mar
-                    const t = Math.min(1.0, (distance - beachRadius) / (worldSize * 0.4));
+                    const t = Math.min(1.0, (distance - beachRadius) / (worldSize * 0.3));
                     height = (waterLevel - 0.5) * (1 - t) + seabedLevel * t;
                 }
 
@@ -4030,6 +4081,7 @@
             }
             islandGeometry.attributes.position.needsUpdate = true;
             islandGeometry.computeVertexNormals(); // Recalcula as normais para uma iluminação correta
+            fixToroidalNormals(islandGeometry);
 
             const hfShape = new CANNON.Heightfield(hfMatrix, {
                 elementSize: worldSize / (hfGridSize - 1)
@@ -4194,8 +4246,8 @@
                                                 }
 
                                                 // Usa distância periódica para que ilhas espelhadas sejam renderizadas corretamente
-                                                // O mundo se repete a cada 770 unidades.
-                                                vec2 periodicPos = mod(vWorldPosition.xz + 385.0, 770.0) - 385.0;
+                                                // O mundo se repete a cada 1030 unidades.
+                                                vec2 periodicPos = mod(vWorldPosition.xz + 515.0, 1030.0) - 515.0;
                                                 float dist = length(periodicPos);
 
                                                 // Mistura entre areia e grama baseada no raio (praia larga)

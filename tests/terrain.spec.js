@@ -1,15 +1,16 @@
 import { test, expect } from '@playwright/test';
 
 test('Terrain digging verification', async ({ page }) => {
+  test.setTimeout(120000);
   await page.goto('http://localhost:8080/index.htm');
   await page.click('#startButton');
 
   // Wait for world to be ready (increased timeout for asset loading)
-  await page.waitForFunction(() => window.isWorldReady === true, { timeout: 60000 });
+  await page.waitForFunction(() => window.isWorldReady === true, { timeout: 90000 });
 
   // Verify worldSize
   const worldSize = await page.evaluate(() => window.worldSize);
-  expect(worldSize).toBe(770);
+  expect(worldSize).toBe(1030);
 
   // Check if islandMeshes are present
   const islandMeshCount = await page.evaluate(() => window.islandMeshes.length);
