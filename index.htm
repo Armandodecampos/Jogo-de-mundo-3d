@@ -632,9 +632,9 @@
             <div class="option-item">
                 <label for="renderDistanceSlider" class="flex justify-between w-full">
                     <span>Distância de Visão</span>
-                    <span id="renderDistanceValue">250</span>
+                    <span id="renderDistanceValue">400</span>
                 </label>
-                <input type="range" id="renderDistanceSlider" min="40" max="400" value="250" class="w-full">
+                <input type="range" id="renderDistanceSlider" min="40" max="1000" value="400" class="w-full">
             </div>
             <div class="option-item">
                 <label for="grassDensitySlider" class="flex justify-between w-full">
@@ -676,6 +676,13 @@
                     <option value="true">Ativado</option>
                     <option value="false">Desativado</option>
                 </select>
+            </div>
+            <div class="option-item">
+                <label for="curvatureSlider" class="flex justify-between w-full">
+                    <span>Curvatura do Mundo</span>
+                    <span id="curvatureValue">0.000</span>
+                </label>
+                <input type="range" id="curvatureSlider" min="0" max="0.002" step="0.0001" value="0" class="w-full">
             </div>
             <div class="option-item">
                 <label for="hintToggle" class="flex justify-between w-full">
@@ -791,10 +798,12 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 200; // Resolução global do terreno equilibrada
+        const hfGridSize = 400; // Resolução global do terreno equilibrada
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
+        let worldCurvature = parseFloat(localStorage.getItem('worldCurvature')) || 0.0;
+        const curvatureUniform = { value: worldCurvature };
         let skyFog, underwaterFog; // NOVO: Para o efeito subaquático
         let skyColor, underwaterColor; // NOVO: Para as cores do ambiente
         // Variáveis para corpos e malhas de jogador, terreno (rua), estrada e cubo
@@ -905,7 +914,7 @@
         let crouchPlayerShape;   // Para armazenar a forma agachada
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
-        const worldSize = 600;
+        const worldSize = 1200;
         let birds = []; // NOVO: Array para armazenar os pássaros
         let islandAmbientAudio = null; // Som ambiente da ilha (interior)
         let beachAmbientAudio = null; // Som ambiente da praia/mar
@@ -972,15 +981,15 @@
         let cloudMaterial = null; // Material compartilhado das nuvens
         let targetCloudCount = 15; // NOVO: Quantidade alvo de nuvens
         let randomBaseCloudCount = Math.floor(Math.random() * 30); // Base aleatória de nuvens
-        const islandRadiusTop = 150; // NOVO: Raio do topo da ilha
-        const islandRadiusBottom = 300; // NOVO: Raio da base da ilha
+        const islandRadiusTop = 300; // NOVO: Raio do topo da ilha
+        const islandRadiusBottom = 600; // NOVO: Raio da base da ilha
         const waterLevel = -8.0; // NOVO: Nível da água (baixado de -4.8)
         const seabedLevel = -20.0; // NOVO: Nível do fundo do mar
         let stoneLayerLevel = -4.2; // NOVO: Nível onde começa a pedra (5 unidades de terra)
         const bedrockLevel = -20.0; // NOVO: Camada indestrutível (10 unidades de pedra depois da terra)
-        const grassRadius = 100.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
-        const beachRadius = 200.0; window.beachRadius = beachRadius; // NOVO: Raio da praia (aumentado de 120.0)
-        let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 250; // Distância de renderização para objetos
+        const grassRadius = 200.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
+        const beachRadius = 400.0; window.beachRadius = beachRadius; // NOVO: Raio da praia (aumentado de 120.0)
+        let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 400; // Distância de renderização para objetos
         let frameCount = 0;
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
         const cobSize = 0.4;
@@ -1277,6 +1286,7 @@
         const capimSharedGeometry = new THREE.CylinderGeometry(0, 0.2, 1, 4);
         capimSharedGeometry.translate(0, 0.5, 0); // Alinha a base da geometria no ponto de origem
         const capimSharedMaterial = new THREE.MeshStandardMaterial({ color: 0x2d5a27 }); // Verde escuro
+        capimSharedMaterial.onBeforeCompile = applyCurvature;
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -1365,6 +1375,26 @@
         };
 
         // Function to randomize tree dimensions based on a base stage data
+        function applyCurvature(shader) {
+            shader.uniforms.uCurvature = curvatureUniform;
+            shader.vertexShader = `
+                uniform float uCurvature;
+                ${shader.vertexShader}
+            `.replace(
+                '#include <begin_vertex>',
+                `
+                #include <begin_vertex>
+                {
+                    if (uCurvature > 0.0) {
+                        vec4 worldPos = modelMatrix * vec4(transformed, 1.0);
+                        float distSq = pow(worldPos.x - cameraPosition.x, 2.0) + pow(worldPos.z - cameraPosition.z, 2.0);
+                        transformed.y -= distSq * uCurvature;
+                    }
+                }
+                `
+            );
+        }
+
         // Function to get tree dimensions based on a base stage data and optional multipliers for consistency
         function getTreeDimensions(baseStageData, treeType = 'normal', multipliers = null) {
             // Adiciona uma cláusula de guarda para o estágio 'semente', que não precisa de randomização
@@ -1582,6 +1612,7 @@
                 blending: THREE.NormalBlending,
                 depthWrite: false
             });
+            particleMaterial.onBeforeCompile = applyCurvature;
 
             dustParticles = new THREE.Points(particles, particleMaterial);
             dustParticles.position.copy(position);
@@ -2246,6 +2277,7 @@
         function createRaftVisual(woodMaterial, sailMaterial, isGhost) {
             const group = new THREE.Group();
             const ropeMaterial = new THREE.MeshStandardMaterial({ color: 0x3d2b1f }); // Dark brown for ropes
+            ropeMaterial.onBeforeCompile = applyCurvature;
 
             // Configurações da base de troncos (Logs)
             const logRadius = 0.15;
@@ -2383,6 +2415,7 @@
             const stoneSize = { width: 0.6, height: 0.3, depth: 0.7 };
             const stoneShape = new CANNON.Box(new CANNON.Vec3(stoneSize.width / 2, stoneSize.height / 2, stoneSize.depth / 2));
             const stoneMaterial = new THREE.MeshLambertMaterial({ color: 0x808080 });
+            stoneMaterial.onBeforeCompile = applyCurvature;
 
             const stoneBody = new CANNON.Body({
                 mass: 5,
@@ -2670,6 +2703,7 @@
                 birdWingGeom.translate(0.3, 0, 0);
                 birdTailGeom = new THREE.PlaneGeometry(0.4, 0.3);
                 birdMat = new THREE.MeshStandardMaterial({ color: 0x222222, flatShading: true, fog: false });
+                birdMat.onBeforeCompile = applyCurvature;
             }
 
             const bird = new THREE.Group();
@@ -2991,6 +3025,7 @@
                     flatShading: true,
                     fog: false
                 });
+                cloudMaterial.onBeforeCompile = applyCurvature;
             }
 
             const cloudGroup = new THREE.Group();
@@ -3070,6 +3105,7 @@
             let mesh;
             if (blockBody.userData.growthStage === 'semente') {
                 const moundMaterial = new THREE.MeshStandardMaterial({ color: 0x5C4033 }); // Brown dirt color
+                moundMaterial.onBeforeCompile = applyCurvature;
                 const moundGeometry = new THREE.ConeGeometry(stageData.visual.mound.radius, stageData.visual.mound.height, 8);
                 const moundMesh = new THREE.Mesh(moundGeometry, moundMaterial);
                 moundMesh.position.y = -stageData.overallPhysicsHeight / 2 + stageData.visual.mound.height / 2;
@@ -3112,6 +3148,7 @@
                     if (blockBody.userData.growthStage === 'arvore_adulta') {
                         const appleGeometry = new THREE.SphereGeometry(leavesRadius * 0.15, 8, 8);
                         const appleMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+                        appleMaterial.onBeforeCompile = applyCurvature;
                         if (!blockBody.userData.apples) {
                             blockBody.userData.apples = [];
                             for (let i = 0; i < 8; i++) {
@@ -3179,6 +3216,7 @@
                     if (blockBody.userData.growthStage === 'arvore_adulta') {
                         const coconutGeom = new THREE.SphereGeometry(trunkRadius * 1.2, 8, 8);
                         const coconutMat = new THREE.MeshStandardMaterial({ color: 0x654321 });
+                        coconutMat.onBeforeCompile = applyCurvature;
                         if (!blockBody.userData.coconuts) {
                             blockBody.userData.coconuts = [];
                             for (let i = 0; i < 5; i++) {
@@ -3402,9 +3440,12 @@
                 opacity: 0.3, // Mais transparente
                 depthWrite: false // Important for transparent objects
             });
+            smokeMaterial.onBeforeCompile = applyCurvature;
 
             for (let i = 0; i < smokeCount; i++) {
-                const particle = new THREE.Mesh(smokeGeometry, smokeMaterial.clone()); // Clone material for individual opacity
+                const clonedMaterial = smokeMaterial.clone();
+                clonedMaterial.onBeforeCompile = applyCurvature;
+                const particle = new THREE.Mesh(smokeGeometry, clonedMaterial); // Clone material for individual opacity
                 particle.position.copy(position);
                 // Give particles a slight random initial velocity
                 particle.userData.velocity = new THREE.Vector3(
@@ -3689,18 +3730,31 @@
 
             // Inicializa materiais com padrões para evitar erros de undefined e falta de textura inicial
             cubeMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xcccccc });
+            cubeMaterialMesh.onBeforeCompile = applyCurvature;
             raftMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            raftMaterialMesh.onBeforeCompile = applyCurvature;
             sailMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xF5F5DC, side: THREE.DoubleSide });
+            sailMaterialMesh.onBeforeCompile = applyCurvature;
             cobMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            cobMaterialMesh.onBeforeCompile = applyCurvature;
             floorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
+            floorMaterialMesh.onBeforeCompile = applyCurvature;
             woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xdeb887 });
+            woodenPlankMaterialMesh.onBeforeCompile = applyCurvature;
             stoneBlockMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x888888 });
+            stoneBlockMaterialMesh.onBeforeCompile = applyCurvature;
             woodenBlockMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            woodenBlockMaterialMesh.onBeforeCompile = applyCurvature;
             stoneFloorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x888888 });
+            stoneFloorMaterialMesh.onBeforeCompile = applyCurvature;
             chestMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            chestMaterialMesh.onBeforeCompile = applyCurvature;
             treeSaplingMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 });
+            treeSaplingMaterialMesh.onBeforeCompile = applyCurvature;
             treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            treeTrunkMaterialMesh.onBeforeCompile = applyCurvature;
             treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22, transparent: true, alphaTest: 0.5 });
+            treeLeavesMaterialMesh.onBeforeCompile = applyCurvature;
 
             // Define o offset inicial do nível dos olhos da câmera como o raio da esfera
             cameraEyeLevelOffset = playerRadius;
@@ -4194,8 +4248,8 @@
                                                 }
 
                                                 // Usa distância periódica para que ilhas espelhadas sejam renderizadas corretamente
-                                                // O mundo se repete a cada 600 unidades.
-                                                vec2 periodicPos = mod(vWorldPosition.xz + 300.0, 600.0) - 300.0;
+                                                // O mundo se repete a cada 1200 unidades.
+                                                vec2 periodicPos = mod(vWorldPosition.xz + 600.0, 1200.0) - 600.0;
                                                 float dist = length(periodicPos);
 
                                                 // Mistura entre areia e grama baseada no raio (praia larga)
@@ -4244,6 +4298,7 @@
                                             #endif
                                             `
                                         );
+                                        applyCurvature(shader);
                                     };
                                     islandMeshMaterial.needsUpdate = true;
                                 }, undefined, (error) => console.error('Falha ao carregar a textura de terra inferior:', error));
@@ -4276,6 +4331,7 @@
                     transformed.y += wave;
                     `
                 );
+                applyCurvature(shader);
                 waterMaterialShader = shader;
             };
 
@@ -4356,6 +4412,7 @@
                 opacity: 0.5,
                 depthWrite: false // Importante para renderizar corretamente sobre outros objetos
             });
+            ghostBlockMaterial.onBeforeCompile = applyCurvature;
             // Inicializa com a geometria do cob, será atualizada em updateSelectedSlot
             ghostBlockMesh = new THREE.Mesh(new THREE.BoxGeometry(cobWidth, cobHeight, cobDepth), ghostBlockMaterial);
             ghostBlockMesh.visible = false; // Inicialmente invisível
@@ -4369,6 +4426,7 @@
                 texture.repeat.set(1, 1);
                 texturesRegistry.hole = texture;
                 holeMaterial = new THREE.MeshBasicMaterial({ map: useTextures ? texture : null });
+                holeMaterial.onBeforeCompile = applyCurvature;
 
                 // Adicionado: Carrega a textura de pedra para o buraco da montanha
                 textureLoader.load(stoneTextureURL, (stoneTexture) => {
@@ -4377,6 +4435,7 @@
                     stoneTexture.repeat.set(1, 1);
                     texturesRegistry.stone = stoneTexture;
                     stoneHoleMaterial = new THREE.MeshBasicMaterial({ map: useTextures ? stoneTexture : null });
+                    stoneHoleMaterial.onBeforeCompile = applyCurvature;
                 });
 
                 const gltfLoader = new GLTFLoader(loadingManager);
@@ -4395,6 +4454,7 @@
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura do buraco:', error);
                 holeMaterial = new THREE.MeshStandardMaterial({ color: 0x3b2712 }); // Fallback marrom escuro
+                holeMaterial.onBeforeCompile = applyCurvature;
             });
 
             // Load the cob texture
@@ -5811,6 +5871,19 @@
                 });
             }
 
+            const curvatureSlider = document.getElementById('curvatureSlider');
+            const curvatureValue = document.getElementById('curvatureValue');
+            if (curvatureSlider && curvatureValue) {
+                curvatureSlider.value = worldCurvature;
+                curvatureValue.textContent = worldCurvature.toFixed(4);
+                curvatureSlider.addEventListener('input', () => {
+                    worldCurvature = parseFloat(curvatureSlider.value);
+                    curvatureUniform.value = worldCurvature;
+                    curvatureValue.textContent = worldCurvature.toFixed(4);
+                    localStorage.setItem('worldCurvature', worldCurvature);
+                });
+            }
+
             // Adiciona o listener para o novo botão de ícone do menu
             if (menuIconButton) {
                 menuIconButton.addEventListener('click', showOptionsScreen);
@@ -5883,8 +5956,8 @@
             const halfSize = worldSize / 2;
             let tx = ((x + halfSize) % worldSize + worldSize) % worldSize - halfSize;
             let tz = ((z + halfSize) % worldSize + worldSize) % worldSize - halfSize;
-            // Protected area: a small square at one "corner" (approx 280, 280)
-            return (tx > 270 && tz > 270);
+            // Protected area: a small square at one "corner" (approx 540, 540)
+            return (tx > 540 && tz > 540);
         }
         window.isProtected = isProtected;
 
@@ -7950,6 +8023,10 @@
             }
 
             isWorldReady = true; window.isWorldReady = true;
+            window.showOptionsScreen = showOptionsScreen;
+            window.hideOptionsScreen = hideOptionsScreen;
+            window.showSettingsScreen = showSettingsScreen;
+            window.hideSettingsScreen = hideSettingsScreen;
             window.initRainAudio = initRainAudio;
             window.birdSoundUrls = birdSoundUrls;
             window.seagullSoundUrls = seagullSoundUrls;
