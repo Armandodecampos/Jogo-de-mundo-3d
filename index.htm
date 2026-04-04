@@ -791,7 +791,7 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 400; // Resolução global do terreno equilibrada
+        const hfGridSize = 200; // Resolução global do terreno equilibrada
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -905,7 +905,7 @@
         let crouchPlayerShape;   // Para armazenar a forma agachada
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
-        const worldSize = 1200;
+        const worldSize = 600;
         let birds = []; // NOVO: Array para armazenar os pássaros
         let islandAmbientAudio = null; // Som ambiente da ilha (interior)
         let beachAmbientAudio = null; // Som ambiente da praia/mar
@@ -972,14 +972,14 @@
         let cloudMaterial = null; // Material compartilhado das nuvens
         let targetCloudCount = 15; // NOVO: Quantidade alvo de nuvens
         let randomBaseCloudCount = Math.floor(Math.random() * 30); // Base aleatória de nuvens
-        const islandRadiusTop = 300; // NOVO: Raio do topo da ilha
-        const islandRadiusBottom = 600; // NOVO: Raio da base da ilha
+        const islandRadiusTop = 150; // NOVO: Raio do topo da ilha
+        const islandRadiusBottom = 300; // NOVO: Raio da base da ilha
         const waterLevel = -8.0; // NOVO: Nível da água (baixado de -4.8)
         const seabedLevel = -20.0; // NOVO: Nível do fundo do mar
         let stoneLayerLevel = -4.2; // NOVO: Nível onde começa a pedra (5 unidades de terra)
         const bedrockLevel = -20.0; // NOVO: Camada indestrutível (10 unidades de pedra depois da terra)
-        const grassRadius = 200.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
-        const beachRadius = 400.0; window.beachRadius = beachRadius; // NOVO: Raio da praia (aumentado de 120.0)
+        const grassRadius = 100.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
+        const beachRadius = 200.0; window.beachRadius = beachRadius; // NOVO: Raio da praia (aumentado de 120.0)
         let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 250; // Distância de renderização para objetos
         let frameCount = 0;
         // NOVO: A altura do terreno e a altura dos blocos de cob são agora as mesmas.
@@ -2636,7 +2636,7 @@
 
                 attempts++;
                 const angle = Math.random() * Math.PI * 2;
-                const dist = Math.random() * 560.0;
+                const dist = Math.random() * 280.0;
                 const x = Math.cos(angle) * dist;
                 const z = Math.sin(angle) * dist;
                 const y = window.getSurfaceHeight(x, z);
@@ -2828,7 +2828,7 @@
             });
 
             // Se o pássaro mais próximo estiver muito longe, não toca som
-            if (minBirdDist > 600) return;
+            if (minBirdDist > 300) return;
 
             const dist = calculateWrappedDistance(playerPos, new THREE.Vector3(0, playerPos.y, 0));
 
@@ -2852,7 +2852,7 @@
 
             if (buffer) {
                 // Volume baseado na distância do pássaro mais próximo
-                const volume = Math.max(0, 0.325 * (1 - minBirdDist / 600));
+                const volume = Math.max(0, 0.325 * (1 - minBirdDist / 300));
                 if (volume > 0) {
                     playOneShot(buffer, volume);
                 }
@@ -4194,8 +4194,8 @@
                                                 }
 
                                                 // Usa distância periódica para que ilhas espelhadas sejam renderizadas corretamente
-                                                // O mundo se repete a cada 1200 unidades.
-                                                vec2 periodicPos = mod(vWorldPosition.xz + 600.0, 1200.0) - 600.0;
+                                                // O mundo se repete a cada 600 unidades.
+                                                vec2 periodicPos = mod(vWorldPosition.xz + 300.0, 600.0) - 300.0;
                                                 float dist = length(periodicPos);
 
                                                 // Mistura entre areia e grama baseada no raio (praia larga)
@@ -5883,8 +5883,8 @@
             const halfSize = worldSize / 2;
             let tx = ((x + halfSize) % worldSize + worldSize) % worldSize - halfSize;
             let tz = ((z + halfSize) % worldSize + worldSize) % worldSize - halfSize;
-            // Protected area: a small square at one "corner" (approx 560, 560)
-            return (tx > 540 && tz > 540);
+            // Protected area: a small square at one "corner" (approx 280, 280)
+            return (tx > 270 && tz > 270);
         }
         window.isProtected = isProtected;
 
@@ -6646,7 +6646,7 @@
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
                 // Culling estrito para o terreno (um pouco maior que renderDistance para evitar buracos nas bordas)
-                tile.mesh.visible = dist <= renderDistance + 1200;
+                tile.mesh.visible = dist <= renderDistance + 600;
             });
 
             waterMeshes.forEach(tile => {
@@ -6654,7 +6654,7 @@
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + 1200;
+                tile.mesh.visible = dist <= renderDistance + 600;
             });
 
             seabedMeshes.forEach(tile => {
@@ -6662,7 +6662,7 @@
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + 1200;
+                tile.mesh.visible = dist <= renderDistance + 600;
             });
 
             const renderDistSq = renderDistance * renderDistance;
@@ -6746,7 +6746,7 @@
             capimInstancedMeshes.forEach(mesh => {
                 // Como são 9 tiles, verificamos a distância do centro do tile visual
                 const dist = camera.position.distanceTo(mesh.position);
-                mesh.visible = dist <= renderDistance + 1200;
+                mesh.visible = dist <= renderDistance + 600;
             });
 
             // NOVO: Lógica para fechar buracos inativos (curar terreno após 10 segundos)
