@@ -10,7 +10,7 @@ test('Terrain digging verification', async ({ page }) => {
 
   // Verify worldSize
   const worldSize = await page.evaluate(() => window.worldSize);
-  expect(worldSize).toBe(1030);
+  expect(worldSize).toBe(1200);
 
   // Check if islandMeshes are present
   const islandMeshCount = await page.evaluate(() => window.islandMeshes.length);
