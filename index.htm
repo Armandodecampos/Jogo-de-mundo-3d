@@ -682,7 +682,7 @@
                     <span>Curvatura do Mundo</span>
                     <span id="curvatureValue">0.0000</span>
                 </label>
-                <input type="range" id="curvatureSlider" min="0" max="0.01" step="0.0001" value="0" class="w-full">
+                <input type="range" id="curvatureSlider" min="0" max="0.1" step="0.0001" value="0" class="w-full">
             </div>
             <div class="option-item">
                 <label for="hintToggle" class="flex justify-between w-full">
@@ -804,6 +804,7 @@
         let scene, camera, renderer, world;
         let worldCurvature = parseFloat(localStorage.getItem('worldCurvature')) || 0.0;
         const curvatureUniform = { value: worldCurvature };
+        const cameraPosUniform = { value: new THREE.Vector3() };
         let skyFog, underwaterFog; // NOVO: Para o efeito subaquático
         let skyColor, underwaterColor; // NOVO: Para as cores do ambiente
         // Variáveis para corpos e malhas de jogador, terreno (rua), estrada e cubo
@@ -812,11 +813,12 @@
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let raftBodies = []; // NOVO: Array para armazenar corpos das jangadas
         let islandMeshes = []; // Array para armazenar múltiplas malhas visuais da ilha
+        window.islandMeshes = islandMeshes;
         let islandGeometry; // Geometria compartilhada do terreno
 
         let waterMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais da água
+        window.waterMeshes = waterMeshes;
         let waterMaterialShader = null;
-        let seabedMeshes = []; // NOVO: Array para armazenar múltiplas malhas visuais do fundo do mar
 
         // NOVO: Sistema de Capim Instanciado (Passo 3)
         let capimInstancedMeshes = [];
@@ -1374,11 +1376,15 @@
             }
         };
 
-        // Function to randomize tree dimensions based on a base stage data
+        // Function to apply world curvature shader displacement
         function applyCurvature(shader) {
             shader.uniforms.uCurvature = curvatureUniform;
+            shader.uniforms.uCameraPos = cameraPosUniform;
+            shader.uniforms.uWorldSize = { value: worldSize };
             shader.vertexShader = `
                 uniform float uCurvature;
+                uniform vec3 uCameraPos;
+                uniform float uWorldSize;
                 ${shader.vertexShader}
             `.replace(
                 '#include <begin_vertex>',
@@ -1386,10 +1392,27 @@
                 #include <begin_vertex>
                 {
                     if (uCurvature > 0.0) {
-                        vec4 worldPos = modelMatrix * vec4(transformed, 1.0);
-                        float distSq = pow(worldPos.x - cameraPosition.x, 2.0) + pow(worldPos.z - cameraPosition.z, 2.0);
+                        #ifdef USE_INSTANCING
+                            mat4 customModelMatrix = modelMatrix * instanceMatrix;
+                        #else
+                            mat4 customModelMatrix = modelMatrix;
+                        #endif
+                        vec4 worldPos = customModelMatrix * vec4(transformed, 1.0);
+
+                        // Toroidal distance calculation for seamless wrapping
+                        float dx = abs(worldPos.x - uCameraPos.x);
+                        if (dx > uWorldSize * 0.5) dx = uWorldSize - dx;
+                        float dz = abs(worldPos.z - uCameraPos.z);
+                        if (dz > uWorldSize * 0.5) dz = uWorldSize - dz;
+
+                        float distSq = dx*dx + dz*dz;
                         float radius = 1.0 / uCurvature;
-                        transformed.y -= radius - sqrt(max(0.0, pow(radius, 2.0) - distSq));
+
+                        // Spherical displacement
+                        float displacement = radius - sqrt(max(0.0, radius * radius - distSq));
+
+                        // Apply displacement to local Y (works best for upright objects)
+                        transformed.y -= displacement;
                     }
                 }
                 `
@@ -3446,6 +3469,7 @@
             for (let i = 0; i < smokeCount; i++) {
                 const clonedMaterial = smokeMaterial.clone();
                 clonedMaterial.onBeforeCompile = applyCurvature;
+                clonedMaterial.needsUpdate = true; // Ensure onBeforeCompile is called on clone
                 const particle = new THREE.Mesh(smokeGeometry, clonedMaterial); // Clone material for individual opacity
                 particle.position.copy(position);
                 // Give particles a slight random initial velocity
@@ -4105,6 +4129,7 @@
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
                     const islandMesh = new THREE.Mesh(islandGeometry, islandMeshMaterial);
                     islandMesh.receiveShadow = true;
+                    islandMesh.frustumCulled = false;
                     scene.add(islandMesh);
 
                     // Cria um corpo de física para cada tile para garantir colisão contínua
@@ -4348,6 +4373,7 @@
                     const mesh = new THREE.Mesh(waterGeometry, waterMaterial);
                     mesh.position.y = waterLevel; // Posição visual da água (agora plano)
                     mesh.userData.isWater = true; // Identificador para o raycaster
+                    mesh.frustumCulled = false;
                     scene.add(mesh);
                     waterMeshes.push({ mesh: mesh, offsetX: i * worldSize, offsetZ: j * worldSize });
                 }
@@ -5874,29 +5900,35 @@
 
             const curvatureSlider = document.getElementById('curvatureSlider');
             const curvatureValue = document.getElementById('curvatureValue');
+
+            function updateCurvatureEffects() {
+                curvatureUniform.value = worldCurvature;
+                if (curvatureValue) curvatureValue.textContent = worldCurvature.toFixed(4);
+
+                // Atualizar o fog baseado na curvatura para esconder a borda do mundo curvado
+                if (typeof skyFog !== 'undefined' && skyFog) {
+                    if (worldCurvature > 0.0) {
+                        const curvatureRadius = 1.0 / worldCurvature;
+                        const fogLimit = Math.min(renderDistance, curvatureRadius * 0.8);
+                        skyFog.far = fogLimit;
+                        skyFog.near = fogLimit * 0.5;
+                    } else {
+                        skyFog.near = renderDistance * 0.5;
+                        skyFog.far = renderDistance;
+                    }
+                }
+            }
+
             if (curvatureSlider && curvatureValue) {
                 curvatureSlider.value = worldCurvature;
-                curvatureValue.textContent = worldCurvature.toFixed(4);
+                updateCurvatureEffects();
                 curvatureSlider.addEventListener('input', () => {
                     worldCurvature = parseFloat(curvatureSlider.value);
-                    curvatureUniform.value = worldCurvature;
-                    curvatureValue.textContent = worldCurvature.toFixed(4);
+                    updateCurvatureEffects();
                     localStorage.setItem('worldCurvature', worldCurvature);
-
-                    // Atualizar o fog baseado na curvatura
-                    if (typeof skyFog !== 'undefined' && skyFog) {
-                        if (worldCurvature > 0.0) {
-                            // Reduz o fog conforme a curvatura aumenta para esconder a borda do mundo
-                            const curvatureRadius = 1.0 / worldCurvature;
-                            const fogLimit = Math.min(renderDistance, curvatureRadius * 0.8);
-                            skyFog.far = fogLimit;
-                            skyFog.near = fogLimit * 0.5;
-                        } else {
-                            skyFog.near = renderDistance * 0.5;
-                            skyFog.far = renderDistance;
-                        }
-                    }
                 });
+            } else {
+                updateCurvatureEffects();
             }
 
             // Adiciona o listener para o novo botão de ícone do menu
@@ -5980,6 +6012,10 @@
         let lastTime = performance.now();
         function animate() {
             requestAnimationFrame(animate);
+
+            if (camera) {
+                cameraPosUniform.value.copy(camera.position);
+            }
 
             const now = performance.now();
             const delta = Math.min((now - lastTime) / 1000, 0.1);
@@ -6745,13 +6781,6 @@
                 tile.mesh.visible = dist <= renderDistance + 600;
             });
 
-            seabedMeshes.forEach(tile => {
-                tile.mesh.position.x = tile.offsetX - visualOffsetX;
-                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
-
-                const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + 600;
-            });
 
             const renderDistSq = renderDistance * renderDistance;
             const halfWorldSize = worldSize / 2;
