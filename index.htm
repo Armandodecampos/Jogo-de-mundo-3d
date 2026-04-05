@@ -682,7 +682,7 @@
                     <span>Curvatura do Mundo</span>
                     <span id="curvatureValue">0.0000</span>
                 </label>
-                <input type="range" id="curvatureSlider" min="0" max="0.01" step="0.0001" value="0" class="w-full">
+                <input type="range" id="curvatureSlider" min="0" max="0.05" step="0.0001" value="0" class="w-full">
             </div>
             <div class="option-item">
                 <label for="hintToggle" class="flex justify-between w-full">
@@ -804,6 +804,7 @@
         let scene, camera, renderer, world;
         let worldCurvature = parseFloat(localStorage.getItem('worldCurvature')) || 0.0;
         const curvatureUniform = { value: worldCurvature };
+        const cameraPosUniform = { value: new THREE.Vector3() };
         let skyFog, underwaterFog; // NOVO: Para o efeito subaquático
         let skyColor, underwaterColor; // NOVO: Para as cores do ambiente
         // Variáveis para corpos e malhas de jogador, terreno (rua), estrada e cubo
@@ -1377,8 +1378,10 @@
         // Function to randomize tree dimensions based on a base stage data
         function applyCurvature(shader) {
             shader.uniforms.uCurvature = curvatureUniform;
+            shader.uniforms.uCameraPos = cameraPosUniform;
             shader.vertexShader = `
                 uniform float uCurvature;
+                uniform vec3 uCameraPos;
                 ${shader.vertexShader}
             `.replace(
                 '#include <begin_vertex>',
@@ -1386,8 +1389,13 @@
                 #include <begin_vertex>
                 {
                     if (uCurvature > 0.0) {
-                        vec4 worldPos = modelMatrix * vec4(transformed, 1.0);
-                        float distSq = pow(worldPos.x - cameraPosition.x, 2.0) + pow(worldPos.z - cameraPosition.z, 2.0);
+                        #ifdef USE_INSTANCING
+                            mat4 customModelMatrix = modelMatrix * instanceMatrix;
+                        #else
+                            mat4 customModelMatrix = modelMatrix;
+                        #endif
+                        vec4 worldPos = customModelMatrix * vec4(transformed, 1.0);
+                        float distSq = pow(worldPos.x - uCameraPos.x, 2.0) + pow(worldPos.z - uCameraPos.z, 2.0);
                         float radius = 1.0 / uCurvature;
                         transformed.y -= radius - sqrt(max(0.0, pow(radius, 2.0) - distSq));
                     }
@@ -3446,6 +3454,7 @@
             for (let i = 0; i < smokeCount; i++) {
                 const clonedMaterial = smokeMaterial.clone();
                 clonedMaterial.onBeforeCompile = applyCurvature;
+                clonedMaterial.needsUpdate = true; // Ensure onBeforeCompile is called on clone
                 const particle = new THREE.Mesh(smokeGeometry, clonedMaterial); // Clone material for individual opacity
                 particle.position.copy(position);
                 // Give particles a slight random initial velocity
@@ -5980,6 +5989,10 @@
         let lastTime = performance.now();
         function animate() {
             requestAnimationFrame(animate);
+
+            if (camera) {
+                cameraPosUniform.value.copy(camera.position);
+            }
 
             const now = performance.now();
             const delta = Math.min((now - lastTime) / 1000, 0.1);
