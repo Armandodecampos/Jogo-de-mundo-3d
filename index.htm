@@ -3963,8 +3963,11 @@
             dirtMountains = [];
             // Geração de montanhas procedurais desativada a pedido do usuário
 
-            window.getSurfaceHeight = function(x, z) {
-                const distance = Math.sqrt(x * x + z * z);
+            window.getSurfaceHeight = function(x, z, includeMountains = true) {
+                // Suporte para mundo toroidal na detecção de altura
+                const px = ((x + worldSize / 2) % worldSize + worldSize) % worldSize - worldSize / 2;
+                const pz = ((z + worldSize / 2) % worldSize + worldSize) % worldSize - worldSize / 2;
+                const distance = Math.sqrt(px * px + pz * pz);
                 let height;
 
                 if (distance <= grassRadius) {
@@ -3979,6 +3982,8 @@
                     height = (waterLevel - 0.5) * (1 - t) + seabedLevel * t;
                 }
 
+                if (!includeMountains) return height;
+
                 let mountainHeight = 0;
 
                 // Central Stone Mountain (Formato suave de sino/cosseno para evitar bordas serrilhadas)
@@ -3990,8 +3995,8 @@
 
                 // Random Dirt Mountains (Formato suave de sino/cosseno)
                 dirtMountains.forEach(m => {
-                    const dx = x - m.x;
-                    const dz = z - m.z;
+                    const dx = px - m.x;
+                    const dz = pz - m.z;
                     const d = Math.sqrt(dx * dx + dz * dz);
                     if (d < m.r) {
                         const hVal = m.h * 0.5 * (1 + Math.cos(Math.PI * d / m.r));
@@ -4142,6 +4147,9 @@
                                         shader.uniforms.uBedrockLevel = { value: bedrockLevel };
                                         shader.uniforms.uGrassRadius = { value: grassRadius };
                                         shader.uniforms.uBeachRadius = { value: beachRadius };
+                                        shader.uniforms.uIslandSurfaceHeight = { value: islandSurfaceHeight };
+                                        shader.uniforms.uSeabedLevel = { value: seabedLevel };
+                                        shader.uniforms.uWorldSize = { value: worldSize };
                                         shader.uniforms.uUseTextures = { value: useTextures ? 1.0 : 0.0 };
                                         islandMeshMaterial.userData.shader = shader;
 
@@ -4167,6 +4175,9 @@
                                             uniform float uBedrockLevel;
                                             uniform float uGrassRadius;
                                             uniform float uBeachRadius;
+                                            uniform float uIslandSurfaceHeight;
+                                            uniform float uSeabedLevel;
+                                            uniform float uWorldSize;
                                             uniform float uUseTextures;
                                             varying vec3 vWorldPosition;
                                             ${shader.fragmentShader}
@@ -4194,9 +4205,21 @@
                                                 }
 
                                                 // Usa distância periódica para que ilhas espelhadas sejam renderizadas corretamente
-                                                // O mundo se repete a cada 600 unidades.
-                                                vec2 periodicPos = mod(vWorldPosition.xz + 300.0, 600.0) - 300.0;
+                                                vec2 periodicPos = mod(vWorldPosition.xz + uWorldSize * 0.5, uWorldSize) - uWorldSize * 0.5;
                                                 float dist = length(periodicPos);
+
+                                                // Calcula altura base da ilha para determinar camada de pedra dinâmica
+                                                float baseHeight;
+                                                if (dist <= uGrassRadius) {
+                                                    baseHeight = uIslandSurfaceHeight;
+                                                } else if (dist <= uBeachRadius) {
+                                                    float t = (dist - uGrassRadius) / (uBeachRadius - uGrassRadius);
+                                                    baseHeight = uIslandSurfaceHeight * (1.0 - t) + (uWaterLevel - 0.5) * t;
+                                                } else {
+                                                    float t = min(1.0, (dist - uBeachRadius) / (uWorldSize * 0.4));
+                                                    baseHeight = (uWaterLevel - 0.5) * (1.0 - t) + uSeabedLevel * t;
+                                                }
+                                                float currentStoneLevel = baseHeight - 5.0;
 
                                                 // Mistura entre areia e grama baseada no raio (praia larga)
                                                 float sandToGrassBlend = 1.0 - smoothstep(uGrassRadius, uBeachRadius, dist);
@@ -4206,8 +4229,8 @@
 
                                                 // Mistura pedra para montanhas altas
                                                 float stoneBlend = smoothstep(20.0, 35.0, vWorldPosition.y);
-                                                // Camada de pedra profunda
-                                                float deepStoneBlend = 1.0 - smoothstep(uStoneLayerLevel, uStoneLayerLevel + 1.0, vWorldPosition.y);
+                                                // Camada de pedra profunda dinâmica
+                                                float deepStoneBlend = 1.0 - smoothstep(currentStoneLevel, currentStoneLevel + 1.0, vWorldPosition.y);
                                                 stoneBlend = max(stoneBlend, deepStoneBlend);
 
                                                 vec3 seabedSandMix = mix(seabedColor, sandColor, seabedToSandBlend);
@@ -4221,7 +4244,7 @@
                                                     float inferiorFactor = clamp(1.0 - vColor.r, 0.0, 1.0);
                                                     // Se estivermos na praia, a textura de "buraco" deve ser areia escura
                                                     vec3 holeColor = mix(sandColor * 0.8, inferiorColor, sandToGrassBlend);
-                                                    vec3 currentInferior = (vWorldPosition.y < uStoneLayerLevel) ? stoneColor : holeColor;
+                                                    vec3 currentInferior = (vWorldPosition.y < currentStoneLevel) ? stoneColor : holeColor;
                                                     terrainMix = mix(terrainMix, currentInferior, inferiorFactor);
                                                 #endif
 
@@ -5166,7 +5189,9 @@
                         if (currentMound) {
                             destroyTargetDigInfo = { mound: currentMound, isBuilding: isBuilding };
                             const surfaceHeight = getSurfaceHeight(hitPoint.x, hitPoint.z);
-                            const isStoneLayer = hitPoint.y < stoneLayerLevel;
+                            // Pedra começa 5 unidades abaixo da superfície natural (sem contar montanhas extras aqui para simplificar sincronia com shader, ou contando?)
+                            // O usuário quer que acompanhe a curvatura. getSurfaceHeight(x, z) já inclui a curvatura base e montanhas.
+                            const isStoneLayer = hitPoint.y < getSurfaceHeight(hitPoint.x, hitPoint.z) - 5.0;
                             materialType = isStoneLayer ? 'stone' : 'earth';
                             // Aumentado para garantir que a barra de progresso seja visível e sentida
                             baseDurability = isBuilding ? 0.3 : (isStoneLayer ? 3.0 : 1.5);
@@ -6126,7 +6151,7 @@
                                 const currentDigHeight = mound.position.y + (mound.height || 0);
                                 const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
                                 let itemToGive;
-                                if (currentDigHeight < stoneLayerLevel) {
+                                if (currentDigHeight < getSurfaceHeight(mound.position.x, mound.position.z) - 5.0) {
                                     itemToGive = stoneItemName;
                                 } else if (distFromCenter > grassRadius) {
                                     itemToGive = sandItemName;
@@ -6953,7 +6978,7 @@
                                 const hitPoint = intersect.point;
                                 const distFromCenter = Math.sqrt(hitPoint.x ** 2 + hitPoint.z ** 2);
                                 let material = "Terra";
-                                if (hitPoint.y < stoneLayerLevel) {
+                                if (hitPoint.y < getSurfaceHeight(hitPoint.x, hitPoint.z) - 5.0) {
                                     material = "Pedra";
                                 } else if (distFromCenter > grassRadius) {
                                     material = "Areia";
