@@ -680,9 +680,9 @@
             <div class="option-item">
                 <label for="curvatureSlider" class="flex justify-between w-full">
                     <span>Curvatura do Mundo</span>
-                    <span id="curvatureValue">0.000</span>
+                    <span id="curvatureValue">0.0000</span>
                 </label>
-                <input type="range" id="curvatureSlider" min="0" max="0.002" step="0.0001" value="0" class="w-full">
+                <input type="range" id="curvatureSlider" min="0" max="0.01" step="0.0001" value="0" class="w-full">
             </div>
             <div class="option-item">
                 <label for="hintToggle" class="flex justify-between w-full">
@@ -1388,7 +1388,8 @@
                     if (uCurvature > 0.0) {
                         vec4 worldPos = modelMatrix * vec4(transformed, 1.0);
                         float distSq = pow(worldPos.x - cameraPosition.x, 2.0) + pow(worldPos.z - cameraPosition.z, 2.0);
-                        transformed.y -= distSq * uCurvature;
+                        float radius = 1.0 / uCurvature;
+                        transformed.y -= radius - sqrt(max(0.0, pow(radius, 2.0) - distSq));
                     }
                 }
                 `
@@ -5881,6 +5882,20 @@
                     curvatureUniform.value = worldCurvature;
                     curvatureValue.textContent = worldCurvature.toFixed(4);
                     localStorage.setItem('worldCurvature', worldCurvature);
+
+                    // Atualizar o fog baseado na curvatura
+                    if (typeof skyFog !== 'undefined' && skyFog) {
+                        if (worldCurvature > 0.0) {
+                            // Reduz o fog conforme a curvatura aumenta para esconder a borda do mundo
+                            const curvatureRadius = 1.0 / worldCurvature;
+                            const fogLimit = Math.min(renderDistance, curvatureRadius * 0.8);
+                            skyFog.far = fogLimit;
+                            skyFog.near = fogLimit * 0.5;
+                        } else {
+                            skyFog.near = renderDistance * 0.5;
+                            skyFog.far = renderDistance;
+                        }
+                    }
                 });
             }
 
