@@ -1020,7 +1020,7 @@
         let currentRaftBody = null; // NOVO: Referência à jangada atual sendo dirigida
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
         let isWorldReady = false; window.isWorldReady = isWorldReady; // NOVO: Flag para rastrear se o mundo está pronto para interações
-        let lastMeteorCheckTime = 0;
+        let lastMeteorCheckTime = 0; // NOVO: Controle do tempo para checagem do meteoro (60s)
         let activeMeteors = [];
         const sounds = { playPlace: () => {} }; // NOVO: Objeto de sons básico para evitar erros
 
@@ -2428,32 +2428,57 @@
             raycastTargetsNeedUpdate = true;
         }
 
-        function spawnMeteor() {
-            const angle = Math.random() * Math.PI * 2;
-            const dist = Math.random() * (worldSize / 2);
-            const targetX = Math.cos(angle) * dist;
-            const targetZ = Math.sin(angle) * dist;
+        function spawnMeteor(forcedX = null, forcedZ = null) {
+            let targetX, targetZ;
+            if (forcedX !== null && forcedZ !== null) {
+                targetX = forcedX;
+                targetZ = forcedZ;
+            } else {
+                const angle = Math.random() * Math.PI * 2;
+                const dist = Math.random() * (worldSize / 2);
+                targetX = Math.cos(angle) * dist;
+                targetZ = Math.sin(angle) * dist;
+            }
             const targetY = window.getSurfaceHeight(targetX, targetZ);
 
-            const startX = targetX - 50 + Math.random() * 100;
-            const startZ = targetZ - 50 + Math.random() * 100;
-            const startY = 100;
+            const startX = targetX - 150 + Math.random() * 300;
+            const startZ = targetZ - 150 + Math.random() * 300;
+            const startY = 400; // Começa bem mais do alto
 
-            const meteorGeometry = new THREE.DodecahedronGeometry(0.5, 0);
-            const meteorMaterial = new THREE.MeshBasicMaterial({ color: 0xff4400 });
+            const meteorGeometry = new THREE.DodecahedronGeometry(0.8, 0); // Ligeiramente maior
+            const meteorMaterial = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
             const meteorMesh = new THREE.Mesh(meteorGeometry, meteorMaterial);
             meteorMesh.position.set(startX, startY, startZ);
             scene.add(meteorMesh);
 
             const target = new THREE.Vector3(targetX, targetY, targetZ);
             const direction = new THREE.Vector3().subVectors(target, meteorMesh.position).normalize();
-            const speed = 40;
+            const speed = 60; // Mais rápido por vir de mais alto
+
+            // Audio: Som de queda (whistle/rumble)
+            let fallGain = null;
+            let fallOsc = null;
+            if (gameAudioContext) {
+                fallGain = gameAudioContext.createGain();
+                fallGain.gain.value = 0;
+                fallGain.connect(gameAudioContext.destination);
+
+                fallOsc = gameAudioContext.createOscillator();
+                fallOsc.type = 'sawtooth';
+                fallOsc.frequency.setValueAtTime(400, gameAudioContext.currentTime);
+                fallOsc.frequency.exponentialRampToValueAtTime(100, gameAudioContext.currentTime + (startY / speed));
+                fallOsc.connect(fallGain);
+                fallOsc.start();
+                fallGain.gain.linearRampToValueAtTime(0.15, gameAudioContext.currentTime + 0.5);
+            }
 
             activeMeteors.push({
                 mesh: meteorMesh,
                 target: target,
                 direction: direction,
-                speed: speed
+                speed: speed,
+                fallGain: fallGain,
+                fallOsc: fallOsc
             });
         }
 
@@ -2463,11 +2488,23 @@
                 const movement = meteor.direction.clone().multiplyScalar(meteor.speed * delta);
                 meteor.mesh.position.add(movement);
 
-                // Efeito de cauda de fogo
-                if (Math.random() < 0.5) {
-                    const fireColors = [0xff4400, 0xff8800, 0xffaa00];
+                // Atualiza volume do som de queda baseado na distância do jogador
+                if (meteor.fallGain) {
+                    const distToPlayer = calculateWrappedDistance(meteor.mesh.position, playerBody.position);
+                    const vol = Math.max(0, 0.25 * (1.0 - distToPlayer / 150.0));
+                    meteor.fallGain.gain.setTargetAtTime(vol, gameAudioContext.currentTime, 0.1);
+                }
+
+                // Efeito de cauda de fogo mais larga e bonita
+                for (let j = 0; j < 4; j++) {
+                    const fireColors = [0xff4400, 0xff2200, 0xffaa00, 0xffcc00];
                     const color = fireColors[Math.floor(Math.random() * fireColors.length)];
-                    createSmokeEffect(meteor.mesh.position.clone(), color);
+                    const offset = new THREE.Vector3(
+                        (Math.random() - 0.5) * 2.5,
+                        (Math.random() - 0.5) * 2.5,
+                        (Math.random() - 0.5) * 2.5
+                    );
+                    createSmokeEffect(meteor.mesh.position.clone().add(offset), color, 2.0);
                 }
 
                 // Impacto
@@ -2481,6 +2518,44 @@
 
         function onMeteorImpact(meteor) {
             const pos = meteor.target;
+
+            // Parar e limpar áudio de queda
+            if (meteor.fallOsc) {
+                meteor.fallOsc.stop();
+                meteor.fallOsc.disconnect();
+            }
+            if (meteor.fallGain) {
+                meteor.fallGain.disconnect();
+            }
+
+            // Audio: Som de impacto (explosão sintetizada)
+            if (gameAudioContext) {
+                const distToPlayer = calculateWrappedDistance(pos, playerBody.position);
+                const impactVol = Math.max(0, 1.0 * (1.0 - distToPlayer / 200.0));
+
+                if (impactVol > 0.01) {
+                    const noiseBuffer = gameAudioContext.createBuffer(1, gameAudioContext.sampleRate * 0.5, gameAudioContext.sampleRate);
+                    const output = noiseBuffer.getChannelData(0);
+                    for (let i = 0; i < noiseBuffer.length; i++) output[i] = Math.random() * 2 - 1;
+
+                    const noiseSource = gameAudioContext.createBufferSource();
+                    noiseSource.buffer = noiseBuffer;
+
+                    const filter = gameAudioContext.createBiquadFilter();
+                    filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(1000, gameAudioContext.currentTime);
+                    filter.frequency.exponentialRampToValueAtTime(10, gameAudioContext.currentTime + 0.5);
+
+                    const gain = gameAudioContext.createGain();
+                    gain.gain.setValueAtTime(impactVol, gameAudioContext.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, gameAudioContext.currentTime + 0.5);
+
+                    noiseSource.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(gameAudioContext.destination);
+                    noiseSource.start();
+                }
+            }
 
             // Simular um impacto para createMound
             const fakeIntersect = {
@@ -2505,15 +2580,15 @@
             // Criar pedra no local do impacto
             createStone(new THREE.Vector3(pos.x, pos.y + 0.5, pos.z), new THREE.Quaternion());
 
-            // Efeitos de explosão
-            for (let i = 0; i < 15; i++) {
-                const explosionColors = [0xff4400, 0xff8800, 0x555555];
+            // Efeitos de explosão mais robustos
+            for (let i = 0; i < 40; i++) {
+                const explosionColors = [0xff4400, 0xff8800, 0x555555, 0x333333];
                 const color = explosionColors[Math.floor(Math.random() * explosionColors.length)];
                 createSmokeEffect(pos.clone().add(new THREE.Vector3(
-                    (Math.random() - 0.5) * 2,
-                    Math.random() * 2,
-                    (Math.random() - 0.5) * 2
-                )), color);
+                    (Math.random() - 0.5) * 6,
+                    Math.random() * 5,
+                    (Math.random() - 0.5) * 6
+                )), color, 1.5);
             }
             createDustCloud(pos, 0x000000);
 
@@ -3493,28 +3568,28 @@
         }
 
         // Function to create a smoke effect at a given position
-        function createSmokeEffect(position, colorOverride = null) {
+        function createSmokeEffect(position, colorOverride = null, scale = 1.0) {
             if (!position) return;
 
-            const smokeCount = 6; // Reduzido para melhor performance
-            const smokeGeometry = new THREE.SphereGeometry(0.15, 8, 8); // Tripled the size
+            const smokeCount = Math.max(1, Math.floor(6 * scale));
+            const smokeGeometry = new THREE.SphereGeometry(0.15 * scale, 8, 8);
             const smokeMaterial = new THREE.MeshBasicMaterial({
-                color: colorOverride !== null ? colorOverride : 0xA0522D, // Cor herdada ou padrão terra
+                color: colorOverride !== null ? colorOverride : 0xA0522D,
                 transparent: true,
-                opacity: 0.3, // Mais transparente
-                depthWrite: false // Important for transparent objects
+                opacity: 0.3,
+                depthWrite: false
             });
 
             for (let i = 0; i < smokeCount; i++) {
-                const particle = new THREE.Mesh(smokeGeometry, smokeMaterial.clone()); // Clone material for individual opacity
+                const particle = new THREE.Mesh(smokeGeometry, smokeMaterial.clone());
                 particle.position.copy(position);
-                // Give particles a slight random initial velocity
+
                 particle.userData.velocity = new THREE.Vector3(
-                    (Math.random() - 0.5) * 0.5, // Increased spread
-                    Math.random() * 0.1 + 0.1,   // Increased upward velocity
-                    (Math.random() - 0.5) * 0.5  // Increased spread
+                    (Math.random() - 0.5) * 0.5 * scale,
+                    Math.random() * 0.1 * scale + 0.1,
+                    (Math.random() - 0.5) * 0.5 * scale
                 );
-                particle.userData.lifetime = 4.5; // Increased lifetime for a larger cloud
+                particle.userData.lifetime = 4.5 * scale;
                 particlesGroup.add(particle);
                 smokeParticles.push(particle);
             }
