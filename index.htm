@@ -1020,9 +1020,7 @@
         let currentRaftBody = null; // NOVO: Referência à jangada atual sendo dirigida
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
         let isWorldReady = false; window.isWorldReady = isWorldReady; // NOVO: Flag para rastrear se o mundo está pronto para interações
-        let lastMeteorCheckDay = -1;
-        let meteorCheckTimeThisDay = 0;
-        let hasCheckedMeteorThisDay = false;
+        let lastMeteorCheckTime = 0;
         let activeMeteors = [];
         const sounds = { playPlace: () => {} }; // NOVO: Objeto de sons básico para evitar erros
 
@@ -6713,16 +6711,9 @@
                 respawnTree();
             }
 
-            // Verificação diária de pedras e queda de meteoro
-            const currentDay = Math.floor(world.time / dayDuration);
-            if (currentDay > lastMeteorCheckDay) {
-                lastMeteorCheckDay = currentDay;
-                meteorCheckTimeThisDay = world.time + Math.random() * dayDuration;
-                hasCheckedMeteorThisDay = false;
-            }
-
-            if (!hasCheckedMeteorThisDay && world.time >= meteorCheckTimeThisDay) {
-                hasCheckedMeteorThisDay = true;
+            // Verificação de pedras e queda de meteoro a cada 60 segundos
+            if (world.time - lastMeteorCheckTime >= 60) {
+                lastMeteorCheckTime = world.time;
                 const currentStoneCount = collectibleBoxes.filter(box => box.body.userData && box.body.userData.type === stoneItemName).length;
                 if (currentStoneCount < 100) {
                     spawnMeteor();
@@ -8150,8 +8141,7 @@
             window.moonMesh = moonMesh;
             window.spawnMeteor = spawnMeteor;
             window.activeMeteors = activeMeteors;
-            Object.defineProperty(window, 'meteorCheckTimeThisDay', { get: () => meteorCheckTimeThisDay });
-            Object.defineProperty(window, 'hasCheckedMeteorThisDay', { get: () => hasCheckedMeteorThisDay });
+            Object.defineProperty(window, 'lastMeteorCheckTime', { get: () => lastMeteorCheckTime, set: (v) => { lastMeteorCheckTime = v; } });
 
             // Weather exposure
             window.clouds = clouds;
