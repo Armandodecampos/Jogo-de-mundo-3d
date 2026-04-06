@@ -814,7 +814,7 @@
         let coconutTrees = [];
         window.coconutTrees = coconutTrees;
         let targetCapimCount = parseInt(localStorage.getItem('targetCapimCount')) || 1000;
-        let targetStoneCount = parseInt(localStorage.getItem('targetStoneCount')) || 100;
+        let targetStoneCount = 100;
         let useTextures = localStorage.getItem('useTextures') !== 'false';
         let useShadows = localStorage.getItem('useShadows') !== 'false';
         let useInteractionHints = localStorage.getItem('useInteractionHints') !== 'false';
@@ -1020,6 +1020,10 @@
         let currentRaftBody = null; // NOVO: Referência à jangada atual sendo dirigida
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
         let isWorldReady = false; window.isWorldReady = isWorldReady; // NOVO: Flag para rastrear se o mundo está pronto para interações
+        let lastMeteorCheckDay = -1;
+        let meteorCheckTimeThisDay = 0;
+        let hasCheckedMeteorThisDay = false;
+        let activeMeteors = [];
         const sounds = { playPlace: () => {} }; // NOVO: Objeto de sons básico para evitar erros
 
         // NOVO: Gerenciador de carregamento para rastrear quando todos os recursos são carregados
@@ -2426,6 +2430,101 @@
             raycastTargetsNeedUpdate = true;
         }
 
+        function spawnMeteor() {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = Math.random() * (worldSize / 2);
+            const targetX = Math.cos(angle) * dist;
+            const targetZ = Math.sin(angle) * dist;
+            const targetY = window.getSurfaceHeight(targetX, targetZ);
+
+            const startX = targetX - 50 + Math.random() * 100;
+            const startZ = targetZ - 50 + Math.random() * 100;
+            const startY = 100;
+
+            const meteorGeometry = new THREE.DodecahedronGeometry(0.5, 0);
+            const meteorMaterial = new THREE.MeshBasicMaterial({ color: 0xff4400 });
+            const meteorMesh = new THREE.Mesh(meteorGeometry, meteorMaterial);
+            meteorMesh.position.set(startX, startY, startZ);
+            scene.add(meteorMesh);
+
+            const target = new THREE.Vector3(targetX, targetY, targetZ);
+            const direction = new THREE.Vector3().subVectors(target, meteorMesh.position).normalize();
+            const speed = 40;
+
+            activeMeteors.push({
+                mesh: meteorMesh,
+                target: target,
+                direction: direction,
+                speed: speed
+            });
+        }
+
+        function updateMeteors(delta) {
+            for (let i = activeMeteors.length - 1; i >= 0; i--) {
+                const meteor = activeMeteors[i];
+                const movement = meteor.direction.clone().multiplyScalar(meteor.speed * delta);
+                meteor.mesh.position.add(movement);
+
+                // Efeito de cauda de fogo
+                if (Math.random() < 0.5) {
+                    const fireColors = [0xff4400, 0xff8800, 0xffaa00];
+                    const color = fireColors[Math.floor(Math.random() * fireColors.length)];
+                    createSmokeEffect(meteor.mesh.position.clone(), color);
+                }
+
+                // Impacto
+                const distToTarget = meteor.mesh.position.distanceTo(meteor.target);
+                if (distToTarget < 1.0 || meteor.mesh.position.y <= meteor.target.y) {
+                    onMeteorImpact(meteor);
+                    activeMeteors.splice(i, 1);
+                }
+            }
+        }
+
+        function onMeteorImpact(meteor) {
+            const pos = meteor.target;
+
+            // Simular um impacto para createMound
+            const fakeIntersect = {
+                point: pos,
+                face: { normal: new THREE.Vector3(0, 1, 0) },
+                object: islandMeshes[0].mesh // Dummy reference
+            };
+
+            const mound = createMound(fakeIntersect, false);
+            if (mound) {
+                // Forçar o buraco a completar imediatamente
+                mound.growthStage = moundGrowthStages.length;
+                mound.height = mound.maxHeightChange;
+                if (mound.mesh) {
+                    const finalScale = mound.isPrecise ? 0.8 : 1.0;
+                    mound.mesh.scale.set(finalScale, finalScale, finalScale);
+                }
+                terrainNeedsUpdate = true;
+                terrainAffectedMounds.push(mound);
+            }
+
+            // Criar pedra no local do impacto
+            createStone(new THREE.Vector3(pos.x, pos.y + 0.5, pos.z), new THREE.Quaternion());
+
+            // Efeitos de explosão
+            for (let i = 0; i < 15; i++) {
+                const explosionColors = [0xff4400, 0xff8800, 0x555555];
+                const color = explosionColors[Math.floor(Math.random() * explosionColors.length)];
+                createSmokeEffect(pos.clone().add(new THREE.Vector3(
+                    (Math.random() - 0.5) * 2,
+                    Math.random() * 2,
+                    (Math.random() - 0.5) * 2
+                )), color);
+            }
+            createDustCloud(pos, 0x000000);
+
+            // Remover malha do meteoro
+            scene.remove(meteor.mesh);
+            if (meteor.mesh.geometry) meteor.mesh.geometry.dispose();
+            if (meteor.mesh.material) meteor.mesh.material.dispose();
+        }
+
         function createCapim(position) {
             if (capimFreeIndices.length === 0) return;
             const poolIndex = capimFreeIndices.pop();
@@ -2547,19 +2646,20 @@
 
         function populateStones() {
             let attempts = 0;
-            const initialTarget = targetStoneCount;
+            const initialTarget = 100; // Force 100 stones
+            targetStoneCount = 100;
             while (attempts < initialTarget * 10) {
                 const currentStoneCount = collectibleBoxes.filter(box => box.body.userData && box.body.userData.type === stoneItemName).length;
                 if (currentStoneCount >= initialTarget) break;
 
                 attempts++;
                 const angle = Math.random() * Math.PI * 2;
-                const dist = Math.random() * beachRadius; // Scattered across grass and beach
+                const dist = Math.random() * (worldSize / 2); // Scattered across whole world
                 const x = Math.cos(angle) * dist;
                 const z = Math.sin(angle) * dist;
                 const y = window.getSurfaceHeight(x, z);
 
-                if (y > waterLevel + 0.2 && y < 25) {
+                if (y < 25) { // Any height, including underwater
                     if (!isAreaOccupiedByConstruction(x, z, 1.0) && !isPositionOccupied(x, z, 0.5)) {
                         createStone(new THREE.Vector3(x, y, z), new THREE.Quaternion());
                     }
@@ -6611,8 +6711,25 @@
                 });
                 respawnCapim();
                 respawnTree();
-                respawnStone();
             }
+
+            // Verificação diária de pedras e queda de meteoro
+            const currentDay = Math.floor(world.time / dayDuration);
+            if (currentDay > lastMeteorCheckDay) {
+                lastMeteorCheckDay = currentDay;
+                meteorCheckTimeThisDay = world.time + Math.random() * dayDuration;
+                hasCheckedMeteorThisDay = false;
+            }
+
+            if (!hasCheckedMeteorThisDay && world.time >= meteorCheckTimeThisDay) {
+                hasCheckedMeteorThisDay = true;
+                const currentStoneCount = collectibleBoxes.filter(box => box.body.userData && box.body.userData.type === stoneItemName).length;
+                if (currentStoneCount < 100) {
+                    spawnMeteor();
+                }
+            }
+
+            updateMeteors(delta);
 
             // Atualiza as posições das malhas do terreno com base na posição envolvida do jogador
             // Update onSteepSlope flag based on current contacts
@@ -8031,6 +8148,10 @@
             window.rainParticles = rainParticles;
             window.sunMesh = sunMesh;
             window.moonMesh = moonMesh;
+            window.spawnMeteor = spawnMeteor;
+            window.activeMeteors = activeMeteors;
+            Object.defineProperty(window, 'meteorCheckTimeThisDay', { get: () => meteorCheckTimeThisDay });
+            Object.defineProperty(window, 'hasCheckedMeteorThisDay', { get: () => hasCheckedMeteorThisDay });
 
             // Weather exposure
             window.clouds = clouds;
