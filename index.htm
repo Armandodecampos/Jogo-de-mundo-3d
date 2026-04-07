@@ -523,6 +523,21 @@
             transform: translate(-50%, -50%);
             z-index: 4;
         }
+
+        /* FPS Counter Style */
+        #fpsCounter {
+            position: absolute;
+            top: 10px;
+            left: 110px;
+            color: lime;
+            font-family: monospace;
+            font-size: 14px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px black;
+            z-index: 1000;
+            pointer-events: none;
+            display: none; /* Hidden by default */
+        }
         .clock-mark {
             position: absolute;
             width: 2px;
@@ -671,6 +686,16 @@
                 </select>
             </div>
             <div class="option-item">
+                <label for="fpsToggle" class="flex justify-between w-full">
+                    <span>Mostrador de FPS</span>
+                    <span id="fpsStatus">Desativado</span>
+                </label>
+                <select id="fpsToggle" class="w-full bg-gray-700 text-white p-2 rounded">
+                    <option value="true">Ativado</option>
+                    <option value="false">Desativado</option>
+                </select>
+            </div>
+            <div class="option-item">
                 <label for="hintToggle" class="flex justify-between w-full">
                     <span>Dicas de Interação</span>
                     <span id="hintStatus">Ativado</span>
@@ -688,6 +713,7 @@
         <div id="progressBar"></div>
     </div>
 
+    <div id="fpsCounter">FPS: 0</div>
     <div id="crosshair"></div>
     <div id="interactionHint"></div>
 
@@ -815,6 +841,9 @@
         window.coconutTrees = coconutTrees;
         let targetCapimCount = parseInt(localStorage.getItem('targetCapimCount')) || 1000;
         let targetStoneCount = 100;
+        let showFPS = localStorage.getItem('showFPS') === 'true';
+        let fpsFrames = 0;
+        let fpsLastTime = performance.now();
         let useTextures = localStorage.getItem('useTextures') !== 'false';
         let useShadows = localStorage.getItem('useShadows') !== 'false';
         let useInteractionHints = localStorage.getItem('useInteractionHints') !== 'false';
@@ -1518,6 +1547,15 @@
             if (status) status.textContent = useInteractionHints ? "Ativado" : "Desativado";
             const toggle = document.getElementById('hintToggle');
             if (toggle) toggle.value = useInteractionHints.toString();
+        }
+
+        function applyFPSSettings() {
+            const counter = document.getElementById('fpsCounter');
+            if (counter) counter.style.display = showFPS ? 'block' : 'none';
+            const status = document.getElementById('fpsStatus');
+            if (status) status.textContent = showFPS ? "Ativado" : "Desativado";
+            const toggle = document.getElementById('fpsToggle');
+            if (toggle) toggle.value = showFPS.toString();
         }
 
         // NOVO: Função para ajustar as bordas da câmera de sombra dinamicamente
@@ -6011,6 +6049,16 @@
                 });
             }
 
+            const fpsToggle = document.getElementById('fpsToggle');
+            if (fpsToggle) {
+                fpsToggle.value = showFPS.toString();
+                fpsToggle.addEventListener('change', () => {
+                    showFPS = fpsToggle.value === 'true';
+                    localStorage.setItem('showFPS', showFPS);
+                    applyFPSSettings();
+                });
+            }
+
             // Adiciona o listener para o novo botão de ícone do menu
             if (menuIconButton) {
                 menuIconButton.addEventListener('click', showOptionsScreen);
@@ -6096,6 +6144,17 @@
             const now = performance.now();
             const delta = Math.min((now - lastTime) / 1000, 0.1);
             lastTime = now;
+
+            // Update FPS counter
+            if (showFPS) {
+                fpsFrames++;
+                if (now > fpsLastTime + 1000) {
+                    const fps = Math.round((fpsFrames * 1000) / (now - fpsLastTime));
+                    document.getElementById('fpsCounter').textContent = `FPS: ${fps}`;
+                    fpsFrames = 0;
+                    fpsLastTime = now;
+                }
+            }
             // Sincroniza Birds e Clouds com worldSize real para despawn
             const despawnDist = worldSize * 0.8;
 
@@ -8069,6 +8128,7 @@
             updateShadowCameras(renderDistance); // Inicializa as bordas da sombra
             applyShadowSettings(); // Aplica as configurações de sombra após init
             applyHintSettings(); // Aplica as configurações de dicas após init
+            applyFPSSettings(); // Aplica as configurações de FPS após init
             populateCapim(); // NOVO: Popula a ilha com capim
             populateTrees(); // NOVO: Popula a ilha com árvores
             populateStones(); // NOVO: Popula a ilha com pedras
@@ -8271,6 +8331,8 @@
             });
             window.updateWeather = updateWeather;
             window.spawnBirdGroup = spawnBirdGroup;
+            window.applyFPSSettings = applyFPSSettings;
+            Object.defineProperty(window, 'showFPS', { get: () => showFPS, set: (v) => { showFPS = v; } });
         }
 
         // Listener de evento para o botão "Jogar"
