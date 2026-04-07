@@ -814,6 +814,8 @@
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
+        const frustum = new THREE.Frustum();
+        const projScreenMatrix = new THREE.Matrix4();
         let skyFog, underwaterFog; // NOVO: Para o efeito subaquático
         let skyColor, underwaterColor; // NOVO: Para as cores do ambiente
         // Variáveis para corpos e malhas de jogador, terreno (rua), estrada e cubo
@@ -6145,6 +6147,13 @@
             const delta = Math.min((now - lastTime) / 1000, 0.1);
             lastTime = now;
 
+            // Update camera position and matrices for accurate culling
+            if (playerBody) {
+                camera.position.copy(playerBody.position);
+                camera.position.y += (typeof cameraEyeLevelOffset !== 'undefined' ? cameraEyeLevelOffset : playerRadius);
+                camera.updateMatrixWorld();
+            }
+
             // Update FPS counter
             if (showFPS) {
                 fpsFrames++;
@@ -6244,6 +6253,8 @@
                 renderer.render(scene, camera);
                 return;
             }
+
+            updateMeteors(delta);
 
             // Lógica de destruição progressiva
             // NOVO: Adiciona a verificação `isAttemptingToDestroy` e a lógica de reinício repetida.
@@ -6897,8 +6908,6 @@
                 }
             }
 
-            updateMeteors(delta);
-
             // Atualiza as posições das malhas do terreno com base na posição envolvida do jogador
             // Update onSteepSlope flag based on current contacts
             if (!isFlying && !isClimbing && !isDrivingRaft) {
@@ -6915,34 +6924,41 @@
             }
 
             // Sincronização dos corpos de física movida para antes do world.step
+            projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+            frustum.setFromProjectionMatrix(projScreenMatrix);
+
+            const renderDistSq = renderDistance * renderDistance;
+            const halfWorldSize = worldSize / 2;
+
             islandMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.y = 0;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
+                tile.mesh.updateMatrixWorld();
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
                 // Culling estrito para o terreno (um pouco maior que renderDistance para evitar buracos nas bordas)
-                tile.mesh.visible = dist <= renderDistance + 600;
+                // Também verifica se está no frustum (usando bounding box do tile)
+                tile.mesh.visible = (dist <= renderDistance + 600) && (tile.mesh.geometry ? frustum.intersectsObject(tile.mesh) : true);
             });
 
             waterMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
+                tile.mesh.updateMatrixWorld();
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + 600;
+                tile.mesh.visible = (dist <= renderDistance + 600) && (tile.mesh.geometry ? frustum.intersectsObject(tile.mesh) : true);
             });
 
             seabedMeshes.forEach(tile => {
                 tile.mesh.position.x = tile.offsetX - visualOffsetX;
                 tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
+                tile.mesh.updateMatrixWorld();
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = dist <= renderDistance + 600;
+                tile.mesh.visible = (dist <= renderDistance + 600) && (tile.mesh.geometry ? frustum.intersectsObject(tile.mesh) : true);
             });
-
-            const renderDistSq = renderDistance * renderDistance;
-            const halfWorldSize = worldSize / 2;
 
             // Otimização: Wrapping de instância única para todos os objetos e culling estrito
             collectibleBoxes.forEach(box => {
@@ -6966,7 +6982,9 @@
                 } else {
                     mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
                     mesh.quaternion.copy(body.quaternion);
-                    mesh.visible = true;
+                    mesh.updateMatrixWorld();
+                    // Adiciona frustum culling manual
+                    mesh.visible = mesh.geometry ? frustum.intersectsObject(mesh) : true;
                 }
             });
 
@@ -6990,7 +7008,9 @@
                 } else {
                     mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
                     mesh.quaternion.copy(body.quaternion);
-                    mesh.visible = true;
+                    mesh.updateMatrixWorld();
+                    // Adiciona frustum culling manual
+                    mesh.visible = mesh.geometry ? frustum.intersectsObject(mesh) : true;
                 }
             });
 
@@ -7014,7 +7034,9 @@
                 } else {
                     mound.mesh.position.set(wrappedX - visualOffsetX, mound.position.y, wrappedZ - visualOffsetZ);
                     mound.mesh.quaternion.copy(mound.quaternion);
-                    mound.mesh.visible = true;
+                    mound.mesh.updateMatrixWorld();
+                    // Adiciona frustum culling manual
+                    mound.mesh.visible = mound.mesh.geometry ? frustum.intersectsObject(mound.mesh) : true;
                 }
             });
 
@@ -7022,7 +7044,7 @@
             capimInstancedMeshes.forEach(mesh => {
                 // Como são 9 tiles, verificamos a distância do centro do tile visual
                 const dist = camera.position.distanceTo(mesh.position);
-                mesh.visible = dist <= renderDistance + 600;
+                mesh.visible = (dist <= renderDistance + 600) && (mesh.geometry ? frustum.intersectsObject(mesh) : true);
             });
 
             // NOVO: Lógica para fechar buracos inativos (curar terreno após 10 segundos)
@@ -7521,9 +7543,7 @@
                 playerBody.wakeUp();
             }
 
-            // Atualiza a posição da câmera para a posição do corpo de física do jogador
-            camera.position.copy(playerBody.position);
-            camera.position.y += cameraEyeLevelOffset;
+            // A posição da câmera já foi atualizada no início do loop para garantir culling preciso
 
             // Lógica do efeito subaquático
             if (camera.position.y < waterLevel && hasWaterAt(camera.position.x, camera.position.z)) {
@@ -8227,6 +8247,10 @@
             }
 
             isWorldReady = true; window.isWorldReady = true;
+            Object.defineProperty(window, 'renderDistance', {
+                get: () => renderDistance,
+                set: (v) => { renderDistance = v; }
+            });
             window.initRainAudio = initRainAudio;
             window.birdSoundUrls = birdSoundUrls;
             window.seagullSoundUrls = seagullSoundUrls;

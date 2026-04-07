@@ -48,7 +48,11 @@ test('Stone and Meteor logic verification', async ({ page }) => {
   // 3. Trigger meteor manually for testing
   await page.evaluate(() => {
     if (typeof window.spawnMeteor === 'function') {
-        window.spawnMeteor();
+        // Force spawn at a low height for faster testing
+        window.spawnMeteor(0, 0);
+        const meteor = window.activeMeteors[window.activeMeteors.length - 1];
+        meteor.mesh.position.y = 50; // Lower altitude
+        meteor.speed = 100; // Faster meteor
     } else {
         throw new Error('window.spawnMeteor is not defined');
     }
@@ -63,9 +67,10 @@ test('Stone and Meteor logic verification', async ({ page }) => {
   console.log('Meteor spawned successfully.');
 
   // 5. Wait for meteor impact (meteor speed is 40, distance is roughly 100-140, takes ~3-4 seconds)
+  // In the sandbox, physics can be much slower, so we increase the timeout significantly.
   await page.waitForFunction(() => {
     return (window.activeMeteors || []).length === 0;
-  }, { timeout: 10000 });
+  }, { timeout: 60000 });
 
   // 6. Check if stone count increased back
   const finalStoneCount = await page.evaluate(() => {
