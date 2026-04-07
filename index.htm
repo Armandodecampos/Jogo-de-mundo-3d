@@ -1020,7 +1020,8 @@
         let currentRaftBody = null; // NOVO: Referência à jangada atual sendo dirigida
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
         let isWorldReady = false; window.isWorldReady = isWorldReady; // NOVO: Flag para rastrear se o mundo está pronto para interações
-        let lastMeteorCheckTime = 0; // NOVO: Controle do tempo para checagem do meteoro (60s)
+        let nextMeteorCheckTime = -1; // NOVO: Próximo horário de checagem do meteoro
+        let currentDayForMeteor = -1; // NOVO: Dia atual para controle de checagem
         let activeMeteors = [];
         const sounds = { playPlace: () => {} }; // NOVO: Objeto de sons básico para evitar erros
 
@@ -2455,21 +2456,49 @@
             const direction = new THREE.Vector3().subVectors(target, meteorMesh.position).normalize();
             const speed = 60; // Mais rápido por vir de mais alto
 
-            // Audio: Som de queda (whistle/rumble)
+            // Audio: Som de queda realista (whistle + rumbling wind)
             let fallGain = null;
             let fallOsc = null;
+            let fallNoiseSource = null;
             if (gameAudioContext) {
                 fallGain = gameAudioContext.createGain();
                 fallGain.gain.value = 0;
                 fallGain.connect(gameAudioContext.destination);
 
+                // Whistle component
                 fallOsc = gameAudioContext.createOscillator();
                 fallOsc.type = 'sawtooth';
-                fallOsc.frequency.setValueAtTime(400, gameAudioContext.currentTime);
-                fallOsc.frequency.exponentialRampToValueAtTime(100, gameAudioContext.currentTime + (startY / speed));
-                fallOsc.connect(fallGain);
+                fallOsc.frequency.setValueAtTime(600, gameAudioContext.currentTime);
+                fallOsc.frequency.exponentialRampToValueAtTime(150, gameAudioContext.currentTime + (startY / speed));
+
+                // Rumble component (Noise with LowPass)
+                const noiseBuffer = gameAudioContext.createBuffer(1, gameAudioContext.sampleRate * 2.0, gameAudioContext.sampleRate);
+                const output = noiseBuffer.getChannelData(0);
+                for (let i = 0; i < noiseBuffer.length; i++) output[i] = Math.random() * 2 - 1;
+
+                fallNoiseSource = gameAudioContext.createBufferSource();
+                fallNoiseSource.buffer = noiseBuffer;
+                fallNoiseSource.loop = true;
+
+                const filter = gameAudioContext.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(1200, gameAudioContext.currentTime);
+                filter.frequency.exponentialRampToValueAtTime(300, gameAudioContext.currentTime + (startY / speed));
+
+                const whistleGain = gameAudioContext.createGain();
+                whistleGain.gain.value = 0.4;
+                const rumbleGain = gameAudioContext.createGain();
+                rumbleGain.gain.value = 0.6;
+
+                fallOsc.connect(whistleGain);
+                whistleGain.connect(fallGain);
+                fallNoiseSource.connect(filter);
+                filter.connect(rumbleGain);
+                rumbleGain.connect(fallGain);
+
                 fallOsc.start();
-                fallGain.gain.linearRampToValueAtTime(0.15, gameAudioContext.currentTime + 0.5);
+                fallNoiseSource.start();
+                fallGain.gain.linearRampToValueAtTime(0.3, gameAudioContext.currentTime + 0.5);
             }
 
             activeMeteors.push({
@@ -2478,7 +2507,8 @@
                 direction: direction,
                 speed: speed,
                 fallGain: fallGain,
-                fallOsc: fallOsc
+                fallOsc: fallOsc,
+                fallNoiseSource: fallNoiseSource
             });
         }
 
@@ -2491,18 +2521,19 @@
                 // Atualiza volume do som de queda baseado na distância do jogador
                 if (meteor.fallGain) {
                     const distToPlayer = calculateWrappedDistance(meteor.mesh.position, playerBody.position);
-                    const vol = Math.max(0, 0.25 * (1.0 - distToPlayer / 150.0));
+                    // Aumenta o alcance para 500m para ser ouvido desde o céu
+                    const vol = Math.max(0, 0.5 * (1.0 - distToPlayer / 500.0));
                     meteor.fallGain.gain.setTargetAtTime(vol, gameAudioContext.currentTime, 0.1);
                 }
 
-                // Efeito de cauda de fogo mais larga e bonita
+                // Efeito de cauda de fogo mais estreita
                 for (let j = 0; j < 4; j++) {
                     const fireColors = [0xff4400, 0xff2200, 0xffaa00, 0xffcc00];
                     const color = fireColors[Math.floor(Math.random() * fireColors.length)];
                     const offset = new THREE.Vector3(
-                        (Math.random() - 0.5) * 2.5,
-                        (Math.random() - 0.5) * 2.5,
-                        (Math.random() - 0.5) * 2.5
+                        (Math.random() - 0.5) * 1.25,
+                        (Math.random() - 0.5) * 1.25,
+                        (Math.random() - 0.5) * 1.25
                     );
                     createSmokeEffect(meteor.mesh.position.clone().add(offset), color, 2.0);
                 }
@@ -2524,6 +2555,10 @@
                 meteor.fallOsc.stop();
                 meteor.fallOsc.disconnect();
             }
+            if (meteor.fallNoiseSource) {
+                meteor.fallNoiseSource.stop();
+                meteor.fallNoiseSource.disconnect();
+            }
             if (meteor.fallGain) {
                 meteor.fallGain.disconnect();
             }
@@ -2531,7 +2566,8 @@
             // Audio: Som de impacto (explosão sintetizada)
             if (gameAudioContext) {
                 const distToPlayer = calculateWrappedDistance(pos, playerBody.position);
-                const impactVol = Math.max(0, 1.0 * (1.0 - distToPlayer / 200.0));
+                // Alcance de impacto aumentado para 300m
+                const impactVol = Math.max(0, 1.5 * (1.0 - distToPlayer / 300.0));
 
                 if (impactVol > 0.01) {
                     const noiseBuffer = gameAudioContext.createBuffer(1, gameAudioContext.sampleRate * 0.5, gameAudioContext.sampleRate);
@@ -6786,9 +6822,16 @@
                 respawnTree();
             }
 
-            // Verificação de pedras e queda de meteoro a cada 60 segundos
-            if (world.time - lastMeteorCheckTime >= 60) {
-                lastMeteorCheckTime = world.time;
+            // Verificação de pedras e queda de meteoro: 1 vez ao dia em horário aleatório
+            const totalElapsedDays = Math.floor(world.time / dayDuration);
+            if (totalElapsedDays > currentDayForMeteor) {
+                currentDayForMeteor = totalElapsedDays;
+                // Agenda uma checagem aleatória para este novo dia (entre 0 e 100% da duração do dia)
+                nextMeteorCheckTime = (totalElapsedDays * dayDuration) + (Math.random() * dayDuration);
+            }
+
+            if (nextMeteorCheckTime !== -1 && world.time >= nextMeteorCheckTime) {
+                nextMeteorCheckTime = -1; // Reseta para não checar mais de uma vez no mesmo dia
                 const currentStoneCount = collectibleBoxes.filter(box => box.body.userData && box.body.userData.type === stoneItemName).length;
                 if (currentStoneCount < 100) {
                     spawnMeteor();
@@ -8216,7 +8259,8 @@
             window.moonMesh = moonMesh;
             window.spawnMeteor = spawnMeteor;
             window.activeMeteors = activeMeteors;
-            Object.defineProperty(window, 'lastMeteorCheckTime', { get: () => lastMeteorCheckTime, set: (v) => { lastMeteorCheckTime = v; } });
+            Object.defineProperty(window, 'nextMeteorCheckTime', { get: () => nextMeteorCheckTime, set: (v) => { nextMeteorCheckTime = v; } });
+            Object.defineProperty(window, 'currentDayForMeteor', { get: () => currentDayForMeteor, set: (v) => { currentDayForMeteor = v; } });
 
             // Weather exposure
             window.clouds = clouds;
