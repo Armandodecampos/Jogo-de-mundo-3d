@@ -4212,9 +4212,9 @@
 
             // Camadas de estrelas: [quantidade, tamanhoBase, opacidadeBase]
             const starLayers = [
-                [3000, 0.4, 0.8], // Estrelas pequenas e densas
-                [1000, 0.8, 0.9], // Estrelas médias
-                [200, 1.4, 1.0]   // Estrelas grandes e brilhantes
+                [2000, 0.6, 0.8], // Estrelas pequenas (ligeiramente maiores que antes)
+                [800, 1.2, 0.9],  // Estrelas médias
+                [150, 2.5, 1.0]   // Estrelas grandes (bem maiores)
             ];
 
             starLayers.forEach(([count, baseSize, baseOpacity]) => {
@@ -4266,34 +4266,42 @@
                 starField.add(points);
             });
 
-            // Nebulosas Coloridas
+            // Nebulosas Coloridas - Formatos mais aleatórios e orgânicos
             const nebulaColors = [0x442266, 0x114466, 0x662244]; // Roxo, Azul, Magenta
             nebulaColors.forEach(color => {
-                const count = 15;
+                const count = 25; // Mais partículas para formatos melhores
                 const geometry = new THREE.BufferGeometry();
                 const positions = new Float32Array(count * 3);
                 const colors = new Float32Array(count * 3);
                 const sizes = new Float32Array(count);
 
                 const nebulaColor = new THREE.Color(color);
+                const centerTheta = Math.random() * Math.PI * 2;
+                const centerPhi = Math.acos(2 * Math.random() - 1);
+
+                // Randomiza o "espalhamento" da nebulosa para formatos irregulares
+                const spreadTheta = 0.3 + Math.random() * 0.7;
+                const spreadPhi = 0.3 + Math.random() * 0.7;
 
                 for (let i = 0; i < count; i++) {
-                    const r = 490; // Ligeiramente mais perto que as estrelas
-                    // Clump nebulae together
-                    const centerTheta = Math.random() * Math.PI * 2;
-                    const centerPhi = Math.acos(2 * Math.random() - 1);
+                    const r = 490;
 
-                    const theta = centerTheta + (Math.random() - 0.5) * 0.5;
-                    const phi = centerPhi + (Math.random() - 0.5) * 0.5;
+                    // Distribuição mais irregular (ruído simples)
+                    const theta = centerTheta + (Math.random() - 0.5) * spreadTheta;
+                    const phi = centerPhi + (Math.random() - 0.5) * spreadPhi;
 
                     positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
                     positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
                     positions[i * 3 + 2] = r * Math.cos(phi);
 
-                    colors[i * 3] = nebulaColor.r;
-                    colors[i * 3 + 1] = nebulaColor.g;
-                    colors[i * 3 + 2] = nebulaColor.b;
-                    sizes[i] = 100 + Math.random() * 200;
+                    // Variação de cor dentro da própria nebulosa
+                    const colorVar = 0.8 + Math.random() * 0.4;
+                    colors[i * 3] = nebulaColor.r * colorVar;
+                    colors[i * 3 + 1] = nebulaColor.g * colorVar;
+                    colors[i * 3 + 2] = nebulaColor.b * colorVar;
+
+                    // Tamanhos muito variados para dar profundidade e forma
+                    sizes[i] = 80 + Math.pow(Math.random(), 2) * 300;
                 }
 
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
