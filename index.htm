@@ -7553,31 +7553,41 @@
                 ambientLight.color.setHex(0xffffff); // Cor branca padrão
             }
 
-            // --- Ciclo Dia/Noite ---
-            const dayProgress = (world.time % dayDuration) / dayDuration;
-            const theta = dayProgress * 2 * Math.PI;
+            // --- Ciclo Dia/Noite Relativo ---
+            // O jogador pode caminhar para acelerar ou prolongar o dia/noite (longitude)
+            // O eixo X representa a longitude no mundo toroidal/esférico
+            const longitudeOffset = (playerBody.position.x / worldSize) * 2 * Math.PI;
+            const theta = ((world.time / dayDuration) * 2 * Math.PI) - longitudeOffset;
+            // dayProgress normalizado entre 0 e 1 para cores e relógio
+            const dayProgress = ((theta / (2 * Math.PI)) % 1 + 1) % 1;
 
             // Orbita do Sol e da Lua
             const orbitRadius = 500;
-            const sunX = orbitRadius * Math.sin(theta);
-            const sunY = orbitRadius * Math.cos(theta);
-            const moonX = orbitRadius * Math.sin(theta + Math.PI);
-            const moonY = orbitRadius * Math.cos(theta + Math.PI);
+            // Latitude (Z) afeta a inclinação da órbita para simular o movimento esférico
+            const latitudeTilt = (playerBody.position.z / worldSize) * Math.PI;
 
-            // Adiciona uma pequena inclinação no eixo Z para uma órbita mais natural
-            const sunZ = sunX * 0.4;
-            const moonZ = moonX * 0.4;
+            const sunX = orbitRadius * Math.sin(theta);
+            const sunY = orbitRadius * Math.cos(theta) * Math.cos(latitudeTilt);
+            const sunZ = orbitRadius * Math.cos(theta) * Math.sin(latitudeTilt);
+
+            const moonX = orbitRadius * Math.sin(theta + Math.PI);
+            const moonY = orbitRadius * Math.cos(theta + Math.PI) * Math.cos(latitudeTilt);
+            const moonZ = orbitRadius * Math.cos(theta + Math.PI) * Math.sin(latitudeTilt);
 
             sunMesh.position.set(camera.position.x + sunX, camera.position.y + sunY, camera.position.z + sunZ);
             moonMesh.position.set(camera.position.x + moonX, camera.position.y + moonY, camera.position.z + moonZ);
 
-            // Intensidades baseadas na altitude (Y)
-            const sunAltitude = Math.cos(theta); // 1 ao meio-dia, -1 à meia-noite
-            const moonAltitude = Math.cos(theta + Math.PI);
+            // Intensidades baseadas na altitude real (Y) relativa ao jogador
+            const sunAltitude = sunY / orbitRadius;
+            const moonAltitude = moonY / orbitRadius;
 
-            // Sincroniza estrelas com a posição da câmera
+            // Sincroniza estrelas com a posição da câmera e órbita
             if (starField) {
                 starField.position.copy(camera.position);
+                // Rotaciona o campo de estrelas para acompanhar a órbita relativa
+                // Usamos a ordem ZXY para aplicar primeiro a rotação do dia (-theta) e depois a inclinação (latitude)
+                starField.rotation.set(latitudeTilt, 0, -theta, 'ZXY');
+
                 // Opacidade baseada na altitude do sol e da lua e chuva
                 // Quando o sol está abaixo do horizonte (sunAltitude < 0), as estrelas começam a aparecer
                 let starOpacity = Math.max(0, -sunAltitude * 1.5 - 0.2); // Aparece suavemente conforme o sol se põe
