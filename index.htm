@@ -810,7 +810,7 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 200; // Resolução global do terreno equilibrada
+        const hfGridSize = 400; // Resolução global do terreno equilibrada
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -928,7 +928,7 @@
         let crouchPlayerShape;   // Para armazenar a forma agachada
 
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
-        const worldSize = 600;
+        const worldSize = 1200;
         let birds = []; // NOVO: Array para armazenar os pássaros
         let islandAmbientAudio = null; // Som ambiente da ilha (interior)
         let beachAmbientAudio = null; // Som ambiente da praia/mar
@@ -4231,7 +4231,7 @@
                     height = islandSurfaceHeight * (1 - t) + (waterLevel - 0.5) * t;
                 } else {
                     // Gradiente suave até o fundo do mar
-                    const t = Math.min(1.0, (distance - beachRadius) / (worldSize * 0.4));
+                    const t = Math.min(1.0, (distance - beachRadius) / 240.0);
                     height = (waterLevel - 0.5) * (1 - t) + seabedLevel * t;
                 }
 
@@ -4469,7 +4469,7 @@
                                                     float t = (dist - uGrassRadius) / (uBeachRadius - uGrassRadius);
                                                     baseHeight = uIslandSurfaceHeight * (1.0 - t) + (uWaterLevel - 0.5) * t;
                                                 } else {
-                                                    float t = min(1.0, (dist - uBeachRadius) / (uWorldSize * 0.4));
+                                                    float t = min(1.0, (dist - uBeachRadius) / 240.0);
                                                     baseHeight = (uWaterLevel - 0.5) * (1.0 - t) + uSeabedLevel * t;
                                                 }
                                                 float currentStoneLevel = baseHeight - 5.0;
@@ -6133,8 +6133,8 @@
             const halfSize = worldSize / 2;
             let tx = ((x + halfSize) % worldSize + worldSize) % worldSize - halfSize;
             let tz = ((z + halfSize) % worldSize + worldSize) % worldSize - halfSize;
-            // Protected area: a small square at one "corner" (approx 280, 280)
-            return (tx > 270 && tz > 270);
+            // Protected area: a small square at one "corner" (approx 280, 280 for worldSize 600)
+            return (tx > (halfSize - 30) && tz > (halfSize - 30));
         }
         window.isProtected = isProtected;
 
@@ -6939,7 +6939,7 @@
                 const dist = camera.position.distanceTo(tile.mesh.position);
                 // Culling estrito para o terreno (um pouco maior que renderDistance para evitar buracos nas bordas)
                 // Também verifica se está no frustum (usando bounding box do tile)
-                tile.mesh.visible = (dist <= renderDistance + 600) && (tile.mesh.geometry ? frustum.intersectsObject(tile.mesh) : true);
+                tile.mesh.visible = (dist <= renderDistance + worldSize) && (tile.mesh.geometry ? frustum.intersectsObject(tile.mesh) : true);
             });
 
             waterMeshes.forEach(tile => {
@@ -6948,7 +6948,7 @@
                 tile.mesh.updateMatrixWorld();
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = (dist <= renderDistance + 600) && (tile.mesh.geometry ? frustum.intersectsObject(tile.mesh) : true);
+                tile.mesh.visible = (dist <= renderDistance + worldSize) && (tile.mesh.geometry ? frustum.intersectsObject(tile.mesh) : true);
             });
 
             seabedMeshes.forEach(tile => {
@@ -6957,7 +6957,7 @@
                 tile.mesh.updateMatrixWorld();
 
                 const dist = camera.position.distanceTo(tile.mesh.position);
-                tile.mesh.visible = (dist <= renderDistance + 600) && (tile.mesh.geometry ? frustum.intersectsObject(tile.mesh) : true);
+                tile.mesh.visible = (dist <= renderDistance + worldSize) && (tile.mesh.geometry ? frustum.intersectsObject(tile.mesh) : true);
             });
 
             // Otimização: Wrapping de instância única para todos os objetos e culling estrito
@@ -7044,7 +7044,7 @@
             capimInstancedMeshes.forEach(mesh => {
                 // Como são 9 tiles, verificamos a distância do centro do tile visual
                 const dist = camera.position.distanceTo(mesh.position);
-                mesh.visible = (dist <= renderDistance + 600) && (mesh.geometry ? frustum.intersectsObject(mesh) : true);
+                mesh.visible = (dist <= renderDistance + worldSize) && (mesh.geometry ? frustum.intersectsObject(mesh) : true);
             });
 
             // NOVO: Lógica para fechar buracos inativos (curar terreno após 10 segundos)
