@@ -1000,7 +1000,7 @@
         const waterLevel = -8.0; // NOVO: Nível da água (baixado de -4.8)
         const seabedLevel = -20.0; // NOVO: Nível do fundo do mar
         let stoneLayerLevel = -4.2; // NOVO: Nível onde começa a pedra (5 unidades de terra)
-        const bedrockLevel = -20.0; // NOVO: Camada indestrutível (10 unidades de pedra depois da terra)
+        const bedrockLevel = -30.0; // NOVO: Camada indestrutível (10 unidades de pedra depois da terra)
         const grassRadius = 100.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
         const beachRadius = 200.0; window.beachRadius = beachRadius; // NOVO: Raio da praia (aumentado de 120.0)
         let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 250; // Distância de renderização para objetos
@@ -3969,7 +3969,7 @@
 
             // Inicializa ambos os nevoeiros
             skyFog = new THREE.Fog(skyColor, renderDistance * 0.5, renderDistance);
-            underwaterFog = new THREE.Fog(underwaterColor, 1, 30); // Nevoeiro denso para debaixo d'água
+            underwaterFog = new THREE.Fog(underwaterColor, 1, 100); // Nevoeiro denso para debaixo d'água
 
             scene.fog = skyFog; // Começa com o nevoeiro do céu
 
@@ -4439,7 +4439,8 @@
                                                 if (uUseTextures > 0.5) {
                                                     // Use periodic position for consistent tiling across toroidal boundary
                                                     vec2 periodicUV = (mod(vWorldPosition.xz + uWorldSize * 0.5, uWorldSize) - uWorldSize * 0.5) / 16.0;
-                                                    seabedColor = texture2D(uSeabedTexture, periodicUV).rgb;
+                                                    // Use 0.4 factor so tiling divisor is 40.0 (1200/40 = 30), ensuring no seam at toroidal boundary
+                                                    seabedColor = texture2D(uSeabedTexture, periodicUV * 0.4).rgb;
                                                     sandColor = texture2D(uSandTexture, periodicUV).rgb;
                                                     grassColor = texture2D(uGrassTexture, periodicUV).rgb;
                                                     stoneColor = texture2D(uStoneTexture, periodicUV).rgb;
@@ -4497,7 +4498,7 @@
                                                 #endif
 
                                                 // NOVO: Camada de Bedrock (Camada escura indestrutível)
-                                                float bedrockBlend = 1.0 - smoothstep(uBedrockLevel, uBedrockLevel + 0.2, vWorldPosition.y);
+                                                float bedrockBlend = 1.0 - smoothstep(uBedrockLevel, uBedrockLevel + 0.05, vWorldPosition.y);
                                                 vec3 bedrockColor = vec3(0.05, 0.05, 0.08); // Quase preto
                                                 terrainMix = mix(terrainMix, bedrockColor, bedrockBlend);
 
