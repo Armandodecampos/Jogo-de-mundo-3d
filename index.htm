@@ -616,46 +616,10 @@
             background-color: #95a5a6;
         }
 
-        /* Loading Overlay Style */
-        #loadingOverlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.7);
-            display: none;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 10000;
-            color: white;
-            font-size: 2em;
-            font-weight: bold;
-            pointer-events: none;
-        }
-        .spinner {
-            border: 8px solid rgba(255, 255, 255, 0.3);
-            border-top: 8px solid #ffffff;
-            border-radius: 50%;
-            width: 60px;
-            height: 60px;
-            animation: spin 1s linear infinite;
-            margin-bottom: 20px;
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
     </style>
 </head>
 <body>
     <div id="tooltip"></div>
-    <div id="loadingOverlay">
-        <div class="spinner"></div>
-        <span>Carregando...</span>
-    </div>
     <div id="startScreen">
         <h1>Small World</h1>
         <div class="flex flex-col gap-4">
@@ -846,7 +810,7 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 200; // Resolução global do terreno equilibrada
+        const hfGridSize = 400; // Resolução global do terreno equilibrada
 
         // Variáveis globais para cena, câmera, renderizador e mundo da física
         let scene, camera, renderer, world;
@@ -3149,11 +3113,7 @@
         }
 
         function updateRain(delta) {
-            if (!rainParticles || lowPerformance) {
-                if (rainParticles) rainParticles.visible = false;
-                return;
-            }
-            rainParticles.visible = true;
+            if (!rainParticles) return;
 
             // Atualiza o volume e o filtro do áudio da chuva
             if (rainGainNode && rainFilterNode) {
@@ -6175,68 +6135,14 @@
         }
         window.isProtected = isProtected;
 
-        // Performance monitoring variables
-        let lowPerformance = false;
-        let lowFPSCounter = 0;
-        let goodFPSCounter = 0;
-        const loadingOverlay = document.getElementById('loadingOverlay');
-
         // Loop principal de animação do jogo
         let lastTime = performance.now();
-        let targetRenderDistance = parseInt(localStorage.getItem('renderDistance')) || 250;
-        let lastTargetUpdate = 0;
-
         function animate() {
             requestAnimationFrame(animate);
 
             const now = performance.now();
             const delta = Math.min((now - lastTime) / 1000, 0.1);
             lastTime = now;
-
-            // Update FPS and performance monitoring
-            const currentFPS = 1 / delta;
-            if (now - lastTargetUpdate > 1000) {
-                targetRenderDistance = parseInt(localStorage.getItem('renderDistance')) || 250;
-                lastTargetUpdate = now;
-            }
-
-            if (currentFPS < 28) {
-                lowFPSCounter++;
-                goodFPSCounter = 0;
-                if (lowFPSCounter > 30) { // ~0.5s of low FPS
-                    if (!lowPerformance && currentFPS < 20) {
-                        lowPerformance = true;
-                        if (loadingOverlay) loadingOverlay.style.display = 'flex';
-                    }
-                    // Adaptive render distance reduction
-                    if (renderDistance > 80) {
-                        renderDistance -= 20 * delta;
-                        if (renderDistance < 80) renderDistance = 80;
-                        const slider = document.getElementById('renderDistanceSlider');
-                        const value = document.getElementById('renderDistanceValue');
-                        if (slider) slider.value = Math.round(renderDistance);
-                        if (value) value.textContent = Math.round(renderDistance);
-                    }
-                }
-            } else if (currentFPS > 35) {
-                goodFPSCounter++;
-                if (goodFPSCounter > 90) { // ~1.5s of good FPS
-                    if (lowPerformance) {
-                        lowPerformance = false;
-                        if (loadingOverlay) loadingOverlay.style.display = 'none';
-                    }
-                    // Adaptive render distance recovery
-                    if (renderDistance < targetRenderDistance) {
-                        renderDistance += 10 * delta;
-                        if (renderDistance > targetRenderDistance) renderDistance = targetRenderDistance;
-                        const slider = document.getElementById('renderDistanceSlider');
-                        const value = document.getElementById('renderDistanceValue');
-                        if (slider) slider.value = Math.round(renderDistance);
-                        if (value) value.textContent = Math.round(renderDistance);
-                    }
-                    lowFPSCounter = 0;
-                }
-            }
 
             // Update camera position and matrices for accurate culling
             if (playerBody) {
@@ -6258,15 +6164,11 @@
             // Sincroniza Birds e Clouds com worldSize real para despawn
             const despawnDist = worldSize * 0.8;
 
-            // Throttle shadows in low performance
-            if (moonLight) moonLight.castShadow = useShadows && !lowPerformance;
-            if (directionalLight) directionalLight.castShadow = useShadows && !lowPerformance;
-
             // Reset slope flags before physics step
             window.onSteepSlope = onSteepSlope = false;
             window.onWalkableGround = false;
 
-            if (!gamePaused && !lowPerformance) {
+            if (!gamePaused) {
                 updateWeather(delta);
                 updateClouds(delta, despawnDist);
             } else {
@@ -6349,7 +6251,7 @@
                 return;
             }
 
-            if (!lowPerformance) updateMeteors(delta);
+            updateMeteors(delta);
 
             // Lógica de destruição progressiva
             // NOVO: Adiciona a verificação `isAttemptingToDestroy` e a lógica de reinício repetida.
@@ -7025,111 +6927,121 @@
             const renderDistSq = renderDistance * renderDistance;
             const halfWorldSize = worldSize / 2;
 
-            // Pre-calculate camera direction for culling
-            const camDir = new THREE.Vector3();
-            camera.getWorldDirection(camDir);
-            const toObjVec = new THREE.Vector3();
+            islandMeshes.forEach(tile => {
+                tile.mesh.position.x = tile.offsetX - visualOffsetX;
+                tile.mesh.position.y = 0;
+                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
+                tile.mesh.updateMatrixWorld();
 
-            // Aggressive Scene Management: Add/Remove objects from scene based on distance and orientation
-            const aggressiveCull = (mesh, bodyPos) => {
-                const dx = bodyPos.x - playerBody.position.x;
-                const dz = bodyPos.z - playerBody.position.z;
+                const dist = camera.position.distanceTo(tile.mesh.position);
+                // Culling estrito para o terreno (um pouco maior que renderDistance para evitar buracos nas bordas)
+                // Também verifica se está no frustum (usando bounding box do tile)
+                tile.mesh.visible = (dist <= renderDistance + worldSize) && (tile.mesh.geometry ? frustum.intersectsObject(tile.mesh) : true);
+            });
 
-                let wrappedX = bodyPos.x;
-                let wrappedZ = bodyPos.z;
+            waterMeshes.forEach(tile => {
+                tile.mesh.position.x = tile.offsetX - visualOffsetX;
+                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
+                tile.mesh.updateMatrixWorld();
+
+                const dist = camera.position.distanceTo(tile.mesh.position);
+                tile.mesh.visible = (dist <= renderDistance + worldSize) && (tile.mesh.geometry ? frustum.intersectsObject(tile.mesh) : true);
+            });
+
+            seabedMeshes.forEach(tile => {
+                tile.mesh.position.x = tile.offsetX - visualOffsetX;
+                tile.mesh.position.z = tile.offsetZ - visualOffsetZ;
+                tile.mesh.updateMatrixWorld();
+
+                const dist = camera.position.distanceTo(tile.mesh.position);
+                tile.mesh.visible = (dist <= renderDistance + worldSize) && (tile.mesh.geometry ? frustum.intersectsObject(tile.mesh) : true);
+            });
+
+            // Otimização: Wrapping de instância única para todos os objetos e culling estrito
+            collectibleBoxes.forEach(box => {
+                const body = box.body;
+                const mesh = box.mesh;
+                const dx = body.position.x - playerBody.position.x;
+                const dz = body.position.z - playerBody.position.z;
+
+                let wrappedX = body.position.x;
+                let wrappedZ = body.position.z;
                 if (Math.abs(dx) > halfWorldSize) wrappedX += (dx > 0 ? -worldSize : worldSize);
                 if (Math.abs(dz) > halfWorldSize) wrappedZ += (dz > 0 ? -worldSize : worldSize);
 
                 const fDx = wrappedX - playerBody.position.x;
                 const fDz = wrappedZ - playerBody.position.z;
-                const fDy = bodyPos.y - playerBody.position.y;
+                const fDy = body.position.y - playerBody.position.y;
                 const distSq = fDx*fDx + fDy*fDy + fDz*fDz;
 
-                // 1. Distance culling (aggressive: remove from scene graph)
-                if (distSq > Math.pow(renderDistance + 50, 2)) {
-                    if (mesh.parent) scene.remove(mesh);
+                if (distSq > renderDistSq) {
                     mesh.visible = false;
-                    return false;
-                }
-
-                // 2. Backface culling (remove objects behind the player)
-                // Only cull if object is not extremely close to the player to avoid flickering
-                if (distSq > 25) {
-                    toObjVec.set(fDx, fDy, fDz).normalize();
-                    if (camDir.dot(toObjVec) < -0.3) { // ~107 degree FOV
-                        if (mesh.parent) scene.remove(mesh);
-                        mesh.visible = false;
-                        return false;
-                    }
-                }
-
-                if (!mesh.parent) scene.add(mesh);
-                mesh.position.set(wrappedX - visualOffsetX, bodyPos.y, wrappedZ - visualOffsetZ);
-                mesh.visible = true;
-                return true;
-            };
-
-            islandMeshes.forEach(tile => {
-                const isVisible = aggressiveCull(tile.mesh, new THREE.Vector3(tile.offsetX, 0, tile.offsetZ));
-                if (isVisible) {
-                    tile.mesh.updateMatrixWorld();
-                    tile.mesh.visible = tile.mesh.geometry ? frustum.intersectsObject(tile.mesh) : true;
-                }
-            });
-
-            waterMeshes.forEach(tile => {
-                const isVisible = aggressiveCull(tile.mesh, new THREE.Vector3(tile.offsetX, 0, tile.offsetZ));
-                if (isVisible) {
-                    tile.mesh.updateMatrixWorld();
-                    tile.mesh.visible = tile.mesh.geometry ? frustum.intersectsObject(tile.mesh) : true;
-                }
-            });
-
-            seabedMeshes.forEach(tile => {
-                const isVisible = aggressiveCull(tile.mesh, new THREE.Vector3(tile.offsetX, 0, tile.offsetZ));
-                if (isVisible) {
-                    tile.mesh.updateMatrixWorld();
-                    tile.mesh.visible = tile.mesh.geometry ? frustum.intersectsObject(tile.mesh) : true;
-                }
-            });
-
-            // Otimização: Wrapping de instância única para todos os objetos e culling estrito
-            collectibleBoxes.forEach(box => {
-                const isVisible = aggressiveCull(box.mesh, box.body.position);
-                if (isVisible) {
-                    box.mesh.quaternion.copy(box.body.quaternion);
-                    if (!lowPerformance) box.mesh.updateMatrixWorld();
-                    box.mesh.visible = box.mesh.geometry ? frustum.intersectsObject(box.mesh) : true;
+                } else {
+                    mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
+                    mesh.quaternion.copy(body.quaternion);
+                    mesh.updateMatrixWorld();
+                    // Adiciona frustum culling manual
+                    mesh.visible = mesh.geometry ? frustum.intersectsObject(mesh) : true;
                 }
             });
 
             placedConstructionBodies.forEach((body, index) => {
                 const mesh = placedConstructionMeshes[index];
-                const isVisible = aggressiveCull(mesh, body.position);
-                if (isVisible) {
+                const dx = body.position.x - playerBody.position.x;
+                const dz = body.position.z - playerBody.position.z;
+
+                let wrappedX = body.position.x;
+                let wrappedZ = body.position.z;
+                if (Math.abs(dx) > halfWorldSize) wrappedX += (dx > 0 ? -worldSize : worldSize);
+                if (Math.abs(dz) > halfWorldSize) wrappedZ += (dz > 0 ? -worldSize : worldSize);
+
+                const fDx = wrappedX - playerBody.position.x;
+                const fDz = wrappedZ - playerBody.position.z;
+                const fDy = body.position.y - playerBody.position.y;
+                const distSq = fDx*fDx + fDy*fDy + fDz*fDz;
+
+                if (distSq > renderDistSq) {
+                    mesh.visible = false;
+                } else {
+                    mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
                     mesh.quaternion.copy(body.quaternion);
-                    if (!lowPerformance) mesh.updateMatrixWorld();
+                    mesh.updateMatrixWorld();
+                    // Adiciona frustum culling manual
                     mesh.visible = mesh.geometry ? frustum.intersectsObject(mesh) : true;
                 }
             });
 
 
             visualMounds.forEach(mound => {
-                const isVisible = aggressiveCull(mound.mesh, mound.position);
-                if (isVisible) {
+                const dx = mound.position.x - playerBody.position.x;
+                const dz = mound.position.z - playerBody.position.z;
+
+                let wrappedX = mound.position.x;
+                let wrappedZ = mound.position.z;
+                if (Math.abs(dx) > halfWorldSize) wrappedX += (dx > 0 ? -worldSize : worldSize);
+                if (Math.abs(dz) > halfWorldSize) wrappedZ += (dz > 0 ? -worldSize : worldSize);
+
+                const fDx = wrappedX - playerBody.position.x;
+                const fDz = wrappedZ - playerBody.position.z;
+                const fDy = mound.position.y - playerBody.position.y;
+                const distSq = fDx*fDx + fDy*fDy + fDz*fDz;
+
+                if (distSq > renderDistSq) {
+                    mound.mesh.visible = false;
+                } else {
+                    mound.mesh.position.set(wrappedX - visualOffsetX, mound.position.y, wrappedZ - visualOffsetZ);
                     mound.mesh.quaternion.copy(mound.quaternion);
-                    if (!lowPerformance) mound.mesh.updateMatrixWorld();
+                    mound.mesh.updateMatrixWorld();
+                    // Adiciona frustum culling manual
                     mound.mesh.visible = mound.mesh.geometry ? frustum.intersectsObject(mound.mesh) : true;
                 }
             });
 
             // NOVO: Culling para Grama Instanciada
             capimInstancedMeshes.forEach(mesh => {
-                const isVisible = aggressiveCull(mesh, mesh.position);
-                if (isVisible) {
-                    if (!lowPerformance) mesh.updateMatrixWorld();
-                    mesh.visible = mesh.geometry ? frustum.intersectsObject(mesh) : true;
-                }
+                // Como são 9 tiles, verificamos a distância do centro do tile visual
+                const dist = camera.position.distanceTo(mesh.position);
+                mesh.visible = (dist <= renderDistance + worldSize) && (mesh.geometry ? frustum.intersectsObject(mesh) : true);
             });
 
             // NOVO: Lógica para fechar buracos inativos (curar terreno após 10 segundos)
@@ -7691,7 +7603,7 @@
             moonLight.intensity = Math.max(0, moonAltitude * 0.3);
 
             // NOVO: Atualiza o sistema de pássaros (frequência reduzida pela metade)
-            if (!gamePaused && !lowPerformance) {
+            if (!gamePaused) {
                 if (sunAltitude > 0 && rainIntensity <= 0.05) {
                     // Spawn de grupos de pássaros
                     if (world.time - lastBirdSpawnCheck > 3) {
@@ -8185,10 +8097,6 @@
             }
 
             // Update smoke particles
-            if (lowPerformance) {
-                smokeParticles.forEach(p => particlesGroup.remove(p));
-                smokeParticles.length = 0;
-            }
             for (let i = smokeParticles.length - 1; i >= 0; i--) {
                 const particle = smokeParticles[i];
                 particle.userData.lifetime -= delta;
