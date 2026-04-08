@@ -4381,13 +4381,6 @@
                                         texture.wrapS = THREE.RepeatWrapping;
                                         texture.wrapT = THREE.RepeatWrapping;
                                     });
-                                    groundTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                                    seabedTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                                    sandTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                                    stoneTexture.repeat.set(islandRadiusTop / 16, islandRadiusTop / 16);
-                                    grassTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-                                    inferiorDirtTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
-
                                     islandMeshMaterial.map = groundTexture;
                                     islandMeshMaterial.onBeforeCompile = (shader) => {
                                         shader.uniforms.uSeabedTexture = { value: seabedTexture };
@@ -4444,11 +4437,13 @@
                                                 vec3 inferiorColor;
 
                                                 if (uUseTextures > 0.5) {
-                                                    seabedColor = texture2D(uSeabedTexture, vUv).rgb;
-                                                    sandColor = texture2D(uSandTexture, vUv).rgb;
-                                                    grassColor = texture2D(uGrassTexture, vUv).rgb;
-                                                    stoneColor = texture2D(uStoneTexture, vUv * 4.0).rgb;
-                                                    inferiorColor = texture2D(uInferiorTexture, vUv).rgb;
+                                                    // Use periodic position for consistent tiling across toroidal boundary
+                                                    vec2 periodicUV = (mod(vWorldPosition.xz + uWorldSize * 0.5, uWorldSize) - uWorldSize * 0.5) / 16.0;
+                                                    seabedColor = texture2D(uSeabedTexture, periodicUV).rgb;
+                                                    sandColor = texture2D(uSandTexture, periodicUV).rgb;
+                                                    grassColor = texture2D(uGrassTexture, periodicUV).rgb;
+                                                    stoneColor = texture2D(uStoneTexture, periodicUV).rgb;
+                                                    inferiorColor = texture2D(uInferiorTexture, periodicUV).rgb;
                                                 } else {
                                                     seabedColor = vec3(0.1, 0.2, 0.3); // Solid seabed
                                                     sandColor = vec3(0.8, 0.7, 0.4);  // Solid sand
@@ -5069,7 +5064,7 @@
                             jumpBoostTimer = 0;
 
                             // Impulso de salto inicial (mínimo)
-                            const jumpImpulse = isInWater ? 600 * 3 : 200 * 3;
+                            const jumpImpulse = isInWater ? 1800 : 600;
                             playerBody.applyImpulse(new CANNON.Vec3(0, jumpImpulse, 0));
                             canJump = false; window.canJump = false; // Impede pulos múltiplos
                             if (isInWater) {
@@ -6133,7 +6128,8 @@
             const halfSize = worldSize / 2;
             let tx = ((x + halfSize) % worldSize + worldSize) % worldSize - halfSize;
             let tz = ((z + halfSize) % worldSize + worldSize) % worldSize - halfSize;
-            // Protected area: a small square at one "corner" (approx 280, 280 for worldSize 600)
+            // Protected area: a small square at one "corner" (approx 280, 280 for original worldSize 600)
+            // Keep the constant distance from the world boundary
             return (tx > (halfSize - 30) && tz > (halfSize - 30));
         }
         window.isProtected = isProtected;
