@@ -4192,113 +4192,65 @@
             moonMesh = new THREE.Mesh(moonGeometry, moonMaterial);
             scene.add(moonMesh);
 
-            // Estrelas (Star Field) - Agora com total variedade de tamanhos
+            // Estrelas (Star Field) - Agora um Grupo com múltiplas camadas
             starField = new THREE.Group();
             const starTexture = createStarTexture();
 
-            const starCount = 4000;
-            const geometry = new THREE.BufferGeometry();
-            const positions = new Float32Array(starCount * 3);
-            const colors = new Float32Array(starCount * 3);
-            const sizes = new Float32Array(starCount);
+            // Camadas de estrelas: [quantidade, tamanhoBase, opacidadeBase]
+            const starLayers = [
+                [2000, 1.8, 1.0], // Estrelas pequenas
+                [800, 4.5, 1.0],  // Estrelas médias
+                [150, 15.0, 1.0]  // Estrelas grandes e brilhantes (bem maiores)
+            ];
 
-            for (let i = 0; i < starCount; i++) {
-                const r = 500;
-                const theta = Math.random() * Math.PI * 2;
-                const phi = Math.acos(2 * Math.random() - 1);
+            starLayers.forEach(([count, baseSize, baseOpacity]) => {
+                const geometry = new THREE.BufferGeometry();
+                const positions = new Float32Array(count * 3);
+                const colors = new Float32Array(count * 3);
+                const sizes = new Float32Array(count);
 
-                positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
-                positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-                positions[i * 3 + 2] = r * Math.cos(phi);
+                for (let i = 0; i < count; i++) {
+                    const r = 500;
+                    const theta = Math.random() * Math.PI * 2;
+                    const phi = Math.acos(2 * Math.random() - 1);
 
-                // Cores: Branco (90%), Azul (5%), Vermelho (5%)
-                const rand = Math.random();
-                let starColor = new THREE.Color(0xffffff);
-                if (rand > 0.95) starColor.setHex(0xff3333); // Vermelho intenso
-                else if (rand > 0.90) starColor.setHex(0x3333ff); // Azul intenso
+                    positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+                    positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+                    positions[i * 3 + 2] = r * Math.cos(phi);
 
-                colors[i * 3] = starColor.r;
-                colors[i * 3 + 1] = starColor.g;
-                colors[i * 3 + 2] = starColor.b;
+                    // Cores: Branco (90%), Azul (5%), Vermelho (5%)
+                    const rand = Math.random();
+                    let starColor = new THREE.Color(0xffffff);
+                    if (rand > 0.95) starColor.setHex(0xff3333); // Vermelho intenso
+                    else if (rand > 0.90) starColor.setHex(0x3333ff); // Azul intenso
 
-                // Variedade total no tamanho: mistura de muitas pequenas e poucas grandes
-                // Usamos uma distribuição exponencial reversa para ter mais estrelas pequenas
-                sizes[i] = 1.0 + Math.pow(Math.random(), 3) * 6.0;
-            }
+                    colors[i * 3] = starColor.r;
+                    colors[i * 3 + 1] = starColor.g;
+                    colors[i * 3 + 2] = starColor.b;
 
-            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-            geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-            geometry.setAttribute('aSize', new THREE.BufferAttribute(sizes, 1));
-
-            const starMaterial = new THREE.PointsMaterial({
-                size: 1.0, // Base, será sobreposta pelo atributo no shader
-                map: starTexture,
-                transparent: true,
-                opacity: 0.0,
-                vertexColors: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-                sizeAttenuation: false,
-                fog: false
-            });
-
-            // Injetamos a lógica de tamanho por atributo no material padrão
-            starMaterial.onBeforeCompile = (shader) => {
-                shader.vertexShader = shader.vertexShader.replace(
-                    `void main() {`,
-                    `attribute float aSize;\nvoid main() {`
-                );
-                shader.vertexShader = shader.vertexShader.replace(
-                    `gl_PointSize = size;`,
-                    `gl_PointSize = aSize;`
-                );
-            };
-
-            const starPoints = new THREE.Points(geometry, starMaterial);
-            starField.add(starPoints);
-
-            // Adição de Nebulosas Coloridas (Clusters de pontos para formas orgânicas)
-            const nebulaCount = 6;
-            for (let i = 0; i < nebulaCount; i++) {
-                const pointsPerNebula = 15 + Math.floor(Math.random() * 10);
-                const nebulaGeom = new THREE.BufferGeometry();
-                const nebulaPositions = new Float32Array(pointsPerNebula * 3);
-
-                const r = 480;
-                const centerTheta = Math.random() * Math.PI * 2;
-                const centerPhi = Math.acos(2 * Math.random() - 1);
-
-                for (let j = 0; j < pointsPerNebula; j++) {
-                    // Espalha pontos ao redor de um centro para criar formato irregular
-                    const offset = 0.15;
-                    const theta = centerTheta + (Math.random() - 0.5) * offset;
-                    const phi = centerPhi + (Math.random() - 0.5) * offset;
-
-                    nebulaPositions[j * 3] = r * Math.sin(phi) * Math.cos(theta);
-                    nebulaPositions[j * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
-                    nebulaPositions[j * 3 + 2] = r * Math.cos(phi);
+                    sizes[i] = baseSize * (0.5 + Math.random());
                 }
 
-                nebulaGeom.setAttribute('position', new THREE.BufferAttribute(nebulaPositions, 3));
+                geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+                geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+                geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
 
-                const nebulaColors = [0xff00ff, 0x00ffff, 0xaa00ff, 0x0055ff, 0xff00aa];
-                const color = new THREE.Color(nebulaColors[Math.floor(Math.random() * nebulaColors.length)]);
-
-                const nebulaMat = new THREE.PointsMaterial({
-                    size: 80 + Math.random() * 100,
+                const material = new THREE.PointsMaterial({
+                    size: baseSize,
                     map: starTexture,
                     transparent: true,
                     opacity: 0.0,
-                    color: color,
+                    vertexColors: true,
                     blending: THREE.AdditiveBlending,
                     depthWrite: false,
                     sizeAttenuation: false,
                     fog: false
                 });
 
-                const nebula = new THREE.Points(nebulaGeom, nebulaMat);
-                starField.add(nebula);
-            }
+                const points = new THREE.Points(geometry, material);
+                starField.add(points);
+            });
+
 
             scene.add(starField);
 
@@ -7688,10 +7640,9 @@
             if (starField) {
                 starField.position.copy(camera.position);
                 // Rotaciona o campo de estrelas de forma diferente do sol/lua (mais devagar e com um drift extra)
-                // Usamos a ordem ZXY para aplicar primeiro a rotação do dia (-theta * 0.95 para parecer mais longe)
+                // Usamos a ordem ZXY para aplicar primeiro a rotação do dia (-theta * 0.9 para parecer mais longe)
                 // e depois a inclinação (latitude)
-                // Usamos performance.now() para o drift ser independente da física e sempre suave
-                const starDrift = now * 0.00002;
+                const starDrift = world.time * 0.005; // Pequeno drift independente
                 starField.rotation.set(latitudeTilt, starDrift, -theta * 0.95, 'ZXY');
 
                 // Opacidade baseada na altitude do sol e da lua e chuva
@@ -7707,10 +7658,7 @@
                 // Aplica a opacidade a todas as camadas de estrelas e nebulosas dentro do grupo
                 starField.children.forEach(child => {
                     if (child.material) {
-                        // Nebulosas devem ser muito mais sutis que estrelas para realismo
-                        // Identificamos nebulosa se não tiver o atributo aSize
-                        const isNebula = !child.geometry.attributes.aSize;
-                        child.material.opacity = isNebula ? finalOpacity * 0.15 : finalOpacity;
+                        child.material.opacity = finalOpacity;
                     }
                 });
             }
