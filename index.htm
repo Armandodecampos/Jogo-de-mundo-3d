@@ -820,8 +820,8 @@
             const context = canvas.getContext('2d');
             const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 32);
             gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-            gradient.addColorStop(0.1, 'rgba(255, 255, 255, 1)'); // Núcleo brilhante maior
-            gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.5)');
+            gradient.addColorStop(0.05, 'rgba(255, 255, 255, 1)'); // Núcleo brilhante menor e mais nítido
+            gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.5)');
             gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
             context.fillStyle = gradient;
             context.fillRect(0, 0, 64, 64);
@@ -4198,9 +4198,9 @@
 
             // Camadas de estrelas: [quantidade, tamanhoBase, opacidadeBase]
             const starLayers = [
-                [2000, 1.8, 1.0], // Estrelas pequenas
-                [800, 4.5, 1.0],  // Estrelas médias
-                [150, 15.0, 1.0]  // Estrelas grandes e brilhantes (bem maiores)
+                [2000, 1.2, 1.0], // Estrelas pequenas
+                [800, 3.0, 1.0],  // Estrelas médias
+                [150, 6.0, 1.0]   // Estrelas grandes (reduzidas)
             ];
 
             starLayers.forEach(([count, baseSize, baseOpacity]) => {
@@ -4228,7 +4228,7 @@
                     colors[i * 3 + 1] = starColor.g;
                     colors[i * 3 + 2] = starColor.b;
 
-                    sizes[i] = baseSize * (0.5 + Math.random());
+                    sizes[i] = baseSize * (0.2 + Math.pow(Math.random(), 2) * 3.0);
                 }
 
                 geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -4246,6 +4246,13 @@
                     sizeAttenuation: false,
                     fog: false
                 });
+
+                material.onBeforeCompile = (shader) => {
+                    shader.vertexShader = shader.vertexShader.replace(
+                        'uniform float size;',
+                        'attribute float size;'
+                    );
+                };
 
                 const points = new THREE.Points(geometry, material);
                 starField.add(points);
