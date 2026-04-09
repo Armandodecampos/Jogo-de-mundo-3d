@@ -815,16 +815,16 @@
         // NOVO: Funções auxiliares para texturas celestiais procedurais
         function createStarTexture() {
             const canvas = document.createElement('canvas');
-            canvas.width = 32;
-            canvas.height = 32;
+            canvas.width = 64;
+            canvas.height = 64;
             const context = canvas.getContext('2d');
-            const gradient = context.createRadialGradient(16, 16, 0, 16, 16, 16);
+            const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 32);
             gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-            gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.8)');
-            gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.2)');
+            gradient.addColorStop(0.1, 'rgba(255, 255, 255, 1)'); // Núcleo brilhante maior
+            gradient.addColorStop(0.4, 'rgba(255, 255, 255, 0.5)');
             gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
             context.fillStyle = gradient;
-            context.fillRect(0, 0, 32, 32);
+            context.fillRect(0, 0, 64, 64);
             return new THREE.CanvasTexture(canvas);
         }
 
@@ -4198,9 +4198,9 @@
 
             // Camadas de estrelas: [quantidade, tamanhoBase, opacidadeBase]
             const starLayers = [
-                [2000, 0.6, 0.8], // Estrelas pequenas (ligeiramente maiores que antes)
-                [800, 1.2, 0.9],  // Estrelas médias
-                [150, 2.5, 1.0]   // Estrelas grandes (bem maiores)
+                [2000, 1.8, 1.0], // Estrelas pequenas
+                [800, 4.5, 1.0],  // Estrelas médias
+                [150, 15.0, 1.0]  // Estrelas grandes e brilhantes (bem maiores)
             ];
 
             starLayers.forEach(([count, baseSize, baseOpacity]) => {
@@ -4218,12 +4218,11 @@
                     positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
                     positions[i * 3 + 2] = r * Math.cos(phi);
 
-                    // Cores realistas: Branco (80%), Azul (10%), Vermelho/Laranja (7%), Amarelo (3%)
+                    // Cores: Branco (90%), Azul (5%), Vermelho (5%)
                     const rand = Math.random();
                     let starColor = new THREE.Color(0xffffff);
-                    if (rand > 0.97) starColor.setHex(0xfff4e1); // Amarelo pálido
-                    else if (rand > 0.90) starColor.setHex(0xffccaa); // Vermelho/Laranja suave
-                    else if (rand > 0.80) starColor.setHex(0xaaccff); // Azul suave
+                    if (rand > 0.95) starColor.setHex(0xff3333); // Vermelho intenso
+                    else if (rand > 0.90) starColor.setHex(0x3333ff); // Azul intenso
 
                     colors[i * 3] = starColor.r;
                     colors[i * 3 + 1] = starColor.g;
