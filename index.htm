@@ -818,13 +818,11 @@
             canvas.width = 64;
             canvas.height = 64;
             const context = canvas.getContext('2d');
-            const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 32);
-            gradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
-            gradient.addColorStop(0.05, 'rgba(255, 255, 255, 1)'); // Núcleo brilhante menor e mais nítido
-            gradient.addColorStop(0.2, 'rgba(255, 255, 255, 0.5)');
-            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
-            context.fillStyle = gradient;
-            context.fillRect(0, 0, 64, 64);
+            // Estrela como um disco sólido sem brilho (glow)
+            context.fillStyle = 'white';
+            context.beginPath();
+            context.arc(32, 32, 31, 0, Math.PI * 2);
+            context.fill();
             return new THREE.CanvasTexture(canvas);
         }
 
@@ -4198,9 +4196,9 @@
 
             // Camadas de estrelas: [quantidade, tamanhoBase, opacidadeBase]
             const starLayers = [
-                [2000, 1.2, 1.0], // Estrelas pequenas
-                [800, 3.0, 1.0],  // Estrelas médias
-                [150, 6.0, 1.0]   // Estrelas grandes (reduzidas)
+                [2000, 0.8, 1.0], // Estrelas pequenas
+                [800, 1.8, 1.0],  // Estrelas médias
+                [150, 3.5, 1.0]   // Estrelas grandes (reduzidas para compensar ausência de glow)
             ];
 
             starLayers.forEach(([count, baseSize, baseOpacity]) => {
