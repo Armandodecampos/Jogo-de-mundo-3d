@@ -705,6 +705,13 @@
                     <option value="false">Desativado</option>
                 </select>
             </div>
+            <div class="option-item">
+                <label for="weatherToggle" class="flex justify-between w-full">
+                    <span>Clima</span>
+                    <span id="weatherStatus">Limpo</span>
+                </label>
+                <button id="weatherToggle" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded transition-colors mt-2">Alternar Chuva</button>
+            </div>
         </div>
         <button id="backToMenuButton" class="mt-8 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-10 rounded-lg transition-colors">Voltar</button>
     </div>
@@ -2977,6 +2984,17 @@
             return bird;
         }
 
+        // Pool de geometrias para nuvens para evitar leaks
+        const cloudGeometries = [];
+        function getCloudGeometry() {
+            if (cloudGeometries.length === 0) {
+                for (let i = 0; i < 5; i++) {
+                    cloudGeometries.push(new THREE.SphereGeometry(1 + i * 0.5, 8, 8));
+                }
+            }
+            return cloudGeometries[Math.floor(Math.random() * cloudGeometries.length)];
+        }
+
         function updateClouds(delta, despawnDist) {
             // Se houver menos nuvens que o alvo, tenta spawnar novas (apenas se não estiver chovendo)
             if (clouds.length < targetCloudCount && Math.random() < 0.02 && targetRainIntensity === 0) {
@@ -3006,10 +3024,10 @@
                 const dist = cloud.mesh.position.distanceTo(camera.position);
                 if (dist > despawnDist) {
                     scene.remove(cloud.mesh);
-                    // Dispose geometries
-                    cloud.mesh.children.forEach(child => {
-                        if (child.geometry) child.geometry.dispose();
-                    });
+                    // Dispose material individual para evitar memory leak
+                    if (cloud.material && cloud.material !== cloudMaterial) {
+                        cloud.material.dispose();
+                    }
                     clouds.splice(i, 1);
                 }
             }
@@ -3192,16 +3210,6 @@
                     if (Math.random() < 0.125) {
                         // Inicia chuva com intensidade variada
                         targetRainIntensity = 0.1 + Math.random() * 0.9;
-
-                        // REMOÇÃO INSTANTÂNEA: Ao começar a chover, remove nuvens esparsas imediatamente
-                        for (let i = clouds.length - 1; i >= 0; i--) {
-                            scene.remove(clouds[i].mesh);
-                            // Dispose geometries
-                            clouds[i].mesh.children.forEach(child => {
-                                if (child.geometry) child.geometry.dispose();
-                            });
-                        }
-                        clouds.length = 0;
                     }
                 } else {
                     // Se já estiver chovendo, chance de parar ou mudar de intensidade significativamente
@@ -3233,6 +3241,17 @@
                 rainIntensity = Math.min(targetRainIntensity, rainIntensity + 0.002 * 60 * delta);
             } else if (rainIntensity > targetRainIntensity) {
                 rainIntensity = Math.max(targetRainIntensity, rainIntensity - 0.002 * 60 * delta);
+            }
+
+            // REMOÇÃO INSTANTÂNEA: Se o alvo de chuva for positivo mas ainda houver nuvens esparsas, limpa-as
+            if (targetRainIntensity > 0 && clouds.length > 0) {
+                for (let i = clouds.length - 1; i >= 0; i--) {
+                    scene.remove(clouds[i].mesh);
+                    if (clouds[i].material && clouds[i].material !== cloudMaterial) {
+                        clouds[i].material.dispose();
+                    }
+                }
+                clouds.length = 0;
             }
         }
 
@@ -3297,8 +3316,7 @@
             const numSpheres = 3 + Math.floor(Math.random() * 5);
 
             for (let i = 0; i < numSpheres; i++) {
-                const radius = 1 + Math.random() * 2;
-                const geometry = new THREE.SphereGeometry(radius, 8, 8);
+                const geometry = getCloudGeometry();
                 const sphere = new THREE.Mesh(geometry, mat);
 
                 sphere.position.set(
@@ -6165,6 +6183,21 @@
                 });
             }
 
+            const weatherToggle = document.getElementById('weatherToggle');
+            if (weatherToggle) {
+                weatherToggle.addEventListener('click', () => {
+                    if (targetRainIntensity > 0) {
+                        targetRainIntensity = 0;
+                        document.getElementById('weatherStatus').textContent = "Limpo";
+                    } else {
+                        targetRainIntensity = 0.1 + Math.random() * 0.9;
+                        document.getElementById('weatherStatus').textContent = "Chuva";
+                    }
+                    // Força a atualização do tempo de última mudança para não resetar imediatamente
+                    lastWeatherChange = world.time;
+                });
+            }
+
             // Adiciona o listener para o novo botão de ícone do menu
             if (menuIconButton) {
                 menuIconButton.addEventListener('click', showOptionsScreen);
@@ -7796,13 +7829,13 @@
                 }
             }
 
-            // Ajusta a cor do céu e luz ambiente para chuva (fica mais escuro)
+            // Ajusta a cor do céu e luz ambiente para chuva (fica mais escuro - até 85% de redução)
             if (rainIntensity > 0) {
-                const rainDarkness = 1.0 - (rainIntensity * 0.5);
+                const rainDarkness = 1.0 - (rainIntensity * 0.85);
                 targetSkyColor.multiplyScalar(rainDarkness);
-                targetAmbientIntensity *= (1.0 - (rainIntensity * 0.4));
-                directionalLight.intensity *= (1.0 - (rainIntensity * 0.6));
-                moonLight.intensity *= (1.0 - (rainIntensity * 0.6));
+                targetAmbientIntensity *= (1.0 - (rainIntensity * 0.8));
+                directionalLight.intensity *= (1.0 - (rainIntensity * 0.85));
+                moonLight.intensity *= (1.0 - (rainIntensity * 0.85));
             }
 
             skyColor.copy(targetSkyColor);
@@ -8483,6 +8516,8 @@
             window.spawnBirdGroup = spawnBirdGroup;
             window.applyFPSSettings = applyFPSSettings;
             Object.defineProperty(window, 'showFPS', { get: () => showFPS, set: (v) => { showFPS = v; } });
+            window.showSettingsScreen = showSettingsScreen;
+            window.showOptionsScreen = showOptionsScreen;
         }
 
         // Listener de evento para o botão "Jogar"
