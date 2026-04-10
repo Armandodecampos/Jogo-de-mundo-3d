@@ -1080,6 +1080,7 @@
         let isDrivingRaft = false; // NOVO: Flag para modo de direção da jangada
         let currentRaftBody = null; // NOVO: Referência à jangada atual sendo dirigida
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
+        let isEscExit = false; // NOVO: Flag para controlar a saída do pointer lock via tecla ESC
         let isWorldReady = false; window.isWorldReady = isWorldReady; // NOVO: Flag para rastrear se o mundo está pronto para interações
         let nextMeteorCheckTime = -1; // NOVO: Próximo horário de checagem do meteoro
         let currentDayForMeteor = -1; // NOVO: Dia atual para controle de checagem
@@ -5054,6 +5055,7 @@
                         // Se o jogo estiver a correr e o ponteiro estiver bloqueado,
                         // libertamos o bloqueio do ponteiro. O evento 'pointerlockchange'
                         // irá então tratar de mostrar o menu.
+                        isEscExit = true;
                         document.exitPointerLock();
                     } else {
                         // Se o jogo não estiver pausado e o ponteiro não estiver bloqueado
@@ -5306,12 +5308,12 @@
                         ghostBlockMesh.visible = false; // Oculta o ghost block
                     }
 
-                    // Se o bloqueio do ponteiro foi perdido e NÃO foi por causa da mochila
-                    if (!pointerLockExitForBackpack) {
+                    // Se o bloqueio do ponteiro foi perdido e NÃO foi por causa da mochila ou tecla ESC
+                    if (!pointerLockExitForBackpack && !isEscExit) {
                         showOptionsScreen(); // Isso irá definir gamePaused como true e mostrar o menu
                     }
-                    // O cinto de inventário deve ser escondido APENAS se não for por causa da mochila
-                    if (inventoryBeltElement && !pointerLockExitForBackpack) {
+                    // O cinto de inventário deve ser escondido APENAS se não for por causa da mochila ou tecla ESC
+                    if (inventoryBeltElement && !pointerLockExitForBackpack && !isEscExit) {
                         inventoryBeltElement.style.visibility = 'hidden';
                         inventoryBeltElement.style.opacity = '0';
                     }
@@ -5329,6 +5331,7 @@
                 }
                 // Sempre reseta a flag após o processamento do pointerlockchange
                 pointerLockExitForBackpack = false;
+                isEscExit = false;
             });
 
             // NOVO: Listener de mousedown consolidado
@@ -7459,7 +7462,7 @@
                 // O "fantasma verde" da terra foi removido a pedido do usuário
                 const isShowingTerraGhost = (isPrimaryToolDestroying && currentBlockType === dirtItemName);
                 const isTerra = currentBlockType === dirtItemName;
-                if ((isPrimaryToolPlacing || isShowingTerraGhost) && !gamePaused && !isTerra) {
+                if ((isPrimaryToolPlacing || isShowingTerraGhost) && !gamePaused && !isTerra && document.pointerLockElement === renderer.domElement) {
                     ghostBlockMesh.visible = true; // Garante que o ghost block esteja visível
 
                     const intersects = mainIntersects;
