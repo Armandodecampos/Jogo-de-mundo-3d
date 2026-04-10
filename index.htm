@@ -629,10 +629,16 @@
     </div>
 
     <!-- Novo botão de menu no canto superior esquerdo -->
-    <button id="menuIconButton" class="absolute top-4 left-4 bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg flex items-center space-x-2 z-1000 hidden">
-        <i class="fas fa-cog"></i> <!-- Ícone de engrenagem -->
-        <span>Esc</span>
-    </button>
+    <div id="hudButtons" class="fixed top-4 left-4 flex gap-2 z-[1000] hidden">
+        <button id="menuIconButton" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg flex items-center space-x-2">
+            <i class="fas fa-cog"></i> <!-- Ícone de engrenagem -->
+            <span>Esc</span>
+        </button>
+        <button id="hudWeatherToggle" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg flex items-center space-x-2">
+            <i class="fas fa-sun" id="hudWeatherIcon"></i>
+            <span id="hudWeatherText">Sol</span>
+        </button>
+    </div>
 
     <div id="optionsScreen">
         <h2>Menu</h2>
@@ -1657,8 +1663,9 @@
             if (renderer && renderer.domElement) {
                 renderer.domElement.style.cursor = 'default'; // Mostra o cursor do canvas
             }
-            if (menuIconButton) {
-                menuIconButton.style.display = 'none'; // Oculta o botão do menu quando o menu de opções está aberto
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) {
+                hudButtons.style.display = 'none'; // Oculta os botões do HUD
             }
             if (inventoryBeltElement) {
                 inventoryBeltElement.style.visibility = 'hidden'; // Oculta o cinto de inventário
@@ -1680,8 +1687,9 @@
             if (renderer && renderer.domElement) {
                 renderer.domElement.style.cursor = 'none'; // Esconde o cursor do canvas
             }
-            if (menuIconButton) {
-                menuIconButton.style.display = 'flex'; // Mostra o botão do menu quando o menu de opções está fechado
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) {
+                hudButtons.style.display = 'flex'; // Mostra os botões do HUD
             }
             if (inventoryBeltElement) {
                 inventoryBeltElement.style.visibility = 'visible'; // Mostra o cinto de inventário
@@ -1700,8 +1708,9 @@
             if (renderer && renderer.domElement) {
                 renderer.domElement.style.cursor = 'default';
             }
-            if (menuIconButton) {
-                menuIconButton.style.display = 'none';
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) {
+                hudButtons.style.display = 'none';
             }
             // O cinto de inventário permanece visível ao abrir a mochila
             if (inventoryBeltElement) {
@@ -1724,6 +1733,10 @@
             backpackModal.classList.remove('active');
             gamePaused = false; // Permite que o jogo continue se o ponteiro já estiver bloqueado
             pointerLockExitForBackpack = false; // Reseta a flag ao fechar a mochila
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) {
+                hudButtons.style.display = 'flex';
+            }
 
             // Tenta reativar o pointer lock para retomar o jogo
             if (renderer && renderer.domElement) {
@@ -1762,8 +1775,9 @@
             if (renderer && renderer.domElement) {
                 renderer.domElement.style.cursor = 'default';
             }
-            if (menuIconButton) {
-                menuIconButton.style.display = 'none';
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) {
+                hudButtons.style.display = 'none';
             }
             if (ghostBlockMesh) {
                 ghostBlockMesh.visible = false;
@@ -1782,6 +1796,10 @@
             chestModal.classList.add('hidden');
             gamePaused = false;
             pointerLockExitForBackpack = false; // Reseta a flag
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) {
+                hudButtons.style.display = 'flex';
+            }
 
             // Tenta reativar o pointer lock para retomar o jogo
             if (renderer && renderer.domElement) {
@@ -5243,8 +5261,9 @@
                     // Garante que o menu esteja escondido e o jogo não esteja pausado
                     document.getElementById('optionsScreen').classList.remove('active');
                     document.getElementById('crosshair').style.display = 'flex'; // Mostra a mira
-                    if (menuIconButton) {
-                        menuIconButton.style.display = 'flex'; // Mostra o botão do menu
+                    const hudButtons = document.getElementById('hudButtons');
+                    if (hudButtons) {
+                        hudButtons.style.display = 'flex'; // Mostra os botões do HUD
                     }
                     if (inventoryBeltElement) {
                         inventoryBeltElement.style.visibility = 'visible'; // Mostra o cinto de inventário
@@ -6184,23 +6203,46 @@
             }
 
             const weatherToggle = document.getElementById('weatherToggle');
-            if (weatherToggle) {
-                weatherToggle.addEventListener('click', () => {
-                    if (targetRainIntensity > 0) {
-                        targetRainIntensity = 0;
-                        document.getElementById('weatherStatus').textContent = "Limpo";
-                    } else {
-                        targetRainIntensity = 0.1 + Math.random() * 0.9;
-                        document.getElementById('weatherStatus').textContent = "Chuva";
+            const hudWeatherToggle = document.getElementById('hudWeatherToggle');
+            const hudWeatherIcon = document.getElementById('hudWeatherIcon');
+            const hudWeatherText = document.getElementById('hudWeatherText');
+
+            const toggleWeatherLogic = () => {
+                if (targetRainIntensity > 0) {
+                    targetRainIntensity = 0;
+                    document.getElementById('weatherStatus').textContent = "Limpo";
+                    if (hudWeatherIcon) {
+                        hudWeatherIcon.className = 'fas fa-sun';
+                        hudWeatherText.textContent = "Sol";
                     }
-                    // Força a atualização do tempo de última mudança para não resetar imediatamente
-                    lastWeatherChange = world.time;
+                } else {
+                    targetRainIntensity = 0.1 + Math.random() * 0.9;
+                    document.getElementById('weatherStatus').textContent = "Chuva";
+                    if (hudWeatherIcon) {
+                        hudWeatherIcon.className = 'fas fa-cloud-showers-heavy';
+                        hudWeatherText.textContent = "Chuva";
+                    }
+                }
+                // Força a atualização do tempo de última mudança para não resetar imediatamente
+                lastWeatherChange = world.time;
+            };
+
+            if (weatherToggle) {
+                weatherToggle.addEventListener('click', toggleWeatherLogic);
+            }
+            if (hudWeatherToggle) {
+                hudWeatherToggle.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleWeatherLogic();
                 });
             }
 
             // Adiciona o listener para o novo botão de ícone do menu
             if (menuIconButton) {
-                menuIconButton.addEventListener('click', showOptionsScreen);
+                menuIconButton.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showOptionsScreen();
+                });
             }
 
 
@@ -8394,8 +8436,9 @@
 
             animate(); // Inicia o loop de animação
             // Remove a solicitação de bloqueio do ponteiro daqui. O usuário precisará clicar no canvas para ativá-lo.
-            if (menuIconButton) {
-                menuIconButton.style.display = 'flex'; // Mostra o botão do menu ao iniciar o jogo
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) {
+                hudButtons.style.display = 'flex';
             }
             if (inventoryBeltElement) {
                 inventoryBeltElement.style.visibility = 'visible'; // Mostra o cinto de inventário ao iniciar o jogo
