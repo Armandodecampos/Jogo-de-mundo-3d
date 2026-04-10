@@ -38,16 +38,27 @@ test.describe('Weather HUD Button', () => {
         expect(await page.textContent('#hudWeatherText')).toBe('Sol');
     });
 
-    test('HUD buttons are hidden when menu is open', async ({ page }) => {
+    test('Escape key releases mouse but keeps HUD visible; Pressing Escape again opens menu', async ({ page }) => {
         const hudButtons = page.locator('#hudButtons');
         await expect(hudButtons).toBeVisible();
 
-        // Open menu
+        // Press Escape - should release mouse but NOT hide HUD (new behavior)
         await page.keyboard.press('Escape');
+        await page.waitForFunction(() => document.pointerLockElement === null);
+        await expect(hudButtons).toBeVisible();
+
+        // Verify menu is NOT active yet
+        const optionsScreen = page.locator('#optionsScreen');
+        await expect(optionsScreen).not.toHaveClass(/active/);
+
+        // Press Escape again - should now open the menu
+        await page.keyboard.press('Escape');
+        await expect(optionsScreen).toHaveClass(/active/);
         await expect(hudButtons).toBeHidden();
 
         // Close menu
         await page.click('#resumeButton');
         await expect(hudButtons).toBeVisible();
+        await expect(optionsScreen).not.toHaveClass(/active/);
     });
 });
