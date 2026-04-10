@@ -1008,6 +1008,8 @@
         let lastWeatherChange = 0; // Controle de tempo para mudanças climáticas
         let nextWeatherDuration = 60; // Duração da fase climática atual
         let cloudMaterial = null; // Material compartilhado das nuvens
+        let globalCloudMesh = null; // Camada de nuvem global para chuva
+        let globalCloudMaterial = null; // Material da nuvem global
         let targetCloudCount = 15; // NOVO: Quantidade alvo de nuvens
         let randomBaseCloudCount = Math.floor(Math.random() * 30); // Base aleatória de nuvens
         const islandRadiusTop = 150; // NOVO: Raio do topo da ilha
@@ -2976,22 +2978,29 @@
         }
 
         function updateClouds(delta, despawnDist) {
-            // Se houver menos nuvens que o alvo, tenta spawnar novas
-            if (clouds.length < targetCloudCount && Math.random() < 0.02) {
+            // Se houver menos nuvens que o alvo, tenta spawnar novas (apenas se não estiver chovendo)
+            if (clouds.length < targetCloudCount && Math.random() < 0.02 && targetRainIntensity === 0) {
                 spawnCloud();
             }
 
-            // Cor das nuvens baseada na chuva (mais escuras quando chove)
-            if (cloudMaterial) {
-                const cloudGray = 1.0 - (rainIntensity * 0.8); // Ficam mais escuras
-                cloudMaterial.color.setRGB(cloudGray, cloudGray, cloudGray);
-                cloudMaterial.opacity = 0.8 + (rainIntensity * 0.2); // Ficam mais opacas
+            // Atualiza Camada de Nuvem Global (fade-in e escurecimento com a chuva)
+            if (globalCloudMaterial) {
+                // Opacidade aumenta com a intensidade da chuva
+                globalCloudMaterial.opacity = Math.min(0.95, rainIntensity * 1.2);
+                // Cor fica mais escura conforme a intensidade aumenta
+                const gray = 1.0 - rainIntensity;
+                globalCloudMaterial.color.setRGB(gray, gray, gray);
             }
 
             for (let i = clouds.length - 1; i >= 0; i--) {
                 const cloud = clouds[i];
                 const movement = cloud.direction.clone().multiplyScalar(cloud.speed * delta);
                 cloud.mesh.position.add(movement);
+
+                // Fade-in gradual das nuvens esparsas
+                if (cloud.material && cloud.material.opacity < 0.8) {
+                    cloud.material.opacity = Math.min(0.8, cloud.material.opacity + delta * 0.5);
+                }
 
                 // Despawn se estiver muito longe
                 const dist = cloud.mesh.position.distanceTo(camera.position);
@@ -3170,6 +3179,7 @@
         }
 
         function updateWeather(delta) {
+            const oldTargetRain = targetRainIntensity;
             // Tenta mudar o clima com duração variável
             if (world.time - lastWeatherChange > nextWeatherDuration) {
                 lastWeatherChange = world.time;
@@ -3182,6 +3192,16 @@
                     if (Math.random() < 0.125) {
                         // Inicia chuva com intensidade variada
                         targetRainIntensity = 0.1 + Math.random() * 0.9;
+
+                        // REMOÇÃO INSTANTÂNEA: Ao começar a chover, remove nuvens esparsas imediatamente
+                        for (let i = clouds.length - 1; i >= 0; i--) {
+                            scene.remove(clouds[i].mesh);
+                            // Dispose geometries
+                            clouds[i].mesh.children.forEach(child => {
+                                if (child.geometry) child.geometry.dispose();
+                            });
+                        }
+                        clouds.length = 0;
                     }
                 } else {
                     // Se já estiver chovendo, chance de parar ou mudar de intensidade significativamente
@@ -3204,15 +3224,9 @@
                 }
             }
 
-            // Quantidade de nuvens aumenta com a chuva para cobrir o céu
-            // Se estiver chovendo muito forte (rainIntensity > 0.8), o céu DEVE estar cheio de nuvens
-            let extraClouds = Math.floor(rainIntensity * 60);
-            targetCloudCount = randomBaseCloudCount + extraClouds;
-
-            if (rainIntensity > 0.7) {
-                // Força um mínimo de nuvens elevado para chuvas fortes
-                targetCloudCount = Math.max(targetCloudCount, 50 + Math.floor(rainIntensity * 30));
-            }
+            // Se não estiver chovendo, a quantidade de nuvens é a base aleatória.
+            // Se estiver chovendo, as nuvens esparsas são removidas e não devem ser spawnadas.
+            targetCloudCount = targetRainIntensity === 0 ? randomBaseCloudCount : 0;
 
             // Transição suave para a intensidade alvo
             if (rainIntensity < targetRainIntensity) {
@@ -3223,7 +3237,20 @@
         }
 
         function spawnCloud(initial = false) {
-            const mesh = createCloudMesh();
+            if (!cloudMaterial) {
+                cloudMaterial = new THREE.MeshStandardMaterial({
+                    color: 0xffffff,
+                    transparent: true,
+                    opacity: 0.8,
+                    flatShading: true,
+                    fog: false
+                });
+            }
+            // Cada nuvem agora tem seu próprio material clonado para fade-in individual
+            const indivMaterial = cloudMaterial.clone();
+            indivMaterial.opacity = 0; // Começa invisível
+
+            const mesh = createCloudMesh(indivMaterial);
             const altitude = 70 + Math.random() * 40; // Nuvens mais altas
             const dist = initial ? Math.random() * worldSize : worldSize / 2 + 50;
             const angle = Math.random() * Math.PI * 2;
@@ -3241,6 +3268,7 @@
 
             clouds.push({
                 mesh: mesh,
+                material: indivMaterial,
                 speed: 1 + Math.random() * 3,
                 direction: new THREE.Vector3(
                     (Math.random() - 0.5) * 2,
@@ -3250,7 +3278,7 @@
             });
         }
 
-        function createCloudMesh() {
+        function createCloudMesh(indivMaterial) {
             if (!cloudMaterial) {
                 cloudMaterial = new THREE.MeshStandardMaterial({
                     color: 0xffffff,
@@ -3261,13 +3289,15 @@
                 });
             }
 
+            const mat = indivMaterial || cloudMaterial;
+
             const cloudGroup = new THREE.Group();
             const numSpheres = 3 + Math.floor(Math.random() * 5);
 
             for (let i = 0; i < numSpheres; i++) {
                 const radius = 1 + Math.random() * 2;
                 const geometry = new THREE.SphereGeometry(radius, 8, 8);
-                const sphere = new THREE.Mesh(geometry, cloudMaterial);
+                const sphere = new THREE.Mesh(geometry, mat);
 
                 sphere.position.set(
                     (Math.random() - 0.5) * 4,
@@ -4258,6 +4288,21 @@
 
 
             scene.add(starField);
+
+            // Cria Camada de Nuvem Global (para chuva)
+            const globalCloudGeo = new THREE.PlaneGeometry(2000, 2000);
+            globalCloudMaterial = new THREE.MeshBasicMaterial({
+                color: 0xffffff,
+                transparent: true,
+                opacity: 0,
+                side: THREE.DoubleSide,
+                fog: false
+            });
+            globalCloudMesh = new THREE.Mesh(globalCloudGeo, globalCloudMaterial);
+            globalCloudMesh.rotateX(-Math.PI / 2);
+            globalCloudMesh.position.y = 140;
+            scene.add(globalCloudMesh);
+            window.globalCloudMesh = globalCloudMesh;
 
             // Cria o Terreno (Ilha Redonda)
             // A geometria visual é agora um plano segmentado cujos vértices correspondem ao Heightfield.
@@ -8417,6 +8462,7 @@
             window.sunMesh = sunMesh;
             window.moonMesh = moonMesh;
             window.spawnMeteor = spawnMeteor;
+            window.spawnCloud = spawnCloud;
             window.activeMeteors = activeMeteors;
             Object.defineProperty(window, 'nextMeteorCheckTime', { get: () => nextMeteorCheckTime, set: (v) => { nextMeteorCheckTime = v; } });
             Object.defineProperty(window, 'currentDayForMeteor', { get: () => currentDayForMeteor, set: (v) => { currentDayForMeteor = v; } });
@@ -8429,6 +8475,8 @@
                 set: (v) => { targetCloudCount = v; }
             });
             window.updateWeather = updateWeather;
+            Object.defineProperty(window, 'lastWeatherChange', { get: () => lastWeatherChange, set: (v) => { lastWeatherChange = v; } });
+            Object.defineProperty(window, 'nextWeatherDuration', { get: () => nextWeatherDuration, set: (v) => { nextWeatherDuration = v; } });
             window.spawnBirdGroup = spawnBirdGroup;
             window.applyFPSSettings = applyFPSSettings;
             Object.defineProperty(window, 'showFPS', { get: () => showFPS, set: (v) => { showFPS = v; } });
