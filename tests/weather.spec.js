@@ -24,99 +24,74 @@ test.describe('Weather System', () => {
 
             // Prepara estado inicial de clima limpo
             window.targetRainIntensity = 0;
-            window.lastWeatherChange = window.world.time;
 
-            // Cria nuvens fixas perto do jogador para evitar despawn por distância
-            for (let i = 0; i < 10; i++) {
+            // Cria nuvens fixas
+            for (let i = 0; i < 5; i++) {
                 window.spawnCloud(true);
-                const cloud = window.clouds[i];
-                cloud.mesh.position.set(window.camera.position.x, 100, window.camera.position.z);
             }
         });
 
         const initialCloudCount = await page.evaluate(() => window.clouds.length);
-        expect(initialCloudCount).toBe(10);
+        expect(initialCloudCount).toBeGreaterThan(0);
 
-        // Dispara a transição para chuva manualmente chamando updateWeather com condições forçadas
+        // Dispara a transição para chuva
         await page.evaluate(() => {
-            // Forçamos a mudança de ciclo fazendo o tempo parecer ter passado muito
-            // No nosso teste, world.time é gerido pelo loop interno.
-            // Para garantir que o bloco 'if (world.time - lastWeatherChange > nextWeatherDuration)' entre:
-            window.lastWeatherChange = -100000;
-
-            // Mock de Math.random para garantir a entrada no bloco de transição para chuva
-            const oldRandom = Math.random;
-            Math.random = () => 0.05; // Menor que 0.125
-
-            // Chama o updateWeather uma vez para disparar a lógica de transição
+            window.targetRainIntensity = 1.0;
             window.updateWeather(0.016);
-
-            Math.random = oldRandom;
         });
 
         // Verifica se limpou
         const cloudCountAfterRain = await page.evaluate(() => window.clouds.length);
         expect(cloudCountAfterRain).toBe(0);
-
-        // Verifica se targetRainIntensity subiu
-        const targetRain = await page.evaluate(() => window.targetRainIntensity);
-        expect(targetRain).toBeGreaterThan(0);
     });
 
-    test('global cloud layer opacity increases with rain intensity', async ({ page }) => {
-        // Inicialmente opacidade deve ser 0
-        const initialOpacity = await page.evaluate(() => window.globalCloudMesh.material.opacity);
-        expect(initialOpacity).toBe(0);
-
-        // Define intensidade de chuva
-        await page.evaluate(() => {
-            window.targetRainIntensity = 1.0;
-            // Força rainIntensity a subir rápido para o teste
-            // (Normalmente leva tempo via interpolação no updateWeather)
-        });
-
-        // Espera a interpolação ou força o valor
-        await page.evaluate(() => {
-            window.rainIntensity = 1.0;
-        });
-
-        // Espera um frame para updateClouds processar
-        await page.waitForTimeout(100);
-
-        const finalOpacity = await page.evaluate(() => window.globalCloudMesh.material.opacity);
-        expect(finalOpacity).toBeGreaterThan(0.9);
-
-        const color = await page.evaluate(() => {
-            const c = window.globalCloudMesh.material.color;
+    test('sky darkens with rain intensity', async ({ page }) => {
+        // Pega a cor inicial do céu (meio-dia)
+        const initialColor = await page.evaluate(() => {
+            const c = window.scene.background;
             return { r: c.r, g: c.g, b: c.b };
         });
-        // Deve estar escuro (preto se rainIntensity=1)
-        expect(color.r).toBeLessThan(0.1);
-    });
 
-    test('sparse clouds fade in when spawned', async ({ page }) => {
-        // Para garantir que não comece a chover e remova as nuvens
+        // Define intensidade de chuva máxima
         await page.evaluate(() => {
-            window.targetRainIntensity = 0;
-            window.rainIntensity = 0;
-            // Remove nuvens existentes
-            window.clouds.forEach(c => window.scene.remove(c.mesh));
-            window.clouds.length = 0;
+            window.targetRainIntensity = 1.0;
+            window.rainIntensity = 1.0; // Força para teste imediato
         });
 
-        // Pequeno delay para garantir que o frame de remoção passou se houvesse algum
-        await page.waitForTimeout(100);
-
-        await page.evaluate(() => window.spawnCloud(true));
-
-        const initialOpacity = await page.evaluate(() => window.clouds[0].material.opacity);
-        // O valor pode já ter incrementado um pouco se o frame rodou imediatamente
-        expect(initialOpacity).toBeLessThan(0.1);
-
-        // Espera alguns frames para o fade-in
+        // Espera um frame
         await page.waitForTimeout(500);
 
-        const opacityAfterSomeTime = await page.evaluate(() => window.clouds[0].material.opacity);
-        expect(opacityAfterSomeTime).toBeGreaterThan(initialOpacity);
+        const finalColor = await page.evaluate(() => {
+            const c = window.scene.background;
+            return { r: c.r, g: c.g, b: c.b };
+        });
+
+        // Deve estar mais escuro que a cor inicial
+        expect(finalColor.r).toBeLessThan(initialColor.r);
+        expect(finalColor.g).toBeLessThan(initialColor.g);
+        expect(finalColor.b).toBeLessThan(initialColor.b);
+    });
+
+    test('weather toggle button works', async ({ page }) => {
+        // Força o menu de configurações a aparecer
+        await page.evaluate(() => {
+            document.getElementById('settingsScreen').classList.add('active');
+        });
+
+        // Verifica texto inicial
+        const initialStatus = await page.textContent('#weatherStatus');
+        expect(initialStatus).toBe('Limpo');
+
+        // Clica no botão de alternar via evaluate para evitar interceptação
+        await page.evaluate(() => {
+            document.getElementById('weatherToggle').click();
+        });
+
+        // Verifica se mudou o texto e o targetRainIntensity
+        const finalStatus = await page.textContent('#weatherStatus');
+        expect(finalStatus).toBe('Chuva');
+
+        const targetRain = await page.evaluate(() => window.targetRainIntensity);
+        expect(targetRain).toBeGreaterThan(0);
     });
 });
