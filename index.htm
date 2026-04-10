@@ -989,6 +989,7 @@
 
         let clouds = []; // NOVO: Array para armazenar as nuvens
         let rainIntensity = 0; // Intensidade atual da chuva (0 a 1)
+        let localRainIntensity = 0; // Intensidade local (onde o jogador está)
         let targetRainIntensity = 0; // Intensidade alvo para transições suaves
         let rainParticles = null; // Sistema de partículas da chuva
         let gameAudioContext = null;
@@ -1023,6 +1024,13 @@
         let cloudMaterial = null; // Material compartilhado das nuvens
         let globalCloudMesh = null; // Camada de nuvem global para chuva
         let globalCloudMaterial = null; // Material da nuvem global
+        let rainCloud = {
+            active: false,
+            position: new THREE.Vector3(0, 140, 0),
+            radius: 500,
+            targetIntensity: 0,
+            baseColor: new THREE.Color(0xffffff)
+        };
         let targetCloudCount = 15; // NOVO: Quantidade alvo de nuvens
         let randomBaseCloudCount = Math.floor(Math.random() * 30); // Base aleatória de nuvens
         const islandRadiusTop = 150; // NOVO: Raio do topo da ilha
@@ -3020,13 +3028,42 @@
                 spawnCloud();
             }
 
-            // Atualiza Camada de Nuvem Global (fade-in e escurecimento com a chuva)
-            if (globalCloudMaterial) {
-                // Opacidade aumenta com a intensidade da chuva
-                globalCloudMaterial.opacity = Math.min(0.95, rainIntensity * 1.2);
-                // Cor fica mais escura conforme a intensidade aumenta
-                const gray = 1.0 - rainIntensity;
-                globalCloudMaterial.color.setRGB(gray, gray, gray);
+            // Atualiza Camada de Nuvem Global (fade-in e cor da chuva)
+            if (globalCloudMaterial && globalCloudMesh) {
+                if (rainCloud.active || rainIntensity > 0.01) {
+                    // Opacidade aumenta com a intensidade da chuva global
+                    globalCloudMaterial.opacity = Math.min(0.95, rainIntensity * 1.2);
+
+                    // A cor é baseada na cor base calculada no startRainCycle
+                    globalCloudMaterial.color.copy(rainCloud.baseColor);
+
+                    // Posicionamento Toroidal da Nuvem de Chuva
+                    // Encontra a posição visual mais próxima do jogador no mundo toroidal
+                    const halfWorld = worldSize / 2;
+                    let visualX = rainCloud.position.x;
+                    let visualZ = rainCloud.position.z;
+
+                    if (camera.position.x - visualX > halfWorld) visualX += worldSize;
+                    else if (camera.position.x - visualX < -halfWorld) visualX -= worldSize;
+
+                    if (camera.position.z - visualZ > halfWorld) visualZ += worldSize;
+                    else if (camera.position.z - visualZ < -halfWorld) visualZ -= worldSize;
+
+                    globalCloudMesh.position.x = visualX;
+                    globalCloudMesh.position.z = visualZ;
+                    globalCloudMesh.visible = true;
+                } else {
+                    globalCloudMaterial.opacity = 0;
+                    globalCloudMesh.visible = false;
+
+                    // Limpa os filhos se a chuva acabou totalmente
+                    if (globalCloudMesh.children.length > 0) {
+                        while (globalCloudMesh.children.length > 0) {
+                            const child = globalCloudMesh.children[0];
+                            globalCloudMesh.remove(child);
+                        }
+                    }
+                }
             }
 
             for (let i = clouds.length - 1; i >= 0; i--) {
@@ -3176,24 +3213,24 @@
         function updateRain(delta) {
             if (!rainParticles) return;
 
-            // Atualiza o volume e o filtro do áudio da chuva
+            // Atualiza o volume e o filtro do áudio da chuva - agora usa localRainIntensity
             if (rainGainNode && rainFilterNode) {
                 // Se o jogo estiver pausado, silencia a chuva
-                const targetGain = gamePaused ? 0 : (rainIntensity * 0.30);
+                const targetGain = gamePaused ? 0 : (localRainIntensity * 0.30);
                 rainGainNode.gain.setTargetAtTime(targetGain, gameAudioContext.currentTime, 0.1);
 
                 // Frequência do filtro aumenta com a intensidade (chuva mais forte é mais "aguda")
-                const targetFreq = 500 + (rainIntensity * 1500);
+                const targetFreq = 500 + (localRainIntensity * 1500);
                 rainFilterNode.frequency.setTargetAtTime(targetFreq, gameAudioContext.currentTime, 0.1);
             }
 
-            if (rainIntensity > 0.05) {
+            if (localRainIntensity > 0.05) {
                 rainParticles.visible = true;
                 // Ajusta a quantidade de partículas visíveis e a opacidade
                 const totalParticles = 5000;
-                const visibleCount = Math.floor(rainIntensity * totalParticles);
+                const visibleCount = Math.floor(localRainIntensity * totalParticles);
                 rainParticles.geometry.setDrawRange(0, visibleCount);
-                rainParticles.material.opacity = 0.3 + (rainIntensity * 0.4);
+                rainParticles.material.opacity = 0.3 + (localRainIntensity * 0.4);
 
                 const positions = rainParticles.geometry.attributes.position.array;
                 const velocities = rainParticles.userData.velocities;
@@ -3227,15 +3264,18 @@
                 // Chance de mudar o clima
                 if (targetRainIntensity === 0) {
                     if (Math.random() < 0.125) {
-                        // Inicia chuva com intensidade variada
-                        targetRainIntensity = 0.1 + Math.random() * 0.9;
+                        // Inicia chuva localizada
+                        startRainCycle();
                     }
                 } else {
                     // Se já estiver chovendo, chance de parar ou mudar de intensidade significativamente
                     if (Math.random() < 0.6) {
                         targetRainIntensity = 0;
+                        rainCloud.active = false;
                     } else {
-                        targetRainIntensity = 0.1 + Math.random() * 0.9;
+                        // Mantém a chuva mas pode mudar o alvo da nuvem atual
+                        rainCloud.targetIntensity = 0.1 + Math.random() * 0.9;
+                        targetRainIntensity = rainCloud.targetIntensity;
                     }
                 }
 
@@ -3244,10 +3284,11 @@
             }
 
             // Oscilação aleatória constante durante a chuva para torná-la dinâmica
-            if (targetRainIntensity > 0) {
+            if (targetRainIntensity > 0 && rainCloud.active) {
                 if (Math.random() < 0.005) {
                     const fluctuation = (Math.random() - 0.5) * 0.3;
-                    targetRainIntensity = Math.max(0.1, Math.min(1.0, targetRainIntensity + fluctuation));
+                    rainCloud.targetIntensity = Math.max(0.1, Math.min(1.0, rainCloud.targetIntensity + fluctuation));
+                    targetRainIntensity = rainCloud.targetIntensity;
                 }
             }
 
@@ -3272,6 +3313,68 @@
                 }
                 clouds.length = 0;
             }
+        }
+
+        function rebuildRainCloud(radius) {
+            if (!globalCloudMesh) return;
+
+            // Limpa o grupo existente
+            while (globalCloudMesh.children.length > 0) {
+                const child = globalCloudMesh.children[0];
+                globalCloudMesh.remove(child);
+            }
+
+            // Popula com esferas grandes para criar uma nuvem enorme e ondulada
+            const numSpheres = 30 + Math.floor(Math.random() * 20);
+            for (let i = 0; i < numSpheres; i++) {
+                const geometry = getCloudGeometry();
+                const sphere = new THREE.Mesh(geometry, globalCloudMaterial);
+
+                // Posiciona aleatoriamente dentro do raio, com concentração no centro
+                const angle = Math.random() * Math.PI * 2;
+                const r = Math.pow(Math.random(), 0.7) * radius; // Concentração central leve
+
+                sphere.position.set(
+                    Math.cos(angle) * r,
+                    (Math.random() - 0.5) * (radius * 0.15), // Altura variável baseada no raio
+                    Math.sin(angle) * r
+                );
+
+                // Escala proporcional ao raio da nuvem
+                const scale = (radius * 0.1) * (0.8 + Math.random() * 0.7);
+                sphere.scale.set(scale, scale * 0.4, scale);
+
+                // Rotação aleatória para mais variação
+                sphere.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+
+                globalCloudMesh.add(sphere);
+            }
+        }
+
+        function startRainCycle() {
+            rainCloud.active = true;
+
+            // Posição aleatória no mundo (toroidal)
+            rainCloud.position.x = (Math.random() - 0.5) * worldSize;
+            rainCloud.position.z = (Math.random() - 0.5) * worldSize;
+
+            // Raio enorme: de 1/4 da ilha até quase o mundo todo
+            // ilha grassRadius é 100, beachRadius 200. worldSize 1200.
+            rainCloud.radius = 200 + Math.random() * 900;
+
+            // Intensidade baseada no tamanho: maior = mais chuva
+            // Intensidade alvo entre 0.3 e 1.0
+            rainCloud.targetIntensity = 0.3 + (rainCloud.radius / 1100) * 0.7;
+
+            // Cor baseada no tamanho: maior = mais escura
+            const gray = Math.max(0.1, 0.8 - (rainCloud.radius / 1100) * 0.6);
+            rainCloud.baseColor.setRGB(gray, gray, gray);
+
+            targetRainIntensity = rainCloud.targetIntensity;
+
+            rebuildRainCloud(rainCloud.radius);
+
+            console.log("Iniciando ciclo de chuva localizada:", rainCloud);
         }
 
         function spawnCloud(initial = false) {
@@ -4328,18 +4431,16 @@
 
             scene.add(starField);
 
-            // Cria Camada de Nuvem Global (para chuva)
-            const globalCloudGeo = new THREE.PlaneGeometry(2000, 2000);
-            globalCloudMaterial = new THREE.MeshBasicMaterial({
+            // Cria Camada de Nuvem Global (para chuva) - Agora é um grupo de esferas
+            globalCloudMesh = new THREE.Group();
+            globalCloudMaterial = new THREE.MeshStandardMaterial({
                 color: 0xffffff,
                 transparent: true,
                 opacity: 0,
-                side: THREE.DoubleSide,
+                flatShading: true,
                 fog: false,
                 depthWrite: false
             });
-            globalCloudMesh = new THREE.Mesh(globalCloudGeo, globalCloudMaterial);
-            globalCloudMesh.rotateX(-Math.PI / 2);
             globalCloudMesh.position.y = 140;
             scene.add(globalCloudMesh);
             window.globalCloudMesh = globalCloudMesh;
@@ -7847,6 +7948,18 @@
                 }
             }
 
+            // Calcula intensidade da chuva local baseada na distância da nuvem
+            if (rainCloud.active) {
+                const distToCloud = calculateWrappedDistance(camera.position, rainCloud.position);
+                // Fator de suavização: começa a chover antes de estar exatamente embaixo
+                const dropoff = rainCloud.radius * 1.2;
+                const factor = Math.max(0, 1.0 - distToCloud / dropoff);
+                // Curva suave para a intensidade local
+                localRainIntensity = rainIntensity * Math.pow(factor, 0.5);
+            } else {
+                localRainIntensity = Math.max(0, localRainIntensity - delta * 0.5);
+            }
+
             // Transição de cores do céu e neblina (Granular e suave)
             const skyColors = [
                 { p: 0.0,  c: 0x87CEEB, i: 1.0 }, // Meio-dia
@@ -7875,12 +7988,13 @@
             }
 
             // Ajusta a cor do céu e luz ambiente para chuva (fica mais escuro - até 85% de redução)
-            if (rainIntensity > 0) {
-                const rainDarkness = 1.0 - (rainIntensity * 0.85);
+            // Agora usa localRainIntensity para efeito localizado
+            if (localRainIntensity > 0) {
+                const rainDarkness = 1.0 - (localRainIntensity * 0.85);
                 targetSkyColor.multiplyScalar(rainDarkness);
-                targetAmbientIntensity *= (1.0 - (rainIntensity * 0.8));
-                directionalLight.intensity *= (1.0 - (rainIntensity * 0.85));
-                moonLight.intensity *= (1.0 - (rainIntensity * 0.85));
+                targetAmbientIntensity *= (1.0 - (localRainIntensity * 0.8));
+                directionalLight.intensity *= (1.0 - (localRainIntensity * 0.85));
+                moonLight.intensity *= (1.0 - (localRainIntensity * 0.85));
             }
 
             skyColor.copy(targetSkyColor);
@@ -8467,7 +8581,9 @@
             Object.defineProperty(window, 'islandGainNode', { get: () => islandGainNode });
             Object.defineProperty(window, 'beachGainNode', { get: () => beachGainNode });
             Object.defineProperty(window, 'rainIntensity', { get: () => rainIntensity, set: (v) => { rainIntensity = v; } });
+            Object.defineProperty(window, 'localRainIntensity', { get: () => localRainIntensity, set: (v) => { localRainIntensity = v; } });
             Object.defineProperty(window, 'targetRainIntensity', { get: () => targetRainIntensity, set: (v) => { targetRainIntensity = v; } });
+            window.rainCloud = rainCloud;
             Object.defineProperty(window, 'isClimbing', { get: () => isClimbing, set: (v) => { isClimbing = v; } });
             Object.defineProperty(window, 'isFlying', { get: () => isFlying, set: (v) => { isFlying = v; } });
             window.useInteractionHints = useInteractionHints;
@@ -8557,6 +8673,8 @@
                 set: (v) => { targetCloudCount = v; }
             });
             window.updateWeather = updateWeather;
+            window.startRainCycle = startRainCycle;
+            window.rebuildRainCloud = rebuildRainCloud;
             Object.defineProperty(window, 'lastWeatherChange', { get: () => lastWeatherChange, set: (v) => { lastWeatherChange = v; } });
             Object.defineProperty(window, 'nextWeatherDuration', { get: () => nextWeatherDuration, set: (v) => { nextWeatherDuration = v; } });
             window.spawnBirdGroup = spawnBirdGroup;
