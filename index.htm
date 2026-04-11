@@ -3053,14 +3053,20 @@
                     globalCloudMesh.position.z = visualZ;
                     globalCloudMesh.visible = true;
                 } else {
-                    globalCloudMaterial.opacity = 0;
-                    globalCloudMesh.visible = false;
+                    // Mantém visível enquanto fade-out acontece
+                    if (rainIntensity > 0.01) {
+                        globalCloudMaterial.opacity = Math.min(0.95, rainIntensity * 1.2);
+                        globalCloudMesh.visible = true;
+                    } else {
+                        globalCloudMaterial.opacity = 0;
+                        globalCloudMesh.visible = false;
 
-                    // Limpa os filhos se a chuva acabou totalmente
-                    if (globalCloudMesh.children.length > 0) {
-                        while (globalCloudMesh.children.length > 0) {
-                            const child = globalCloudMesh.children[0];
-                            globalCloudMesh.remove(child);
+                        // Limpa os filhos se a chuva acabou totalmente
+                        if (globalCloudMesh.children.length > 0) {
+                            while (globalCloudMesh.children.length > 0) {
+                                const child = globalCloudMesh.children[0];
+                                globalCloudMesh.remove(child);
+                            }
                         }
                     }
                 }
@@ -3325,7 +3331,7 @@
             }
 
             // Popula com esferas grandes para criar uma nuvem enorme e ondulada
-            const numSpheres = 30 + Math.floor(Math.random() * 20);
+            const numSpheres = 50 + Math.floor(Math.random() * 30);
             for (let i = 0; i < numSpheres; i++) {
                 const geometry = getCloudGeometry();
                 const sphere = new THREE.Mesh(geometry, globalCloudMaterial);
@@ -4438,10 +4444,12 @@
                 transparent: true,
                 opacity: 0,
                 flatShading: true,
+                side: THREE.DoubleSide,
                 fog: false,
                 depthWrite: false
             });
             globalCloudMesh.position.y = 140;
+            globalCloudMesh.frustumCulled = false;
             scene.add(globalCloudMesh);
             window.globalCloudMesh = globalCloudMesh;
 
@@ -6314,13 +6322,17 @@
             const toggleWeatherLogic = () => {
                 if (targetRainIntensity > 0) {
                     targetRainIntensity = 0;
+                    rainCloud.active = false;
                     document.getElementById('weatherStatus').textContent = "Limpo";
                     if (hudWeatherIcon) {
                         hudWeatherIcon.className = 'fas fa-sun';
                         hudWeatherText.textContent = "Sol";
                     }
                 } else {
-                    targetRainIntensity = 0.1 + Math.random() * 0.9;
+                    startRainCycle();
+                    // Garante que a nuvem de chuva forçada pelo botão esteja próxima do jogador
+                    rainCloud.position.set(camera.position.x, 140, camera.position.z);
+
                     document.getElementById('weatherStatus').textContent = "Chuva";
                     if (hudWeatherIcon) {
                         hudWeatherIcon.className = 'fas fa-cloud-showers-heavy';
