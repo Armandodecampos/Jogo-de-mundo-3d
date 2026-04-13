@@ -3337,32 +3337,29 @@
                 globalCloudMesh.remove(child);
             }
 
-            // Popula com esferas perfeitas para criar uma nuvem ondulada
-            // O número de esferas depende do tamanho da nuvem
-            const density = radius / 6; // Ajuste de densidade
-            const numSpheres = Math.max(50, Math.floor(density));
+            // Popula com poucas esferas para criar uma nuvem "normal" mas muito grande
+            // Otimizado para performance: apenas 12 a 20 esferas
+            const numSpheres = 12 + Math.floor(Math.random() * 8);
 
             for (let i = 0; i < numSpheres; i++) {
                 const geometry = getCloudGeometry();
                 const sphere = new THREE.Mesh(geometry, globalCloudMaterial);
 
-                // Posiciona aleatoriamente para cobrir todo o raio da nuvem
+                // Cluster centralizado com espalhamento proporcional ao raio
+                const r = Math.sqrt(Math.random()) * (radius * 0.7);
                 const angle = Math.random() * Math.PI * 2;
-                const r = Math.sqrt(Math.random()) * radius; // Distribuição mais uniforme no círculo
 
                 sphere.position.set(
                     Math.cos(angle) * r,
-                    (Math.random() - 0.5) * (radius * 0.2), // Espessura vertical proporcional ao raio
+                    (Math.random() - 0.5) * (radius * 0.15),
                     Math.sin(angle) * r
                 );
 
                 // Escala para as esferas individuais, proporcional ao tamanho da nuvem
-                const baseScale = radius * 0.2;
-                const scale = baseScale * (0.8 + Math.random() * 1.2);
+                const baseScale = radius * 0.4;
+                const scale = baseScale * (0.8 + Math.random() * 0.8);
 
-                // Esferas "perfeitas" (onduladas como as outras nuvens)
                 sphere.scale.set(scale, scale, scale);
-
                 sphere.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
 
                 globalCloudMesh.add(sphere);
@@ -6339,8 +6336,10 @@
                     }
                 } else {
                     startRainCycle();
-                    // Garante que a nuvem de chuva forçada pelo botão esteja próxima do jogador
-                    rainCloud.position.set(camera.position.x, 250, camera.position.z);
+                    // Garante que a nuvem de chuva forçada pelo botão esteja na posição do jogador (mantendo altitude de 500)
+                    rainCloud.position.x = camera.position.x;
+                    rainCloud.position.z = camera.position.z;
+                    rainCloud.position.y = 500;
 
                     document.getElementById('weatherStatus').textContent = "Chuva";
                     if (hudWeatherIcon) {
