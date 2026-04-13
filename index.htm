@@ -1026,7 +1026,7 @@
         let globalCloudMaterial = null; // Material da nuvem global
         let rainCloud = {
             active: false,
-            position: new THREE.Vector3(0, 250, 0),
+            position: new THREE.Vector3(0, 500, 0),
             radius: 500,
             targetIntensity: 0,
             baseColor: new THREE.Color(0xffffff)
@@ -3035,13 +3035,23 @@
                     // Opacidade aumenta com a intensidade da chuva global
                     globalCloudMaterial.opacity = Math.min(0.95, rainIntensity * 1.2);
 
-                    // A cor é baseada na cor base calculada no startRainCycle
-                    globalCloudMaterial.color.copy(rainCloud.baseColor);
+                    // Quanto maior a nuvem, mais escura ela será (baseada no raio e intensidade)
+                    const sizeFactor = (rainCloud.radius - 300) / 800; // 0 a 1
+                    const baseGray = 0.8 - (sizeFactor * 0.3); // Nuvens maiores começam mais escuras
+                    const gray = Math.max(0.1, baseGray - (rainIntensity * 0.4));
+                    globalCloudMaterial.color.setRGB(gray, gray, gray);
 
-                    // Como a nuvem é global e cobre o mundo todo,
-                    // simplesmente a mantemos centrada no jogador para cobertura infinita.
-                    globalCloudMesh.position.x = camera.position.x;
-                    globalCloudMesh.position.z = camera.position.z;
+                    // Mantém a nuvem em sua posição aleatória, mas permite que ela apareça toroidalmente
+                    // calculando a posição relativa mais próxima do jogador.
+                    let dx = rainCloud.position.x - camera.position.x;
+                    let dz = rainCloud.position.z - camera.position.z;
+                    if (dx > worldSize / 2) dx -= worldSize;
+                    if (dx < -worldSize / 2) dx += worldSize;
+                    if (dz > worldSize / 2) dz -= worldSize;
+                    if (dz < -worldSize / 2) dz += worldSize;
+
+                    globalCloudMesh.position.x = camera.position.x + dx;
+                    globalCloudMesh.position.z = camera.position.z + dz;
                     globalCloudMesh.position.y = rainCloud.position.y;
                     globalCloudMesh.visible = true;
                 } else {
@@ -3327,26 +3337,30 @@
                 globalCloudMesh.remove(child);
             }
 
-            // Popula com esferas perfeitas para criar uma nuvem que cobre o mundo todo
-            // Aumentamos o número de esferas para garantir cobertura global
-            const numSpheres = 150 + Math.floor(Math.random() * 50);
+            // Popula com esferas perfeitas para criar uma nuvem ondulada
+            // O número de esferas depende do tamanho da nuvem
+            const density = radius / 6; // Ajuste de densidade
+            const numSpheres = Math.max(50, Math.floor(density));
+
             for (let i = 0; i < numSpheres; i++) {
                 const geometry = getCloudGeometry();
                 const sphere = new THREE.Mesh(geometry, globalCloudMaterial);
 
-                // Posiciona aleatoriamente para cobrir todo o raio (escala global)
+                // Posiciona aleatoriamente para cobrir todo o raio da nuvem
                 const angle = Math.random() * Math.PI * 2;
-                const r = Math.random() * radius;
+                const r = Math.sqrt(Math.random()) * radius; // Distribuição mais uniforme no círculo
 
                 sphere.position.set(
                     Math.cos(angle) * r,
-                    (Math.random() - 0.5) * 100, // Alguma variação vertical para volume
+                    (Math.random() - 0.5) * (radius * 0.2), // Espessura vertical proporcional ao raio
                     Math.sin(angle) * r
                 );
 
-                // Escala grande para as esferas individuais
-                const scale = 150 + Math.random() * 150;
-                // Esferas perfeitas (X=Y=Z)
+                // Escala para as esferas individuais, proporcional ao tamanho da nuvem
+                const baseScale = radius * 0.2;
+                const scale = baseScale * (0.8 + Math.random() * 1.2);
+
+                // Esferas "perfeitas" (onduladas como as outras nuvens)
                 sphere.scale.set(scale, scale, scale);
 
                 sphere.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
@@ -3358,26 +3372,24 @@
         function startRainCycle() {
             rainCloud.active = true;
 
-            // A nuvem agora cobre o mundo todo
-            rainCloud.position.x = 0;
-            rainCloud.position.z = 0;
+            // A nuvem surge em um lugar aleatório do mundo
+            rainCloud.position.x = (Math.random() - 0.5) * worldSize;
+            rainCloud.position.z = (Math.random() - 0.5) * worldSize;
 
-            // Raio global para cobrir o mundo de 1200 unidades
-            rainCloud.radius = 1200;
+            // Tamanho enorme: de tamanho da ilha (~300) até quase o tamanho do mundo (~1100)
+            rainCloud.radius = 300 + Math.random() * 800;
 
-            // Intensidade baseada no tamanho: maior = mais chuva
-            // Intensidade alvo entre 0.3 e 1.0
-            rainCloud.targetIntensity = 0.3 + (rainCloud.radius / 1100) * 0.7;
+            // Quanto maior a nuvem, mais chuva terá (intensidade alvo maior)
+            const sizeFactor = (rainCloud.radius - 300) / 800; // 0 a 1
+            rainCloud.targetIntensity = 0.3 + sizeFactor * 0.7;
 
-            // Cor baseada no tamanho: maior = mais escura
-            const gray = Math.max(0.1, 0.8 - (rainCloud.radius / 1100) * 0.6);
-            rainCloud.baseColor.setRGB(gray, gray, gray);
-
+            // A intensidade global vai tender para o alvo da nuvem,
+            // mas a chuva efetiva será filtrada pela distância no animate()
             targetRainIntensity = rainCloud.targetIntensity;
 
             rebuildRainCloud(rainCloud.radius);
 
-            console.log("Iniciando ciclo de chuva global:", rainCloud);
+            console.log("Iniciando ciclo de chuva localizada:", rainCloud);
         }
 
         function spawnCloud(initial = false) {
@@ -4445,7 +4457,7 @@
                 fog: false,
                 depthWrite: false
             });
-            globalCloudMesh.position.y = 250;
+            globalCloudMesh.position.y = 500;
             globalCloudMesh.frustumCulled = false;
             scene.add(globalCloudMesh);
             window.globalCloudMesh = globalCloudMesh;
@@ -7957,8 +7969,19 @@
                 }
             }
 
-            // Como a nuvem agora é global, a intensidade local é a mesma da intensidade geral
-            localRainIntensity = rainIntensity;
+            // Calcula a intensidade local baseada na distância para a nuvem de chuva
+            if (rainCloud.active && rainIntensity > 0.01) {
+                const dist = calculateWrappedDistance(camera.position, rainCloud.position);
+                if (dist < rainCloud.radius) {
+                    // Gradiente de intensidade: 100% no centro, 0% na borda
+                    const falloff = 1.0 - (dist / rainCloud.radius);
+                    localRainIntensity = rainIntensity * falloff;
+                } else {
+                    localRainIntensity = 0;
+                }
+            } else {
+                localRainIntensity = rainIntensity;
+            }
 
             // Transição de cores do céu e neblina (Granular e suave)
             const skyColors = [
