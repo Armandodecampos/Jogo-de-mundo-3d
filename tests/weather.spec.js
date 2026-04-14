@@ -52,17 +52,10 @@ test.describe('Weather System', () => {
             return { r: c.r, g: c.g, b: c.b };
         });
 
-        // Define intensidade de chuva máxima e coloca o jogador embaixo da nuvem
+        // Define intensidade de chuva máxima
         await page.evaluate(() => {
             window.targetRainIntensity = 1.0;
             window.rainIntensity = 1.0; // Força para teste imediato
-
-            // Força a nuvem a estar sobre o jogador para que localRainIntensity seja > 0
-            if (window.rainCloud) {
-                window.rainCloud.active = true;
-                window.rainCloud.position.copy(window.camera.position);
-                window.rainCloud.radius = 500;
-            }
         });
 
         // Espera um frame
