@@ -8472,12 +8472,23 @@
                 const playerPos = playerBody.position;
                 // isUnderwater logic: camera below water level and there is water at camera position
                 const isUnderwater = camera.position.y < waterLevel && (typeof hasWaterAt === 'function' ? hasWaterAt(camera.position.x, camera.position.z) : true);
-                const isHighAltitude = playerPos.y > 5000;
-                const isInstantDeathAltitude = playerPos.y > 10000;
+
+                // NOVO: Verifica proximidade com nuvens
+                let isNearCloud = false;
+                for (let i = 0; i < clouds.length; i++) {
+                    const cloud = clouds[i];
+                    if (calculateWrappedDistance(playerPos, cloud.mesh.position) < 15) {
+                        isNearCloud = true;
+                        break;
+                    }
+                }
+
+                const isHighAltitude = playerPos.y > 200;
+                const isInstantDeathAltitude = playerPos.y > 500;
 
                 if (isInstantDeathAltitude) {
                     playerHealth = 0;
-                } else if (isUnderwater || isHighAltitude) {
+                } else if (isUnderwater || isHighAltitude || isNearCloud) {
                     playerBreath -= delta * 15; // Diminui folego (aprox 6.6s total)
                 } else {
                     playerBreath += delta * 30; // Recupera folego mais rápido (aprox 3.3s total)
