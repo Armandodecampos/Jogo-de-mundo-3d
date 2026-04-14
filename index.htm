@@ -823,7 +823,7 @@
         window.THREE = THREE;
         window.CANNON = CANNON;
 
-        const hfGridSize = 400; // Resolução global do terreno equilibrada
+        const hfGridSize = 200; // Resolução global do terreno equilibrada (reduzida de 400 para performance)
 
         // NOVO: Funções auxiliares para texturas celestiais procedurais
         function createStarTexture() {
@@ -890,6 +890,7 @@
         let raycastTargets = []; // Objetos interativos para raycasting
         let raycastTargetsNeedUpdate = true;
         let terrainNeedsUpdate = false;
+        let lastPhysicsTerrainUpdate = 0; // Para throttling da física do terreno
         let terrainAffectedMounds = [];
         let visualOffsetX = 0;
         let visualOffsetZ = 0;
@@ -1085,6 +1086,9 @@
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
         let isEscExit = false; // NOVO: Flag para controlar a saída do pointer lock via tecla ESC
         let isWorldReady = false; window.isWorldReady = isWorldReady; // NOVO: Flag para rastrear se o mundo está pronto para interações
+        let lowPerformance = false; // NOVO: Flag para modo de baixa performance
+        let lowFPSStart = null;
+        let highFPSStart = null;
         let nextMeteorCheckTime = -1; // NOVO: Próximo horário de checagem do meteoro
         let currentDayForMeteor = -1; // NOVO: Dia atual para controle de checagem
         let activeMeteors = [];
@@ -3960,18 +3964,21 @@
                 }
             }
 
-            // Atualiza a física de todos os 9 tiles do terreno
-            const newHfShape = new CANNON.Heightfield(currentHfMatrix, {
-                elementSize: worldSize / (hfGridSize - 1)
-            });
+            // Atualiza a física de todos os 9 tiles do terreno (Throttled)
+            if (performance.now() - lastPhysicsTerrainUpdate > 150) {
+                const newHfShape = new CANNON.Heightfield(currentHfMatrix, {
+                    elementSize: worldSize / (hfGridSize - 1)
+                });
 
-            islandMeshes.forEach(tile => {
-                if (tile.body.shapes.length > 0) {
-                    tile.body.removeShape(tile.body.shapes[0]);
-                }
-                tile.body.addShape(newHfShape);
-                tile.body.updateAABB();
-            });
+                islandMeshes.forEach(tile => {
+                    if (tile.body.shapes.length > 0) {
+                        tile.body.removeShape(tile.body.shapes[0]);
+                    }
+                    tile.body.addShape(newHfShape);
+                    tile.body.updateAABB();
+                });
+                lastPhysicsTerrainUpdate = performance.now();
+            }
 
             // Atualiza a malha visual (geometria compartilhada)
             if (islandMeshes.length > 0) {
@@ -6345,15 +6352,28 @@
                 camera.updateMatrixWorld();
             }
 
-            // Update FPS counter
-            if (showFPS) {
-                fpsFrames++;
-                if (now > fpsLastTime + 1000) {
-                    const fps = Math.round((fpsFrames * 1000) / (now - fpsLastTime));
-                    document.getElementById('fpsCounter').textContent = `FPS: ${fps}`;
-                    fpsFrames = 0;
-                    fpsLastTime = now;
+            // Update FPS counter and performance monitoring
+            fpsFrames++;
+            if (now > fpsLastTime + 1000) {
+                const fps = Math.round((fpsFrames * 1000) / (now - fpsLastTime));
+                if (showFPS) document.getElementById('fpsCounter').textContent = `FPS: ${fps}`;
+
+                // Monitor performance
+                if (fps < 28) {
+                    highFPSStart = null;
+                    if (lowFPSStart === null) lowFPSStart = now;
+                    else if (now - lowFPSStart > 500) lowPerformance = true;
+                } else if (fps > 35) {
+                    lowFPSStart = null;
+                    if (highFPSStart === null) highFPSStart = now;
+                    else if (now - highFPSStart > 1500) lowPerformance = false;
+                } else {
+                    lowFPSStart = null;
+                    highFPSStart = null;
                 }
+
+                fpsFrames = 0;
+                fpsLastTime = now;
             }
             // Sincroniza Birds e Clouds com worldSize real para despawn
             const despawnDist = worldSize * 0.8;
@@ -6363,15 +6383,17 @@
             window.onWalkableGround = false;
 
             if (!gamePaused) {
-                updateWeather(delta);
-                updateClouds(delta, despawnDist);
+                if (!lowPerformance) {
+                    updateWeather(delta);
+                    updateClouds(delta, despawnDist);
+                    updateRain(delta);
+                }
             } else {
                 // Se pausado, silencia a chuva imediatamente (updateRain continua rodando)
                 if (rainGainNode) {
                     rainGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                 }
             }
-            updateRain(delta);
 
             // Atualiza volume dos sons ambientais da ilha e da praia
             if (islandGainNode && beachGainNode) {
@@ -6987,7 +7009,7 @@
             });
 
             // Atualiza o mundo da física e o tempo simulado
-            world.step(1 / 60, delta, 3);
+            world.step(1 / 60, delta, 10);
 
             // Re-apply zero velocity after physics step if player is supposed to be static
             // to prevent tiny movements accumulated during the step on slopes.
