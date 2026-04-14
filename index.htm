@@ -616,6 +616,62 @@
             background-color: #95a5a6;
         }
 
+        /* Health and Breath Bars */
+        #statBars {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            z-index: 1000;
+            pointer-events: none;
+            display: none; /* Hidden until game starts */
+        }
+        .bar-container {
+            width: 200px;
+            height: 20px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(255, 255, 255, 0.8);
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+        }
+        .bar-fill {
+            height: 100%;
+            width: 100%;
+            transition: width 0.3s ease-out;
+        }
+        #healthBarFill { background-color: #ff4444; }
+        #breathBarFill { background-color: #4444ff; }
+        .bar-text {
+            position: absolute;
+            width: 100%;
+            text-align: center;
+            color: white;
+            font-size: 12px;
+            font-weight: bold;
+            line-height: 16px;
+            text-shadow: 1px 1px 2px black;
+        }
+
+        /* Fainted Overlay */
+        #faintedOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: black;
+            z-index: 9999;
+            display: none;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 2em;
+            flex-direction: column;
+        }
+
     </style>
 </head>
 <body>
@@ -744,6 +800,21 @@
         Peso: 0.0 kg / 500 kg
     </div>
 
+    <div id="statBars">
+        <div class="bar-container">
+            <div id="healthBarFill" class="bar-fill"></div>
+            <div class="bar-text">VIDA</div>
+        </div>
+        <div class="bar-container">
+            <div id="breathBarFill" class="bar-fill"></div>
+            <div class="bar-text">FOLEGO</div>
+        </div>
+    </div>
+
+    <div id="faintedOverlay">
+        <p>Você desmaiou...</p>
+    </div>
+
     <!-- Inventory Belt HTML Structure -->
     <div id="inventoryBelt">
         <!-- Slots e botão da mochila serão preenchidos dinamicamente pelo JavaScript -->
@@ -848,6 +919,10 @@
         let skyColor, underwaterColor; // NOVO: Para as cores do ambiente
         // Variáveis para corpos e malhas de jogador, terreno (rua), estrada e cubo
         let playerBody;
+        let playerHealth = 100, playerMaxHealth = 100;
+        let playerBreath = 100, playerMaxBreath = 100;
+        let isFainted = false;
+        let healthBarFill, breathBarFill, faintedOverlay, statBars;
 
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let raftBodies = []; // NOVO: Array para armazenar corpos das jangadas
@@ -4935,6 +5010,10 @@
             // Pega o elemento da mira
             crosshairElement = document.getElementById('crosshair');
             interactionHintElement = document.getElementById('interactionHint');
+            healthBarFill = document.getElementById('healthBarFill');
+            breathBarFill = document.getElementById('breathBarFill');
+            faintedOverlay = document.getElementById('faintedOverlay');
+            statBars = document.getElementById('statBars');
 
             // Pega o elemento de exibição de peso
             weightDisplayElement = document.getElementById('weightDisplay');
@@ -6336,6 +6415,31 @@
         }
         window.isProtected = isProtected;
 
+        function faintPlayer() {
+            if (isFainted) return;
+            isFainted = true;
+            if (faintedOverlay) faintedOverlay.style.display = 'flex';
+
+            // Wait 10 seconds and then respawn
+            setTimeout(() => {
+                respawnPlayer();
+            }, 10000);
+        }
+
+        function respawnPlayer() {
+            playerHealth = playerMaxHealth;
+            playerBreath = playerMaxBreath;
+
+            // Reset position to island center
+            if (playerBody) {
+                playerBody.position.set(0, 10, 0);
+                playerBody.velocity.set(0, 0, 0);
+            }
+
+            if (faintedOverlay) faintedOverlay.style.display = 'none';
+            isFainted = false;
+        }
+
         // Loop principal de animação do jogo
         let lastTime = performance.now();
         function animate() {
@@ -6461,8 +6565,8 @@
                 }
             }
 
-            if (gamePaused) {
-                // Se o jogo estiver pausado, apenas renderiza a cena, não atualiza a física ou o movimento do jogador
+            if (gamePaused || isFainted) {
+                // Se o jogo estiver pausado ou desmaiado, apenas renderiza a cena, não atualiza a física ou o movimento do jogador
                 renderer.render(scene, camera);
                 return;
             }
@@ -8363,6 +8467,37 @@
                 }
             }
 
+            // Lógica de Folego e Vida
+            if (playerBody && !isFainted) {
+                const playerPos = playerBody.position;
+                // isUnderwater logic: camera below water level and there is water at camera position
+                const isUnderwater = camera.position.y < waterLevel && (typeof hasWaterAt === 'function' ? hasWaterAt(camera.position.x, camera.position.z) : true);
+                const isHighAltitude = playerPos.y > 5000;
+                const isInstantDeathAltitude = playerPos.y > 10000;
+
+                if (isInstantDeathAltitude) {
+                    playerHealth = 0;
+                } else if (isUnderwater || isHighAltitude) {
+                    playerBreath -= delta * 15; // Diminui folego (aprox 6.6s total)
+                } else {
+                    playerBreath += delta * 30; // Recupera folego mais rápido (aprox 3.3s total)
+                }
+                playerBreath = Math.max(0, Math.min(playerMaxBreath, playerBreath));
+
+                if (playerBreath <= 0) {
+                    playerHealth -= delta * 10; // Perde vida sem folego (10s total)
+                }
+                playerHealth = Math.max(0, Math.min(playerMaxHealth, playerHealth));
+
+                if (playerHealth <= 0) {
+                    faintPlayer();
+                }
+
+                // Atualiza UI das barras
+                if (healthBarFill) healthBarFill.style.width = `${(playerHealth / playerMaxHealth) * 100}%`;
+                if (breathBarFill) breathBarFill.style.width = `${(playerBreath / playerMaxBreath) * 100}%`;
+            }
+
             // Atualiza o tempo para as ondas da água
             if (waterMaterialShader) {
                 waterMaterialShader.uniforms.uTime.value = performance.now() / 1000;
@@ -8378,6 +8513,7 @@
         function startGame() {
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             document.getElementById('clockContainer').style.display = 'block'; // Mostra o relógio
+            document.getElementById('statBars').style.display = 'flex'; // Mostra as barras
             init(); // Inicializa os componentes do jogo
             updateShadowCameras(renderDistance); // Inicializa as bordas da sombra
             applyShadowSettings(); // Aplica as configurações de sombra após init
@@ -8482,6 +8618,11 @@
             }
 
             isWorldReady = true; window.isWorldReady = true;
+            Object.defineProperty(window, 'playerHealth', { get: () => playerHealth, set: (v) => { playerHealth = v; } });
+            Object.defineProperty(window, 'playerBreath', { get: () => playerBreath, set: (v) => { playerBreath = v; } });
+            Object.defineProperty(window, 'isFainted', { get: () => isFainted, set: (v) => { isFainted = v; } });
+            window.faintPlayer = faintPlayer;
+            window.respawnPlayer = respawnPlayer;
             Object.defineProperty(window, 'renderDistance', {
                 get: () => renderDistance,
                 set: (v) => { renderDistance = v; }
