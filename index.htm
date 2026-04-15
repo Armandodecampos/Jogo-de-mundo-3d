@@ -5297,20 +5297,15 @@
                         if (event.repeat) return; // Impede pulos múltiplos por segurar a tecla (handled by boost logic)
                         const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
                         const isInWater = playerBottomY < waterLevel && hasWaterAt(playerBody.position.x, playerBody.position.z);
-                        if (canJump || isInWater) {
+                        if (canJump && !isInWater) {
                             // Inicia o pulo proporcional
                             isJumpBoosting = true;
                             jumpBoostTimer = 0;
 
                             // Impulso de salto inicial (mínimo)
-                            const jumpImpulse = isInWater ? 1800 : 600;
+                            const jumpImpulse = 600;
                             playerBody.applyImpulse(new CANNON.Vec3(0, jumpImpulse, 0));
                             canJump = false; window.canJump = false; // Impede pulos múltiplos
-                            if (isInWater) {
-                                isWaterJumping = true;
-                                // Desativa temporariamente as forças de flutuação para permitir que o salto tenha efeito
-                                setTimeout(() => { isWaterJumping = false; }, 500); // Reativa após meio segundo
-                            }
                         }
                     }
                 }
@@ -8037,16 +8032,19 @@
 
             // Lógica de física da água e mergulho
             if (isInWater && !isWaterJumping) {
-                // Lógica de Mergulho: Se 'c' for pressionado, define uma velocidade para baixo
+                const targetY = waterLevel + (isCrouching ? crouchRadius : playerRadius); // Flutua na superfície
+
+                // Lógica de Mergulho e Subida:
                 if (keysPressed['c']) {
                     playerBody.velocity.y = -walkSpeed; // Mergulha com a velocidade de caminhada
+                } else if (keysPressed[' '] && playerBody.position.y < targetY) {
+                    playerBody.velocity.y = walkSpeed; // Sobe para a superfície com a velocidade de caminhada
                 } else {
-                    // --- Lógica de Flutuação Estável (quando não está a mergulhar ou a saltar da água) ---
+                    // --- Lógica de Flutuação Estável (quando não está a mergulhar, a subir ou a saltar da água) ---
                     const K_SPRING = 250;
                     const C_DAMPING = 35;
                     const gravityMagnitude = Math.abs(world.gravity.y);
                     const antiGravityForce = playerBody.mass * gravityMagnitude;
-                    const targetY = waterLevel + (isCrouching ? crouchRadius : playerRadius); // Flutua na superfície
                     const displacement = playerBody.position.y - targetY;
                     const springForce = -K_SPRING * displacement;
                     const verticalVelocity = playerBody.velocity.y;
@@ -8632,6 +8630,7 @@
             Object.defineProperty(window, 'playerHealth', { get: () => playerHealth, set: (v) => { playerHealth = v; } });
             Object.defineProperty(window, 'playerBreath', { get: () => playerBreath, set: (v) => { playerBreath = v; } });
             Object.defineProperty(window, 'isFainted', { get: () => isFainted, set: (v) => { isFainted = v; } });
+            Object.defineProperty(window, 'isJumpBoosting', { get: () => isJumpBoosting, set: (v) => { isJumpBoosting = v; } });
             window.faintPlayer = faintPlayer;
             window.respawnPlayer = respawnPlayer;
             Object.defineProperty(window, 'renderDistance', {
