@@ -21,7 +21,7 @@ test('Swimming and jumping logic verification', async ({ page }) => {
 
   // 2. Teleport player into water and verify surfacing logic
   await page.evaluate(() => {
-    // waterLevel is -8. TargetY is around -6.5 (radius 1.5)
+    // waterLevel is -8. TargetY is now -8.0 (half submerged)
     // Put player deep in water at (400, -15, 400) - far from island center (0,0) to be in water
     window.playerBody.position.set(400, -15, 400);
     window.playerBody.velocity.set(0, 0, 0);
