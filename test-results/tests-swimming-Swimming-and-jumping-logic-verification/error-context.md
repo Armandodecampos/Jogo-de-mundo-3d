@@ -22,21 +22,21 @@ Error: page.waitForFunction: Test timeout of 120000ms exceeded.
 # Page snapshot
 
 ```yaml
-- generic:
-  - generic [ref=e1]:
-    - heading "Small World" [level=1] [ref=e2]
-    - generic [ref=e3]:
-      - button "Jogar" [active] [ref=e4] [cursor=pointer]
-      - button "Configurações" [ref=e5] [cursor=pointer]
+- generic [active]:
   - text:  
   - option "Com Textura" [selected]
   - option "Sem Textura (Sólido)"
   - option "Ativado" [selected]
   - option "Desativado"
+  - option "Ativado"
+  - option "Desativado" [selected]
   - option "Ativado" [selected]
   - option "Desativado"
-  - option "Ativado" [selected]
-  - option "Desativado"
+  - generic:
+    - generic:
+      - generic: VIDA
+    - generic:
+      - generic: FOLEGO
   - text:  
 ```
 
