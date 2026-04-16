@@ -832,7 +832,7 @@
         </div>
     </div>
 
-    <!-- NOVO: Modal do Caixote -->
+    <!-- NOVO: Modal do Baú -->
     <!-- Modal para Divisão de Itens -->
     <div id="splitModal" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0,0,0,0.95); padding: 25px; border: 3px solid #FFD700; border-radius: 12px; z-index: 3000; color: white; flex-direction: column; align-items: center; gap: 15px; box-shadow: 0 0 20px rgba(0,0,0,0.5);">
         <h3 id="splitTitle" style="margin: 0; font-size: 20px; font-weight: bold;">Dividir Item</h3>
@@ -853,21 +853,21 @@
     <div id="chestModal" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-800/90 border-2 border-stone-600 rounded-lg p-4 pt-12 z-[1001] w-4/5 max-w-4xl max-h-[80%] flex flex-col text-white">
         <button id="closeChestButton" class="close-button">X</button>
         <div class="flex justify-between items-center mb-4">
-            <h2 class="text-2xl font-bold">Caixote</h2>
+            <h2 class="text-2xl font-bold">Baú</h2>
         </div>
         <div class="flex-grow grid grid-cols-2 gap-4 overflow-y-auto">
-            <!-- Painel do Caixote -->
+            <!-- Painel do Baú -->
             <div>
-                <h3 class="text-xl mb-2 text-center">Conteúdo do Caixote</h3>
+                <h3 class="text-xl mb-2 text-center">Conteúdo do Baú</h3>
                 <div id="chestSlotsContainer" class="flex flex-col gap-1 bg-black/30 p-2 rounded-md h-[calc(100%-2.5rem)] overflow-y-auto">
-                    <!-- Slots do caixote serão preenchidos dinamicamente -->
+                    <!-- Slots do baú serão preenchidos dinamicamente -->
                 </div>
             </div>
             <!-- Painel da Mochila -->
             <div>
                 <h3 class="text-xl mb-2 text-center">Mochila</h3>
                 <div id="chestBackpackSlotsContainer" class="flex flex-col gap-1 bg-black/30 p-2 rounded-md h-[calc(100%-2.5rem)] overflow-y-auto">
-                    <!-- Slots da mochila (no modo caixote) serão preenchidos dinamicamente -->
+                    <!-- Slots da mochila (no modo baú) serão preenchidos dinamicamente -->
                 </div>
             </div>
         </div>
@@ -1202,13 +1202,13 @@
         let confirmDestructionButton;
         let cancelDestructionButton;
 
-        // NOVO: Variáveis para o sistema de caixote
+        // NOVO: Variáveis para o sistema de baú
         let chestModal;
         let closeChestButton;
         let chestSlotsContainer;
         let chestBackpackSlotsContainer;
         const numChestSlots = 50;
-        let openedChest = null; // Guarda a referência para os dados do caixote aberto
+        let openedChest = null; // Guarda a referência para os dados do baú aberto
 
         // Inventário (agora separado para cinto e mochila)
         let beltItems = new Array(numBeltSlots).fill(null);
@@ -1257,6 +1257,9 @@
         const treeTrunkItemName = 'tronco_arvore'; // NOVO: Nome do item de tronco de árvore
         const woodenPlankItemName = 'tábuas'; // NOVO: Nome do item de tábuas de madeira
         const boxItemName = 'caixote'; // NOVO: Nome do item de caixote
+        const chestItemName = 'bau'; // NOVO: Nome do item de baú
+        let chestMaterialMesh; // NOVO: Material do baú
+        let placedChests = []; // NOVO: Array para rastrear baús colocados
 
         // NOVO: Mapeamento de nomes de itens para exibição
         const itemDisplayNames = {
@@ -1280,6 +1283,7 @@
             [treeTrunkItemName]: 'Tronco de Árvore',
             [woodenPlankItemName]: 'Piso de Madeira',
             [boxItemName]: 'Caixote',
+            [chestItemName]: 'Baú', // NOVO
             [raftItemName]: 'Jangada\nPara navegar no mar', // NOVO
             [branchItemName]: 'Galho',
             [stoneBlockItemName]: 'Bloco de Pedra',
@@ -1308,6 +1312,7 @@
             [treeTrunkItemName]: 12.0,
             [woodenPlankItemName]: 1.5,
             [boxItemName]: 12.0,
+            [chestItemName]: 12.0,
             [raftItemName]: 30.0, // Jangada é pesada
             [branchItemName]: 0.5,
             [stoneBlockItemName]: 5.0,
@@ -1400,7 +1405,7 @@
         const branchImageURL = 'https://placehold.co/100x100/8B4513/FFFFFF?text=Galho'; // NOVO: Ícone para o galho
         const treeTrunkImageURL = 'https://dl.dropbox.com/scl/fi/njc60aje7lvqcju60ug8s/ChatGPT-Image-6-de-fev.-de-2026-21_52_132.png?rlkey=3ji8sf4ipjyjymhak24203mr5&st=lh4h3hc8&dl=0'; // NOVO: Ícone para o tronco de árvore (placeholder)
         const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
-        const chestTextureURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // NOVO: URL da textura do caixote
+        const chestTextureURL = 'https://dl.dropbox.com/scl/fi/lzaxw6yd9fa0rw24m8vl4/textura-tronco-arvore.jpg?rlkey=gqlaqtkubwonngvknzl7uhtbc&st=mkz0x9zj&dl=0'; // NOVO: URL da textura do baú
         const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/m1fkx9ccbjxlwyvcrdbio/Textura-de-pedra.png?rlkey=vlbwqpy001vcjqiedh1wrdo53&st=sy0pevfr&dl=1'; // NOVO: Textura de pedra para aplicar
         const holeTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&dl=1";
         const stoneBlockTextureURL = 'https://dl.dropbox.com/scl/fi/m1fkx9ccbjxlwyvcrdbio/Textura-de-pedra.png?rlkey=vlbwqpy001vcjqiedh1wrdo53&st=sy0pevfr&dl=1';
@@ -1597,6 +1602,7 @@
             if (stoneBlockMaterialMesh) stoneBlockMaterialMesh.map = useTextures ? (texturesRegistry.stoneBlock || null) : null;
             if (woodenBlockMaterialMesh) woodenBlockMaterialMesh.map = useTextures ? (texturesRegistry.woodenBlock || null) : null;
             if (stoneFloorMaterialMesh) stoneFloorMaterialMesh.map = useTextures ? (texturesRegistry.stoneFloor || null) : null;
+            if (chestMaterialMesh) chestMaterialMesh.map = useTextures ? (texturesRegistry.chest || null) : null;
             if (raftMaterialMesh) raftMaterialMesh.map = useTextures ? (texturesRegistry.treeBark || null) : null;
             if (sailMaterialMesh) sailMaterialMesh.map = null; // Vela não tem textura por enquanto
             if (treeTrunkMaterialMesh) treeTrunkMaterialMesh.map = useTextures ? (texturesRegistry.treeBark || null) : null;
@@ -1608,7 +1614,7 @@
             // Notify materials of changes
             [cubeMaterialMesh, cobMaterialMesh, floorMaterialMesh, woodenPlankMaterialMesh,
              stoneBlockMaterialMesh, woodenBlockMaterialMesh, stoneFloorMaterialMesh,
-             raftMaterialMesh, sailMaterialMesh, treeTrunkMaterialMesh, treeLeavesMaterialMesh,
+             chestMaterialMesh, raftMaterialMesh, sailMaterialMesh, treeTrunkMaterialMesh, treeLeavesMaterialMesh,
              treeSaplingMaterialMesh, holeMaterial, stoneHoleMaterial].forEach(m => {
                 if (m) m.needsUpdate = true;
             });
@@ -1842,7 +1848,7 @@
             }
         }
 
-        // NOVO: Função para abrir o caixote
+        // NOVO: Função para abrir o baú
         function openChest(chestBody) {
             openedChest = chestBody;
             gamePaused = true;
@@ -1864,7 +1870,7 @@
             updateChestDisplay();
         }
 
-        // NOVO: Função para fechar o caixote
+        // NOVO: Função para fechar o baú
         function closeChest() {
             closeSplitModal();
             returnSelectedItemToSource();
@@ -1901,6 +1907,7 @@
             if (itemName === branchItemName) return branchImageURL;
             if (itemName === treeTrunkItemName) return treeTrunkImageURL;
             if (itemName === woodenPlankItemName) return woodenPlankTextureURL;
+            if (itemName === chestItemName) return chestTextureURL;
             if (itemName === raftItemName) return treeBarkTextureURL;
             if (itemName === stoneBlockItemName) return stoneBlockTextureURL;
             if (itemName === woodenBlockItemName) return woodenBlockTextureURL;
@@ -1932,7 +1939,7 @@
             if (containerType === 'belt') {
                 const keyBindSpan = document.createElement('span');
                 keyBindSpan.classList.add('slot-key-bind');
-                keyBindSpan.textContent = (index === 0) ? '1' : '2';
+                keyBindSpan.textContent = (index === 0) ? 'Q' : 'E';
                 slotDiv.appendChild(keyBindSpan);
             }
 
@@ -2096,7 +2103,7 @@
             }
         }
 
-        // NOVO: Função para atualizar a exibição do caixote
+        // NOVO: Função para atualizar a exibição do baú
         function showSplitModal(item, index, containerType) {
             pendingSplitData = { item, index, containerType };
             splitMaxText.textContent = `Quantidade total: ${item.quantity}`;
@@ -2113,7 +2120,7 @@
 
         function updateChestDisplay() {
             if (!openedChest) return;
-            // Conteúdo do Caixote
+            // Conteúdo do Baú
             chestSlotsContainer.innerHTML = '';
             const chestInventory = openedChest.userData.inventory;
             for (let i = 0; i < numChestSlots; i++) {
@@ -2122,7 +2129,7 @@
                 chestSlotsContainer.appendChild(slotDiv);
             }
 
-            // Conteúdo da Mochila (na visualização do caixote)
+            // Conteúdo da Mochila (na visualização do baú)
             chestBackpackSlotsContainer.innerHTML = '';
             for (let i = 0; i < backpackItems.length; i++) { // Usa o comprimento dinâmico
                 const item = backpackItems[i];
@@ -2269,7 +2276,7 @@
             return newMound;
         }
 
-        // NOVO: Função para criar uma nova caixa dinâmica (agora funciona como caixote)
+        // NOVO: Função para criar uma nova caixa dinâmica
         function createBox(position, quaternion) {
             const cubeSize = 1;
             const initialCubeMass = 200;
@@ -2293,11 +2300,7 @@
             world.addBody(boxBody);
             boxBody.userData = {
                 isCollectible: true,
-                isDestructible: true, // Agora pode ser destruído para dropar itens se necessário
-                durability: 2.0,
                 type: boxItemName,
-                isChest: true, // Agora caixotes funcionam como caixotes
-                inventory: new Array(numChestSlots).fill(null),
                 originalMass: initialCubeMass,
                 initialPosition: new CANNON.Vec3().copy(boxBody.position)
             };
@@ -2357,6 +2360,47 @@
             raycastTargetsNeedUpdate = true;
         }
 
+        // NOVO: Função para criar um novo baú
+        function createChest(position, quaternion) {
+            const chestSize = 1;
+            const chestShape = new CANNON.Box(new CANNON.Vec3(chestSize / 2, chestSize / 2, chestSize / 2));
+            const chestGeometry = new THREE.BoxGeometry(chestSize, chestSize, chestSize);
+
+            const chestBody = new CANNON.Body({
+                mass: 0, // Estático
+                type: CANNON.Body.STATIC, // Explicitamente estático
+                material: constructionMaterial,
+                linearDamping: 0.99,
+                angularDamping: 0.99,
+                allowSleep: true,
+                sleepSpeedLimit: 0.01,
+                sleepTimeLimit: 1.0
+            });
+            chestBody.addShape(chestShape); // Adiciona a forma separadamente para consistência
+            chestBody.position.copy(position);
+            if (quaternion) {
+                chestBody.quaternion.copy(quaternion);
+            }
+            world.addBody(chestBody);
+            chestBody.userData = {
+                isDestructible: true,
+                durability: 2.0, // Durabilidade do baú
+                type: chestItemName,
+                isChest: true, // Flag para identificar como um baú
+                inventory: new Array(numChestSlots).fill(null) // NOVO: Inventário do baú
+            };
+
+            const mesh = new THREE.Mesh(chestGeometry, chestMaterialMesh);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.userData.physicsBody = chestBody;
+            scene.add(mesh);
+
+            placedChests.push({ body: chestBody, mesh: mesh });
+            placedConstructionBodies.push(chestBody); // Adiciona aos corpos de construção para interação
+            placedConstructionMeshes.push(mesh);
+            raycastTargetsNeedUpdate = true;
+        }
 
         // NOVO: Função para criar uma nova jangada
         function createRaftVisual(woodMaterial, sailMaterial, isGhost) {
@@ -5019,29 +5063,30 @@
 
             // O inventário do jogador agora começa vazio.
 
-            // Cria e preenche o caixote inicial (Logo em frente ao jogador)
-            const startingBoxHeight = getSurfaceHeight(0, -5);
-            const startingBoxPosition = new THREE.Vector3(0, startingBoxHeight + 0.5, -5); // 0.5 is half of cubeSize (1)
-            createBox(startingBoxPosition, null);
-            const startingBoxBody = collectibleBoxes[collectibleBoxes.length - 1].body;
-            const startingBoxInventory = startingBoxBody.userData.inventory;
+            // Cria e preenche o baú inicial (Logo em frente ao jogador)
+            const startingChestHeight = getSurfaceHeight(0, -5);
+            const startingChestPosition = new THREE.Vector3(0, startingChestHeight + 0.5, -5); // 0.5 is half of chestSize (1)
+            createChest(startingChestPosition, null);
+            const startingChestBody = placedChests[placedChests.length - 1].body;
+            const startingChestInventory = startingChestBody.userData.inventory;
 
-            addItemToInventory(startingBoxInventory, { name: hammerItemName, quantity: 1 });
-            addItemToInventory(startingBoxInventory, { name: stoneItemName, quantity: 10 });
-            addItemToInventory(startingBoxInventory, { name: dirtItemName, quantity: 50 });
-            addItemToInventory(startingBoxInventory, { name: pickaxeItemName, quantity: 1 });
-            addItemToInventory(startingBoxInventory, { name: shovelItemName, quantity: 1 });
-            addItemToInventory(startingBoxInventory, { name: cobItemName, quantity: 100 });
-            addItemToInventory(startingBoxInventory, { name: floorItemName, quantity: 50 });
-            addItemToInventory(startingBoxInventory, { name: treeSaplingItemName, quantity: 10 });
-            addItemToInventory(startingBoxInventory, { name: treeTrunkItemName, quantity: 20 });
-            addItemToInventory(startingBoxInventory, { name: woodenPlankItemName, quantity: 10 });
-            addItemToInventory(startingBoxInventory, { name: boxItemName, quantity: 25 }); // 20 + 5 que eram caixotes
-            addItemToInventory(startingBoxInventory, { name: raftItemName, quantity: 2 });
-            addItemToInventory(startingBoxInventory, { name: stoneBlockItemName, quantity: 100 });
-            addItemToInventory(startingBoxInventory, { name: woodenBlockItemName, quantity: 100 });
-            addItemToInventory(startingBoxInventory, { name: stoneFloorItemName, quantity: 100 });
-            addItemToInventory(startingBoxInventory, { name: axeItemName, quantity: 1 });
+            addItemToInventory(startingChestInventory, { name: hammerItemName, quantity: 1 });
+            addItemToInventory(startingChestInventory, { name: stoneItemName, quantity: 10 });
+            addItemToInventory(startingChestInventory, { name: dirtItemName, quantity: 50 });
+            addItemToInventory(startingChestInventory, { name: pickaxeItemName, quantity: 1 });
+            addItemToInventory(startingChestInventory, { name: shovelItemName, quantity: 1 });
+            addItemToInventory(startingChestInventory, { name: cobItemName, quantity: 100 });
+            addItemToInventory(startingChestInventory, { name: floorItemName, quantity: 50 });
+            addItemToInventory(startingChestInventory, { name: treeSaplingItemName, quantity: 10 });
+            addItemToInventory(startingChestInventory, { name: treeTrunkItemName, quantity: 20 });
+            addItemToInventory(startingChestInventory, { name: woodenPlankItemName, quantity: 10 });
+            addItemToInventory(startingChestInventory, { name: boxItemName, quantity: 20 });
+            addItemToInventory(startingChestInventory, { name: chestItemName, quantity: 5 });
+            addItemToInventory(startingChestInventory, { name: raftItemName, quantity: 2 });
+            addItemToInventory(startingChestInventory, { name: stoneBlockItemName, quantity: 100 });
+            addItemToInventory(startingChestInventory, { name: woodenBlockItemName, quantity: 100 });
+            addItemToInventory(startingChestInventory, { name: stoneFloorItemName, quantity: 100 });
+            addItemToInventory(startingChestInventory, { name: axeItemName, quantity: 1 });
 
             // Pega o elemento do cinto de inventário e seus slots
             inventoryBeltElement = document.getElementById('inventoryBelt');
@@ -5233,20 +5278,16 @@
                     }
                 }
 
-                // NOVO: Seleção de slots com 1 e 2, e Interação/Abrir com E
+                // NOVO: Seleção de slots com Q e E
                 if (!gamePaused && !backpackModal.classList.contains('active')) {
-                    if (event.key === '1') {
+                    if (event.key.toLowerCase() === 'q') {
                         if (selectedSlotIndex !== 0) stopDestruction();
                         selectedSlotIndex = 0;
                         updateBeltDisplay();
-                    } else if (event.key === '2') {
+                    } else if (event.key.toLowerCase() === 'e') {
                         if (selectedSlotIndex !== 1) stopDestruction();
                         selectedSlotIndex = 1;
                         updateBeltDisplay();
-                    } else if (event.key.toLowerCase() === 'e') {
-                        // NOVO: Tecla E agora abre o caixote/caixote
-                        const interacted = interact();
-                        if (interacted) return;
                     }
 
                     keysPressed[event.key.toLowerCase()] = true;
@@ -5382,7 +5423,7 @@
             renderer.domElement.addEventListener('mousedown', (event) => {
                 if (!isWorldReady || gamePaused || !document.pointerLockElement) return;
 
-                // NOVO: Impede ações de clique se o modal do caixote estiver aberto
+                // NOVO: Impede ações de clique se o modal do baú estiver aberto
                 if (!chestModal.classList.contains('hidden')) return;
 
                 if (event.button === 0) { // Botão esquerdo
@@ -5429,7 +5470,7 @@
                 // O martelo foi removido temporariamente das ferramentas de destruição
                 if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === branchItemName || item.name === dirtItemName) return 'destroy';
                 // Itens de colocação
-                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === stoneItemName) return 'place';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === chestItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === stoneItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
             }
 
@@ -5490,7 +5531,7 @@
                             potentialGround = { body: null, mesh: obj, isDigging: true, intersect: intersects[i] };
                         }
                     } else {
-                        // Verifica se é um objeto destrutível (árvore, caixote, etc)
+                        // Verifica se é um objeto destrutível (árvore, baú, etc)
                         let mainObject = null, intersectedBody = null;
                         let current = obj;
                         while (current) {
@@ -5830,15 +5871,6 @@
 
                     if (!clickedBody.userData.isCollectible && !clickedBody.userData.isRaft) continue;
 
-                    // NOVO: Só permite guardar o caixote se estiver vazio
-                    if (clickedBody.userData.type === boxItemName && clickedBody.userData.inventory) {
-                        const isEmpty = clickedBody.userData.inventory.every(slot => slot === null);
-                        if (!isEmpty) {
-                            // Opcional: Mostrar uma mensagem ou apenas ignorar
-                            continue;
-                        }
-                    }
-
                     const itemType = clickedBody.userData.type;
                     const itemQuantity = clickedBody.userData.quantity || 1; // Padrão para 1 se não especificado
 
@@ -5974,12 +6006,15 @@
                     else if (currentBlockType === woodenBlockItemName && woodenBlockMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === stoneFloorItemName && stoneFloorMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === boxItemName && cubeMaterialMesh) materialLoaded = true;
+                    else if (currentBlockType === chestItemName && chestMaterialMesh) materialLoaded = true; // NOVO
                     else if (currentBlockType === raftItemName && raftMaterialMesh) materialLoaded = true; // NOVO
                     else if (currentBlockType === stoneItemName) materialLoaded = true; // Pedra sempre carregada (usa material básico)
 
                     if (materialLoaded) {
                         if (currentBlockType === boxItemName) {
                             createBox(ghostBlockMesh.position, ghostBlockMesh.quaternion);
+                        } else if (currentBlockType === chestItemName) {
+                            createChest(ghostBlockMesh.position, ghostBlockMesh.quaternion);
                         } else if (currentBlockType === raftItemName) {
                             createRaft(ghostBlockMesh.position, ghostBlockMesh.quaternion);
                         } else if (currentBlockType === stoneItemName) {
@@ -6028,7 +6063,7 @@
                     primaryToolForVisuals.name === woodenPlankItemName ||
                     primaryToolForVisuals.name === treeTrunkItemName ||
                     primaryToolForVisuals.name === boxItemName ||
-                    primaryToolForVisuals.name === boxItemName ||
+                    primaryToolForVisuals.name === chestItemName ||
                     primaryToolForVisuals.name === stoneBlockItemName ||
                     primaryToolForVisuals.name === woodenBlockItemName ||
                     primaryToolForVisuals.name === stoneItemName
@@ -6812,7 +6847,7 @@
                                 placedConstructionMeshes.splice(bodyIndex, 1);
                                 raycastTargetsNeedUpdate = true;
 
-                                // Agora dropa os itens (apenas se for caixote)
+                                // Agora dropa os itens (apenas se for baú)
                                 itemsToDrop.forEach(item => {
                                     createDroppableItem(dropPosition, item);
                                 });
@@ -7373,7 +7408,7 @@
                         }
                     }
                 });
-                // Empurra construções (como caixotes e blocos)
+                // Empurra construções (como baús e blocos)
                 placedConstructionBodies.forEach(body => {
                     const bodyDist = calculateWrappedDistance(body.position, moundWorldPos);
                     if (bodyDist < pushRadius) {
@@ -7606,7 +7641,7 @@
                             ghostBlockMesh.geometry = new THREE.CylinderGeometry(trunkRadius, trunkRadius, trunkHeight, trunkSegments);
                         } else if (currentBlockType === boxItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(1, 1, 1);
-                        } else if (currentBlockType === boxItemName) {
+                        } else if (currentBlockType === chestItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(1, 1, 1);
                         } else if (currentBlockType === stoneItemName) {
                             ghostBlockMesh.geometry = new THREE.DodecahedronGeometry(0.25, 0);
@@ -7625,7 +7660,7 @@
                     else if (currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === 'muda_arvore') currentGhostHeight = treeStages['semente'].visual.mound.height;
                     else if (currentBlockType === 'tronco_arvore') currentGhostHeight = trunkHeight;
                     else if (currentBlockType === boxItemName) currentGhostHeight = 1;
-                    else if (currentBlockType === boxItemName) currentGhostHeight = 1;
+                    else if (currentBlockType === chestItemName) currentGhostHeight = 1;
                     else if (currentBlockType === stoneItemName) currentGhostHeight = 0.5;
                     // Update ghost block geometry
                     // ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth); // Removido para lidar individualmente
@@ -7692,7 +7727,7 @@
                                 // CORREÇÃO: As sementes não devem se encaixar na grade vertical, elas devem ser colocadas no chão.
                                 if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === dirtItemName || currentBlockType === raftItemName) {
                                     placementPosition.y = basePosition.y;
-                                } else if (currentBlockType === boxItemName || currentBlockType === boxItemName) {
+                                } else if (currentBlockType === boxItemName || currentBlockType === chestItemName) {
                                     placementPosition.y = basePosition.y;
                                 } else {
                                     const n_y = Math.round((basePosition.y - islandSurfaceHeight) / currentGhostHeight - 0.5);
@@ -8522,7 +8557,7 @@
                 confirmDestructionModal.style.display = 'none';
             });
 
-            // NOVO: Pega elementos do caixote e adiciona listeners aqui, após o DOM estar pronto
+            // NOVO: Pega elementos do baú e adiciona listeners aqui, após o DOM estar pronto
             chestModal = document.getElementById('chestModal');
             closeChestButton = document.getElementById('closeChestButton');
             chestSlotsContainer = document.getElementById('chestSlotsContainer');
