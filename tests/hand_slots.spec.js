@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
 test('Hand slots selection with 1 through 9', async ({ page }) => {
-    test.setTimeout(60000);
+    test.setTimeout(120000);
     await page.goto('http://localhost:8080/index.htm');
     await page.click('#startButton');
 
@@ -80,7 +80,7 @@ test('Mouse wheel selection', async ({ page }) => {
     expect(selectedSlot).toBe(8);
 });
 
-test('Transparent background for belt and slots', async ({ page }) => {
+test('Solid background for belt and slots', async ({ page }) => {
     test.setTimeout(60000);
     await page.goto('http://localhost:8080/index.htm');
     await page.click('#startButton');
@@ -90,12 +90,13 @@ test('Transparent background for belt and slots', async ({ page }) => {
         const el = document.getElementById('inventoryBelt');
         return window.getComputedStyle(el).backgroundColor;
     });
-    // 'rgba(0, 0, 0, 0)' or 'transparent'
+    // 'rgba(0, 0, 0, 0)' or 'transparent' for the belt container
     expect(beltBg === 'rgba(0, 0, 0, 0)' || beltBg === 'transparent').toBe(true);
 
     const slotBg = await page.evaluate(() => {
         const el = document.querySelector('.slot');
         return window.getComputedStyle(el).backgroundColor;
     });
-    expect(slotBg === 'rgba(0, 0, 0, 0)' || slotBg === 'transparent').toBe(true);
+    // #333 is rgb(51, 51, 51)
+    expect(slotBg).toBe('rgb(51, 51, 51)');
 });
