@@ -227,8 +227,8 @@
             white-space: pre-wrap;
         }
         .slot {
-            width: 100px;
-            height: 100px;
+            width: 60px;
+            height: 60px;
             border: 2px solid #555;
             border-radius: 50%;
             background-color: rgba(255, 255, 255, 0.1);
@@ -237,7 +237,7 @@
             justify-content: center;
             align-items: center;
             color: #bbb;
-            font-size: 0.9em;
+            font-size: 0.8em;
             transition: border-color 0.1s ease-in-out, background-color 0.1s ease-in-out;
             position: relative; /* Para posicionar a quantidade */
             cursor: grab; /* Cursor para indicar que é arrastável */
@@ -262,11 +262,11 @@
             padding: 5px; /* Adiciona um pequeno preenchimento */
             border-radius: 50%;
         }
-        .slot-key-bind { /* Estilo para as letras de atalho (Q, E) */
+        .slot-key-bind { /* Estilo para as letras de atalho (1 a 9) */
             position: absolute;
-            top: 2px;
-            left: 4px;
-            font-size: 0.7em;
+            top: 1px;
+            left: 3px;
+            font-size: 0.6em;
             color: white;
             text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
             font-weight: bold;
@@ -276,10 +276,10 @@
         #backpackButton {
             background-color: #8B4513; /* Brown color */
             color: white;
-            padding: 10px 15px;
+            padding: 8px 12px;
             border: none;
             border-radius: 8px;
-            font-size: 1.2em;
+            font-size: 1.0em;
             cursor: pointer;
             transition: background-color 0.3s ease;
         }
@@ -1188,8 +1188,8 @@
         // Variáveis para o cinto de inventário
         let inventoryBeltElement;
         let slots = []; // Array para armazenar os elementos dos slots
-        const numBeltSlots = 2; // Número total de slots do cinto (apenas 2 agora)
-        let selectedSlotIndex = 0; // NOVO: Índice do slot selecionado (0 para esquerdo, 1 para direito)
+        const numBeltSlots = 9; // Número total de slots do cinto (agora 9)
+        let selectedSlotIndex = 0; // NOVO: Índice do slot selecionado (0 a 8)
 
         // Variáveis para o sistema de mochila
         let backpackModal;
@@ -1939,7 +1939,7 @@
             if (containerType === 'belt') {
                 const keyBindSpan = document.createElement('span');
                 keyBindSpan.classList.add('slot-key-bind');
-                keyBindSpan.textContent = (index === 0) ? '1' : '2';
+                keyBindSpan.textContent = (index + 1).toString();
                 slotDiv.appendChild(keyBindSpan);
             }
 
@@ -1972,15 +1972,6 @@
                     quantitySpan.textContent = item.quantity;
                     slotDiv.appendChild(quantitySpan);
                 }
-            } else if (containerType === 'belt') {
-                const img = document.createElement('img');
-                img.src = handImageURL;
-                img.classList.add('slot-icon');
-                // Inverte a imagem horizontalmente se estiver no slot esquerdo (índice 0)
-                if (index === 0) {
-                    img.style.transform = 'scaleX(-1)';
-                }
-                slotDiv.appendChild(img);
             } else if (isList) {
                 const nameSpan = document.createElement('span');
                 nameSpan.classList.add('slot-name');
@@ -2070,11 +2061,13 @@
             weightNeedsUpdate = true;
             inventoryBeltElement.innerHTML = ''; // Limpa os slots existentes
 
-            // Slot esquerdo (índice 0)
-            const leftSlotDiv = renderSlot(beltItems[0], 0, 'belt');
-            inventoryBeltElement.appendChild(leftSlotDiv);
+            // Renderiza todos os slots do cinto
+            for (let i = 0; i < numBeltSlots; i++) {
+                const slotDiv = renderSlot(beltItems[i], i, 'belt');
+                inventoryBeltElement.appendChild(slotDiv);
+            }
 
-            // Botão da mochila
+            // Botão da mochila ao final
             const backpackButton = document.createElement('button');
             backpackButton.id = 'backpackButton';
             const backpackIcon = document.createElement('i');
@@ -2082,10 +2075,6 @@
             backpackButton.appendChild(backpackIcon);
             backpackButton.addEventListener('click', openBackpack);
             inventoryBeltElement.appendChild(backpackButton);
-
-            // Slot direito (índice 1)
-            const rightSlotDiv = renderSlot(beltItems[1], 1, 'belt');
-            inventoryBeltElement.appendChild(rightSlotDiv);
 
             // Atualiza a referência aos elementos dos slots para drag and drop
             slots = Array.from(inventoryBeltElement.querySelectorAll('.slot'));
@@ -5278,15 +5267,12 @@
                     }
                 }
 
-                // NOVO: Seleção de slots com 1 e 2
+                // NOVO: Seleção de slots com 1 a 9
                 if (!gamePaused && !backpackModal.classList.contains('active')) {
-                    if (event.key === '1') {
-                        if (selectedSlotIndex !== 0) stopDestruction();
-                        selectedSlotIndex = 0;
-                        updateBeltDisplay();
-                    } else if (event.key === '2') {
-                        if (selectedSlotIndex !== 1) stopDestruction();
-                        selectedSlotIndex = 1;
+                    if (event.key >= '1' && event.key <= '9') {
+                        const newIndex = parseInt(event.key) - 1;
+                        if (selectedSlotIndex !== newIndex) stopDestruction();
+                        selectedSlotIndex = newIndex;
                         updateBeltDisplay();
                     }
 
