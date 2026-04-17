@@ -42,10 +42,6 @@ test('Empty hand slots do not show hand image', async ({ page }) => {
     // Get all images in belt slots
     const beltImagesCount = await page.locator('#inventoryBelt .slot .slot-icon').count();
 
-    // Since initially slots might be empty (except maybe some starting items, but belt usually starts empty or with one item)
-    // The key is that "empty" slots should NOT have an <img> with slot-icon class if they don't have an item.
-    // Actually, in my change, if there's no item, no img is created for 'belt' type.
-
     const beltItems = await page.evaluate(() => window.beltItems);
     let expectedImages = 0;
     for (const item of beltItems) {
@@ -53,4 +49,53 @@ test('Empty hand slots do not show hand image', async ({ page }) => {
     }
 
     expect(beltImagesCount).toBe(expectedImages);
+});
+
+test('Mouse wheel selection', async ({ page }) => {
+    test.setTimeout(60000);
+    await page.goto('http://localhost:8080/index.htm');
+    await page.click('#startButton');
+    await page.waitForFunction(() => window.isWorldReady === true);
+
+    // Initial slot should be 0
+    let selectedSlot = await page.evaluate(() => window.selectedSlotIndex);
+    expect(selectedSlot).toBe(0);
+
+    // Wheel down -> next slot (1)
+    await page.mouse.wheel(0, 100);
+    await page.waitForTimeout(100);
+    selectedSlot = await page.evaluate(() => window.selectedSlotIndex);
+    expect(selectedSlot).toBe(1);
+
+    // Wheel up -> previous slot (0)
+    await page.mouse.wheel(0, -100);
+    await page.waitForTimeout(100);
+    selectedSlot = await page.evaluate(() => window.selectedSlotIndex);
+    expect(selectedSlot).toBe(0);
+
+    // Wheel up again -> wrap to 8
+    await page.mouse.wheel(0, -100);
+    await page.waitForTimeout(100);
+    selectedSlot = await page.evaluate(() => window.selectedSlotIndex);
+    expect(selectedSlot).toBe(8);
+});
+
+test('Transparent background for belt and slots', async ({ page }) => {
+    test.setTimeout(60000);
+    await page.goto('http://localhost:8080/index.htm');
+    await page.click('#startButton');
+    await page.waitForFunction(() => window.isWorldReady === true);
+
+    const beltBg = await page.evaluate(() => {
+        const el = document.getElementById('inventoryBelt');
+        return window.getComputedStyle(el).backgroundColor;
+    });
+    // 'rgba(0, 0, 0, 0)' or 'transparent'
+    expect(beltBg === 'rgba(0, 0, 0, 0)' || beltBg === 'transparent').toBe(true);
+
+    const slotBg = await page.evaluate(() => {
+        const el = document.querySelector('.slot');
+        return window.getComputedStyle(el).backgroundColor;
+    });
+    expect(slotBg === 'rgba(0, 0, 0, 0)' || slotBg === 'transparent').toBe(true);
 });

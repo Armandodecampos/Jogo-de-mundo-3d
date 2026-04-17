@@ -217,7 +217,7 @@
             flex-direction: row; /* Alinha os itens horizontalmente */
             align-items: center; /* Centraliza itens verticalmente dentro da linha */
             gap: 8px; /* Espaço entre slots e botão */
-            background-color: rgba(0, 0, 0, 0.9); /* Fundo semi-transparente */
+            background-color: transparent; /* Fundo transparente */
             padding: 10px;
             border-radius: 10px;
             z-index: 998;
@@ -231,7 +231,7 @@
             height: 60px;
             border: 2px solid #555;
             border-radius: 50%;
-            background-color: rgba(255, 255, 255, 0.1);
+            background-color: transparent;
             display: flex;
             flex-direction: column; /* Para empilhar ícone e quantidade */
             justify-content: center;
@@ -4826,6 +4826,23 @@
                     isJumpBoosting = false; // Landed on walkable ground, stop boosting
                 }
             });
+
+            // NOVO: Seleção de slots com a roda do rato
+            window.addEventListener('wheel', (event) => {
+                if (!gamePaused && !backpackModal.classList.contains('active')) {
+                    if (event.deltaY > 0) {
+                        // Scroll para baixo: próximo slot
+                        stopDestruction();
+                        selectedSlotIndex = (selectedSlotIndex + 1) % numBeltSlots;
+                        updateBeltDisplay();
+                    } else if (event.deltaY < 0) {
+                        // Scroll para cima: slot anterior
+                        stopDestruction();
+                        selectedSlotIndex = (selectedSlotIndex - 1 + numBeltSlots) % numBeltSlots;
+                        updateBeltDisplay();
+                    }
+                }
+            }, { passive: true });
 
             // --- Configuração dos Cubos Interativos ---
             const cubeSize = 1;
