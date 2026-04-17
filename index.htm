@@ -853,12 +853,12 @@
     <div id="chestModal" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-800/90 border-2 border-stone-600 rounded-lg p-4 pt-12 z-[1001] w-4/5 max-w-4xl max-h-[80%] flex flex-col text-white">
         <button id="closeChestButton" class="close-button">X</button>
         <div class="flex justify-between items-center mb-4">
-            <h2 class="text-2xl font-bold">Baú</h2>
+            <h2 class="text-2xl font-bold">Caixote</h2>
         </div>
         <div class="flex-grow grid grid-cols-2 gap-4 overflow-y-auto">
             <!-- Painel do Baú -->
             <div>
-                <h3 class="text-xl mb-2 text-center">Conteúdo do Baú</h3>
+                <h3 class="text-xl mb-2 text-center">Conteúdo do Caixote</h3>
                 <div id="chestSlotsContainer" class="flex flex-col gap-1 bg-black/30 p-2 rounded-md h-[calc(100%-2.5rem)] overflow-y-auto">
                     <!-- Slots do baú serão preenchidos dinamicamente -->
                 </div>
@@ -2291,7 +2291,9 @@
                 isCollectible: true,
                 type: boxItemName,
                 originalMass: initialCubeMass,
-                initialPosition: new CANNON.Vec3().copy(boxBody.position)
+                initialPosition: new CANNON.Vec3().copy(boxBody.position),
+                isChest: true, // NOVO: Caixotes agora funcionam como baús
+                inventory: new Array(numChestSlots).fill(null) // NOVO: Inventário do caixote
             };
 
             const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh);
@@ -2303,6 +2305,8 @@
             // Adiciona a nova caixa à lista de caixas colecionáveis
             collectibleBoxes.push({ body: boxBody, mesh: mesh });
             raycastTargetsNeedUpdate = true;
+
+            return boxBody;
         }
 
         // NOVO: Função genérica para dropar itens
@@ -5069,11 +5073,10 @@
 
             // O inventário do jogador agora começa vazio.
 
-            // Cria e preenche o baú inicial (Logo em frente ao jogador)
+            // Cria e preenche o caixote inicial (Logo em frente ao jogador)
             const startingChestHeight = getSurfaceHeight(0, -5);
-            const startingChestPosition = new THREE.Vector3(0, startingChestHeight + 0.5, -5); // 0.5 is half of chestSize (1)
-            createChest(startingChestPosition, null);
-            const startingChestBody = placedChests[placedChests.length - 1].body;
+            const startingChestPosition = new THREE.Vector3(0, startingChestHeight + 0.5, -5); // 0.5 is half of boxSize (1)
+            const startingChestBody = createBox(startingChestPosition, null);
             const startingChestInventory = startingChestBody.userData.inventory;
 
             addItemToInventory(startingChestInventory, { name: hammerItemName, quantity: 1 });
@@ -5879,6 +5882,15 @@
                     if (!clickedBody || !clickedBody.userData) continue;
 
                     if (!clickedBody.userData.isCollectible && !clickedBody.userData.isRaft) continue;
+
+                    // NOVO: Se for um contêiner (baú/caixote), só permite guardar se estiver vazio
+                    if (clickedBody.userData.isChest) {
+                        const inventory = clickedBody.userData.inventory;
+                        if (inventory && inventory.some(item => item !== null)) {
+                            // O contêiner não está vazio, não podemos guardá-lo
+                            continue;
+                        }
+                    }
 
                     const itemType = clickedBody.userData.type;
                     const itemQuantity = clickedBody.userData.quantity || 1; // Padrão para 1 se não especificado
@@ -8637,6 +8649,7 @@
             Object.defineProperty(window, 'playerHealth', { get: () => playerHealth, set: (v) => { playerHealth = v; } });
             Object.defineProperty(window, 'playerBreath', { get: () => playerBreath, set: (v) => { playerBreath = v; } });
             Object.defineProperty(window, 'isFainted', { get: () => isFainted, set: (v) => { isFainted = v; } });
+            Object.defineProperty(window, 'openedChest', { get: () => openedChest, set: (v) => { openedChest = v; } });
             Object.defineProperty(window, 'isJumpBoosting', { get: () => isJumpBoosting, set: (v) => { isJumpBoosting = v; } });
             window.faintPlayer = faintPlayer;
             window.respawnPlayer = respawnPlayer;
@@ -8679,6 +8692,7 @@
             window.waterMatrix = waterMatrix;
             window.THREE = THREE;
             window.addItemToInventory = addItemToInventory;
+            window.collectObject = collectObject;
             window.openChest = openChest;
             window.closeChest = closeChest;
             window.openBackpack = openBackpack;
