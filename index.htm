@@ -5183,13 +5183,19 @@
                         playerBody.wakeUp();
                         return;
                     }
-                    const interacted = interact();
-                    if (!interacted && !pickedObjectBody) {
+                    interact();
+                }
+
+                if (event.key.toLowerCase() === 'f') {
+                    if (event.repeat) return;
+                    if (pickedObjectBody) {
+                        dropObject();
+                    } else {
                         grabObject();
                     }
                 }
 
-                if (event.key.toLowerCase() === 'f') {
+                if (event.key.toLowerCase() === 'g') {
                     if (event.repeat) return;
                     collectObject();
                 }
@@ -5319,7 +5325,7 @@
                     isJumpBoosting = false;
                 }
 
-                if (event.key.toLowerCase() === 'e') {
+                if (event.key.toLowerCase() === 'f') {
                     dropObject();
                 }
             });
@@ -7486,7 +7492,7 @@
             let interactionHintText = "";
             if (document.pointerLockElement === renderer.domElement && !gamePaused) {
                 if (pickedObjectBody) {
-                    interactionHintText = "(E) Soltar";
+                    interactionHintText = "(F) Soltar";
                 } else {
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                     // Use a pré-calculada raycastTargets para evitar percorrer milhares de objetos (como partículas e grama instanciada sem hitbox)
@@ -7513,15 +7519,15 @@
 
                         if (body && body.userData) {
                             if (body.userData.isChest) {
-                                interactionHintText = "(E) Abrir";
+                                interactionHintText = "(E) Abrir / (F) Agarrar / (G) Guardar";
                                 break;
                             }
                             if (body.userData.isRaft) {
-                                interactionHintText = "(E) Navegar / (F) Pegar";
+                                interactionHintText = "(E) Navegar / (F) Agarrar / (G) Guardar";
                                 break;
                             }
                             if (body.userData.isCollectible) {
-                                interactionHintText = "(E) Segurar / (F) Pegar";
+                                interactionHintText = "(F) Agarrar / (G) Guardar";
                                 break;
                             }
                             // Adiciona dicas contextuais para ferramentas
