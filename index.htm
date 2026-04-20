@@ -3314,8 +3314,8 @@
 
                 lastRainCameraPos.copy(camPos);
 
-                const halfArea = 30; // 60x60 total area
-                const gridRes = 2;
+                const halfArea = 40; // 80x80 total area
+                const gridRes = 2.66; // Adjusted for 80m / 30 cells
                 const gridSize = 30;
                 const halfGrid = gridSize / 2;
 
@@ -3338,13 +3338,12 @@
                     const localX = positions[i * 3];
                     const localZ = positions[i * 3 + 2];
 
-                    const gx = Math.floor((localX + halfArea) / gridRes);
-                    const gz = Math.floor((localZ + halfArea) / gridRes);
+                    // Use Math.min/max to clamp indices safely
+                    const gx = Math.max(0, Math.min(gridSize - 1, Math.floor((localX + halfArea) / gridRes)));
+                    const gz = Math.max(0, Math.min(gridSize - 1, Math.floor((localZ + halfArea) / gridRes)));
 
-                    let occY = -100;
-                    if (gx >= 0 && gx < gridSize && gz >= 0 && gz < gridSize) {
-                        occY = rainOcclusionHeightmap[gz * gridSize + gx] - camPos.y;
-                    }
+                    let occY = (rainOcclusionHeightmap[gz * gridSize + gx] - camPos.y) || -100;
+                    if (isNaN(occY)) occY = -100;
 
                     // 5. Reset se colidir ou cair demais
                     if (positions[i * 3 + 1] < occY || positions[i * 3 + 1] < -50) {
@@ -3353,10 +3352,10 @@
                             positions[i * 3 + 1] = -100;
                         } else {
                             // Reset para uma altura aleatória acima para evitar a "camada de teto"
-                            positions[i * 3 + 1] = 80 + Math.random() * 50;
+                            positions[i * 3 + 1] = 80 + Math.random() * 100;
                             // Reposiciona levemente para evitar padrões
-                            positions[i * 3] = (Math.random() - 0.5) * 60;
-                            positions[i * 3 + 2] = (Math.random() - 0.5) * 60;
+                            positions[i * 3] = (Math.random() - 0.5) * 80;
+                            positions[i * 3 + 2] = (Math.random() - 0.5) * 80;
                         }
                     }
                 }
@@ -3372,15 +3371,15 @@
         function updateOcclusionHeightmap() {
             const playerPos = playerBody.position;
             const gridRes = 2; // 2 metros por célula
-            const gridSize = 30; // 30x30 células (60m x 60m)
+            const gridSize = 30; // 30x30 células (80m x 80m)
             const halfGrid = gridSize / 2;
-            const gridHalfSize = halfGrid * gridRes;
+            const gridHalfSize = 40; // Mantém sincronizado com updateRain halfArea
 
             // 1. Altura base do terreno
             for (let j = 0; j < gridSize; j++) {
                 for (let i = 0; i < gridSize; i++) {
-                    const x = playerPos.x + (i - halfGrid) * gridRes;
-                    const z = playerPos.z + (j - halfGrid) * gridRes;
+                    const x = playerPos.x + (i - halfGrid) * 2.66;
+                    const z = playerPos.z + (j - halfGrid) * 2.66;
                     rainOcclusionHeightmap[j * gridSize + i] = getSurfaceHeight(x, z);
                 }
             }
@@ -3405,10 +3404,10 @@
                 if (Math.abs(rx) > gridHalfSize + hw || Math.abs(rz) > gridHalfSize + hd) continue;
 
                 // Determina o intervalo do grid coberto pelo corpo
-                const minI = Math.max(0, Math.floor((rx - hw) / gridRes + halfGrid));
-                const maxI = Math.min(gridSize - 1, Math.floor((rx + hw) / gridRes + halfGrid));
-                const minJ = Math.max(0, Math.floor((rz - hd) / gridRes + halfGrid));
-                const maxJ = Math.min(gridSize - 1, Math.floor((rz + hd) / gridRes + halfGrid));
+                const minI = Math.max(0, Math.floor((rx - hw) / 2.66 + halfGrid));
+                const maxI = Math.min(gridSize - 1, Math.floor((rx + hw) / 2.66 + halfGrid));
+                const minJ = Math.max(0, Math.floor((rz - hd) / 2.66 + halfGrid));
+                const maxJ = Math.min(gridSize - 1, Math.floor((rz + hd) / 2.66 + halfGrid));
 
                 for (let j = minJ; j <= maxJ; j++) {
                     for (let i = minI; i <= maxI; i++) {
@@ -6640,13 +6639,22 @@
             window.onWalkableGround = false;
 
             if (!gamePaused) {
-                if (!lowPerformance) {
+                // Determine true performance state for rain visibility
+                const fps = Math.round((fpsFrames * 1000) / (now - fpsLastTime)) || 30; // Fallback to 30
+                const isVeryLowPerformance = fps < 15;
+
+                if (!isVeryLowPerformance) {
                     updateWeather(delta);
                     updateClouds(delta, despawnDist);
-                    if (localRainIntensity > 0.05 && frameCount % 5 === 0) updateOcclusionHeightmap();
+
+                    // Only update occlusion if not in medium-low performance to save CPU
+                    if (localRainIntensity > 0.05 && !lowPerformance && frameCount % 5 === 0) {
+                        updateOcclusionHeightmap();
+                    }
+
                     updateRain(delta);
                 } else {
-                    // Hide rain if performance is low to avoid frozen drops
+                    // Only hide if performance is critically low (< 15 FPS)
                     if (rainParticles) rainParticles.visible = false;
                     if (rainGainNode) rainGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                     lastRainCameraPos.copy(camera.position);
