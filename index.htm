@@ -6870,26 +6870,28 @@
                                     terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
                                     destroyProgress = 0;
                                 }
-                                // Gain 20 terras when digging a mound
-                                addItemToInventory(backpackItems, { name: dirtItemName, quantity: 20 });
+                                // Gain 1 terra when digging a mound
+                                addItemToInventory(backpackItems, { name: dirtItemName, quantity: 1 });
                                 updateBackpackDisplay();
                             } else {
                                 // Lógica original de cavar buraco
                                 createDustCloud(mound.position, destroyTargetColor);
                                 mound.growthStage++;
 
-                                // Gain 20 terras, sands or stones for each stage of digging
+                                // Gain 1 terra/sand or 10 stones for each stage of digging
                                 const currentDigHeight = mound.position.y + (mound.height || 0);
                                 const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
                                 let itemToGive;
+                                let quantityToGive = 1;
                                 if (currentDigHeight < getSurfaceHeight(mound.position.x, mound.position.z) - 5.0) {
                                     itemToGive = stoneItemName;
+                                    quantityToGive = 10;
                                 } else if (distFromCenter > grassRadius) {
                                     itemToGive = sandItemName;
                                 } else {
                                     itemToGive = dirtItemName;
                                 }
-                                addItemToInventory(backpackItems, { name: itemToGive, quantity: 20 });
+                                addItemToInventory(backpackItems, { name: itemToGive, quantity: quantityToGive });
                                 updateBackpackDisplay();
 
                                 if (mound.growthStage >= moundGrowthStages.length) {
@@ -6921,7 +6923,7 @@
                         terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
                     } else if (destroyTargetMountainInfo) {
                         createDustCloud(destroyTargetMountainInfo.position, destroyTargetColor);
-                        addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
+                        addItemToInventory(backpackItems, { name: stoneItemName, quantity: 10 });
                         updateBackpackDisplay();
                         destroyProgress = 0; // Reset mining progress to allow for continuous mining
                     }
