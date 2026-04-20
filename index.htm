@@ -2591,7 +2591,10 @@
             world.addBody(stoneBody);
             stoneBody.userData = {
                 isCollectible: true,
+                isDestructible: true,
                 type: stoneItemName,
+                quantity: 10,
+                durability: 1.5,
                 originalMass: 5,
                 initialPosition: new CANNON.Vec3().copy(stoneBody.position)
             };
@@ -5695,7 +5698,7 @@
                 if (heldItemName === shovelItemName) {
                     // Prioriza capim se estiver mirando nele, para facilitar a limpeza antes de cavar
                     target = potentialCapim || potentialGround || potentialObject;
-                } else if (heldItemName === axeItemName) {
+                } else if (heldItemName === axeItemName || heldItemName === pickaxeItemName) {
                     target = potentialObject || potentialCapim || potentialGround;
                 } else if (heldItemName === dirtItemName) {
                     target = potentialGround || potentialObject || potentialCapim;
@@ -5834,7 +5837,7 @@
                         const targetType = target.body.userData.type;
                         const isTree = !!target.body.userData.growthStage;
                         const isWooden = [woodenPlankItemName, treeTrunkItemName, boxItemName, woodenBlockItemName].includes(targetType);
-                        const isStone = [stoneBlockItemName, stoneFloorItemName].includes(targetType);
+                        const isStone = [stoneBlockItemName, stoneFloorItemName, stoneItemName].includes(targetType);
                         const isEarth = [cobItemName, floorItemName].includes(targetType);
 
                     if (isTree || isWooden) {
@@ -6872,10 +6875,11 @@
                                 }
                                 // Gain correct resource when building/mining a hill
                                 const currentDigHeight = mound.position.y + (mound.height || 0);
+                                const effectiveHeight = Math.min(mound.position.y, currentDigHeight);
                                 const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
                                 let itemToGive;
                                 let quantityToGive = 1;
-                                if (currentDigHeight < getSurfaceHeight(mound.position.x, mound.position.z) - 4.5) {
+                                if (effectiveHeight < getSurfaceHeight(mound.position.x, mound.position.z) - 4.5) {
                                     itemToGive = stoneItemName;
                                     quantityToGive = 10;
                                 } else if (distFromCenter > grassRadius) {
@@ -6892,10 +6896,11 @@
 
                                 // Gain 1 terra/sand or 10 stones for each stage of digging
                                 const currentDigHeight = mound.position.y + (mound.height || 0);
+                                const effectiveHeight = Math.min(mound.position.y, currentDigHeight);
                                 const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
                                 let itemToGive;
                                 let quantityToGive = 1;
-                                if (currentDigHeight < getSurfaceHeight(mound.position.x, mound.position.z) - 4.5) {
+                                if (effectiveHeight < getSurfaceHeight(mound.position.x, mound.position.z) - 4.5) {
                                     itemToGive = stoneItemName;
                                     quantityToGive = 10;
                                 } else if (distFromCenter > grassRadius) {
@@ -6971,6 +6976,8 @@
                         if (destroyTargetBody) {
                             position = destroyTargetBody.position.clone();
                             const bodyIndex = placedConstructionBodies.indexOf(destroyTargetBody);
+                            const collectibleIndex = collectibleBoxes.findIndex(box => box.body === destroyTargetBody);
+
                             if (bodyIndex !== -1) {
                                 const isTree = !!destroyTargetBody.userData.growthStage;
                                 const treeType = destroyTargetBody.userData.treeType || 'normal';
@@ -7038,6 +7045,16 @@
                                 placedConstructionBodies.splice(bodyIndex, 1);
                                 placedConstructionMeshes.splice(bodyIndex, 1);
                                 raycastTargetsNeedUpdate = true;
+                            } else if (collectibleIndex !== -1) {
+                                const itemType = destroyTargetBody.userData.type;
+                                const itemQuantity = destroyTargetBody.userData.quantity || 1;
+                                addItemToInventory(backpackItems, { name: itemType, quantity: itemQuantity });
+
+                                world.removeBody(destroyTargetBody);
+                                scene.remove(collectibleBoxes[collectibleIndex].mesh);
+                                collectibleBoxes.splice(collectibleIndex, 1);
+                                raycastTargetsNeedUpdate = true;
+                            }
 
                                 // Agora dropa os itens (apenas se for baú)
                                 itemsToDrop.forEach(item => {
