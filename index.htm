@@ -1085,6 +1085,8 @@
         let localRainIntensity = 0; // Intensidade local (onde o jogador está)
         let targetRainIntensity = 0; // Intensidade alvo para transições suaves
         let rainParticles = null; // Sistema de partículas da chuva
+        let lastRainCameraPos = new THREE.Vector3();
+        let rainOcclusionHeightmap = new Float32Array(30 * 30);
         let gameAudioContext = null;
         let audioBuffers = {};
         let islandGainNode = null;
@@ -3156,15 +3158,15 @@
         }
 
         function createRainSystem() {
-            const particleCount = 10000;
+            const particleCount = 5000;
             const geometry = new THREE.BufferGeometry();
             const positions = new Float32Array(particleCount * 3);
             const velocities = new Float32Array(particleCount);
 
             for (let i = 0; i < particleCount; i++) {
-                positions[i * 3] = (Math.random() - 0.5) * 50;
-                positions[i * 3 + 1] = Math.random() * 300;
-                positions[i * 3 + 2] = (Math.random() - 0.5) * 50;
+                positions[i * 3] = (Math.random() - 0.5) * 60;
+                positions[i * 3 + 1] = (Math.random() - 0.2) * 100;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 60;
                 velocities[i] = 0.4 + Math.random() * 0.6;
             }
 
@@ -3172,7 +3174,7 @@
 
             const material = new THREE.PointsMaterial({
                 color: 0xaaaaaa,
-                size: 0.1,
+                size: 0.15,
                 transparent: true,
                 opacity: 0.5,
                 blending: THREE.AdditiveBlending
@@ -3292,8 +3294,7 @@
 
             if (localRainIntensity > 0.05) {
                 rainParticles.visible = true;
-                // Ajusta a quantidade de partículas visíveis e a opacidade
-                const totalParticles = 10000;
+                const totalParticles = 5000;
                 const visibleCount = Math.floor(localRainIntensity * totalParticles);
                 rainParticles.geometry.setDrawRange(0, visibleCount);
                 rainParticles.material.opacity = 0.3 + (localRainIntensity * 0.4);
@@ -3301,26 +3302,106 @@
                 const positions = rainParticles.geometry.attributes.position.array;
                 const velocities = rainParticles.userData.velocities;
 
-                // A chuva começa de um ponto bem alto no céu
-                const rainStartAltitude = 500;
-                const cloudRelativeY = rainStartAltitude - camera.position.y;
-                const bottomRelativeY = -20 - camera.position.y; // Abaixo do nível do mar
+                const camPos = camera.position;
+                const dx = camPos.x - lastRainCameraPos.x;
+                const dz = camPos.z - lastRainCameraPos.z;
+                lastRainCameraPos.copy(camPos);
 
-                for (let i = 0; i < velocities.length; i++) {
-                    positions[i * 3 + 1] -= velocities[i] * 120 * delta; // Mais rápido por cair de mais alto
+                const halfArea = 30; // 60x60 total area
+                const gridRes = 2;
+                const gridSize = 30;
+                const halfGrid = gridSize / 2;
 
-                    if (positions[i * 3 + 1] < bottomRelativeY) {
-                        positions[i * 3 + 1] = cloudRelativeY;
+                for (let i = 0; i < totalParticles; i++) {
+                    // 1. Deslocamento relativo ao mundo (inverso ao movimento da câmera)
+                    positions[i * 3] -= dx;
+                    positions[i * 3 + 2] -= dz;
+
+                    // 2. Queda
+                    positions[i * 3 + 1] -= velocities[i] * 80 * delta;
+
+                    // 3. Wrapping Horizontal
+                    if (positions[i * 3] < -halfArea) positions[i * 3] += halfArea * 2;
+                    if (positions[i * 3] > halfArea) positions[i * 3] -= halfArea * 2;
+                    if (positions[i * 3 + 2] < -halfArea) positions[i * 3 + 2] += halfArea * 2;
+                    if (positions[i * 3 + 2] > halfArea) positions[i * 3 + 2] -= halfArea * 2;
+
+                    // 4. Colisão com o Occlusion Heightmap
+                    const localX = positions[i * 3];
+                    const localZ = positions[i * 3 + 2];
+
+                    const gx = Math.floor(localX / gridRes + halfGrid);
+                    const gz = Math.floor(localZ / gridRes + halfGrid);
+
+                    let occY = -100;
+                    if (gx >= 0 && gx < gridSize && gz >= 0 && gz < gridSize) {
+                        occY = rainOcclusionHeightmap[gz * gridSize + gx] - camPos.y;
+                    }
+
+                    // 5. Reset se colidir ou cair demais
+                    if (positions[i * 3 + 1] < occY || positions[i * 3 + 1] < -50) {
+                        positions[i * 3 + 1] = 80; // Reset para o topo do cubo
+                        // Reposiciona levemente para evitar padrões
+                        positions[i * 3] = (Math.random() - 0.5) * 60;
+                        positions[i * 3 + 2] = (Math.random() - 0.5) * 60;
                     }
                 }
 
                 rainParticles.geometry.attributes.position.needsUpdate = true;
-
-                // Segue a posição horizontal do jogador, mas o sistema de coordenadas é relativo à câmera (0,0,0)
-                // pois as posições são atualizadas em relação ao Y da câmera acima.
-                rainParticles.position.set(camera.position.x, camera.position.y, camera.position.z);
+                rainParticles.position.set(camPos.x, camPos.y, camPos.z);
             } else {
                 rainParticles.visible = false;
+                lastRainCameraPos.copy(camera.position);
+            }
+        }
+
+        function updateOcclusionHeightmap() {
+            const playerPos = playerBody.position;
+            const gridRes = 2; // 2 metros por célula
+            const gridSize = 30; // 30x30 células (60m x 60m)
+            const halfGrid = gridSize / 2;
+            const gridHalfSize = halfGrid * gridRes;
+
+            // 1. Altura base do terreno
+            for (let j = 0; j < gridSize; j++) {
+                for (let i = 0; i < gridSize; i++) {
+                    const x = playerPos.x + (i - halfGrid) * gridRes;
+                    const z = playerPos.z + (j - halfGrid) * gridRes;
+                    rainOcclusionHeightmap[j * gridSize + i] = getSurfaceHeight(x, z);
+                }
+            }
+
+            // 2. Adiciona construções de forma eficiente
+            for (let b = 0; b < placedConstructionBodies.length; b++) {
+                const body = placedConstructionBodies[b];
+                if (!body.userData.dimensions) continue;
+
+                const hw = body.userData.dimensions.width / 2;
+                const hd = body.userData.dimensions.depth / 2;
+                const hh = body.userData.dimensions.height / 2;
+                const topY = body.position.y + hh;
+
+                // Posição relativa ao jogador
+                const rx = body.position.x - playerPos.x;
+                const rz = body.position.z - playerPos.z;
+
+                // Verifica se a construção está dentro do grid (aproximadamente)
+                if (Math.abs(rx) > gridHalfSize + hw || Math.abs(rz) > gridHalfSize + hd) continue;
+
+                // Determina o intervalo do grid coberto pelo corpo
+                const minI = Math.max(0, Math.floor((rx - hw) / gridRes + halfGrid));
+                const maxI = Math.min(gridSize - 1, Math.floor((rx + hw) / gridRes + halfGrid));
+                const minJ = Math.max(0, Math.floor((rz - hd) / gridRes + halfGrid));
+                const maxJ = Math.min(gridSize - 1, Math.floor((rz + hd) / gridRes + halfGrid));
+
+                for (let j = minJ; j <= maxJ; j++) {
+                    for (let i = minI; i <= maxI; i++) {
+                        const idx = j * gridSize + i;
+                        if (topY > rainOcclusionHeightmap[idx]) {
+                            rainOcclusionHeightmap[idx] = topY;
+                        }
+                    }
+                }
             }
         }
 
@@ -6540,6 +6621,7 @@
                 if (!lowPerformance) {
                     updateWeather(delta);
                     updateClouds(delta, despawnDist);
+                    if (localRainIntensity > 0.05) updateOcclusionHeightmap();
                     updateRain(delta);
                 }
             } else {
