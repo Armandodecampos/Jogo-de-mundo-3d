@@ -3175,7 +3175,7 @@
 
             const material = new THREE.PointsMaterial({
                 color: 0xaaaaaa,
-                size: 0.15,
+                size: 0.2,
                 transparent: true,
                 opacity: 0.5,
                 blending: THREE.AdditiveBlending
@@ -3183,6 +3183,7 @@
 
             rainParticles = new THREE.Points(geometry, material);
             rainParticles.userData = { velocities: velocities };
+            rainParticles.frustumCulled = false;
             scene.add(rainParticles);
             rainParticles.visible = false;
         }
@@ -3304,8 +3305,8 @@
                 const velocities = rainParticles.userData.velocities;
 
                 const camPos = camera.position;
-                let dx = camPos.x - lastRainCameraPos.x;
-                let dz = camPos.z - lastRainCameraPos.z;
+                let dx = (camPos.x - lastRainCameraPos.x) || 0;
+                let dz = (camPos.z - lastRainCameraPos.z) || 0;
 
                 // Account for toroidal world wrap
                 if (Math.abs(dx) > worldSize / 2) dx -= Math.sign(dx) * worldSize;
@@ -3328,10 +3329,10 @@
                     positions[i * 3 + 1] -= velocities[i] * 80 * delta;
 
                     // 3. Wrapping Horizontal (Safe modulo-like wrap)
-                    if (positions[i * 3] < -halfArea) positions[i * 3] += halfArea * 2;
-                    else if (positions[i * 3] > halfArea) positions[i * 3] -= halfArea * 2;
-                    if (positions[i * 3 + 2] < -halfArea) positions[i * 3 + 2] += halfArea * 2;
-                    else if (positions[i * 3 + 2] > halfArea) positions[i * 3 + 2] -= halfArea * 2;
+                    while (positions[i * 3] < -halfArea) positions[i * 3] += halfArea * 2;
+                    while (positions[i * 3] > halfArea) positions[i * 3] -= halfArea * 2;
+                    while (positions[i * 3 + 2] < -halfArea) positions[i * 3 + 2] += halfArea * 2;
+                    while (positions[i * 3 + 2] > halfArea) positions[i * 3 + 2] -= halfArea * 2;
 
                     // 4. Colisão com o Occlusion Heightmap
                     const localX = positions[i * 3];
@@ -3394,9 +3395,11 @@
                 const hh = body.userData.dimensions.height / 2;
                 const topY = body.position.y + hh;
 
-                // Posição relativa ao jogador
-                const rx = body.position.x - playerPos.x;
-                const rz = body.position.z - playerPos.z;
+                // Posição relativa ao jogador (considerando o mundo toroidal)
+                let rx = body.position.x - playerPos.x;
+                let rz = body.position.z - playerPos.z;
+                if (Math.abs(rx) > worldSize / 2) rx -= Math.sign(rx) * worldSize;
+                if (Math.abs(rz) > worldSize / 2) rz -= Math.sign(rz) * worldSize;
 
                 // Verifica se a construção está dentro do grid (aproximadamente)
                 if (Math.abs(rx) > gridHalfSize + hw || Math.abs(rz) > gridHalfSize + hd) continue;
@@ -6610,11 +6613,17 @@
                 if (fps < 28) {
                     highFPSStart = null;
                     if (lowFPSStart === null) lowFPSStart = now;
-                    else if (now - lowFPSStart > 500) lowPerformance = true;
+                    else if (now - lowFPSStart > 500) {
+                        if (!lowPerformance) console.log("Entering low performance mode (FPS: " + fps + ")");
+                        lowPerformance = true;
+                    }
                 } else if (fps > 35) {
                     lowFPSStart = null;
                     if (highFPSStart === null) highFPSStart = now;
-                    else if (now - highFPSStart > 1500) lowPerformance = false;
+                    else if (now - highFPSStart > 1500) {
+                        if (lowPerformance) console.log("Exiting low performance mode (FPS: " + fps + ")");
+                        lowPerformance = false;
+                    }
                 } else {
                     lowFPSStart = null;
                     highFPSStart = null;
@@ -6634,7 +6643,7 @@
                 if (!lowPerformance) {
                     updateWeather(delta);
                     updateClouds(delta, despawnDist);
-                    if (localRainIntensity > 0.05) updateOcclusionHeightmap();
+                    if (localRainIntensity > 0.05 && frameCount % 5 === 0) updateOcclusionHeightmap();
                     updateRain(delta);
                 } else {
                     // Hide rain if performance is low to avoid frozen drops
