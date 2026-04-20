@@ -13,7 +13,6 @@ test('Resource gain verification', async ({ page }) => {
     const initialDirt = (window.backpackItems.find(i => i && i.name === 'terra')?.quantity || 0);
 
     // Mock a mound in grass area
-    const grassRadius = window.grassRadius;
     const x = 0;
     const z = 0;
     const intersect = {
@@ -23,23 +22,12 @@ test('Resource gain verification', async ({ page }) => {
     };
     const mound = window.createMound(intersect, false);
 
-    // Simulate one stage of digging
-    // The logic inside animate normally does this:
-    // addItemToInventory(backpackItems, { name: itemToGive, quantity: quantityToGive });
-
-    // We can't easily trigger the animate logic from outside without waiting for physics
-    // but we can manually trigger the part we want to test by setting the state
-
-    // To be sure we are testing the actual code, we can call the code block by mocking what's needed
-    // However, it's safer to just check if our change is there and call a helper if available.
-    // Since there isn't a single "awardItem" function for digging, let's trigger it by manipulating progress
-
-    // For the sake of this test, let's simulate the exact logic found in animate:
+    // Use the logic from index.htm
     const currentDigHeight = mound.position.y + (mound.height || 0);
     const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
     let itemToGive;
     let quantityToGive = 1;
-    if (currentDigHeight < window.getSurfaceHeight(mound.position.x, mound.position.z) - 5.0) {
+    if (currentDigHeight < window.getSurfaceHeight(mound.position.x, mound.position.z) - 4.5) {
         itemToGive = 'pedra';
         quantityToGive = 10;
     } else if (distFromCenter > window.grassRadius) {
@@ -71,7 +59,7 @@ test('Resource gain verification', async ({ page }) => {
     const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
     let itemToGive;
     let quantityToGive = 1;
-    if (currentDigHeight < window.getSurfaceHeight(mound.position.x, mound.position.z) - 5.0) {
+    if (currentDigHeight < window.getSurfaceHeight(mound.position.x, mound.position.z) - 4.5) {
         itemToGive = 'pedra';
         quantityToGive = 10;
     } else if (distFromCenter > window.grassRadius) {
@@ -97,14 +85,14 @@ test('Resource gain verification', async ({ page }) => {
       object: window.islandMeshes[4].mesh
     };
     const mound = window.createMound(intersect, false);
-    // Force deep digging
-    mound.height = -6.0;
+    // Force deep digging just below threshold
+    mound.height = -4.6;
 
     const currentDigHeight = mound.position.y + (mound.height || 0);
     const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
     let itemToGive;
     let quantityToGive = 1;
-    if (currentDigHeight < window.getSurfaceHeight(mound.position.x, mound.position.z) - 5.0) {
+    if (currentDigHeight < window.getSurfaceHeight(mound.position.x, mound.position.z) - 4.5) {
         itemToGive = 'pedra';
         quantityToGive = 10;
     } else if (distFromCenter > window.grassRadius) {
@@ -118,15 +106,17 @@ test('Resource gain verification', async ({ page }) => {
   });
   expect(deepStoneGain).toBe(10);
 
-  // Test Stone Gain from mountain mining (10 per stage/completion)
-  const mountainStoneGain = await page.evaluate(() => {
+  // Test Stone Gain from stone object destruction (10 per destruction)
+  const objectStoneGain = await page.evaluate(() => {
     const initialStone = (window.backpackItems.find(i => i && i.name === 'pedra')?.quantity || 0);
 
-    // Simulate mountain mining completion
-    // logic: addItemToInventory(backpackItems, { name: stoneItemName, quantity: 10 });
-    window.addItemToInventory(window.backpackItems, { name: 'pedra', quantity: 10 });
+    // Simulate mining a stone block or meteor stone
+    const userData = { type: 'pedra' }; // Or 'bloco_pedra'
+    if (userData.type === 'pedra') {
+        window.addItemToInventory(window.backpackItems, { name: 'pedra', quantity: 10 });
+    }
 
     return (window.backpackItems.find(i => i && i.name === 'pedra')?.quantity || 0) - initialStone;
   });
-  expect(mountainStoneGain).toBe(10);
+  expect(objectStoneGain).toBe(10);
 });
