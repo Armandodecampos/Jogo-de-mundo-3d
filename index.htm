@@ -34,7 +34,24 @@
             display: block;
             cursor: none; /* Oculta o cursor apenas no canvas do jogo por padrão */
         }
-        /* #messageBox foi removido */
+        #notification {
+            position: absolute;
+            bottom: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #ff4444;
+            font-size: 1.2em;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+            z-index: 2000;
+            display: none;
+            text-align: center;
+            pointer-events: none;
+            background: rgba(0,0,0,0.5);
+            padding: 10px 20px;
+            border-radius: 8px;
+        }
+
         #crosshair { /* Style for the crosshair in the center of the screen */
             position: absolute;
             top: 50%;
@@ -794,7 +811,7 @@
         </div>
     </div>
 
-    <!-- #messageBox foi removido -->
+    <div id="notification"></div>
 
     <div id="weightDisplay" class="absolute bottom-5 left-5 bg-black/50 text-white px-3 py-1.5 rounded-lg z-[998] text-base font-bold border border-white/20 hidden">
         Peso: 0.0 kg / 500 kg
@@ -1890,6 +1907,24 @@
                     console.warn('Não foi possível bloquear novamente o ponteiro:', error.message);
                 });
             }
+        }
+
+        let notificationTimeout;
+        function showNotification(message) {
+            const notification = document.getElementById('notification');
+            if (!notification) return;
+
+            notification.textContent = message;
+            notification.style.display = 'block';
+
+            if (notificationTimeout) {
+                clearTimeout(notificationTimeout);
+            }
+
+            notificationTimeout = setTimeout(() => {
+                notification.style.display = 'none';
+                notificationTimeout = null;
+            }, 3000);
         }
 
         function getItemIconURL(itemName) {
@@ -5888,6 +5923,7 @@
                         const inventory = clickedBody.userData.inventory;
                         if (inventory && inventory.some(item => item !== null)) {
                             // O contêiner não está vazio, não podemos guardá-lo
+                            showNotification("Esvazie o caixote antes de guardá-lo!");
                             continue;
                         }
                     }
@@ -8777,6 +8813,7 @@
             Object.defineProperty(window, 'showFPS', { get: () => showFPS, set: (v) => { showFPS = v; } });
             window.showSettingsScreen = showSettingsScreen;
             window.showOptionsScreen = showOptionsScreen;
+            window.showNotification = showNotification;
         }
 
         // Listener de evento para o botão "Jogar"
