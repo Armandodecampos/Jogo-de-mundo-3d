@@ -3171,6 +3171,7 @@
             }
 
             geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 100);
 
             const material = new THREE.PointsMaterial({
                 color: 0xaaaaaa,
@@ -3303,8 +3304,13 @@
                 const velocities = rainParticles.userData.velocities;
 
                 const camPos = camera.position;
-                const dx = camPos.x - lastRainCameraPos.x;
-                const dz = camPos.z - lastRainCameraPos.z;
+                let dx = camPos.x - lastRainCameraPos.x;
+                let dz = camPos.z - lastRainCameraPos.z;
+
+                // Account for toroidal world wrap
+                if (Math.abs(dx) > worldSize / 2) dx -= Math.sign(dx) * worldSize;
+                if (Math.abs(dz) > worldSize / 2) dz -= Math.sign(dz) * worldSize;
+
                 lastRainCameraPos.copy(camPos);
 
                 const halfArea = 30; // 60x60 total area
@@ -3312,6 +3318,7 @@
                 const gridSize = 30;
                 const halfGrid = gridSize / 2;
 
+                // Update all particles to ensure they are distributed even when intensity is low
                 for (let i = 0; i < totalParticles; i++) {
                     // 1. Deslocamento relativo ao mundo (inverso ao movimento da câmera)
                     positions[i * 3] -= dx;
@@ -3320,18 +3327,18 @@
                     // 2. Queda
                     positions[i * 3 + 1] -= velocities[i] * 80 * delta;
 
-                    // 3. Wrapping Horizontal
+                    // 3. Wrapping Horizontal (Safe modulo-like wrap)
                     if (positions[i * 3] < -halfArea) positions[i * 3] += halfArea * 2;
-                    if (positions[i * 3] > halfArea) positions[i * 3] -= halfArea * 2;
+                    else if (positions[i * 3] > halfArea) positions[i * 3] -= halfArea * 2;
                     if (positions[i * 3 + 2] < -halfArea) positions[i * 3 + 2] += halfArea * 2;
-                    if (positions[i * 3 + 2] > halfArea) positions[i * 3 + 2] -= halfArea * 2;
+                    else if (positions[i * 3 + 2] > halfArea) positions[i * 3 + 2] -= halfArea * 2;
 
                     // 4. Colisão com o Occlusion Heightmap
                     const localX = positions[i * 3];
                     const localZ = positions[i * 3 + 2];
 
-                    const gx = Math.floor(localX / gridRes + halfGrid);
-                    const gz = Math.floor(localZ / gridRes + halfGrid);
+                    const gx = Math.floor((localX + halfArea) / gridRes);
+                    const gz = Math.floor((localZ + halfArea) / gridRes);
 
                     let occY = -100;
                     if (gx >= 0 && gx < gridSize && gz >= 0 && gz < gridSize) {
@@ -3340,10 +3347,16 @@
 
                     // 5. Reset se colidir ou cair demais
                     if (positions[i * 3 + 1] < occY || positions[i * 3 + 1] < -50) {
-                        positions[i * 3 + 1] = 80; // Reset para o topo do cubo
-                        // Reposiciona levemente para evitar padrões
-                        positions[i * 3] = (Math.random() - 0.5) * 60;
-                        positions[i * 3 + 2] = (Math.random() - 0.5) * 60;
+                        // Se a oclusão for próxima ou acima do topo, esconde
+                        if (occY > 70) {
+                            positions[i * 3 + 1] = -100;
+                        } else {
+                            // Reset para uma altura aleatória acima para evitar a "camada de teto"
+                            positions[i * 3 + 1] = 80 + Math.random() * 50;
+                            // Reposiciona levemente para evitar padrões
+                            positions[i * 3] = (Math.random() - 0.5) * 60;
+                            positions[i * 3 + 2] = (Math.random() - 0.5) * 60;
+                        }
                     }
                 }
 
@@ -6623,12 +6636,19 @@
                     updateClouds(delta, despawnDist);
                     if (localRainIntensity > 0.05) updateOcclusionHeightmap();
                     updateRain(delta);
+                } else {
+                    // Hide rain if performance is low to avoid frozen drops
+                    if (rainParticles) rainParticles.visible = false;
+                    if (rainGainNode) rainGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                    lastRainCameraPos.copy(camera.position);
                 }
             } else {
-                // Se pausado, silencia a chuva imediatamente (updateRain continua rodando)
+                // Se pausado, silencia a chuva e esconde as partículas
+                if (rainParticles) rainParticles.visible = false;
                 if (rainGainNode) {
                     rainGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                 }
+                lastRainCameraPos.copy(camera.position);
             }
 
             // Atualiza volume dos sons ambientais da ilha e da praia
@@ -8875,6 +8895,7 @@
             window.spawnMeteor = spawnMeteor;
             window.spawnCloud = spawnCloud;
             window.activeMeteors = activeMeteors;
+            Object.defineProperty(window, 'lowPerformance', { get: () => lowPerformance, set: (v) => { lowPerformance = v; } });
             Object.defineProperty(window, 'nextMeteorCheckTime', { get: () => nextMeteorCheckTime, set: (v) => { nextMeteorCheckTime = v; } });
             Object.defineProperty(window, 'currentDayForMeteor', { get: () => currentDayForMeteor, set: (v) => { currentDayForMeteor = v; } });
 
@@ -8888,6 +8909,7 @@
             window.updateWeather = updateWeather;
             window.startRainCycle = startRainCycle;
             window.rebuildRainCloud = rebuildRainCloud;
+            window.updateRain = updateRain;
             Object.defineProperty(window, 'lastWeatherChange', { get: () => lastWeatherChange, set: (v) => { lastWeatherChange = v; } });
             Object.defineProperty(window, 'nextWeatherDuration', { get: () => nextWeatherDuration, set: (v) => { nextWeatherDuration = v; } });
             window.spawnBirdGroup = spawnBirdGroup;
