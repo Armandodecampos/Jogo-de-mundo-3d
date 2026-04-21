@@ -1410,7 +1410,7 @@
         const cobTextureURL = 'https://dl.dropbox.com/scl/fi/cp3ueclujrd32o6hv8d73/Cob-2.png?rlkey=5x29w33xvgol1aoxqk3p9jdkm&st=1kahc5pq&dl=0';
         const floorTextureURL = 'https://dl.dropbox.com/scl/fi/cp3ueclujrd32o6hv8d73/Cob-2.png?rlkey=5x29w33xvgol1aoxqk3p9jdkm&st=1kahc5pq&dl=0'; // Nova textura para pisos (exemplo)
         const treeSaplingTextureURL = 'https://dl.dropbox.com/scl/fi/pjdpuxo189igkd5wyvp0z/icone-de-muda-de-arvore.png?rlkey=9bvfgukhymi4qo02965pt3zl4&st=xs4n6qwo&dl=0'; // Dark green placeholder for tree icon
-        const capimImageURL = 'https://placehold.co/100x100/32CD32/FFFFFF?text=Capim';
+        const capimImageURL = 'https://placehold.co/100x100/2d5a27/FFFFFF?text=Capim';
         const axeImageURL = 'https://dl.dropbox.com/scl/fi/6td6rpc8n54j6sz62w383/icone-de-machado.png?rlkey=zepycmnfyohef27tp7f5urnx0&st=7kbd3no2&dl=0'; // Placeholder for axe image
         const hammerImageURL = 'https://dl.dropbox.com/scl/fi/vadd8ztbnmzfqi18ml1cl/icone-de-martelo.png?rlkey=45l4k78t728fh4w4fkd4tvlef&st=cbi6paz9&dl=0'; // Placeholder for hammer image
         const stoneImageURL = 'https://dl.dropbox.com/scl/fi/m1fkx9ccbjxlwyvcrdbio/Textura-de-pedra.png?rlkey=vlbwqpy001vcjqiedh1wrdo53&st=sy0pevfr&dl=1'; // NOVO: Imagem para a pedra
@@ -1432,36 +1432,9 @@
         const stoneFloorTextureURL = 'https://dl.dropbox.com/scl/fi/m1fkx9ccbjxlwyvcrdbio/Textura-de-pedra.png?rlkey=vlbwqpy001vcjqiedh1wrdo53&st=sy0pevfr&dl=1';
 
         // Geometrias e materiais compartilhados
-        const capimPlane1 = new THREE.PlaneGeometry(0.4, 1);
-        const capimPlane2 = new THREE.PlaneGeometry(0.4, 1);
-        capimPlane2.rotateY(Math.PI / 2);
-
-        // Merge geometries to create a cross shape
-        const capimSharedGeometry = new THREE.BufferGeometry();
-
-        // Use position attribute from both planes
-        const pos1 = capimPlane1.attributes.position.array;
-        const pos2 = capimPlane2.attributes.position.array;
-        const combinedPos = new Float32Array(pos1.length + pos2.length);
-        combinedPos.set(pos1);
-        combinedPos.set(pos2, pos1.length);
-        capimSharedGeometry.setAttribute('position', new THREE.BufferAttribute(combinedPos, 3));
-
-        // Combine indices
-        const indices1 = capimPlane1.index.array;
-        const indices2 = capimPlane2.index.array;
-        const combinedIndices = new Uint16Array(indices1.length + indices2.length);
-        combinedIndices.set(indices1);
-        for (let i = 0; i < indices2.length; i++) {
-            combinedIndices[indices1.length + i] = indices2[i] + pos1.length / 3;
-        }
-        capimSharedGeometry.setIndex(new THREE.BufferAttribute(combinedIndices, 1));
-
-        // Recalculate normals for correct rendering (though MeshBasicMaterial doesn't use them)
-        capimSharedGeometry.computeVertexNormals();
-
+        const capimSharedGeometry = new THREE.CylinderGeometry(0, 0.2, 1, 4);
         capimSharedGeometry.translate(0, 0.5, 0); // Alinha a base da geometria no ponto de origem
-        const capimSharedMaterial = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+        const capimSharedMaterial = new THREE.MeshStandardMaterial({ color: 0x2d5a27 }); // Verde escuro
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -2875,7 +2848,6 @@
             const euler = new THREE.Euler();
             const scale = new THREE.Vector3();
             const bladePos = new THREE.Vector3();
-            const color = new THREE.Color();
 
             for (let k = 0; k < bladesPerCluster; k++) {
                 const instanceIdx = poolIndex * bladesPerCluster + k;
@@ -2894,18 +2866,12 @@
                     rotation.setFromEuler(euler);
                     matrix.compose(bladePos, rotation, scale);
                     capimInstancedMeshes[0].setMatrixAt(instanceIdx, matrix);
-
-                    // Cores: Lime Green (0x32CD32) e Emerald Green (0x50C878)
-                    const colorHex = Math.random() > 0.5 ? 0x32CD32 : 0x50C878;
-                    color.setHex(colorHex);
-                    capimInstancedMeshes[0].setColorAt(instanceIdx, color);
                 } else {
                     matrix.makeScale(0, 0, 0);
                     capimInstancedMeshes[0].setMatrixAt(instanceIdx, matrix);
                 }
             }
             capimInstancedMeshes[0].instanceMatrix.needsUpdate = true;
-            if (capimInstancedMeshes[0].instanceColor) capimInstancedMeshes[0].instanceColor.needsUpdate = true;
 
             capimClusters.push(cluster);
         }
@@ -4733,10 +4699,6 @@
             const instanceMatrixAttribute = masterCapimMesh.instanceMatrix;
             instanceMatrixAttribute.setUsage(THREE.DynamicDrawUsage);
 
-            // Inicializa o atributo de cor para instâncias
-            masterCapimMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(maxCapimInstances * 3), 3);
-            masterCapimMesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
-
             // Inicializa todas as matrizes com escala 0
             const zeroMatrix = new THREE.Matrix4().makeScale(0, 0, 0);
             for (let i = 0; i < maxCapimInstances; i++) {
@@ -4748,7 +4710,6 @@
                     const instancedMesh = (i === 0 && j === 0) ? masterCapimMesh : new THREE.InstancedMesh(capimGeometry, capimMaterial, maxCapimInstances);
                     if (instancedMesh !== masterCapimMesh) {
                         instancedMesh.instanceMatrix = instanceMatrixAttribute;
-                        instancedMesh.instanceColor = masterCapimMesh.instanceColor;
                     }
                     instancedMesh.position.set(i * worldSize, 0, j * worldSize);
                     instancedMesh.frustumCulled = true;
