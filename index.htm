@@ -5840,18 +5840,21 @@
                         const isStone = [stoneBlockItemName, stoneFloorItemName, stoneItemName].includes(targetType);
                         const isEarth = [cobItemName, floorItemName].includes(targetType);
 
-                    if (isTree || isWooden) {
-                        materialType = 'wood';
-                        // NOVO: Restrição estrita de machado para árvores
-                        if (isTree && heldItemName !== axeItemName) {
-                            isDestroying = false;
-                            progressContainer.style.display = 'none';
-                            return;
+                        if (isTree || isWooden) {
+                            materialType = 'wood';
+                            // NOVO: Restrição estrita de machado para árvores
+                            if (isTree && heldItemName !== axeItemName) {
+                                isDestroying = false;
+                                progressContainer.style.display = 'none';
+                                return;
+                            }
+                        } else if (isStone) {
+                            materialType = 'stone';
+                        } else if (isEarth) {
+                            materialType = 'earth';
+                        } else {
+                            materialType = 'other';
                         }
-                    }
-                        else if (isStone) materialType = 'stone';
-                        else if (isEarth) materialType = 'earth';
-                        else materialType = 'other';
                     } else if (target.isCapim) {
                         baseDurability = 0.2;
                         materialType = 'other';
@@ -6977,16 +6980,18 @@
                             position = destroyTargetBody.position.clone();
                             const bodyIndex = placedConstructionBodies.indexOf(destroyTargetBody);
                             const collectibleIndex = collectibleBoxes.findIndex(box => box.body === destroyTargetBody);
+                            let itemsToDrop = [];
+                            let dropPosition = position.clone();
+                            let isTreeObject = false;
 
                             if (bodyIndex !== -1) {
-                                const isTree = !!destroyTargetBody.userData.growthStage;
+                                isTreeObject = !!destroyTargetBody.userData.growthStage;
                                 const treeType = destroyTargetBody.userData.treeType || 'normal';
                                 const isChest = !!destroyTargetBody.userData.isChest;
                                 const isRaft = !!destroyTargetBody.userData.isRaft;
 
                                 // Se for uma árvore, ajusta a posição de drop para o nível do chão
-                                let dropPosition = position.clone();
-                                if (isTree && destroyTargetBody.userData.dimensions) {
+                                if (isTreeObject && destroyTargetBody.userData.dimensions) {
                                     dropPosition.y -= destroyTargetBody.userData.dimensions.height / 2 - 0.5;
                                 }
 
@@ -7006,13 +7011,12 @@
                                 }
 
                                 // Salva os itens que devem ser dropados ANTES de remover o corpo
-                                let itemsToDrop = [];
                                 if (isChest) {
                                     const chestInventory = destroyTargetBody.userData.inventory;
                                     chestInventory.forEach(item => { if (item) itemsToDrop.push(item); });
                                 }
 
-                                if (isTree) {
+                                if (isTreeObject) {
                                     addItemToInventory(backpackItems, { name: branchItemName, quantity: 3 });
                                     if (treeType === 'apple') {
                                         addItemToInventory(backpackItems, { name: appleSeedItemName, quantity: 1 });
@@ -7045,6 +7049,15 @@
                                 placedConstructionBodies.splice(bodyIndex, 1);
                                 placedConstructionMeshes.splice(bodyIndex, 1);
                                 raycastTargetsNeedUpdate = true;
+
+                                // Agora dropa os itens (apenas se for baú)
+                                itemsToDrop.forEach(item => {
+                                    createDroppableItem(dropPosition, item);
+                                });
+
+                                if (isTreeObject) {
+                                    setTimeout(respawnTree, 100);
+                                }
                             } else if (collectibleIndex !== -1) {
                                 const itemType = destroyTargetBody.userData.type;
                                 const itemQuantity = destroyTargetBody.userData.quantity || 1;
@@ -7055,22 +7068,12 @@
                                 collectibleBoxes.splice(collectibleIndex, 1);
                                 raycastTargetsNeedUpdate = true;
                             }
-
-                                // Agora dropa os itens (apenas se for baú)
-                                itemsToDrop.forEach(item => {
-                                    createDroppableItem(dropPosition, item);
-                                });
-
-                                if (isTree) {
-                                    setTimeout(respawnTree, 100);
-                                }
-                            }
+                            updateBackpackDisplay();
+                            if (position) createSmokeEffect(position, destroyTargetColor);
+                            destructionComplete = true;
+                            isDestroying = false;
+                            progressContainer.style.display = 'none';
                         }
-                        updateBackpackDisplay();
-                        if(position) createSmokeEffect(position, destroyTargetColor);
-                        destructionComplete = true;
-                        isDestroying = false;
-                        progressContainer.style.display = 'none';
                     }
                 } else {
                     // Atualiza a barra de progresso
