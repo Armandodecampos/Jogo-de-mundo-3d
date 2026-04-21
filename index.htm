@@ -5820,6 +5820,7 @@
                             // Pedra começa ~5 unidades abaixo da superfície natural
                             // O usuário quer que acompanhe a curvatura. getSurfaceHeight(x, z) já inclui a curvatura base e montanhas.
                             const isStoneLayer = hitPoint.y < getSurfaceHeight(hitPoint.x, hitPoint.z) - 4.5;
+                            currentMound.isStoneLayer = isStoneLayer;
                             materialType = isStoneLayer ? 'stone' : 'earth';
                             // Aumentado para garantir que a barra de progresso seja visível e sentida
                             baseDurability = isBuilding ? 0.3 : (isStoneLayer ? 3.0 : 1.5);
@@ -6877,12 +6878,10 @@
                                     destroyProgress = 0;
                                 }
                                 // Gain correct resource when building/mining a hill
-                                const currentDigHeight = mound.position.y + (mound.height || 0);
-                                const effectiveHeight = Math.min(mound.position.y, currentDigHeight);
                                 const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
                                 let itemToGive;
                                 let quantityToGive = 1;
-                                if (effectiveHeight < getSurfaceHeight(mound.position.x, mound.position.z) - 4.5) {
+                                if (mound.isStoneLayer) {
                                     itemToGive = stoneItemName;
                                     quantityToGive = 10;
                                 } else if (distFromCenter > grassRadius) {
@@ -6898,12 +6897,10 @@
                                 mound.growthStage++;
 
                                 // Gain 1 terra/sand or 10 stones for each stage of digging
-                                const currentDigHeight = mound.position.y + (mound.height || 0);
-                                const effectiveHeight = Math.min(mound.position.y, currentDigHeight);
                                 const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
                                 let itemToGive;
                                 let quantityToGive = 1;
-                                if (effectiveHeight < getSurfaceHeight(mound.position.x, mound.position.z) - 4.5) {
+                                if (mound.isStoneLayer) {
                                     itemToGive = stoneItemName;
                                     quantityToGive = 10;
                                 } else if (distFromCenter > grassRadius) {
@@ -7041,6 +7038,12 @@
                                     }
                                 } else if (destroyTargetBody.userData.type === stoneItemName || destroyTargetBody.userData.type === stoneBlockItemName || destroyTargetBody.userData.type === stoneFloorItemName) {
                                     addItemToInventory(backpackItems, { name: stoneItemName, quantity: 10 });
+                                } else {
+                                    // Retorna o item original para outros tipos de construção (cob, piso, madeira, etc)
+                                    const type = destroyTargetBody.userData.type;
+                                    if (type) {
+                                        addItemToInventory(backpackItems, { name: type, quantity: 1 });
+                                    }
                                 }
 
                                 // Remove o corpo e a malha PRIMEIRO para evitar colisões indesejadas com os itens dropados
@@ -7070,10 +7073,10 @@
                             }
                             updateBackpackDisplay();
                             if (position) createSmokeEffect(position, destroyTargetColor);
-                            destructionComplete = true;
-                            isDestroying = false;
-                            progressContainer.style.display = 'none';
                         }
+                        destructionComplete = true;
+                        isDestroying = false;
+                        progressContainer.style.display = 'none';
                     }
                 } else {
                     // Atualiza a barra de progresso
