@@ -1125,7 +1125,7 @@
         let randomBaseCloudCount = Math.floor(Math.random() * 30); // Base aleatória de nuvens
         const islandRadiusTop = 150; // NOVO: Raio do topo da ilha
         const islandRadiusBottom = 300; // NOVO: Raio da base da ilha
-        const waterLevel = -8.0; // NOVO: Nível da água (baixado de -4.8)
+        const waterLevel = -8.0; window.waterLevel = waterLevel; // NOVO: Nível da água (baixado de -4.8)
         const seabedLevel = -20.0; // NOVO: Nível do fundo do mar
         let stoneLayerLevel = -4.2; // NOVO: Nível onde começa a pedra (5 unidades de terra)
         const bedrockLevel = -30.0; // NOVO: Camada indestrutível (10 unidades de pedra depois da terra)
@@ -3383,7 +3383,8 @@
                 for (let i = 0; i < gridSize; i++) {
                     const x = playerPos.x + (i - halfGrid) * 2.66;
                     const z = playerPos.z + (j - halfGrid) * 2.66;
-                    rainOcclusionHeightmap[j * gridSize + i] = getSurfaceHeight(x, z);
+                    // A chuva para no nível do mar se o terreno estiver abaixo dele
+                    rainOcclusionHeightmap[j * gridSize + i] = Math.max(getSurfaceHeight(x, z), waterLevel);
                 }
             }
 
@@ -6654,9 +6655,13 @@
                     updateWeather(delta);
                     updateClouds(delta, despawnDist);
 
-                    // Only update occlusion if not in medium-low performance to save CPU
-                    if (localRainIntensity > 0.05 && !lowPerformance && frameCount % 5 === 0) {
-                        updateOcclusionHeightmap();
+                    // Atualiza o mapa de oclusão periodicamente se estiver chovendo
+                    if (localRainIntensity > 0.05) {
+                        // Se performance boa: cada 5 frames. Se performance baixa: cada 60 frames.
+                        const interval = lowPerformance ? 60 : 5;
+                        if (frameCount % interval === 0) {
+                            updateOcclusionHeightmap();
+                        }
                     }
 
                     updateRain(delta);
@@ -8966,6 +8971,8 @@
             window.startRainCycle = startRainCycle;
             window.rebuildRainCloud = rebuildRainCloud;
             window.updateRain = updateRain;
+            window.updateOcclusionHeightmap = updateOcclusionHeightmap;
+            window.rainOcclusionHeightmap = rainOcclusionHeightmap;
             Object.defineProperty(window, 'lastWeatherChange', { get: () => lastWeatherChange, set: (v) => { lastWeatherChange = v; } });
             Object.defineProperty(window, 'nextWeatherDuration', { get: () => nextWeatherDuration, set: (v) => { nextWeatherDuration = v; } });
             window.spawnBirdGroup = spawnBirdGroup;
