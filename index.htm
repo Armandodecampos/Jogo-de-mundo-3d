@@ -2570,7 +2570,7 @@
         }
 
         function createStone(position, quaternion) {
-            const stoneSize = { width: 0.6, height: 0.3, depth: 0.7 };
+            const stoneSize = { width: 1.2, height: 0.6, depth: 1.4 };
             const stoneShape = new CANNON.Box(new CANNON.Vec3(stoneSize.width / 2, stoneSize.height / 2, stoneSize.depth / 2));
             const stoneMaterial = new THREE.MeshLambertMaterial({ color: 0x808080 });
 
@@ -2599,26 +2599,12 @@
                 initialPosition: new CANNON.Vec3().copy(stoneBody.position)
             };
 
-            const stoneMesh = new THREE.Group();
-            const numBlocks = 2 + Math.floor(Math.random() * 2);
-            for (let i = 0; i < numBlocks; i++) {
-                const radius = 0.15 + Math.random() * 0.15;
-                const blockGeom = new THREE.DodecahedronGeometry(radius, 0);
-                const blockMesh = new THREE.Mesh(blockGeom, stoneMaterial);
-                blockMesh.position.set(
-                    (Math.random() - 0.5) * (stoneSize.width - radius),
-                    (Math.random() - 0.5) * (stoneSize.height - radius),
-                    (Math.random() - 0.5) * (stoneSize.depth - radius)
-                );
-                blockMesh.rotation.set(
-                    Math.random() * Math.PI,
-                    Math.random() * Math.PI,
-                    Math.random() * Math.PI
-                );
-                blockMesh.castShadow = true;
-                blockMesh.receiveShadow = true;
-                stoneMesh.add(blockMesh);
-            }
+            const stoneGeom = new THREE.DodecahedronGeometry(0.5, 0);
+            const stoneMesh = new THREE.Mesh(stoneGeom, stoneMaterial);
+            // Matches stoneSize (1.2, 0.6, 1.4) given radius 0.5 (diameter 1.0)
+            stoneMesh.scale.set(stoneSize.width, stoneSize.height, stoneSize.depth);
+            stoneMesh.castShadow = true;
+            stoneMesh.receiveShadow = true;
 
             stoneMesh.userData.physicsBody = stoneBody;
             scene.add(stoneMesh);
