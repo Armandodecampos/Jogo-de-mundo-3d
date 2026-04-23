@@ -1452,6 +1452,7 @@
         let stoneFloorMaterialMesh;
         let holeMaterial; // NOVO: Material para o buraco cavado
         let stoneHoleMaterial;
+        let sandHoleMaterial;
         let holeGeometryTemplate = null; // NOVO: Para armazenar a geometria do modelo do buraco
 
         let mounds = [];
@@ -2238,7 +2239,7 @@
             }
         }
 
-        function createMound(intersect, isPositive = false) {
+        function createMound(intersect, isPositive = false, itemType = null) {
             // Garante que os modelos e materiais necessários estejam carregados
             if (!holeGeometryTemplate || !holeMaterial) {
                 return null;
@@ -2267,8 +2268,9 @@
 
             // NOVO: Adiciona a malha visual do buraco ao grupo para que o jogador tenha feedback visual na mira
             let holeMesh = null;
-            if (holeGeometryTemplate && holeMaterial) {
-                holeMesh = new THREE.Mesh(holeGeometryTemplate, holeMaterial);
+            let currentHoleMaterial = (itemType === sandItemName && sandHoleMaterial) ? sandHoleMaterial : holeMaterial;
+            if (holeGeometryTemplate && currentHoleMaterial) {
+                holeMesh = new THREE.Mesh(holeGeometryTemplate, currentHoleMaterial);
                 holeMesh.scale.set(isHorizontal ? 0.08 : 0.1, isHorizontal ? 0.08 : 0.1, isHorizontal ? 0.08 : 0.1); // Inicia menor se for preciso
                 if (isHorizontal) {
                     holeMesh.rotation.x = Math.PI / 2; // Gira para ficar vertical na parede
@@ -2289,6 +2291,7 @@
                 position: new THREE.Vector3(vx, isHorizontal ? hitPoint.y : naturalY, vz),
                 mesh: holeGroup,
                 holeMesh: holeMesh,
+                itemType: itemType, // NOVO: Armazena o tipo de item (terra ou areia)
                 createdAt: world.time,
                 quaternion: finalQuaternion,
                 growthStage: 0, // Inicia no primeiro estágio
@@ -4727,6 +4730,7 @@
                     texturesRegistry.seabed = seabedTexture;
                     textureLoader.load(sandTextureURL, (sandTexture) => {
                         texturesRegistry.sand = sandTexture;
+                        sandHoleMaterial = new THREE.MeshStandardMaterial({ map: sandTexture });
                         textureLoader.load(stoneTextureURL, (stoneTexture) => {
                             texturesRegistry.stone = stoneTexture;
                             textureLoader.load(grassTextureURL, (grassTexture) => {
@@ -5012,7 +5016,7 @@
                 texture.wrapT = THREE.RepeatWrapping;
                 texture.repeat.set(1, 1);
                 texturesRegistry.hole = texture;
-                holeMaterial = new THREE.MeshBasicMaterial({ map: useTextures ? texture : null });
+                holeMaterial = new THREE.MeshStandardMaterial({ map: useTextures ? texture : null });
 
                 // Adicionado: Carrega a textura de pedra para o buraco da montanha
                 textureLoader.load(stoneTextureURL, (stoneTexture) => {
@@ -5020,7 +5024,7 @@
                     stoneTexture.wrapT = THREE.RepeatWrapping;
                     stoneTexture.repeat.set(1, 1);
                     texturesRegistry.stone = stoneTexture;
-                    stoneHoleMaterial = new THREE.MeshBasicMaterial({ map: useTextures ? stoneTexture : null });
+                    stoneHoleMaterial = new THREE.MeshStandardMaterial({ map: useTextures ? stoneTexture : null });
                 });
 
                 const gltfLoader = new GLTFLoader(loadingManager);
@@ -5040,6 +5044,9 @@
                 console.error('Erro ao carregar a textura do buraco:', error);
                 holeMaterial = new THREE.MeshStandardMaterial({ color: 0x3b2712 }); // Fallback marrom escuro
             });
+
+            // Fallback para o material de areia
+            sandHoleMaterial = new THREE.MeshStandardMaterial({ color: 0xc2b280 });
 
             // Load the cob texture
             textureLoader.load(cobTextureURL, (texture) => {
@@ -5611,7 +5618,7 @@
                 if (item === null) return 'grab';
                 // Ferramentas de destruição e modificação de terreno
                 // O martelo foi removido temporariamente das ferramentas de destruição
-                if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === branchItemName || item.name === dirtItemName) return 'destroy';
+                if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === branchItemName || item.name === dirtItemName || item.name === sandItemName) return 'destroy';
                 // Itens de colocação
                 if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === chestItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === stoneItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
@@ -5635,12 +5642,13 @@
                                      heldItemName === pickaxeItemName ||
                                      heldItemName === shovelItemName ||
                                      heldItemName === branchItemName ||
-                                     heldItemName === dirtItemName;
+                                     heldItemName === dirtItemName ||
+                                     heldItemName === sandItemName;
 
                 if (!isAllowedTool || isClimbing) return;
 
-                // Se estiver com terra equipada, precisa ter quantidade maior que zero
-                if (heldItemName === dirtItemName && heldItemQuantity <= 0) return;
+                // Se estiver com terra/areia equipada, precisa ter quantidade maior que zero
+                if ((heldItemName === dirtItemName || heldItemName === sandItemName) && heldItemQuantity <= 0) return;
 
                 // Impede a destruição com o martelo (já coberto pelo isAllowedTool, mas mantido por clareza)
                 if (heldItemName === hammerItemName) {
@@ -5697,7 +5705,7 @@
                     target = potentialCapim || potentialGround || potentialObject;
                 } else if (heldItemName === axeItemName || heldItemName === pickaxeItemName) {
                     target = potentialObject || potentialCapim || potentialGround;
-                } else if (heldItemName === dirtItemName) {
+                } else if (heldItemName === dirtItemName || heldItemName === sandItemName) {
                     target = potentialGround || potentialObject || potentialCapim;
                 } else {
                     // Mão ou outros: prioriza capim, depois objetos, depois terreno
@@ -5786,6 +5794,13 @@
 
                         if (targetMound) {
                             currentMound = targetMound;
+                            // Sincroniza o itemType se for um mound positivo vazio ou se estamos construindo com algo diferente
+                            if (isBuilding && currentMound.maxHeightChange > 0 && currentMound.growthStage === 0) {
+                                currentMound.itemType = heldItemName;
+                                if (currentMound.holeMesh) {
+                                    currentMound.holeMesh.material = (heldItemName === sandItemName && sandHoleMaterial) ? sandHoleMaterial : holeMaterial;
+                                }
+                            }
                             // Se o mound estava em processo de cura (fechamento), traz ele de volta
                             const closingIndex = closingMounds.indexOf(targetMound);
                             if (closingIndex !== -1) {
@@ -5803,7 +5818,7 @@
                                 targetMound.growthStage = newStage;
                             }
                         } else if (!existingMoundAtPos) {
-                            currentMound = createMound(intersect, isBuilding);
+                            currentMound = createMound(intersect, isBuilding, isBuilding ? heldItemName : null);
                         } else {
                             // Encontrou um mound mas não é válido para a ação atual
                             isDestroying = false;
@@ -5818,7 +5833,7 @@
                             // O usuário quer que acompanhe a curvatura. getSurfaceHeight(x, z) já inclui a curvatura base e montanhas.
                             const isStoneLayer = hitPoint.y < getSurfaceHeight(hitPoint.x, hitPoint.z) - 4.5;
                             currentMound.isStoneLayer = isStoneLayer;
-                            materialType = isStoneLayer ? 'stone' : 'earth';
+                            materialType = isStoneLayer ? 'stone' : ((currentMound.itemType === sandItemName || (heldItemName === sandItemName && isBuilding)) ? 'sand' : 'earth');
                             // Aumentado para garantir que a barra de progresso seja visível e sentida
                             baseDurability = isBuilding ? 0.3 : (isStoneLayer ? 3.0 : 1.5);
                             // A textura de terra e a altura agora só mudam quando a barra de progresso termina
@@ -5905,6 +5920,9 @@
                     } else if (materialType === 'earth') {
                         progressBar.style.backgroundColor = '#A0522D';
                         destroyTargetColor = 0xA0522D;
+                    } else if (materialType === 'sand') {
+                        progressBar.style.backgroundColor = '#c2b280';
+                        destroyTargetColor = 0xc2b280;
                     } else if (target.isCapim) {
                         progressBar.style.backgroundColor = '#4d7a31';
                         destroyTargetColor = 0x4d7a31;
@@ -6837,9 +6855,9 @@
                                 terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
                             }
 
-                            // Consome o item Terra
+                            // Consome o item Terra ou Areia
                             const heldItem = beltItems[selectedSlotIndex];
-                            if (heldItem && heldItem.name === dirtItemName) {
+                            if (heldItem && (heldItem.name === dirtItemName || heldItem.name === sandItemName)) {
                                 heldItem.quantity--;
                                 if (heldItem.quantity <= 0) {
                                     beltItems[selectedSlotIndex] = null;
@@ -6885,6 +6903,8 @@
                                 if (mound.isStoneLayer) {
                                     itemToGive = stoneItemName;
                                     quantityToGive = 1;
+                                } else if (mound.itemType) {
+                                    itemToGive = mound.itemType;
                                 } else if (distFromCenter > grassRadius) {
                                     itemToGive = sandItemName;
                                 } else {
@@ -6904,6 +6924,8 @@
                                 if (mound.isStoneLayer) {
                                     itemToGive = stoneItemName;
                                     quantityToGive = 1;
+                                } else if (mound.itemType) {
+                                    itemToGive = mound.itemType;
                                 } else if (distFromCenter > grassRadius) {
                                     itemToGive = sandItemName;
                                 } else {
@@ -7801,11 +7823,11 @@
 
             // Lógica do ghost block para colocação e snapping
             if (ghostBlockMesh) {
-                // NOVO: Mostra o ghost para construção OU para destruição de terra (cavagem)
+                // NOVO: Mostra o ghost para construção OU para destruição de terra/areia (cavagem)
                 // O "fantasma verde" da terra foi removido a pedido do usuário
-                const isShowingTerraGhost = (isPrimaryToolDestroying && currentBlockType === dirtItemName);
-                const isTerra = currentBlockType === dirtItemName;
-                if ((isPrimaryToolPlacing || isShowingTerraGhost) && !gamePaused && !isTerra && document.pointerLockElement === renderer.domElement) {
+                const isShowingTerraGhost = (isPrimaryToolDestroying && (currentBlockType === dirtItemName || currentBlockType === sandItemName));
+                const isTerra = currentBlockType === dirtItemName || currentBlockType === sandItemName;
+                if ((isPrimaryToolPlacing || isShowingTerraGhost) && !gamePaused && document.pointerLockElement === renderer.domElement) {
                     ghostBlockMesh.visible = true; // Garante que o ghost block esteja visível
 
                     const intersects = mainIntersects;
@@ -7996,7 +8018,11 @@
                     if (canPlace) {
                         ghostBlockMesh.position.copy(placementPosition);
                         ghostBlockMesh.quaternion.copy(tempPlacementQuaternion);
-                        ghostBlockMesh.material.color.setHex(0x00ff00); // Verde para indicar que pode ser colocado
+                        if (isShowingTerraGhost) {
+                            ghostBlockMesh.material.color.setHex(currentBlockType === sandItemName ? 0xc2b280 : 0x5C4033);
+                        } else {
+                            ghostBlockMesh.material.color.setHex(0x00ff00); // Verde para indicar que pode ser colocado
+                        }
                     } else {
                         ghostBlockMesh.visible = true; // Mantém visível para mostrar a cor vermelha
                         ghostBlockMesh.material.color.setHex(0xff0000); // Vermelho para inválido
@@ -8638,12 +8664,16 @@
 
             // Update ghostBlockMesh visibility and geometry
             if (ghostBlockMesh) {
-                const isShowingTerraGhost = (isPrimaryToolDestroying && currentBlockType === dirtItemName);
-                const isTerra = currentBlockType === dirtItemName;
-                if ((isPrimaryToolPlacing || isShowingTerraGhost) && !gamePaused && !isTerra) {
+                const isShowingTerraGhost = (isPrimaryToolDestroying && (currentBlockType === dirtItemName || currentBlockType === sandItemName));
+                const isTerra = currentBlockType === dirtItemName || currentBlockType === sandItemName;
+                if ((isPrimaryToolPlacing || isShowingTerraGhost) && !gamePaused) {
                     ghostBlockMesh.visible = true;
                     // Set color based on canPlace/crosshairColor
-                    ghostBlockMesh.material.color.setHex(crosshairColor === 'lime' ? 0x00ff00 : 0xff0000);
+                    if (crosshairColor === 'lime' && isShowingTerraGhost) {
+                        ghostBlockMesh.material.color.setHex(currentBlockType === sandItemName ? 0xc2b280 : 0x5C4033);
+                    } else {
+                        ghostBlockMesh.material.color.setHex(crosshairColor === 'lime' ? 0x00ff00 : 0xff0000);
+                    }
                 } else {
                     ghostBlockMesh.visible = false;
                 }
