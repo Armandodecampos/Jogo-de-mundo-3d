@@ -2239,7 +2239,7 @@
             }
         }
 
-        function createMound(intersect, isPositive = false, itemType = null) {
+        function createMound(intersect, isPositive = false, itemType = null, isOnObject = false) {
             // Garante que os modelos e materiais necessários estejam carregados
             if (!holeGeometryTemplate || !holeMaterial) {
                 return null;
@@ -2264,7 +2264,7 @@
             const isHorizontal = !isPositive && intersect.face && Math.abs(intersect.face.normal.y) < 0.5;
 
             // Alinha o grupo do buraco com o ponto de impacto real ou linha de base
-            holeGroup.position.set(vx, isHorizontal ? hitPoint.y : naturalY, vz);
+            holeGroup.position.set(vx, (isHorizontal || isOnObject) ? hitPoint.y : naturalY, vz);
 
             // NOVO: Adiciona a malha visual do buraco ao grupo para que o jogador tenha feedback visual na mira
             let holeMesh = null;
@@ -2283,15 +2283,16 @@
                 z: mz,
                 radius: (isHorizontal ? 3.0 : 4.0) * (hfGridSize / worldSize), // Raio reduzido para cavagem precisa em paredes
                 isPrecise: isHorizontal,
-                originalHeight: naturalY,
-                targetFloorHeight: naturalY,
+                originalHeight: (isOnObject ? hitPoint.y : naturalY),
+                targetFloorHeight: (isOnObject ? hitPoint.y : naturalY),
                 height: 0, // Inicia sem alteração na altura
-                maxHeightChange: isPositive ? 1.0 : (isHorizontal ? (hitPoint.y - naturalY) : -1.0),
+                maxHeightChange: isPositive ? (isOnObject ? 0.4 : 1.0) : (isHorizontal ? (hitPoint.y - naturalY) : -1.0),
                 flattened: false,
-                position: new THREE.Vector3(vx, isHorizontal ? hitPoint.y : naturalY, vz),
+                position: new THREE.Vector3(vx, (isHorizontal || isOnObject) ? hitPoint.y : naturalY, vz),
                 mesh: holeGroup,
                 holeMesh: holeMesh,
                 itemType: itemType, // NOVO: Armazena o tipo de item (terra ou areia)
+                isOnObject: isOnObject,
                 createdAt: world.time,
                 quaternion: finalQuaternion,
                 growthStage: 0, // Inicia no primeiro estágio
@@ -4121,7 +4122,7 @@
             }
 
             for (const mound of mounds) {
-                if (mound.flattened) continue;
+                if (mound.flattened || mound.isOnObject) continue;
 
                 if (mound.isPrecise) {
                     // Cavagem precisa (horizontal): afeta os 4 vértices ao redor para criar um caminho plano de 3x3m
@@ -5694,7 +5695,7 @@
                             current = current.parent;
                         }
                         if (mainObject && intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible && !potentialObject) {
-                            potentialObject = { body: intersectedBody, mesh: mainObject, hitPoint: hitPoint.clone() };
+                            potentialObject = { body: intersectedBody, mesh: mainObject, hitPoint: hitPoint.clone(), intersect: intersects[i] };
                         }
                     }
                 }
@@ -5706,7 +5707,8 @@
                 } else if (heldItemName === axeItemName || heldItemName === pickaxeItemName) {
                     target = potentialObject || potentialCapim || potentialGround;
                 } else if (heldItemName === dirtItemName || heldItemName === sandItemName) {
-                    target = potentialGround || potentialObject || potentialCapim;
+                    // Para terra/areia, prioriza o que estiver mais perto para permitir colocar em cima de objetos
+                    target = potentialObject || potentialGround || potentialCapim;
                 } else {
                     // Mão ou outros: prioriza capim, depois objetos, depois terreno
                     target = potentialCapim || potentialObject || potentialGround;
@@ -5736,10 +5738,11 @@
                     let baseDurability;
                     let materialType; // 'wood', 'stone', 'earth', 'other'
 
-                    if (target.isDigging) {
+                    if (target.isDigging || (target.body && (heldItemName === dirtItemName || heldItemName === sandItemName))) {
                         const intersect = target.intersect;
                         const hitPoint = intersect.point;
                         const isBuilding = (heldItemName === dirtItemName || heldItemName === sandItemName);
+                        const isOnObject = !target.isDigging;
 
                         // Alinha o ponto de impacto para busca precisa (agora com suporte a sub-grid)
                         const step = worldSize / (hfGridSize - 1);
@@ -5818,7 +5821,7 @@
                                 targetMound.growthStage = newStage;
                             }
                         } else if (!existingMoundAtPos) {
-                            currentMound = createMound(intersect, isBuilding, isBuilding ? heldItemName : null);
+                            currentMound = createMound(intersect, isBuilding, isBuilding ? heldItemName : null, isOnObject);
                         } else {
                             // Encontrou um mound mas não é válido para a ação atual
                             isDestroying = false;
@@ -5835,7 +5838,7 @@
                             currentMound.isStoneLayer = isStoneLayer;
                             materialType = isStoneLayer ? 'stone' : ((currentMound.itemType === sandItemName || (heldItemName === sandItemName && isBuilding)) ? 'sand' : 'earth');
                             // Aumentado para garantir que a barra de progresso seja visível e sentida
-                            baseDurability = isBuilding ? 0.3 : (isStoneLayer ? 3.0 : 1.5);
+                            baseDurability = (isBuilding || currentMound.isOnObject) ? 0.3 : (isStoneLayer ? 3.0 : 1.5);
                             // A textura de terra e a altura agora só mudam quando a barra de progresso termina
                             // updateIslandGeometry(currentMound); // REMOVIDO: Evita aplicação imediata da textura
                         } else {
@@ -6034,7 +6037,7 @@
 
                     if (!clickedBody || !clickedBody.userData) continue;
 
-                    if (!clickedBody.userData.isCollectible && !clickedBody.userData.isRaft) continue;
+                    if (!clickedBody.userData.isCollectible && !clickedBody.userData.isRaft && !clickedBody.userData.mound) continue;
 
                     // NOVO: Se for um contêiner (baú/caixote), só permite guardar se estiver vazio
                     if (clickedBody.userData.isChest) {
@@ -6048,6 +6051,29 @@
 
                     const itemType = clickedBody.userData.type;
                     const itemQuantity = clickedBody.userData.quantity || 1; // Padrão para 1 se não especificado
+
+                    if (clickedBody.userData.mound) {
+                        const mound = clickedBody.userData.mound;
+                        const bodyIndex = placedConstructionBodies.indexOf(clickedBody);
+                        if (bodyIndex !== -1) {
+                            world.removeBody(clickedBody);
+                            scene.remove(placedConstructionMeshes[bodyIndex]);
+                            placedConstructionBodies.splice(bodyIndex, 1);
+                            placedConstructionMeshes.splice(bodyIndex, 1);
+
+                            mound.height = 0;
+                            mound.flattened = true;
+                            const vIndex = visualMounds.indexOf(mound);
+                            if (vIndex !== -1) visualMounds.splice(vIndex, 1);
+                            const mIndex = mounds.indexOf(mound);
+                            if (mIndex !== -1) mounds.splice(mIndex, 1);
+
+                            raycastTargetsNeedUpdate = true;
+                            addItemToInventory(backpackItems, { name: itemType, quantity: itemQuantity });
+                            updateBackpackDisplay();
+                        }
+                        break;
+                    }
 
                     const collectibleIndex = collectibleBoxes.findIndex(box => box.body === clickedBody);
                     if (collectibleIndex > -1) {
@@ -6811,7 +6837,9 @@
                                 mound.growthStage--;
                                 if (mound.growthStage <= 0) {
                                     mound.height = 0;
-                                    terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+                                    if (!mound.isOnObject) {
+                                        terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+                                    }
                                     mound.flattened = true;
                                     if (mound.mesh) scene.remove(mound.mesh);
                                     const vIndex = visualMounds.indexOf(mound);
@@ -6831,7 +6859,9 @@
                                         const finalScale = mound.isPrecise ? baseScale * 0.8 : baseScale;
                                         mound.mesh.scale.set(finalScale, finalScale, finalScale);
                                     }
-                                    terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+                                    if (!mound.isOnObject) {
+                                        terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+                                    }
                                     destroyProgress = 0;
                                 }
                             } else {
@@ -6839,6 +6869,25 @@
                                 mound.growthStage++;
                                 if (mound.growthStage >= moundGrowthStages.length) {
                                     mound.height = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : 1.0);
+
+                                    // Se estiver em cima de um objeto, cria um corpo físico para o monte completo
+                                    if (mound.isOnObject) {
+                                        const shape = new CANNON.Box(new CANNON.Vec3(0.4, 0.2, 0.4));
+                                        const body = new CANNON.Body({
+                                            mass: 0,
+                                            type: CANNON.Body.STATIC,
+                                            shape: shape,
+                                            material: constructionMaterial
+                                        });
+                                        body.position.set(mound.position.x, mound.position.y, mound.position.z);
+                                        world.addBody(body);
+                                        mound.physicsBody = body;
+                                        body.userData = { isDestructible: true, type: mound.itemType, mound: mound };
+                                        placedConstructionBodies.push(body);
+                                        placedConstructionMeshes.push(mound.mesh);
+                                        raycastTargetsNeedUpdate = true;
+                                    }
+
                                     destructionComplete = true;
                                     isDestroying = false;
                                     progressContainer.style.display = 'none';
@@ -6852,7 +6901,9 @@
                                     const baseScale = moundGrowthStages[mound.growthStage - 1];
                                     mound.mesh.scale.set(baseScale, baseScale, baseScale);
                                 }
-                                terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+                                if (!mound.isOnObject) {
+                                    terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+                                }
                             }
 
                             // Consome o item Terra ou Areia
@@ -6874,7 +6925,9 @@
                                 mound.growthStage--;
                                 if (mound.growthStage <= 0) {
                                     mound.height = 0;
-                                    terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+                                    if (!mound.isOnObject) {
+                                        terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+                                    }
                                     mound.flattened = true;
                                     if (mound.mesh) scene.remove(mound.mesh);
                                     const vIndex = visualMounds.indexOf(mound);
@@ -6893,7 +6946,9 @@
                                         const baseScale = moundGrowthStages[mound.growthStage - 1];
                                         mound.mesh.scale.set(baseScale, baseScale, baseScale);
                                     }
-                                    terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+                                    if (!mound.isOnObject) {
+                                        terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+                                    }
                                     destroyProgress = 0;
                                 }
                                 // Gain correct resource when building/mining a hill
@@ -6960,7 +7015,9 @@
                             }
                         }
 
-                        terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+                        if (!mound.isOnObject) {
+                            terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+                        }
                     } else if (destroyTargetMountainInfo) {
                         createDustCloud(destroyTargetMountainInfo.position, destroyTargetColor);
                         addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
@@ -7006,6 +7063,22 @@
 
                             if (bodyIndex !== -1) {
                                 isTreeObject = !!destroyTargetBody.userData.growthStage;
+                                const isMoundObject = !!destroyTargetBody.userData.mound;
+
+                                if (isMoundObject) {
+                                    const mound = destroyTargetBody.userData.mound;
+                                    mound.height = 0;
+                                    mound.flattened = true;
+                                    if (mound.mesh) scene.remove(mound.mesh);
+                                    const vIndex = visualMounds.indexOf(mound);
+                                    if (vIndex !== -1) visualMounds.splice(vIndex, 1);
+                                    const mIndex = mounds.indexOf(mound);
+                                    if (mIndex !== -1) mounds.splice(mIndex, 1);
+
+                                    // NOVO: Gain correct resource when destroying a mound on an object
+                                    addItemToInventory(backpackItems, { name: destroyTargetBody.userData.type, quantity: 1 });
+                                    updateBackpackDisplay();
+                                }
                                 const treeType = destroyTargetBody.userData.treeType || 'normal';
                                 const isChest = !!destroyTargetBody.userData.isChest;
                                 const isRaft = !!destroyTargetBody.userData.isRaft;
@@ -7061,7 +7134,7 @@
                                     }
                                 } else if (destroyTargetBody.userData.type === stoneItemName || destroyTargetBody.userData.type === stoneBlockItemName || destroyTargetBody.userData.type === stoneFloorItemName) {
                                     addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
-                                } else {
+                                } else if (!isMoundObject) {
                                     // Retorna o item original para outros tipos de construção (cob, piso, madeira, etc)
                                     const type = destroyTargetBody.userData.type;
                                     if (type) {
@@ -7747,6 +7820,10 @@
                         }
 
                         if (body && body.userData) {
+                            if (body.userData.mound) {
+                                interactionHintText = `(Botão Esq.) Cavar ${(body.userData.type === sandItemName ? "Areia" : "Terra")} / (F) Agarrar / (G) Guardar`;
+                                break;
+                            }
                             if (body.userData.isChest) {
                                 interactionHintText = "(E) Abrir / (F) Agarrar / (G) Guardar";
                                 break;
@@ -7799,12 +7876,15 @@
                                 const hitPoint = intersect.point;
                                 const distFromCenter = Math.sqrt(hitPoint.x ** 2 + hitPoint.z ** 2);
                                 let material = "Terra";
+                                const heldItem = beltItems[selectedSlotIndex];
+                                const isHoldingTerra = heldItem && (heldItem.name === dirtItemName || heldItem.name === sandItemName);
+
                                 if (hitPoint.y < getSurfaceHeight(hitPoint.x, hitPoint.z) - 5.0) {
                                     material = "Pedra";
                                 } else if (distFromCenter > grassRadius) {
                                     material = "Areia";
                                 }
-                                interactionHintText = `(Botão Esq.) Cavar ${material}`;
+                                interactionHintText = isHoldingTerra ? `(Botão Esq.) Colocar ${heldItem.name === sandItemName ? "Areia" : "Terra"}` : `(Botão Esq.) Cavar ${material}`;
                             }
                             break;
                         }
@@ -7884,6 +7964,13 @@
                         } else if (currentBlockType === stoneItemName) {
                             ghostBlockMesh.geometry = new THREE.DodecahedronGeometry(0.25, 0);
                             ghostBlockMesh.scale.set(1.2, 0.6, 1.4);
+                        } else if (currentBlockType === dirtItemName || currentBlockType === sandItemName) {
+                            if (holeGeometryTemplate) {
+                                ghostBlockMesh.geometry = holeGeometryTemplate;
+                                ghostBlockMesh.scale.set(0.1, 0.1, 0.1);
+                            } else {
+                                ghostBlockMesh.geometry = new THREE.SphereGeometry(0.4, 8, 8);
+                            }
                         }
                     }
 
@@ -7900,6 +7987,7 @@
                     else if (currentBlockType === boxItemName) currentGhostHeight = 1;
                     else if (currentBlockType === chestItemName) currentGhostHeight = 1;
                     else if (currentBlockType === stoneItemName) currentGhostHeight = 0.5;
+                    else if (currentBlockType === dirtItemName || currentBlockType === sandItemName) currentGhostHeight = 0.4;
                     // Update ghost block geometry
                     // ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth); // Removido para lidar individualmente
 
