@@ -4210,7 +4210,15 @@
                             const vz = (j / (hfGridSize - 1) - 0.5) * worldSize;
                             const dist = Math.sqrt(vx * vx + vz * vz);
                             if (dist < beachRadius) { // Usando beachRadius em vez de fixo 280
-                                colors[vIdx * 3] = 0.0;
+                                if (affectedMound.itemType === dirtItemName) {
+                                    colors[vIdx * 3] = 0.0;
+                                } else if (affectedMound.itemType === sandItemName) {
+                                    colors[vIdx * 3 + 1] = 0.0;
+                                } else {
+                                    // Cavagem (ou item sem tipo): ambos os canais para sinalizar buraco
+                                    colors[vIdx * 3] = 0.0;
+                                    colors[vIdx * 3 + 1] = 0.0;
+                                }
                                 const existingIdx = modifiedVertices.findIndex(mv => mv.index === vIdx);
                                 if (existingIdx !== -1) {
                                     modifiedVertices[existingIdx].time = now;
@@ -4849,13 +4857,25 @@
                                                 vec3 grassStoneMix = mix(grassTinted, stoneColor, stoneBlend);
                                                 vec3 terrainMix = mix(seabedSandMix, grassStoneMix, sandToGrassBlend);
 
-                                                // NOVO: Aplica a textura inferior provisória se vColor.r < 1.0 (sinalizado por modificação)
+                                                // NOVO: Aplica a textura inferior provisória se vColor.r < 1.0 ou vColor.g < 1.0 (sinalizado por modificação)
                                                 #ifdef USE_COLOR
-                                                    float inferiorFactor = clamp(1.0 - vColor.r, 0.0, 1.0);
-                                                    // Se estivermos na praia, a textura de "buraco" deve ser areia escura
+                                                    float dirtMod = clamp(1.0 - vColor.r, 0.0, 1.0);
+                                                    float sandMod = clamp(1.0 - vColor.g, 0.0, 1.0);
+
+                                                    // Se ambos os canais forem modificados, é um "buraco" (escavação pura)
+                                                    // Se apenas um for dominante, é um monte de terra ou areia pura
+                                                    float holeFactor = min(dirtMod, sandMod);
+                                                    float pureDirtFactor = max(0.0, dirtMod - holeFactor);
+                                                    float pureSandFactor = max(0.0, sandMod - holeFactor);
+
+                                                    // Textura de "buraco" (areia escura ou terra inferior)
                                                     vec3 holeColor = mix(sandColor * 0.8, inferiorColor, sandToGrassBlend);
                                                     vec3 currentInferior = (vWorldPosition.y < currentStoneLevel) ? stoneColor : holeColor;
-                                                    terrainMix = mix(terrainMix, currentInferior, inferiorFactor);
+
+                                                    // Aplica modificações sequencialmente
+                                                    terrainMix = mix(terrainMix, inferiorColor, pureDirtFactor);
+                                                    terrainMix = mix(terrainMix, sandColor, pureSandFactor);
+                                                    terrainMix = mix(terrainMix, currentInferior, holeFactor);
                                                 #endif
 
                                                 // NOVO: Camada de Bedrock (Camada escura indestrutível)
@@ -8646,13 +8666,19 @@
                     const elapsed = now - modifiedVertices[i].time;
                     const progress = Math.min(1.0, elapsed / fadeDuration);
 
+                    // Fade R channel (dirt) e G channel (sand)
                     if (colors[vIdx * 3] < progress || (progress === 0.0 && colors[vIdx * 3] > 0.0)) {
                         colors[vIdx * 3] = progress;
+                        colorsChanged = true;
+                    }
+                    if (colors[vIdx * 3 + 1] < progress || (progress === 0.0 && colors[vIdx * 3 + 1] > 0.0)) {
+                        colors[vIdx * 3 + 1] = progress;
                         colorsChanged = true;
                     }
 
                     if (progress >= 1.0) {
                         colors[vIdx * 3] = 1.0;
+                        colors[vIdx * 3 + 1] = 1.0;
                         modifiedVertices.splice(i, 1);
                         colorsChanged = true;
                     }
