@@ -1129,6 +1129,8 @@
         const seabedLevel = -20.0; // NOVO: Nível do fundo do mar
         let stoneLayerLevel = -4.2; // NOVO: Nível onde começa a pedra (5 unidades de terra)
         const bedrockLevel = -30.0; // NOVO: Camada indestrutível (10 unidades de pedra depois da terra)
+        const dirtRadius = 110.0; window.dirtRadius = dirtRadius; // NOVO: Raio da terra pura
+        const sandRadius = 130.0; window.sandRadius = sandRadius; // NOVO: Raio de início da areia pura
         const grassRadius = 100.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
         const beachRadius = 200.0; window.beachRadius = beachRadius; // NOVO: Raio da praia (aumentado de 120.0)
         let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 250; // Distância de renderização para objetos
@@ -2268,7 +2270,8 @@
 
             // NOVO: Adiciona a malha visual do buraco ao grupo para que o jogador tenha feedback visual na mira
             let holeMesh = null;
-            let currentHoleMaterial = (itemType === sandItemName && sandHoleMaterial) ? sandHoleMaterial : holeMaterial;
+            // Usa material de areia se for areia, senão usa o padrão (terra)
+            let currentHoleMaterial = (itemType === sandItemName) ? sandHoleMaterial : holeMaterial;
             if (holeGeometryTemplate && currentHoleMaterial) {
                 holeMesh = new THREE.Mesh(holeGeometryTemplate, currentHoleMaterial);
                 holeMesh.scale.set(isHorizontal ? 0.08 : 0.1, isHorizontal ? 0.08 : 0.1, isHorizontal ? 0.08 : 0.1); // Inicia menor se for preciso
@@ -4755,6 +4758,8 @@
                                         shader.uniforms.uBedrockLevel = { value: bedrockLevel };
                                         shader.uniforms.uGrassRadius = { value: grassRadius };
                                         shader.uniforms.uBeachRadius = { value: beachRadius };
+                                        shader.uniforms.uDirtRadius = { value: dirtRadius };
+                                        shader.uniforms.uSandRadius = { value: sandRadius };
                                         shader.uniforms.uIslandSurfaceHeight = { value: islandSurfaceHeight };
                                         shader.uniforms.uSeabedLevel = { value: seabedLevel };
                                         shader.uniforms.uWorldSize = { value: worldSize };
@@ -4783,6 +4788,8 @@
                                             uniform float uBedrockLevel;
                                             uniform float uGrassRadius;
                                             uniform float uBeachRadius;
+                                            uniform float uDirtRadius;
+                                            uniform float uSandRadius;
                                             uniform float uIslandSurfaceHeight;
                                             uniform float uSeabedLevel;
                                             uniform float uWorldSize;
@@ -4833,7 +4840,8 @@
                                                 float currentStoneLevel = baseHeight - 5.0;
 
                                                 // Mistura entre areia e grama baseada no raio (praia larga)
-                                                float sandToGrassBlend = 1.0 - smoothstep(uGrassRadius, uBeachRadius, dist);
+                                                // Usamos dirtRadius e sandRadius para definir a transição solicitada
+                                                float sandToGrassBlend = 1.0 - smoothstep(uDirtRadius, uSandRadius, dist);
 
                                                 // Mistura fundo do mar baseada na altura
                                                 float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
@@ -4845,9 +4853,9 @@
                                                 stoneBlend = max(stoneBlend, deepStoneBlend);
 
                                                 vec3 seabedSandMix = mix(seabedColor, sandColor, seabedToSandBlend);
-                                                // Tintamos a textura de terra da grama para verde
-                                                vec3 grassTinted = grassColor * vec3(0.7, 1.0, 0.4);
-                                                vec3 grassStoneMix = mix(grassTinted, stoneColor, stoneBlend);
+                                                // O centro da ilha deve parecer terra (marrom/grama escura)
+                                                vec3 dirtCenterColor = mix(inferiorColor, grassColor, 0.5);
+                                                vec3 grassStoneMix = mix(dirtCenterColor, stoneColor, stoneBlend);
                                                 vec3 terrainMix = mix(seabedSandMix, grassStoneMix, sandToGrassBlend);
 
                                                 // NOVO: Aplica a textura inferior provisória se vColor.r < 1.0 (sinalizado por modificação)
@@ -5821,7 +5829,20 @@
                                 targetMound.growthStage = newStage;
                             }
                         } else if (!existingMoundAtPos) {
-                            currentMound = createMound(intersect, isBuilding, isBuilding ? heldItemName : null, isOnObject);
+                            let typeToUse = isBuilding ? heldItemName : null;
+                            if (!isBuilding && !isOnObject) {
+                                // Se for cavagem natural, determina o tipo baseado na distância
+                                const dist = Math.sqrt(hitPoint.x * hitPoint.x + hitPoint.z * hitPoint.z);
+                                if (dist < dirtRadius) {
+                                    typeToUse = dirtItemName;
+                                } else if (dist > sandRadius) {
+                                    typeToUse = sandItemName;
+                                } else {
+                                    // Zona de transição: aleatório
+                                    typeToUse = (Math.random() > 0.5) ? dirtItemName : sandItemName;
+                                }
+                            }
+                            currentMound = createMound(intersect, isBuilding, typeToUse, isOnObject);
                         } else {
                             // Encontrou um mound mas não é válido para a ação atual
                             isDestroying = false;
@@ -6960,10 +6981,12 @@
                                     quantityToGive = 1;
                                 } else if (mound.itemType) {
                                     itemToGive = mound.itemType;
-                                } else if (distFromCenter > grassRadius) {
+                                } else if (distFromCenter > sandRadius) {
                                     itemToGive = sandItemName;
-                                } else {
+                                } else if (distFromCenter < dirtRadius) {
                                     itemToGive = dirtItemName;
+                                } else {
+                                    itemToGive = (Math.random() > 0.5) ? dirtItemName : sandItemName;
                                 }
                                 addItemToInventory(backpackItems, { name: itemToGive, quantity: quantityToGive });
                                 updateBackpackDisplay();
@@ -6981,10 +7004,12 @@
                                     quantityToGive = 1;
                                 } else if (mound.itemType) {
                                     itemToGive = mound.itemType;
-                                } else if (distFromCenter > grassRadius) {
+                                } else if (distFromCenter > sandRadius) {
                                     itemToGive = sandItemName;
-                                } else {
+                                } else if (distFromCenter < dirtRadius) {
                                     itemToGive = dirtItemName;
+                                } else {
+                                    itemToGive = (Math.random() > 0.5) ? dirtItemName : sandItemName;
                                 }
                                 addItemToInventory(backpackItems, { name: itemToGive, quantity: quantityToGive });
                                 updateBackpackDisplay();
@@ -7881,8 +7906,12 @@
 
                                 if (hitPoint.y < getSurfaceHeight(hitPoint.x, hitPoint.z) - 5.0) {
                                     material = "Pedra";
-                                } else if (distFromCenter > grassRadius) {
+                                } else if (distFromCenter > sandRadius) {
                                     material = "Areia";
+                                } else if (distFromCenter < dirtRadius) {
+                                    material = "Terra";
+                                } else {
+                                    material = "Terra/Areia";
                                 }
                                 interactionHintText = isHoldingTerra ? `(Botão Esq.) Colocar ${heldItem.name === sandItemName ? "Areia" : "Terra"}` : `(Botão Esq.) Cavar ${material}`;
                             }
