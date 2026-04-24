@@ -2281,7 +2281,7 @@
             const newMound = {
                 x: mx,
                 z: mz,
-                radius: (isHorizontal ? 3.0 : 4.0) * (hfGridSize / worldSize), // Raio reduzido para cavagem precisa em paredes
+                radius: (isHorizontal ? 4.0 : 7.0) * (hfGridSize / worldSize), // Aumentado para garantir visibilidade na grade 200x200
                 isPrecise: isHorizontal,
                 originalHeight: naturalY,
                 targetFloorHeight: naturalY,
@@ -4205,38 +4205,86 @@
                             const index = vIdx * 3;
                             vertices[index + 1] = height;
 
-                            // Feedback visual temporário
-                            const vx = (i / (hfGridSize - 1) - 0.5) * worldSize;
-                            const vz = (j / (hfGridSize - 1) - 0.5) * worldSize;
-                            const dist = Math.sqrt(vx * vx + vz * vz);
-                            if (dist < beachRadius) { // Usando beachRadius em vez de fixo 280
+                            // Feedback visual (textura pura)
+                            const dx = i - affectedMound.x;
+                            const dz = cannonJ - affectedMound.z;
+                            const distSq = dx * dx + dz * dz;
+
+                            if (distSq < (affectedMound.radius + 0.3) * (affectedMound.radius + 0.3)) {
                                 if (affectedMound.itemType === dirtItemName) {
                                     colors[vIdx * 3] = 0.0;
+                                    colors[vIdx * 3 + 1] = 1.0; // Garante que não seja tratado como buraco
                                 } else if (affectedMound.itemType === sandItemName) {
+                                    colors[vIdx * 3] = 1.0; // Garante que não seja tratado como buraco
                                     colors[vIdx * 3 + 1] = 0.0;
                                 } else {
                                     // Cavagem (ou item sem tipo): ambos os canais para sinalizar buraco
                                     colors[vIdx * 3] = 0.0;
                                     colors[vIdx * 3 + 1] = 0.0;
                                 }
-                                const existingIdx = modifiedVertices.findIndex(mv => mv.index === vIdx);
-                                if (existingIdx !== -1) {
-                                    modifiedVertices[existingIdx].time = now;
-                                } else {
-                                    modifiedVertices.push({ index: vIdx, time: now });
-                                }
-                                geom.attributes.color.needsUpdate = true;
                             }
+                            const existingIdx = modifiedVertices.findIndex(mv => mv.index === vIdx);
+                            if (existingIdx !== -1) {
+                                modifiedVertices[existingIdx].time = now;
+                            } else {
+                                modifiedVertices.push({ index: vIdx, time: now });
+                            }
+                            geom.attributes.color.needsUpdate = true;
                         }
                     }
                 } else {
                     // Sincronização completa
+                    const now = Date.now();
+                    // Primeiro sincroniza altura e reseta cores para todos os vértices (O(V))
                     for (let j = 0; j < hfGridSize; j++) {
                         const cannonJ = (hfGridSize - 1) - j;
                         for (let i = 0; i < hfGridSize; i++) {
                             const height = currentHfMatrix[i][cannonJ];
-                            const index = (j * hfGridSize + i) * 3;
-                            vertices[index + 1] = height;
+                            const vIdx = (j * hfGridSize + i);
+                            vertices[vIdx * 3 + 1] = height;
+                            // Reseta cores para o padrão (1.0) antes de reaplicar modificações
+                            colors[vIdx * 3] = 1.0;
+                            colors[vIdx * 3 + 1] = 1.0;
+                            colors[vIdx * 3 + 2] = 1.0;
+                        }
+                    }
+
+                    // Depois aplica cores apenas nos locais dos mounds ativos (O(M * R^2))
+                    for (const mound of mounds) {
+                        if (mound.flattened) continue;
+                        const rInt = Math.ceil(mound.radius + 1.0);
+                        for (let di = -rInt; di <= rInt; di++) {
+                            for (let dj_cannon = -rInt; dj_cannon <= rInt; dj_cannon++) {
+                                const cannonI = (Math.round(mound.x) + di + hfGridSize) % hfGridSize;
+                                const cannonJ = (Math.round(mound.z) + dj_cannon + hfGridSize) % hfGridSize;
+                                const j = (hfGridSize - 1) - cannonJ;
+                                const i = cannonI;
+                                const vIdx = (j * hfGridSize + i);
+
+                                const dx = i - mound.x;
+                                const dz = cannonJ - mound.z;
+                                const distSq = dx * dx + dz * dz;
+
+                                if (distSq < (mound.radius + 0.3) * (mound.radius + 0.3)) {
+                                    if (mound.itemType === dirtItemName) {
+                                        colors[vIdx * 3] = 0.0;
+                                        colors[vIdx * 3 + 1] = 1.0;
+                                    } else if (mound.itemType === sandItemName) {
+                                        colors[vIdx * 3] = 1.0;
+                                        colors[vIdx * 3 + 1] = 0.0;
+                                    } else {
+                                        colors[vIdx * 3] = 0.0;
+                                        colors[vIdx * 3 + 1] = 0.0;
+                                    }
+                                    const existingIdx = modifiedVertices.findIndex(mv => mv.index === vIdx);
+                                    if (existingIdx !== -1) {
+                                        modifiedVertices[existingIdx].time = now;
+                                    } else {
+                                        modifiedVertices.push({ index: vIdx, time: now });
+                                    }
+                                    geom.attributes.color.needsUpdate = true;
+                                }
+                            }
                         }
                     }
                 }
@@ -5814,8 +5862,8 @@
 
                         if (targetMound) {
                             currentMound = targetMound;
-                            // Sincroniza o itemType se for um mound positivo vazio ou se estamos construindo com algo diferente
-                            if (isBuilding && currentMound.maxHeightChange > 0 && currentMound.growthStage === 0) {
+                            // Sincroniza o itemType se estamos construindo
+                            if (isBuilding) {
                                 currentMound.itemType = heldItemName;
                                 if (currentMound.holeMesh) {
                                     currentMound.holeMesh.material = (heldItemName === sandItemName && sandHoleMaterial) ? sandHoleMaterial : holeMaterial;
@@ -5856,8 +5904,8 @@
                             materialType = isStoneLayer ? 'stone' : ((currentMound.itemType === sandItemName || (heldItemName === sandItemName && isBuilding)) ? 'sand' : 'earth');
                             // Aumentado para garantir que a barra de progresso seja visível e sentida
                             baseDurability = isBuilding ? 0.3 : (isStoneLayer ? 3.0 : 1.5);
-                            // A textura de terra e a altura agora só mudam quando a barra de progresso termina
-                            // updateIslandGeometry(currentMound); // REMOVIDO: Evita aplicação imediata da textura
+                            // Aplica a textura imediatamente para feedback visual
+                            updateIslandGeometry(currentMound);
                         } else {
                             isDestroying = false;
                             return;
@@ -6826,6 +6874,7 @@
 
                         if (isBuilding) {
                             // Lógica de adicionar terra
+                            mound.lastDugAt = world.time; // Reseta o timer de cura ao interagir
                             if (mound.maxHeightChange < 0) {
                                 // Preenchendo um buraco
                                 mound.growthStage--;
@@ -6889,6 +6938,7 @@
                             createSmokeEffect(mound.position, destroyTargetColor);
                         } else {
                             // Lógica de cavar
+                            mound.lastDugAt = world.time; // Reseta o timer de cura ao interagir
                             if (mound.maxHeightChange > 0) {
                                 // Retirando terra de um monte positivo
                                 mound.growthStage--;
@@ -8667,11 +8717,12 @@
                     const progress = Math.min(1.0, elapsed / fadeDuration);
 
                     // Fade R channel (dirt) e G channel (sand)
-                    if (colors[vIdx * 3] < progress || (progress === 0.0 && colors[vIdx * 3] > 0.0)) {
+                    // Somente aumenta o valor em direção a 1.0 para evitar que o fade force o outro canal a 0.0
+                    if (colors[vIdx * 3] < progress) {
                         colors[vIdx * 3] = progress;
                         colorsChanged = true;
                     }
-                    if (colors[vIdx * 3 + 1] < progress || (progress === 0.0 && colors[vIdx * 3 + 1] > 0.0)) {
+                    if (colors[vIdx * 3 + 1] < progress) {
                         colors[vIdx * 3 + 1] = progress;
                         colorsChanged = true;
                     }
