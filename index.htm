@@ -4210,24 +4210,26 @@
                             const dz = cannonJ - affectedMound.z;
                             const distSq = dx * dx + dz * dz;
 
-                            if (distSq < (affectedMound.radius + 0.3) * (affectedMound.radius + 0.3)) {
-                                if (affectedMound.itemType === dirtItemName) {
-                                    colors[vIdx * 3] = 0.0;
-                                    colors[vIdx * 3 + 1] = 1.0; // Garante que não seja tratado como buraco
-                                } else if (affectedMound.itemType === sandItemName) {
-                                    colors[vIdx * 3] = 1.0; // Garante que não seja tratado como buraco
-                                    colors[vIdx * 3 + 1] = 0.0;
-                                } else {
-                                    // Cavagem (ou item sem tipo): ambos os canais para sinalizar buraco
-                                    colors[vIdx * 3] = 0.0;
-                                    colors[vIdx * 3 + 1] = 0.0;
+                            if (affectedMound.closingStartTime === undefined) {
+                                if (distSq < (affectedMound.radius + 0.3) * (affectedMound.radius + 0.3)) {
+                                    if (affectedMound.itemType === dirtItemName) {
+                                        colors[vIdx * 3] = 0.0;
+                                        colors[vIdx * 3 + 1] = 1.0; // Garante que não seja tratado como buraco
+                                    } else if (affectedMound.itemType === sandItemName) {
+                                        colors[vIdx * 3] = 1.0; // Garante que não seja tratado como buraco
+                                        colors[vIdx * 3 + 1] = 0.0;
+                                    } else {
+                                        // Cavagem (ou item sem tipo): ambos os canais para sinalizar buraco
+                                        colors[vIdx * 3] = 0.0;
+                                        colors[vIdx * 3 + 1] = 0.0;
+                                    }
                                 }
-                            }
-                            const existingIdx = modifiedVertices.findIndex(mv => mv.index === vIdx);
-                            if (existingIdx !== -1) {
-                                modifiedVertices[existingIdx].time = now;
-                            } else {
-                                modifiedVertices.push({ index: vIdx, time: now });
+                                const existingIdx = modifiedVertices.findIndex(mv => mv.index === vIdx);
+                                if (existingIdx !== -1) {
+                                    modifiedVertices[existingIdx].time = now;
+                                } else {
+                                    modifiedVertices.push({ index: vIdx, time: now });
+                                }
                             }
                             geom.attributes.color.needsUpdate = true;
                         }
@@ -4235,6 +4237,9 @@
                 } else {
                     // Sincronização completa
                     const now = Date.now();
+                    // Otimização: Cria um set dos índices modificados para evitar resetar cores em fade
+                    const modifiedIndices = new Set(modifiedVertices.map(mv => mv.index));
+
                     // Primeiro sincroniza altura e reseta cores para todos os vértices (O(V))
                     for (let j = 0; j < hfGridSize; j++) {
                         const cannonJ = (hfGridSize - 1) - j;
@@ -4242,16 +4247,18 @@
                             const height = currentHfMatrix[i][cannonJ];
                             const vIdx = (j * hfGridSize + i);
                             vertices[vIdx * 3 + 1] = height;
-                            // Reseta cores para o padrão (1.0) antes de reaplicar modificações
-                            colors[vIdx * 3] = 1.0;
-                            colors[vIdx * 3 + 1] = 1.0;
-                            colors[vIdx * 3 + 2] = 1.0;
+                            // Reseta cores para o padrão (1.0) apenas se não estiver em processo de fade
+                            if (!modifiedIndices.has(vIdx)) {
+                                colors[vIdx * 3] = 1.0;
+                                colors[vIdx * 3 + 1] = 1.0;
+                                colors[vIdx * 3 + 2] = 1.0;
+                            }
                         }
                     }
 
                     // Depois aplica cores apenas nos locais dos mounds ativos (O(M * R^2))
                     for (const mound of mounds) {
-                        if (mound.flattened) continue;
+                        if (mound.flattened || mound.closingStartTime !== undefined) continue;
                         const rInt = Math.ceil(mound.radius + 1.0);
                         for (let di = -rInt; di <= rInt; di++) {
                             for (let dj_cannon = -rInt; dj_cannon <= rInt; dj_cannon++) {
