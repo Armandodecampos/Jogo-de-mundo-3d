@@ -2287,6 +2287,7 @@
                 targetFloorHeight: naturalY,
                 height: 0, // Inicia sem alteração na altura
                 maxHeightChange: isPositive ? 1.0 : (isHorizontal ? (hitPoint.y - naturalY) : -1.0),
+                isHole: !isPositive && (hitPoint.y < naturalY + 0.1), // NOVO: Só cura se for um buraco real abaixo do nível natural
                 flattened: false,
                 position: new THREE.Vector3(vx, isHorizontal ? hitPoint.y : naturalY, vz),
                 mesh: holeGroup,
@@ -7675,8 +7676,8 @@
             // NOVO: Lógica para fechar buracos inativos (curar terreno após 10 segundos)
             for (let i = visualMounds.length - 1; i >= 0; i--) {
                 const mound = visualMounds[i];
-                // Cura apenas buracos (maxHeightChange < 0) após 30 segundos de inatividade
-                if (mound !== currentMound && mound.maxHeightChange < 0 && world.time - mound.lastDugAt > 30) {
+                // Cura apenas buracos reais abaixo do nível natural (isHole) após 30 segundos de inatividade
+                if (mound !== currentMound && mound.isHole && world.time - mound.lastDugAt > 30) {
                     mound.closingStartTime = undefined;
                     closingMounds.push(mound);
                     visualMounds.splice(i, 1);
