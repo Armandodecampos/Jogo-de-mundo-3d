@@ -1115,6 +1115,7 @@
         let rainFilterNode = null;
         let rainGainNode = null;
         let lastWeatherChange = 0; // Controle de tempo para mudanças climáticas
+        let lastGrassGrowthTime = 0; // Controle de tempo para crescimento gradual de grama
         let nextWeatherDuration = 60; // Duração da fase climática atual
         let cloudMaterial = null; // Material compartilhado das nuvens
         let rainCloud = {
@@ -2954,9 +2955,11 @@
             return false;
         }
 
-        function respawnCapim() {
+        function respawnCapim(limit = 20) {
             let totalAttempts = 0;
-            while (capimClusters.length < targetCapimCount && totalAttempts < 20) {
+            let spawnedCount = 0;
+            const maxAttempts = Math.max(limit * 10, 20);
+            while (capimClusters.length < targetCapimCount && spawnedCount < limit && totalAttempts < maxAttempts) {
                 totalAttempts++;
                 const angle = Math.random() * Math.PI * 2;
                 const dist = Math.random() * grassRadius;
@@ -2967,9 +2970,11 @@
                 if (y > waterLevel + 0.5 && y < 25) {
                     if (!isAreaOccupiedByConstruction(x, z, 2.0) && !isPositionOccupied(x, z, 4.0)) {
                         createCapim(new THREE.Vector3(x, y, z));
+                        spawnedCount++;
                     }
                 }
             }
+            return spawnedCount;
         }
 
         function respawnStone() {
@@ -6475,8 +6480,9 @@
                 grassDensitySlider.addEventListener('input', () => {
                     const newVal = parseInt(grassDensitySlider.value);
                     if (newVal > targetCapimCount) {
+                        const amountToSpawn = newVal - capimClusters.length;
                         targetCapimCount = newVal;
-                        if (isWorldReady) respawnCapim();
+                        if (isWorldReady && amountToSpawn > 0) respawnCapim(amountToSpawn);
                     } else {
                         targetCapimCount = newVal;
                         // Remoção imediata se diminuir a densidade
@@ -7115,7 +7121,6 @@
                             addItemToInventory(backpackItems, { name: capimItemName, quantity: 1 });
                             updateBackpackDisplay();
                             createSmokeEffect(cluster.position, destroyTargetColor);
-                            respawnCapim(); // Respawn trigger to maintain population
                         }
                         destructionComplete = true;
                         isDestroying = false;
@@ -7564,8 +7569,15 @@
                         });
                     }
                 });
-                respawnCapim();
                 respawnTree();
+            }
+
+            // Nature growth: gradually spawn grass clusters
+            if (world.time - lastGrassGrowthTime >= 10) {
+                lastGrassGrowthTime = world.time;
+                if (capimClusters.length < targetCapimCount) {
+                    respawnCapim(1);
+                }
             }
 
             // Verificação de pedras e queda de meteoro: 1 vez ao dia em horário aleatório
@@ -9042,6 +9054,8 @@
             Object.defineProperty(window, 'destroyProgress', { get: () => destroyProgress });
             Object.defineProperty(window, 'targetDestroyTime', { get: () => targetDestroyTime });
             window.capimClusters = capimClusters;
+            Object.defineProperty(window, 'targetCapimCount', { get: () => targetCapimCount, set: (v) => { targetCapimCount = v; } });
+            Object.defineProperty(window, 'lastGrassGrowthTime', { get: () => lastGrassGrowthTime, set: (v) => { lastGrassGrowthTime = v; } });
             window.capimFreeIndices = capimFreeIndices;
             window.capimInstancedMeshes = capimInstancedMeshes;
             window.raycastTargets = raycastTargets;
