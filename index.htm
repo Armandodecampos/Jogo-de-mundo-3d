@@ -2303,12 +2303,6 @@
             visualMounds.push(newMound);
             mounds.push(newMound);
 
-            // NOVO: Remove capim próximo se estiver cavando um buraco
-            if (!isPositive) {
-                const worldStep = worldSize / hfGridSize;
-                const removalRadius = (newMound.radius + 0.5) * worldStep;
-                removeCapimNear(newMound.position, removalRadius);
-            }
 
             // updateIslandGeometry(newMound); // REMOVIDO: Não atualiza imediatamente ao cavar
             return newMound;
@@ -5960,8 +5954,6 @@
                             materialType = isStoneLayer ? 'stone' : ((currentMound.itemType === sandItemName || (heldItemName === sandItemName && isBuilding)) ? 'sand' : 'earth');
                             // Aumentado para garantir que a barra de progresso seja visível e sentida
                             baseDurability = isBuilding ? 0.3 : (isStoneLayer ? 3.0 : 1.5);
-                            // Aplica a textura imediatamente para feedback visual
-                            updateIslandGeometry(currentMound);
                         } else {
                             isDestroying = false;
                             return;
@@ -6977,6 +6969,11 @@
                                     const baseScale = moundGrowthStages[mound.growthStage - 1];
                                     mound.mesh.scale.set(baseScale, baseScale, baseScale);
                                 }
+                                // NOVO: Remove capim próximo conforme o monte cresce
+                                const worldStep = worldSize / hfGridSize;
+                                const removalRadius = (mound.radius + 0.5) * worldStep;
+                                removeCapimNear(mound.position, removalRadius);
+
                                 terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
                             }
 
@@ -9051,6 +9048,7 @@
             window.updateRaycastTargets = updateRaycastTargets;
             window.createMound = createMound;
             window.removeCapimNear = removeCapimNear;
+            window.createCapim = createCapim;
             window.isAreaOccupiedByConstruction = isAreaOccupiedByConstruction;
             window.mounds = mounds;
             window.islandMeshes = islandMeshes;
