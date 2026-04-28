@@ -41,21 +41,23 @@ test('Digging removes nearby grass', async ({ page }) => {
   expect(grassCountBefore).toBeGreaterThan(0);
 
   // Dig at (10, 10)
-  await page.evaluate(() => {
+  const removalRadius = await page.evaluate(() => {
     const intersect = {
       point: new window.THREE.Vector3(10, window.getSurfaceHeight(10, 10), 10),
       face: { normal: new window.THREE.Vector3(0, 1, 0) },
       object: window.islandMeshes[4].mesh
     };
-    window.createMound(intersect, false);
+    const mound = window.createMound(intersect, false);
+    const worldStep = 1200 / 200; // worldSize / hfGridSize
+    return (mound.radius + 0.5) * worldStep;
   });
 
-  // Verify grass was removed
-  let grassCountAfter = await page.evaluate(() => {
+  // Verify grass was removed within the calculated radius
+  let grassCountAfter = await page.evaluate((radius) => {
     const pos = new window.THREE.Vector3(10, 0, 10);
     return window.capimClusters.filter(c =>
-        window.calculateWrappedDistance(pos, c.position) < 2.0
+        window.calculateWrappedDistance(pos, c.position) < radius
     ).length;
-  });
+  }, removalRadius);
   expect(grassCountAfter).toBe(0);
 });
