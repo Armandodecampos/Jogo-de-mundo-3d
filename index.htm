@@ -2847,11 +2847,10 @@
                 if (k < numBlades) {
                     const angle = Math.random() * Math.PI * 2;
                     const dist = Math.random() * 0.05; // Base bem junta
-                    bladePos.set(
-                        position.x + Math.cos(angle) * dist,
-                        position.y,
-                        position.z + Math.sin(angle) * dist
-                    );
+                    const bx = position.x + Math.cos(angle) * dist;
+                    const bz = position.z + Math.sin(angle) * dist;
+                    const by = window.getActualHeight(bx, bz);
+                    bladePos.set(bx, by, bz);
                     const h = 0.8 + Math.random() * 1.0;
                     const w = 0.6 + Math.random() * 0.5; // Mais finas
                     scale.set(w, h, w);
@@ -4758,11 +4757,36 @@
             window.getActualHeight = function(x, z) {
                 if (!window.currentHfMatrix) return window.getSurfaceHeight(x, z);
                 const step = worldSize / (hfGridSize - 1);
-                const mx = Math.round((x + worldSize / 2) / step);
-                const mz = Math.round((worldSize / 2 - z) / step);
-                const i = (mx % hfGridSize + hfGridSize) % hfGridSize;
-                const j = (mz % hfGridSize + hfGridSize) % hfGridSize;
-                return window.currentHfMatrix[i][j];
+                // Calcula as coordenadas fracionárias na grade do heightfield
+                const mx = (x + worldSize / 2) / step;
+                const mz = (worldSize / 2 - z) / step;
+
+                // Índices inteiros dos quatro vizinhos (com wrapping toroidal)
+                const i0 = Math.floor(mx);
+                const j0 = Math.floor(mz);
+                const i1 = i0 + 1;
+                const j1 = j0 + 1;
+
+                // Frações para interpolação
+                const fi = mx - i0;
+                const fj = mz - j0;
+
+                const getHeight = (idxI, idxJ) => {
+                    const i = (idxI % hfGridSize + hfGridSize) % hfGridSize;
+                    const j = (idxJ % hfGridSize + hfGridSize) % hfGridSize;
+                    return window.currentHfMatrix[i][j];
+                };
+
+                // Interpolação bilinear
+                const h00 = getHeight(i0, j0);
+                const h10 = getHeight(i1, j0);
+                const h01 = getHeight(i0, j1);
+                const h11 = getHeight(i1, j1);
+
+                const h_top = h00 * (1 - fi) + h10 * fi;
+                const h_bottom = h01 * (1 - fi) + h11 * fi;
+
+                return h_top * (1 - fj) + h_bottom * fj;
             }
 
             const hfMatrix = [];
@@ -9093,6 +9117,7 @@
             window.capimInstancedMeshes = capimInstancedMeshes;
             window.raycastTargets = raycastTargets;
             window.updateRaycastTargets = updateRaycastTargets;
+            window.respawnCapim = respawnCapim;
             window.createMound = createMound;
             window.removeCapimNear = removeCapimNear;
             window.createCapim = createCapim;
