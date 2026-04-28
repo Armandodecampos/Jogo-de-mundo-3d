@@ -4253,7 +4253,7 @@
                             const dz = cannonJ - affectedMound.z;
                             const distSq = dx * dx + dz * dz;
 
-                            if (affectedMound.closingStartTime === undefined) {
+                            if (affectedMound.closingStartTime === undefined && affectedMound.growthStage >= moundGrowthStages.length) {
                                 if (distSq < (affectedMound.radius + 0.3) * (affectedMound.radius + 0.3)) {
                                     if (affectedMound.itemType === dirtItemName) {
                                         colors[vIdx * 3] = 0.0;
@@ -4301,7 +4301,7 @@
 
                     // Depois aplica cores apenas nos locais dos mounds ativos (O(M * R^2))
                     for (const mound of mounds) {
-                        if (mound.flattened || mound.closingStartTime !== undefined) continue;
+                        if (mound.flattened || mound.closingStartTime !== undefined || mound.growthStage < moundGrowthStages.length) continue;
                         const rInt = Math.ceil(mound.radius + 1.0);
                         for (let di = -rInt; di <= rInt; di++) {
                             for (let dj_cannon = -rInt; dj_cannon <= rInt; dj_cannon++) {
@@ -6960,6 +6960,11 @@
                                     isDestroying = false;
                                     progressContainer.style.display = 'none';
                                     currentMound = null;
+
+                                    // NOVO: Remove capim próximo quando o monte finaliza
+                                    const worldStep = worldSize / hfGridSize;
+                                    const removalRadius = (mound.radius + 0.5) * worldStep;
+                                    removeCapimNear(mound.position, removalRadius);
                                 } else {
                                     mound.height = 1.0 * mound.growthStage / moundGrowthStages.length;
                                     destroyProgress = 0;
@@ -6969,10 +6974,6 @@
                                     const baseScale = moundGrowthStages[mound.growthStage - 1];
                                     mound.mesh.scale.set(baseScale, baseScale, baseScale);
                                 }
-                                // NOVO: Remove capim próximo conforme o monte cresce
-                                const worldStep = worldSize / hfGridSize;
-                                const removalRadius = (mound.radius + 0.5) * worldStep;
-                                removeCapimNear(mound.position, removalRadius);
 
                                 terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
                             }
@@ -7040,11 +7041,6 @@
                                 createDustCloud(mound.position, destroyTargetColor);
                                 mound.growthStage++;
 
-                                // NOVO: Remove capim próximo conforme o buraco cresce
-                                const worldStep = worldSize / hfGridSize;
-                                const removalRadius = (mound.radius + 0.5) * worldStep;
-                                removeCapimNear(mound.position, removalRadius);
-
                                 // Gain 1 terra/sand or 10 stones for each stage of digging
                                 const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
                                 let itemToGive;
@@ -7069,6 +7065,10 @@
                                         mound.mesh.scale.set(finalScale, finalScale, finalScale);
                                     }
 
+                                    // NOVO: Remove capim próximo quando o buraco finaliza
+                                    const worldStep = worldSize / hfGridSize;
+                                    const removalRadius = (mound.radius + 0.5) * worldStep;
+                                    removeCapimNear(mound.position, removalRadius);
 
                                     destructionComplete = true;
                                     isDestroying = false;
