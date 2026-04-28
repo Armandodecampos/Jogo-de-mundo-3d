@@ -2305,7 +2305,8 @@
 
             // NOVO: Remove capim próximo se estiver cavando um buraco
             if (!isPositive) {
-                removeCapimNear(newMound.position, 2.0);
+                const visualRadiusMeters = (newMound.radius + 0.3) * (worldSize / (hfGridSize - 1));
+                removeCapimNear(newMound.position, visualRadiusMeters);
             }
 
             // updateIslandGeometry(newMound); // REMOVIDO: Não atualiza imediatamente ao cavar
@@ -2941,7 +2942,8 @@
             for (const mound of mounds) {
                 if (mound.flattened) continue;
                 const dist = calculateWrappedDistance(new THREE.Vector3(x, mound.position.y, z), mound.position);
-                if (dist < radius) return true;
+                const visualRadiusMeters = (mound.radius + 0.3) * (worldSize / (hfGridSize - 1));
+                if (dist < Math.max(radius, visualRadiusMeters)) return true;
             }
 
             return false;
@@ -7040,7 +7042,8 @@
                                 mound.growthStage++;
 
                                 // NOVO: Remove capim próximo conforme o buraco cresce
-                                removeCapimNear(mound.position, 2.0);
+                                const visualRadiusMeters = (mound.radius + 0.3) * (worldSize / (hfGridSize - 1));
+                                removeCapimNear(mound.position, visualRadiusMeters);
 
                                 // Gain 1 terra/sand or 10 stones for each stage of digging
                                 const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
@@ -9045,6 +9048,7 @@
             window.updateRaycastTargets = updateRaycastTargets;
             window.createMound = createMound;
             window.removeCapimNear = removeCapimNear;
+            window.isAreaOccupiedByConstruction = isAreaOccupiedByConstruction;
             window.mounds = mounds;
             window.islandMeshes = islandMeshes;
             window.visualMounds = visualMounds;

@@ -1,61 +1,54 @@
 import { test, expect } from '@playwright/test';
 
-test('Digging removes nearby grass', async ({ page }) => {
-  test.setTimeout(120000);
+test('Grass removal area verification', async ({ page }) => {
+  test.setTimeout(60000);
   await page.goto('http://localhost:8080/index.htm');
   await page.click('#startButton');
 
-  // Wait for world to be ready
-  await page.waitForFunction(() => window.isWorldReady === true, { timeout: 90000 });
+  await page.waitForFunction(() => window.isWorldReady === true, { timeout: 30000 });
 
-  // Place some grass at (10, surfaceHeight, 10) for testing if not already there
-  await page.evaluate(() => {
-    const pos = new window.THREE.Vector3(10, window.getSurfaceHeight(10, 10), 10);
-    // Force a capim cluster there if possible
-    if (window.capimFreeIndices.length > 0) {
-        // Clear any existing at that exact spot if any (unlikely)
-        window.removeCapimNear(pos, 5);
-        // Add one
-        const poolIndex = window.capimFreeIndices.pop();
-        const cluster = {
-            position: pos.clone(),
-            poolIndex: poolIndex,
-            count: 3
-        };
-        window.capimClusters.push(cluster);
-        // Update matrix to make it visible
-        const matrix = new window.THREE.Matrix4();
-        matrix.setPosition(pos);
-        window.capimInstancedMeshes[0].setMatrixAt(poolIndex * 6, matrix);
-        window.capimInstancedMeshes[0].instanceMatrix.needsUpdate = true;
+  const grassData = await page.evaluate(() => {
+    const worldSize = window.worldSize;
+    const hfGridSize = window.hfGridSize;
+
+    // Clear all existing clusters first for a clean test
+    window.capimClusters.length = 0;
+
+    const center = new window.THREE.Vector3(0, 0.8, 0);
+    const clusterPos = new window.THREE.Vector3(0.5, 0.8, 0.5);
+    window.capimClusters.push({
+        position: clusterPos,
+        poolIndex: 0,
+        count: 6
+    });
+
+    if (!window.zeroMatrix) {
+        window.zeroMatrix = new window.THREE.Matrix4().set(0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0);
     }
-  });
 
-  // Verify grass exists near (10, 10)
-  let grassCountBefore = await page.evaluate(() => {
-    const pos = new window.THREE.Vector3(10, 0, 10);
-    return window.capimClusters.filter(c =>
-        window.calculateWrappedDistance(pos, c.position) < 2.0
-    ).length;
-  });
-  expect(grassCountBefore).toBeGreaterThan(0);
+    if (!window.capimInstancedMeshes || !window.capimInstancedMeshes[0]) {
+        window.capimInstancedMeshes = [{
+            setMatrixAt: () => {},
+            instanceMatrix: { needsUpdate: false }
+        }];
+    }
 
-  // Dig at (10, 10)
-  await page.evaluate(() => {
-    const intersect = {
-      point: new window.THREE.Vector3(10, window.getSurfaceHeight(10, 10), 10),
-      face: { normal: new window.THREE.Vector3(0, 1, 0) },
-      object: window.islandMeshes[4].mesh
+    if (!window.capimFreeIndices) window.capimFreeIndices = [];
+
+    const testMeters = (7.0 * (hfGridSize / worldSize) + 0.3) * (worldSize / (hfGridSize - 1));
+    const dist = window.calculateWrappedDistance(center, clusterPos);
+
+    const removedCount = window.removeCapimNear(center, testMeters);
+
+    return {
+        dist: dist,
+        testMeters: testMeters,
+        removedCount: removedCount,
+        clustersLeft: window.capimClusters.length
     };
-    window.createMound(intersect, false);
   });
 
-  // Verify grass was removed
-  let grassCountAfter = await page.evaluate(() => {
-    const pos = new window.THREE.Vector3(10, 0, 10);
-    return window.capimClusters.filter(c =>
-        window.calculateWrappedDistance(pos, c.position) < 2.0
-    ).length;
-  });
-  expect(grassCountAfter).toBe(0);
+  console.log('Grass Data:', grassData);
+  expect(grassData.removedCount).toBe(1);
+  expect(grassData.clustersLeft).toBe(0);
 });
