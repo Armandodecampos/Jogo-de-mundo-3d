@@ -2910,7 +2910,7 @@
             return removedCount;
         }
 
-        function isAreaOccupiedByConstruction(x, z, radius = 2.0) {
+        function isAreaOccupiedByConstruction(x, z, radius = 2.0, allowDirtMounds = false) {
             const pos = new THREE.Vector3(x, 0, z);
 
             // Check placed constructions (blocks, floors, chests)
@@ -2937,6 +2937,9 @@
             // NOVO: Verifica se a área possui montes ou buracos
             for (const mound of mounds) {
                 if (mound.flattened) continue;
+                // Se permitirmos montes de terra (para crescimento de grama), ignoramos montes positivos de terra
+                if (allowDirtMounds && mound.itemType === dirtItemName && mound.maxHeightChange > 0) continue;
+
                 const dist = calculateWrappedDistance(new THREE.Vector3(x, mound.position.y, z), mound.position);
                 const worldStep = worldSize / hfGridSize;
                 const moundWorldRadius = (mound.radius + 0.5) * worldStep;
@@ -2961,14 +2964,29 @@
             const maxAttempts = Math.max(limit * 10, 20);
             while (capimClusters.length < targetCapimCount && spawnedCount < limit && totalAttempts < maxAttempts) {
                 totalAttempts++;
-                const angle = Math.random() * Math.PI * 2;
-                const dist = Math.random() * grassRadius;
-                const x = Math.cos(angle) * dist;
-                const z = Math.sin(angle) * dist;
-                const y = window.getSurfaceHeight(x, z);
+
+                let x, z, y;
+                // 30% de chance de tentar crescer grama em um monte de terra existente
+                const dirtMounds = mounds.filter(m => !m.flattened && m.itemType === dirtItemName && m.maxHeightChange > 0);
+                if (Math.random() < 0.3 && dirtMounds.length > 0) {
+                    const mound = dirtMounds[Math.floor(Math.random() * dirtMounds.length)];
+                    // Pequena variação aleatória ao redor do centro do monte
+                    const angle = Math.random() * Math.PI * 2;
+                    const r = Math.random() * (mound.radius * (worldSize / hfGridSize)) * 0.8;
+                    x = mound.position.x + Math.cos(angle) * r;
+                    z = mound.position.z + Math.sin(angle) * r;
+                    y = window.getActualHeight(x, z);
+                } else {
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = Math.random() * grassRadius;
+                    x = Math.cos(angle) * dist;
+                    z = Math.sin(angle) * dist;
+                    y = window.getActualHeight(x, z);
+                }
 
                 if (y > waterLevel + 0.5 && y < 25) {
-                    if (!isAreaOccupiedByConstruction(x, z, 2.0) && !isPositionOccupied(x, z, 4.0)) {
+                    // Permitimos crescer em montes de terra (allowDirtMounds = true)
+                    if (!isAreaOccupiedByConstruction(x, z, 2.0, true) && !isPositionOccupied(x, z, 4.0)) {
                         createCapim(new THREE.Vector3(x, y, z));
                         spawnedCount++;
                     }
@@ -3025,15 +3043,19 @@
             let attempts = 0;
             while (capimClusters.length < targetCapimCount && attempts < targetCapimCount * 5) {
                 attempts++;
+
+                let x, z, y;
+                // Em populateCapim (início do jogo), geralmente não há montes,
+                // mas usamos getActualHeight e allowDirtMounds para consistência total.
                 const angle = Math.random() * Math.PI * 2;
                 const dist = Math.random() * grassRadius;
-                const x = Math.cos(angle) * dist;
-                const z = Math.sin(angle) * dist;
-                const y = window.getSurfaceHeight(x, z);
+                x = Math.cos(angle) * dist;
+                z = Math.sin(angle) * dist;
+                y = window.getActualHeight(x, z);
 
                 // Coloca capim apenas se estiver acima do nível da água e na zona de terra
                 if (y > waterLevel + 0.5 && y < 25) {
-                    if (!isAreaOccupiedByConstruction(x, z, 2.0)) {
+                    if (!isAreaOccupiedByConstruction(x, z, 2.0, true)) {
                         createCapim(new THREE.Vector3(x, y, z));
                     }
                 }
@@ -4731,6 +4753,17 @@
                 return height + mountainHeight;
             }
             window.getSurfaceHeight = getSurfaceHeight;
+
+            // Função para pegar a altura real incluindo todos os montes de terra e areia ativos
+            window.getActualHeight = function(x, z) {
+                if (!window.currentHfMatrix) return window.getSurfaceHeight(x, z);
+                const step = worldSize / (hfGridSize - 1);
+                const mx = Math.round((x + worldSize / 2) / step);
+                const mz = Math.round((worldSize / 2 - z) / step);
+                const i = (mx % hfGridSize + hfGridSize) % hfGridSize;
+                const j = (mz % hfGridSize + hfGridSize) % hfGridSize;
+                return window.currentHfMatrix[i][j];
+            }
 
             const hfMatrix = [];
             for (let i = 0; i < hfGridSize; i++) { // i é o índice X local do Cannon
