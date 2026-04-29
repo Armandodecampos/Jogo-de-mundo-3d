@@ -453,11 +453,11 @@
                 <input type="range" id="renderDistanceSlider" min="40" max="400" value="250" class="w-full">
             </div>
             <div class="option-item">
-                <label for="grassDensitySlider" class="flex justify-between w-full">
-                    <span>Densidade de Grama</span>
-                    <span id="grassDensityValue">300</span>
+                <label for="capimDensitySlider" class="flex justify-between w-full">
+                    <span>Densidade de Capim</span>
+                    <span id="capimDensityValue">300</span>
                 </label>
-                <input type="range" id="grassDensitySlider" min="1" max="10000" value="300" class="w-full">
+                <input type="range" id="capimDensitySlider" min="1" max="10000" value="300" class="w-full">
             </div>
             <div class="option-item">
                 <label for="treeDensitySlider" class="flex justify-between w-full">
@@ -670,7 +670,7 @@
         const seabedLevel = -20.0; // NOVO: Nível do fundo do mar
         let stoneLayerLevel = -4.2; // NOVO: Nível onde começa a pedra (5 unidades de terra)
         const bedrockLevel = -20.0; // NOVO: Camada indestrutível (10 unidades de pedra depois da terra)
-        const grassRadius = 100.0; window.grassRadius = grassRadius; // NOVO: Raio da grama
+        const capimRadius = 100.0; window.capimRadius = capimRadius; // NOVO: Raio da capim
         const beachRadius = 200.0; window.beachRadius = beachRadius; // NOVO: Raio da praia (aumentado de 120.0)
         let renderDistance = parseInt(localStorage.getItem('renderDistance')) || 250; // Distância de renderização para objetos
         let frameCount = 0;
@@ -2108,7 +2108,7 @@
             while (capimClusters.length < targetCapimCount && totalAttempts < 20) {
                 totalAttempts++;
                 const angle = Math.random() * Math.PI * 2;
-                const dist = Math.random() * grassRadius;
+                const dist = Math.random() * capimRadius;
                 const x = Math.cos(angle) * dist;
                 const z = Math.sin(angle) * dist;
                 const y = window.getSurfaceHeight(x, z);
@@ -2126,7 +2126,7 @@
             while (capimClusters.length < targetCapimCount && attempts < targetCapimCount * 5) {
                 attempts++;
                 const angle = Math.random() * Math.PI * 2;
-                const dist = Math.random() * grassRadius;
+                const dist = Math.random() * capimRadius;
                 const x = Math.cos(angle) * dist;
                 const z = Math.sin(angle) * dist;
                 const y = window.getSurfaceHeight(x, z);
@@ -2147,7 +2147,7 @@
             while (currentTreeCount < targetTreeCount && totalAttempts < 20) {
                 totalAttempts++;
                 const angle = Math.random() * Math.PI * 2;
-                const dist = Math.random() * grassRadius;
+                const dist = Math.random() * capimRadius;
                 const x = Math.cos(angle) * dist;
                 const z = Math.sin(angle) * dist;
                 const y = window.getSurfaceHeight(x, z);
@@ -2949,10 +2949,10 @@
                 const distance = Math.sqrt(x * x + z * z);
                 let height;
 
-                if (distance <= grassRadius) {
+                if (distance <= capimRadius) {
                     height = islandSurfaceHeight;
                 } else if (distance <= beachRadius) {
-                    const t = (distance - grassRadius) / (beachRadius - grassRadius);
+                    const t = (distance - capimRadius) / (beachRadius - capimRadius);
                     // Transição de terra firme para um pouco abaixo do nível do mar
                     height = islandSurfaceHeight * (1 - t) + (waterLevel - 0.5) * t;
                 } else {
@@ -3018,14 +3018,14 @@
 
             const groundTextureURL = "https://dl.dropbox.com/scl/fi/9vs85irmh6wxvcybemvc6/textura-de-terra.png?rlkey=oidjt8wp9dkf5vsxh1r3xaec9&st=wn7x7au3&dl=0";
             const sandTextureURL = "https://dl.dropbox.com/scl/fi/glmbudn8mnv7b7hrc41zp/Textura-de-areia.png?rlkey=gag1m2x82xv99kejun0f6f86t&st=iff4jjst&dl=0";
-            const grassTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=0"; // Textura de grama atualizada conforme solicitado
+            const capimTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=0"; // Textura de capim atualizada conforme solicitado
             const inferiorDirtTextureURL = holeTextureURL; // Usar a textura de terra 2 solicitada
             const seabedTextureURL = sandTextureURL;
 
             const islandMeshMaterial = new THREE.MeshStandardMaterial({
                 color: 0xffffff,
                 vertexColors: true
-            }); // Grass color placeholder
+            }); // Capim color placeholder
 
             for (let i = -Math.floor(numTiles / 2); i <= Math.floor(numTiles / 2); i++) {
                 for (let j = -Math.floor(numTiles / 2); j <= Math.floor(numTiles / 2); j++) {
@@ -3076,7 +3076,7 @@
                     instancedMesh.position.set(i * worldSize, 0, j * worldSize);
                     instancedMesh.frustumCulled = true;
                     // Define um bounding sphere grande o suficiente para cobrir todos os clusters
-                    // evitando que a grama suma prematuramente nas bordas do tile.
+                    // evitando que a capim suma prematuramente nas bordas do tile.
                     if (instancedMesh.geometry) {
                         if (!instancedMesh.geometry.boundingSphere) instancedMesh.geometry.computeBoundingSphere();
                         instancedMesh.geometry.boundingSphere.radius = worldSize * 0.5;
@@ -3095,12 +3095,12 @@
                         texturesRegistry.sand = sandTexture;
                         textureLoader.load(stoneTextureURL, (stoneTexture) => {
                             texturesRegistry.stone = stoneTexture;
-                            textureLoader.load(grassTextureURL, (grassTexture) => {
-                                texturesRegistry.grass = grassTexture;
+                            textureLoader.load(capimTextureURL, (capimTexture) => {
+                                texturesRegistry.capim = capimTexture;
                                 textureLoader.load(inferiorDirtTextureURL, (inferiorDirtTexture) => {
                                     texturesRegistry.inferior = inferiorDirtTexture;
                                     // Todas as texturas estão carregadas
-                                    [groundTexture, seabedTexture, sandTexture, stoneTexture, grassTexture, inferiorDirtTexture].forEach(texture => {
+                                    [groundTexture, seabedTexture, sandTexture, stoneTexture, capimTexture, inferiorDirtTexture].forEach(texture => {
                                         texture.wrapS = THREE.RepeatWrapping;
                                         texture.wrapT = THREE.RepeatWrapping;
                                     });
@@ -3108,7 +3108,7 @@
                                     seabedTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
                                     sandTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
                                     stoneTexture.repeat.set(islandRadiusTop / 16, islandRadiusTop / 16);
-                                    grassTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
+                                    capimTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
                                     inferiorDirtTexture.repeat.set(islandRadiusTop / 4, islandRadiusTop / 4);
 
                                     islandMeshMaterial.map = groundTexture;
@@ -3116,12 +3116,12 @@
                                         shader.uniforms.uSeabedTexture = { value: seabedTexture };
                                         shader.uniforms.uSandTexture = { value: sandTexture };
                                         shader.uniforms.uStoneTexture = { value: stoneTexture };
-                                        shader.uniforms.uGrassTexture = { value: grassTexture };
+                                        shader.uniforms.uCapimTexture = { value: capimTexture };
                                         shader.uniforms.uInferiorTexture = { value: inferiorDirtTexture };
                                         shader.uniforms.uWaterLevel = { value: waterLevel };
                                         shader.uniforms.uStoneLayerLevel = { value: stoneLayerLevel };
                                         shader.uniforms.uBedrockLevel = { value: bedrockLevel };
-                                        shader.uniforms.uGrassRadius = { value: grassRadius };
+                                        shader.uniforms.uCapimRadius = { value: capimRadius };
                                         shader.uniforms.uBeachRadius = { value: beachRadius };
                                         shader.uniforms.uUseTextures = { value: useTextures ? 1.0 : 0.0 };
                                         islandMeshMaterial.userData.shader = shader;
@@ -3141,12 +3141,12 @@
                                             uniform sampler2D uSeabedTexture;
                                             uniform sampler2D uSandTexture;
                                             uniform sampler2D uStoneTexture;
-                                            uniform sampler2D uGrassTexture;
+                                            uniform sampler2D uCapimTexture;
                                             uniform sampler2D uInferiorTexture;
                                             uniform float uWaterLevel;
                                             uniform float uStoneLayerLevel;
                                             uniform float uBedrockLevel;
-                                            uniform float uGrassRadius;
+                                            uniform float uCapimRadius;
                                             uniform float uBeachRadius;
                                             uniform float uUseTextures;
                                             varying vec3 vWorldPosition;
@@ -3156,28 +3156,28 @@
                                             `
                                                 vec3 seabedColor;
                                                 vec3 sandColor;
-                                                vec3 grassColor;
+                                                vec3 capimColor;
                                                 vec3 stoneColor;
                                                 vec3 inferiorColor;
 
                                                 if (uUseTextures > 0.5) {
                                                     seabedColor = texture2D(uSeabedTexture, vUv).rgb;
                                                     sandColor = texture2D(uSandTexture, vUv).rgb;
-                                                    grassColor = texture2D(uGrassTexture, vUv).rgb;
+                                                    capimColor = texture2D(uCapimTexture, vUv).rgb;
                                                     stoneColor = texture2D(uStoneTexture, vUv * 4.0).rgb;
                                                     inferiorColor = texture2D(uInferiorTexture, vUv).rgb;
                                                 } else {
                                                     seabedColor = vec3(0.1, 0.2, 0.3); // Solid seabed
                                                     sandColor = vec3(0.8, 0.7, 0.4);  // Solid sand
-                                                    grassColor = vec3(0.3, 0.5, 0.2); // Solid grass terra
+                                                    capimColor = vec3(0.3, 0.5, 0.2); // Solid capim terra
                                                     stoneColor = vec3(0.5, 0.5, 0.5); // Solid stone
                                                     inferiorColor = vec3(0.4, 0.3, 0.2); // Solid dirt
                                                 }
 
                                                 float dist = length(vWorldPosition.xz);
 
-                                                // Mistura entre areia e grama baseada no raio (praia larga)
-                                                float sandToGrassBlend = 1.0 - smoothstep(uGrassRadius, uBeachRadius, dist);
+                                                // Mistura entre areia e capim baseada no raio (praia larga)
+                                                float sandToCapimBlend = 1.0 - smoothstep(uCapimRadius, uBeachRadius, dist);
 
                                                 // Mistura fundo do mar baseada na altura
                                                 float seabedToSandBlend = smoothstep(uWaterLevel - 2.0, uWaterLevel - 0.5, vWorldPosition.y);
@@ -3189,16 +3189,16 @@
                                                 stoneBlend = max(stoneBlend, deepStoneBlend);
 
                                                 vec3 seabedSandMix = mix(seabedColor, sandColor, seabedToSandBlend);
-                                                // Tintamos a textura de terra da grama para verde
-                                                vec3 grassTinted = grassColor * vec3(0.7, 1.0, 0.4);
-                                                vec3 grassStoneMix = mix(grassTinted, stoneColor, stoneBlend);
-                                                vec3 terrainMix = mix(seabedSandMix, grassStoneMix, sandToGrassBlend);
+                                                // Tintamos a textura de terra da capim para verde
+                                                vec3 capimTinted = capimColor * vec3(0.7, 1.0, 0.4);
+                                                vec3 capimStoneMix = mix(capimTinted, stoneColor, stoneBlend);
+                                                vec3 terrainMix = mix(seabedSandMix, capimStoneMix, sandToCapimBlend);
 
                                                 // NOVO: Aplica a textura inferior provisória se vColor.r < 1.0 (sinalizado por modificação)
                                                 #ifdef USE_COLOR
                                                     float inferiorFactor = clamp(1.0 - vColor.r, 0.0, 1.0);
                                                     // Se estivermos na praia, a textura de "buraco" deve ser areia escura
-                                                    vec3 holeColor = mix(sandColor * 0.8, inferiorColor, sandToGrassBlend);
+                                                    vec3 holeColor = mix(sandColor * 0.8, inferiorColor, sandToCapimBlend);
                                                     vec3 currentInferior = (vWorldPosition.y < uStoneLayerLevel) ? stoneColor : holeColor;
                                                     terrainMix = mix(terrainMix, currentInferior, inferiorFactor);
                                                 #endif
@@ -3225,7 +3225,7 @@
                                     };
                                     islandMeshMaterial.needsUpdate = true;
                                 }, undefined, (error) => console.error('Falha ao carregar a textura de terra inferior:', error));
-                            }, undefined, (error) => console.error('Falha ao carregar a textura de grama:', error));
+                            }, undefined, (error) => console.error('Falha ao carregar a textura de capim:', error));
                         }, undefined, (error) => console.error('Falha ao carregar a textura de pedra:', error));
                     }, undefined, (error) => console.error('Falha ao carregar a textura de areia:', error));
                 }, undefined, (error) => console.error('Falha ao carregar a textura do fundo do mar:', error));
@@ -4439,14 +4439,14 @@
                 });
             }
 
-            const grassDensitySlider = document.getElementById('grassDensitySlider');
-            const grassDensityValue = document.getElementById('grassDensityValue');
-            if (grassDensitySlider && grassDensityValue) {
-                grassDensitySlider.value = targetCapimCount;
-                grassDensityValue.textContent = targetCapimCount;
-                document.getElementById('grassDensityValue').textContent = targetCapimCount;
-                grassDensitySlider.addEventListener('input', () => {
-                    const newVal = parseInt(grassDensitySlider.value);
+            const capimDensitySlider = document.getElementById('capimDensitySlider');
+            const capimDensityValue = document.getElementById('capimDensityValue');
+            if (capimDensitySlider && capimDensityValue) {
+                capimDensitySlider.value = targetCapimCount;
+                capimDensityValue.textContent = targetCapimCount;
+                document.getElementById('capimDensityValue').textContent = targetCapimCount;
+                capimDensitySlider.addEventListener('input', () => {
+                    const newVal = parseInt(capimDensitySlider.value);
                     if (newVal > targetCapimCount) {
                         targetCapimCount = newVal;
                         if (isWorldReady) respawnCapim();
@@ -4472,7 +4472,7 @@
                             }
                         }
                     }
-                    grassDensityValue.textContent = targetCapimCount;
+                    capimDensityValue.textContent = targetCapimCount;
                     localStorage.setItem('targetCapimCount', targetCapimCount);
                 });
             }
@@ -4793,7 +4793,7 @@
                                 let itemToGive;
                                 if (currentDigHeight < stoneLayerLevel) {
                                     itemToGive = stoneItemName;
-                                } else if (distFromCenter > grassRadius) {
+                                } else if (distFromCenter > capimRadius) {
                                     itemToGive = sandItemName;
                                 } else {
                                     itemToGive = dirtItemName;
@@ -5120,7 +5120,7 @@
                 }
             });
 
-            // NOVO: Culling para Grama Instanciada
+            // NOVO: Culling para Capim Instanciada
             capimInstancedMeshes.forEach(mesh => {
                 // Como são 9 tiles, verificamos a distância do centro do tile visual
                 const dist = camera.position.distanceTo(mesh.position);
@@ -5252,7 +5252,7 @@
             let mainIntersects = [];
             if (document.pointerLockElement === renderer.domElement && !pickedObjectBody && !gamePaused) {
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                // Use a pré-calculada raycastTargets para evitar percorrer milhares de objetos (como partículas e grama instanciada sem hitbox)
+                // Use a pré-calculada raycastTargets para evitar percorrer milhares de objetos (como partículas e capim instanciada sem hitbox)
                 mainIntersects = raycaster.intersectObjects(raycastTargets, true);
             }
 
@@ -5938,7 +5938,7 @@
                                 }
                             }
                             canDestroyWithHand = true;
-                            isTerraHitWithHand = true; // Sempre lime ao mirar no chão ou grama com a mão
+                            isTerraHitWithHand = true; // Sempre lime ao mirar no chão ou capim com a mão
                             break;
                         }
 

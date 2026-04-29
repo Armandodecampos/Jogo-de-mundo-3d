@@ -22,18 +22,20 @@ test('isAreaOccupiedByConstruction with mounds radius verification', async ({ pa
     };
 
     const mound = window.createMound(intersect, false);
-    const visualRadiusMeters = (mound.radius + 0.3) * (worldSize / (hfGridSize - 1));
+    const worldStep = worldSize / hfGridSize;
+    const moundWorldRadius = (mound.radius + 0.5) * worldStep;
 
-    // Check occupancy just inside the visual radius
-    const testPos = new window.THREE.Vector3(visualRadiusMeters - 0.5, 0.8, 0);
-    const isOccupied = window.isAreaOccupiedByConstruction(testPos.x, testPos.z, 0.5);
+    // Check occupancy just inside the moundWorldRadius
+    // Note: isAreaOccupiedByConstruction also adds its own 'radius' argument to the check
+    const testPos = new window.THREE.Vector3(moundWorldRadius - 0.1, 0.8, 0);
+    const isOccupied = window.isAreaOccupiedByConstruction(testPos.x, testPos.z, 0.1);
 
-    // Check occupancy just outside the visual radius
-    const testPosOutside = new window.THREE.Vector3(visualRadiusMeters + 1.0, 0.8, 0);
-    const isOccupiedOutside = window.isAreaOccupiedByConstruction(testPosOutside.x, testPosOutside.z, 0.5);
+    // Check occupancy just outside the moundWorldRadius
+    const testPosOutside = new window.THREE.Vector3(moundWorldRadius + 0.5, 0.8, 0);
+    const isOccupiedOutside = window.isAreaOccupiedByConstruction(testPosOutside.x, testPosOutside.z, 0.1);
 
     return {
-        visualRadiusMeters: visualRadiusMeters,
+        moundWorldRadius: moundWorldRadius,
         isOccupied: isOccupied,
         isOccupiedOutside: isOccupiedOutside
     };
