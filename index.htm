@@ -8115,6 +8115,7 @@
                     const islandBodies = islandMeshes.map(m => m.body);
                     const allPlaceableSurfaces = [...islandBodies, ...placedConstructionBodies];
 
+                    let targetHit = false;
                     for (let i = 0; i < intersects.length; i++) {
                         const intersectedObject = intersects[i].object;
                         const intersectedBody = intersectedObject.userData.physicsBody;
@@ -8128,6 +8129,7 @@
                         if ((intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) || (isWater && isRaft)) {
                             // Verifica a distância máxima para colocação
                             if (intersects[i].distance <= pickUpDistance + 1) { // Um pouco mais longe que pegar
+                                targetHit = true;
                                 const hitPoint = intersects[i].point;
 
 
@@ -8225,16 +8227,19 @@
                     if (canPlace) {
                         ghostBlockMesh.position.copy(placementPosition);
                         ghostBlockMesh.quaternion.copy(tempPlacementQuaternion);
+                        ghostBlockMesh.visible = true;
                         if (isShowingTerraGhost) {
                             ghostBlockMesh.material.color.setHex(currentBlockType === sandItemName ? 0xc2b280 : 0x5C4033);
                         } else {
                             ghostBlockMesh.material.color.setHex(0x00ff00); // Verde para indicar que pode ser colocado
                         }
-                    } else {
+                    } else if (targetHit) {
                         ghostBlockMesh.visible = true; // Mantém visível para mostrar a cor vermelha
                         ghostBlockMesh.material.color.setHex(0xff0000); // Vermelho para inválido
                         ghostBlockMesh.position.copy(placementPosition); // Mantém a posição para que o usuário saiba onde está tentando colocar
                         ghostBlockMesh.quaternion.copy(tempPlacementQuaternion); // Mantém a rotação
+                    } else {
+                        ghostBlockMesh.visible = false;
                     }
                 } else {
                     ghostBlockMesh.visible = false; // Garante que o ghost block esteja oculto se não estiver no modo de colocação
@@ -8873,23 +8878,6 @@
                 }
                 if (colorsChanged) {
                     geom.attributes.color.needsUpdate = true;
-                }
-            }
-
-            // Update ghostBlockMesh visibility and geometry
-            if (ghostBlockMesh) {
-                const isShowingTerraGhost = (isPrimaryToolDestroying && (currentBlockType === dirtItemName || currentBlockType === sandItemName));
-                const isTerra = currentBlockType === dirtItemName || currentBlockType === sandItemName;
-                if ((isPrimaryToolPlacing || isShowingTerraGhost) && !gamePaused) {
-                    ghostBlockMesh.visible = true;
-                    // Set color based on canPlace/crosshairColor
-                    if (crosshairColor === 'lime' && isShowingTerraGhost) {
-                        ghostBlockMesh.material.color.setHex(currentBlockType === sandItemName ? 0xc2b280 : 0x5C4033);
-                    } else {
-                        ghostBlockMesh.material.color.setHex(crosshairColor === 'lime' ? 0x00ff00 : 0xff0000);
-                    }
-                } else {
-                    ghostBlockMesh.visible = false;
                 }
             }
 
