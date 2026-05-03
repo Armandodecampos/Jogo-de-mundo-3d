@@ -689,6 +689,25 @@
             flex-direction: column;
         }
 
+        #inspectorDisplay {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.7);
+            color: #00ff00;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 1.1em;
+            z-index: 2000;
+            display: none;
+            pointer-events: none;
+            border: 1px solid #00ff00;
+            text-align: center;
+            white-space: pre-wrap;
+        }
+
     </style>
 </head>
 <body>
@@ -711,7 +730,13 @@
             <i class="fas fa-sun" id="hudWeatherIcon"></i>
             <span id="hudWeatherText">Sol</span>
         </button>
+        <button id="hudInspectorToggle" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg flex items-center space-x-2">
+            <i class="fas fa-search"></i>
+            <span id="hudInspectorText">Inspetor: OFF</span>
+        </button>
     </div>
+
+    <div id="inspectorDisplay"></div>
 
     <div id="optionsScreen">
         <h2>Menu</h2>
@@ -791,6 +816,16 @@
                 </label>
                 <button id="weatherToggle" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 rounded transition-colors mt-2">Alternar Chuva</button>
             </div>
+            <div id="inspectorToggleOption" class="option-item">
+                <label for="inspectorToggle" class="flex justify-between w-full">
+                    <span>Modo Inspetor (I)</span>
+                    <span id="inspectorStatus">Desativado</span>
+                </label>
+                <select id="inspectorToggle" class="w-full bg-gray-700 text-white p-2 rounded">
+                    <option value="false">Desativado</option>
+                    <option value="true">Ativado</option>
+                </select>
+            </div>
         </div>
         <button id="backToMenuButton" class="mt-8 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-10 rounded-lg transition-colors">Voltar</button>
     </div>
@@ -798,6 +833,7 @@
     <div id="progressContainer">
         <div id="progressBar"></div>
     </div>
+
 
     <div id="fpsCounter">FPS: 0</div>
     <div id="crosshair"></div>
@@ -1182,6 +1218,7 @@
         let isEscExit = false; // NOVO: Flag para controlar a saída do pointer lock via tecla ESC
         let isWorldReady = false; window.isWorldReady = isWorldReady; // NOVO: Flag para rastrear se o mundo está pronto para interações
         let lowPerformance = false; // NOVO: Flag para modo de baixa performance
+        let useInspector = localStorage.getItem('useInspector') === 'true'; // NOVO: Flag para o modo inspetor
         let lowFPSStart = null;
         let highFPSStart = null;
         let nextMeteorCheckTime = -1; // NOVO: Próximo horário de checagem do meteoro
@@ -5512,6 +5549,12 @@
                     }
                 }
 
+                // NOVO: Toggle Inspetor com 'I'
+                if (event.key.toLowerCase() === 'i') {
+                    if (event.repeat) return;
+                    toggleInspectorLogic();
+                }
+
                 // NOVO: Toggle escalada com 'P'
                 if (event.key.toLowerCase() === 'p') {
                     if (event.repeat) return;
@@ -6627,6 +6670,40 @@
                     toggleWeatherLogic();
                 });
             }
+
+            const inspectorToggle = document.getElementById('inspectorToggle');
+            const inspectorStatus = document.getElementById('inspectorStatus');
+            const hudInspectorToggle = document.getElementById('hudInspectorToggle');
+            const hudInspectorText = document.getElementById('hudInspectorText');
+            const inspectorDisplay = document.getElementById('inspectorDisplay');
+
+            const toggleInspectorLogic = () => {
+                useInspector = !useInspector;
+                localStorage.setItem('useInspector', useInspector);
+                applyInspectorSettings();
+            };
+
+            const applyInspectorSettings = () => {
+                if (inspectorStatus) inspectorStatus.textContent = useInspector ? "Ativado" : "Desativado";
+                if (inspectorToggle) inspectorToggle.value = useInspector.toString();
+                if (hudInspectorText) hudInspectorText.textContent = `Inspetor: ${useInspector ? "ON" : "OFF"}`;
+                if (inspectorDisplay) inspectorDisplay.style.display = useInspector ? "block" : "none";
+            };
+
+            if (inspectorToggle) {
+                inspectorToggle.addEventListener('change', () => {
+                    useInspector = inspectorToggle.value === 'true';
+                    localStorage.setItem('useInspector', useInspector);
+                    applyInspectorSettings();
+                });
+            }
+            if (hudInspectorToggle) {
+                hudInspectorToggle.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleInspectorLogic();
+                });
+            }
+            applyInspectorSettings();
 
             // Adiciona o listener para o novo botão de ícone do menu
             if (menuIconButton) {
@@ -7965,6 +8042,82 @@
                 }
             }
 
+            // NOVO: Lógica do Modo Inspetor
+            if (useInspector && !gamePaused) {
+                let inspectorText = "Céu (sky)";
+                const lookDir = new THREE.Vector3();
+                camera.getWorldDirection(lookDir);
+
+                // 1. Verificar Objetos e Terreno (Prioridade Máxima: Raycast)
+                const inspectorIntersects = raycaster.intersectObjects(raycastTargets, true);
+                if (inspectorIntersects.length > 0) {
+                    const intersect = inspectorIntersects[0];
+                    const obj = intersect.object;
+
+                    // Verificar se é água
+                    if (obj.userData.isWater) {
+                        inspectorText = "Água (water)";
+                    } else {
+                        let body = null;
+                        let current = obj;
+                        while (current) {
+                            if (current.userData && current.userData.physicsBody) {
+                                body = current.userData.physicsBody;
+                                break;
+                            }
+                            current = current.parent;
+                        }
+
+                        if (body && body.userData) {
+                            const type = body.userData.type || "Objeto";
+                            const displayName = itemDisplayNames[type] || type;
+                            inspectorText = `${displayName.split('\n')[0]} (${type})`;
+                            if (body.userData.growthStage) inspectorText = `Árvore (${body.userData.growthStage})`;
+                        } else if ((obj.userData.isApple || obj.userData.isCoconut)) {
+                            const type = obj.userData.isApple ? "maca" : "coco";
+                            inspectorText = `${obj.userData.isApple ? "Maçã" : "Coco"} (${type})`;
+                        } else {
+                            // Verificar Terreno/Bioma
+                            const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
+                            if (isIslandMesh) {
+                                const hitPoint = intersect.point;
+                                const distFromCenter = Math.sqrt(hitPoint.x ** 2 + hitPoint.z ** 2);
+                                const naturalY = getSurfaceHeight(hitPoint.x, hitPoint.z);
+
+                                if (hitPoint.y < naturalY - 4.5) {
+                                    inspectorText = "Pedra (stone_layer)";
+                                } else if (distFromCenter > capimRadius + 30) {
+                                    inspectorText = "Areia (sand)";
+                                } else if (distFromCenter > capimRadius) {
+                                    inspectorText = "Transição Terra/Areia (transition)";
+                                } else {
+                                    inspectorText = "Terra/Gramado (dirt_grass)";
+                                }
+                            } else {
+                                inspectorText = `Objeto Desconhecido (${obj.name || "unknown"})`;
+                            }
+                        }
+                    }
+                } else {
+                    // 2. Verificar Nuvens (Raycast secundário)
+                    const cloudMeshes = clouds.map(c => c.mesh);
+                    const cloudIntersects = raycaster.intersectObjects(cloudMeshes, true);
+                    if (cloudIntersects.length > 0) {
+                        inspectorText = "Nuvem (cloud)";
+                    } else {
+                        // 3. Verificar Sol e Lua (Baseado em ângulo, apenas se nada físico na frente)
+                        const sunDir = new THREE.Vector3().subVectors(sunMesh.position, camera.position).normalize();
+                        const moonDir = new THREE.Vector3().subVectors(moonMesh.position, camera.position).normalize();
+                        const sunAngle = lookDir.angleTo(sunDir);
+                        const moonAngle = lookDir.angleTo(moonDir);
+
+                        if (sunAngle < 0.05) inspectorText = "Sol (sun)";
+                        else if (moonAngle < 0.05) inspectorText = "Lua (moon)";
+                    }
+                }
+                inspectorDisplay.textContent = `Mirando em: ${inspectorText}`;
+            }
+
             // Lógica do ghost block para colocação e snapping
             if (ghostBlockMesh) {
                 // NOVO: Mostra o ghost para construção OU para destruição de terra/areia (cavagem)
@@ -9150,6 +9303,9 @@
             window.showSettingsScreen = showSettingsScreen;
             window.showOptionsScreen = showOptionsScreen;
             window.showNotification = showNotification;
+            window.toggleInspectorLogic = toggleInspectorLogic;
+            window.applyInspectorSettings = applyInspectorSettings;
+            Object.defineProperty(window, 'useInspector', { get: () => useInspector, set: (v) => { useInspector = v; applyInspectorSettings(); } });
         }
 
         // Listener de evento para o botão "Jogar"
