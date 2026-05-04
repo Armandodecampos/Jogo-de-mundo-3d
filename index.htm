@@ -1002,6 +1002,7 @@
         let showFPS = localStorage.getItem('showFPS') === 'true';
         let fpsFrames = 0;
         let fpsLastTime = performance.now();
+        let veryLowFPSCounter = 0; // Contador para evitar oscilação da chuva em FPS baixo
         let useTextures = localStorage.getItem('useTextures') !== 'false';
         let useShadows = localStorage.getItem('useShadows') !== 'false';
         let useInteractionHints = localStorage.getItem('useInteractionHints') !== 'false';
@@ -1122,6 +1123,7 @@
         let targetRainIntensity = 0; // Intensidade alvo para transições suaves
         let rainParticles = null; // Sistema de partículas da chuva
         let lastRainCameraPos = new THREE.Vector3();
+        let lastOcclusionPos = new THREE.Vector3();
         let rainOcclusionHeightmap = new Float32Array(30 * 30);
         let gameAudioContext = null;
         let audioBuffers = {};
@@ -3389,12 +3391,21 @@
                     while (positions[i * 3 + 2] > halfArea) positions[i * 3 + 2] -= halfArea * 2;
 
                     // 4. Colisão com o Occlusion Heightmap
-                    const localX = positions[i * 3];
-                    const localZ = positions[i * 3 + 2];
+                    // Usar lastOcclusionPos para indexar o mapa de oclusão corretamente,
+                    // compensando o movimento do jogador entre as atualizações do mapa.
+                    let worldX = camPos.x + positions[i * 3];
+                    let worldZ = camPos.z + positions[i * 3 + 2];
+
+                    // Wrapping toroidal básico para as coordenadas de mundo da partícula
+                    if (Math.abs(worldX - lastOcclusionPos.x) > worldSize / 2) worldX -= Math.sign(worldX - lastOcclusionPos.x) * worldSize;
+                    if (Math.abs(worldZ - lastOcclusionPos.z) > worldSize / 2) worldZ -= Math.sign(worldZ - lastOcclusionPos.z) * worldSize;
+
+                    const relX = worldX - lastOcclusionPos.x;
+                    const relZ = worldZ - lastOcclusionPos.z;
 
                     // Use Math.min/max to clamp indices safely
-                    const gx = Math.max(0, Math.min(gridSize - 1, Math.floor((localX + halfArea) / gridRes)));
-                    const gz = Math.max(0, Math.min(gridSize - 1, Math.floor((localZ + halfArea) / gridRes)));
+                    const gx = Math.max(0, Math.min(gridSize - 1, Math.floor((relX + halfArea) / gridRes)));
+                    const gz = Math.max(0, Math.min(gridSize - 1, Math.floor((relZ + halfArea) / gridRes)));
 
                     let occY = (rainOcclusionHeightmap[gz * gridSize + gx] - camPos.y) || -100;
                     if (isNaN(occY)) occY = -100;
@@ -3424,6 +3435,7 @@
 
         function updateOcclusionHeightmap() {
             const playerPos = playerBody.position;
+            lastOcclusionPos.copy(playerPos);
             const gridRes = 2; // 2 metros por célula
             const gridSize = 30; // 30x30 células (80m x 80m)
             const halfGrid = gridSize / 2;
@@ -3482,7 +3494,7 @@
                 lastWeatherChange = world.time;
 
                 // Define a próxima duração baseada no novo estado
-                nextWeatherDuration = targetRainIntensity > 0 ? (20 + Math.random() * 280) : (60 + Math.random() * 120);
+                nextWeatherDuration = targetRainIntensity > 0 ? (60 + Math.random() * 240) : (60 + Math.random() * 120);
 
                 // Chance de mudar o clima
                 if (targetRainIntensity === 0) {
@@ -3492,7 +3504,7 @@
                     }
                 } else {
                     // Se já estiver chovendo, chance de parar ou mudar de intensidade significativamente
-                    if (Math.random() < 0.6) {
+                    if (Math.random() < 0.4) {
                         targetRainIntensity = 0;
                         rainCloud.active = false;
                     } else {
@@ -6837,7 +6849,14 @@
             if (!gamePaused) {
                 // Determine true performance state for rain visibility
                 const fps = Math.round((fpsFrames * 1000) / (now - fpsLastTime)) || 30; // Fallback to 30
-                const isVeryLowPerformance = fps < 15;
+
+                // Só esconde a chuva se o FPS estiver muito baixo por vários quadros seguidos
+                if (fps < 15) {
+                    veryLowFPSCounter++;
+                } else {
+                    veryLowFPSCounter = 0;
+                }
+                const isVeryLowPerformance = veryLowFPSCounter > 10;
 
                 if (!isVeryLowPerformance) {
                     updateWeather(delta);
