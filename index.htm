@@ -5864,8 +5864,18 @@
                 if (!chestModal.classList.contains('hidden')) return;
 
                 if (event.button === 0) { // Botão esquerdo
-                    isAttemptingToDestroy = true; // NOVO: Define a intenção
-                    startDestruction();
+                    const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
+                    if (primaryActionType === 'place') {
+                        placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
+                    } else {
+                        isAttemptingToDestroy = true; // NOVO: Define a intenção
+                        startDestruction();
+                    }
+                } else if (event.button === 2) { // Botão direito
+                    const secondaryActionType = getActionType(beltItems[1]);
+                    if (secondaryActionType === 'place') {
+                        placeBlock(beltItems[1], 1);
+                    }
                 }
             });
 
@@ -5882,13 +5892,6 @@
                 if (event.button === 0) { // Botão esquerdo do mouse para cima
                     if (primaryActionType === 'grab') {
                         collectObject();
-                    }
-                    if (primaryActionType === 'place') {
-                        placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
-                    }
-                } else if (event.button === 2) { // Botão direito do mouse para cima
-                    if (secondaryActionType === 'place') {
-                        placeBlock(beltItems[1], 1);
                     }
                 }
             });
@@ -5907,7 +5910,7 @@
                 // O martelo foi removido temporariamente das ferramentas de destruição
                 if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === branchItemName || item.name === dirtItemName || item.name === sandItemName) return 'destroy';
                 // Itens de colocação
-                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === stoneItemName || item.name === campfireItemName) return 'place';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
             }
 
