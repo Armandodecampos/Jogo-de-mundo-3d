@@ -1227,6 +1227,7 @@
         let currentDayForMeteor = -1; // NOVO: Dia atual para controle de checagem
         let activeMeteors = [];
         let activeCampfires = [];
+        let heldTorchGroup, heldFireGroup, heldTorchLight; // NOVO: Elementos da tocha segurada
         const sounds = { playPlace: () => {} }; // NOVO: Objeto de sons básico para evitar erros
 
         // NOVO: Gerenciador de carregamento para rastrear quando todos os recursos são carregados
@@ -1307,6 +1308,7 @@
         const ropeItemName = 'corda';
         const fabricItemName = 'tecido';
         const campfireItemName = 'fogueira';
+        const torchItemName = 'tocha';
 
         const stoneBlockItemName = 'bloco_pedra';
         const woodenBlockItemName = 'bloco_madeira';
@@ -1350,7 +1352,8 @@
             [stoneFloorItemName]: 'Piso de Pedra',
             [ropeItemName]: 'Corda',
             [fabricItemName]: 'Tecido',
-            [campfireItemName]: 'Fogueira\nProporciona luz e calor'
+            [campfireItemName]: 'Fogueira\nProporciona luz e calor',
+            [torchItemName]: 'Tocha\nIlumina o caminho'
         };
 
         const itemWeights = {
@@ -1381,7 +1384,8 @@
             [stoneFloorItemName]: 2.0,
             [ropeItemName]: 0.5,
             [fabricItemName]: 0.3,
-            [campfireItemName]: 2.0
+            [campfireItemName]: 2.0,
+            [torchItemName]: 0.5
         };
 
         const maxWeight = 500; // Peso máximo que o jogador aguenta levar
@@ -1999,6 +2003,7 @@
             if (itemName === ropeItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Corda";
             if (itemName === fabricItemName) return "https://placehold.co/100x100/FFFFFF/000000?text=Tecido";
             if (itemName === campfireItemName) return "https://placehold.co/100x100/FF4500/FFFFFF?text=Fogueira";
+            if (itemName === torchItemName) return "https://placehold.co/100x100/FFA500/FFFFFF?text=Tocha";
             return handImageURL;
         }
         window.getItemIconURL = getItemIconURL;
@@ -4015,6 +4020,43 @@
                 blockBody.userData.fireGroup = fireGroup;
                 blockBody.userData.fireLight = light;
                 activeCampfires.push(blockBody);
+            } else if (type === torchItemName) {
+                width = 0.2; height = 0.8; depth = 0.2;
+                blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+                blockBody.addShape(blockShape);
+
+                const torchGroup = new THREE.Group();
+                const logMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+
+                const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.8, 8), logMat);
+                torchGroup.add(stick);
+
+                const fireGroup = new THREE.Group();
+                const fireMat = new THREE.MeshStandardMaterial({
+                    color: 0xff4500,
+                    transparent: true,
+                    opacity: 0.8,
+                    emissive: 0xff2200
+                });
+                for (let i = 0; i < 3; i++) {
+                    const fire = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.25, 8), fireMat);
+                    fire.position.set((Math.random() - 0.5) * 0.1, 0.35, (Math.random() - 0.5) * 0.1);
+                    fire.rotation.y = Math.random() * Math.PI;
+                    fireGroup.add(fire);
+                }
+                torchGroup.add(fireGroup);
+
+                const light = new THREE.PointLight(0xffaa00, 1.5, 6);
+                light.position.set(0, 0.4, 0);
+                torchGroup.add(light);
+
+                mesh = torchGroup;
+                initialMass = 5;
+                durability = 0.8;
+
+                blockBody.userData.fireGroup = fireGroup;
+                blockBody.userData.fireLight = light;
+                activeCampfires.push(blockBody);
             }
             else {
                 console.error('Tipo de bloco desconhecido:', type);
@@ -4456,7 +4498,40 @@
 
             // Configuração da Câmera Three.js
             window.camera = camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 5000);
+            scene.add(camera); // Adiciona a câmera à cena para que objetos filhos sejam renderizados
             camera.rotation.order = 'YXZ'; // Define a ordem de rotação para guinada (Y), inclinação (X), rolagem (Z)
+
+            // Inicializa a Tocha Segurada
+            heldTorchGroup = new THREE.Group();
+            const torchStickGeom = new THREE.CylinderGeometry(0.02, 0.02, 0.5, 8);
+            const torchStickMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            const torchStick = new THREE.Mesh(torchStickGeom, torchStickMat);
+            torchStick.rotation.x = Math.PI / 4; // Inclina a tocha para frente
+            heldTorchGroup.add(torchStick);
+
+            heldFireGroup = new THREE.Group();
+            const heldFireMat = new THREE.MeshStandardMaterial({
+                color: 0xff4500,
+                transparent: true,
+                opacity: 0.8,
+                emissive: 0xff2200
+            });
+            for (let i = 0; i < 3; i++) {
+                const fire = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.15, 8), heldFireMat);
+                fire.position.set((Math.random() - 0.5) * 0.05, 0, (Math.random() - 0.5) * 0.05);
+                fire.rotation.y = Math.random() * Math.PI;
+                heldFireGroup.add(fire);
+            }
+            heldFireGroup.position.set(0, 0.14, -0.14); // Posiciona no topo do stick inclinado
+            heldTorchGroup.add(heldFireGroup);
+
+            heldTorchLight = new THREE.PointLight(0xffaa00, 1.2, 5);
+            heldTorchLight.position.set(0, 0.2, -0.2);
+            heldTorchGroup.add(heldTorchLight);
+
+            heldTorchGroup.position.set(0.3, -0.25, -0.4); // Posiciona no canto inferior direito da tela
+            heldTorchGroup.visible = false;
+            camera.add(heldTorchGroup);
 
             // Configuração do Renderizador Three.js
             renderer = new THREE.WebGLRenderer({
@@ -5437,6 +5512,7 @@
             addItemToInventory(startingChestInventory, { name: ropeItemName, quantity: 10 });
             addItemToInventory(startingChestInventory, { name: fabricItemName, quantity: 10 });
             addItemToInventory(startingChestInventory, { name: campfireItemName, quantity: 5 });
+            addItemToInventory(startingChestInventory, { name: torchItemName, quantity: 10 });
 
             // Pega o elemento do cinto de inventário e seus slots
             inventoryBeltElement = document.getElementById('inventoryBelt');
@@ -6239,7 +6315,7 @@
                     if (!clickedBody || !clickedBody.userData) continue;
 
                     if (!clickedBody.userData.isCollectible && !clickedBody.userData.isRaft) continue;
-                    if (clickedBody.userData.type === campfireItemName) continue;
+                    if (clickedBody.userData.type === campfireItemName || clickedBody.userData.type === torchItemName) continue;
 
                     // NOVO: Se for um contêiner (contêiner/caixote), só permite guardar se estiver vazio
                     if (clickedBody.userData.isChest) {
@@ -6389,6 +6465,7 @@
                     else if (currentBlockType === raftItemName && raftMaterialMesh) materialLoaded = true; // NOVO
                     else if (currentBlockType === stoneItemName) materialLoaded = true; // Pedra sempre carregada (usa material básico)
                     else if (currentBlockType === campfireItemName) materialLoaded = true;
+                    else if (currentBlockType === torchItemName) materialLoaded = true;
 
                     if (materialLoaded) {
                         if (currentBlockType === boxItemName) {
@@ -6399,6 +6476,8 @@
                             createStone(ghostBlockMesh.position, ghostBlockMesh.quaternion);
                         } else if (currentBlockType === campfireItemName) {
                             createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, campfireItemName);
+                        } else if (currentBlockType === torchItemName) {
+                            createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, torchItemName);
                         }
                         else {
                             createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, currentBlockType);
@@ -7024,7 +7103,8 @@
                         });
                     }
                     if (cf.userData.fireLight) {
-                        cf.userData.fireLight.intensity = 1.2 + Math.sin(now * 0.005) * 0.1;
+                        const baseIntensity = cf.userData.type === torchItemName ? 1.5 : 2.5;
+                        cf.userData.fireLight.intensity = (baseIntensity - 0.2) + Math.sin(now * 0.005) * 0.2;
                     }
                 });
             }
@@ -7335,6 +7415,8 @@
                                     addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
                                 } else if (destroyTargetBody.userData.type === campfireItemName) {
                                     addItemToInventory(backpackItems, { name: branchItemName, quantity: 2 });
+                                } else if (destroyTargetBody.userData.type === torchItemName) {
+                                    addItemToInventory(backpackItems, { name: branchItemName, quantity: 1 });
                                     if (typeof activeCampfires !== 'undefined') {
                                         const cfIdx = activeCampfires.indexOf(destroyTargetBody);
                                         if (cfIdx !== -1) activeCampfires.splice(cfIdx, 1);
@@ -7965,6 +8047,24 @@
                 }
             }
 
+            // Atualiza visibilidade e animação da tocha segurada
+            const heldItem = beltItems[selectedSlotIndex];
+            if (heldItem && heldItem.name === torchItemName && !gamePaused) {
+                heldTorchGroup.visible = true;
+                // Flickering da tocha segurada
+                const flicker = Math.sin(now * 0.01) * 0.1 + (Math.random() * 0.05);
+                heldTorchLight.intensity = 1.2 + flicker;
+
+                // Animação das chamas da tocha segurada
+                heldFireGroup.children.forEach((fire, i) => {
+                    const s = 1.0 + Math.sin(now * 0.01 + i) * 0.2;
+                    fire.scale.set(s, s, s);
+                    fire.rotation.y += 0.05;
+                });
+            } else {
+                heldTorchGroup.visible = false;
+            }
+
             // Se um objeto estiver sendo segurado, atualiza sua posição para ficar na frente da câmera
             if (pickedObjectBody) {
                 const targetPosition = new THREE.Vector3();
@@ -8262,6 +8362,19 @@
                                 campfireGroup.add(fire);
                             }
                             ghostBlockMesh.add(campfireGroup);
+                        } else if (currentBlockType === torchItemName) {
+                            ghostBlockMesh.geometry = new THREE.BoxGeometry(0, 0, 0);
+                            const torchGroup = new THREE.Group();
+                            const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.8, 8), ghostBlockMaterial);
+                            torchGroup.add(stick);
+                            const fireMat = new THREE.MeshStandardMaterial({ color: 0xff4500, transparent: true, opacity: 0.4 });
+                            for (let i = 0; i < 3; i++) {
+                                const fire = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.25, 8), fireMat);
+                                fire.position.set((Math.random() - 0.5) * 0.1, 0.35, (Math.random() - 0.5) * 0.1);
+                                fire.rotation.y = Math.random() * Math.PI;
+                                torchGroup.add(fire);
+                            }
+                            ghostBlockMesh.add(torchGroup);
                         }
                     }
 
@@ -8278,6 +8391,7 @@
                     else if (currentBlockType === boxItemName) currentGhostHeight = 1;
                     else if (currentBlockType === stoneItemName) currentGhostHeight = 0.5;
                     else if (currentBlockType === campfireItemName) currentGhostHeight = 0.5;
+                    else if (currentBlockType === torchItemName) currentGhostHeight = 0.8;
                     // Update ghost block geometry
                     // ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth); // Removido para lidar individualmente
 
@@ -9249,6 +9363,7 @@
             Object.defineProperty(window, 'playerBreath', { get: () => playerBreath, set: (v) => { playerBreath = v; } });
             Object.defineProperty(window, 'isFainted', { get: () => isFainted, set: (v) => { isFainted = v; } });
             Object.defineProperty(window, 'openedChest', { get: () => openedChest, set: (v) => { openedChest = v; } });
+            window.heldTorchGroup = heldTorchGroup;
             Object.defineProperty(window, 'isJumpBoosting', { get: () => isJumpBoosting, set: (v) => { isJumpBoosting = v; } });
             window.faintPlayer = faintPlayer;
             window.respawnPlayer = respawnPlayer;
