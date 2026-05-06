@@ -4023,12 +4023,14 @@
             } else if (type === torchItemName) {
                 width = 0.2; height = 0.8; depth = 0.2;
                 blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
-                blockBody.addShape(blockShape);
+                // Origin at base: offset the shape up by half height
+                blockBody.addShape(blockShape, new CANNON.Vec3(0, 0.4, 0));
 
                 const torchGroup = new THREE.Group();
                 const logMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
 
                 const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.8, 8), logMat);
+                stick.position.y = 0.4;
                 torchGroup.add(stick);
 
                 const fireGroup = new THREE.Group();
@@ -4040,14 +4042,14 @@
                 });
                 for (let i = 0; i < 3; i++) {
                     const fire = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.25, 8), fireMat);
-                    fire.position.set((Math.random() - 0.5) * 0.1, 0.35, (Math.random() - 0.5) * 0.1);
+                    fire.position.set((Math.random() - 0.5) * 0.1, 0.75, (Math.random() - 0.5) * 0.1); // 0.4 (offset) + 0.35
                     fire.rotation.y = Math.random() * Math.PI;
                     fireGroup.add(fire);
                 }
                 torchGroup.add(fireGroup);
 
                 const light = new THREE.PointLight(0xffaa00, 1.5, 6);
-                light.position.set(0, 0.4, 0);
+                light.position.set(0, 0.8, 0); // 0.4 (offset) + 0.4
                 torchGroup.add(light);
 
                 mesh = torchGroup;
@@ -8366,11 +8368,12 @@
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(0, 0, 0);
                             const torchGroup = new THREE.Group();
                             const stick = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.8, 8), ghostBlockMaterial);
+                            stick.position.y = 0.4;
                             torchGroup.add(stick);
                             const fireMat = new THREE.MeshStandardMaterial({ color: 0xff4500, transparent: true, opacity: 0.4 });
                             for (let i = 0; i < 3; i++) {
                                 const fire = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.25, 8), fireMat);
-                                fire.position.set((Math.random() - 0.5) * 0.1, 0.35, (Math.random() - 0.5) * 0.1);
+                                fire.position.set((Math.random() - 0.5) * 0.1, 0.75, (Math.random() - 0.5) * 0.1);
                                 fire.rotation.y = Math.random() * Math.PI;
                                 torchGroup.add(fire);
                             }
@@ -8428,10 +8431,15 @@
 
                                 // Calcula a posição do centro do bloco acima da superfície
                                 let basePosition = new THREE.Vector3().copy(hitPoint);
-                                basePosition.add(hitNormal.multiplyScalar(currentGhostHeight / 2));
+                                if (currentBlockType !== torchItemName) {
+                                    basePosition.add(hitNormal.multiplyScalar(currentGhostHeight / 2));
+                                }
 
                                 // NOVO: Alinhamento da grade
-                                if (currentBlockType === dirtItemName || currentBlockType === sandItemName) {
+                                if (currentBlockType === torchItemName) {
+                                    // Sem snapping para a tocha
+                                    placementPosition.copy(basePosition);
+                                } else if (currentBlockType === dirtItemName || currentBlockType === sandItemName) {
                                     // Snapping para a grade do terreno (vértices)
                                     const step = worldSize / (hfGridSize - 1);
                                     const mx = Math.round((basePosition.x + visualOffsetX + worldSize / 2) / step);
@@ -8457,7 +8465,7 @@
                                 // NOVO: Alinha a posição Y na grade, considerando a altura da superfície da ilha como a base.
                                 // Isso garante que os blocos se encaixem verticalmente.
                                 // CORREÇÃO: As sementes não devem se encaixar na grade vertical, elas devem ser colocadas no chão.
-                                if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === dirtItemName || currentBlockType === sandItemName || currentBlockType === raftItemName) {
+                                if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === dirtItemName || currentBlockType === sandItemName || currentBlockType === raftItemName || currentBlockType === torchItemName) {
                                     placementPosition.y = basePosition.y;
                                 } else if (currentBlockType === boxItemName) {
                                     placementPosition.y = basePosition.y;
@@ -8468,7 +8476,14 @@
 
 
                                 // A rotação agora é apenas a rotação manual, garantindo que o bloco fique sempre na vertical
-                                tempPlacementQuaternion.copy(manualRotationQuaternion);
+                                if (currentBlockType === torchItemName && hitNormal.y < 0.5) {
+                                    // Leaning orientation for torch on vertical surfaces
+                                    const up = new THREE.Vector3(0, 1, 0);
+                                    const leanVec = new THREE.Vector3().addVectors(up, hitNormal).normalize();
+                                    tempPlacementQuaternion.setFromUnitVectors(up, leanVec);
+                                } else {
+                                    tempPlacementQuaternion.copy(manualRotationQuaternion);
+                                }
 
                                 // Verifica se a posição do ghost block não colide com o jogador
                                 const playerPos = new THREE.Vector3().copy(playerBody.position);
