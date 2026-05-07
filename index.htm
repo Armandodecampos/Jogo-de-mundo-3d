@@ -1228,7 +1228,7 @@
         let activeMeteors = [];
         let activeCampfires = [];
         let heldTorchGroup, heldFireGroup, heldTorchLight; // NOVO: Elementos da tocha segurada
-        let torchStickMat, torchBundleMat, torchStrapMat, torchOrangeFireMat, torchYellowFireMat; // Torch materials for reuse
+        let torchStickMat, torchBundleMat, torchStrapMat, torchOrangeFireMat, torchYellowFireMat, torchFireGeom; // Torch materials/geom for reuse
         const sounds = { playPlace: () => {} }; // NOVO: Objeto de sons básico para evitar erros
 
         // NOVO: Gerenciador de carregamento para rastrear quando todos os recursos são carregados
@@ -3888,6 +3888,17 @@
                     transparent: true,
                     opacity: 0.9
                 });
+
+                // Create a drop-shaped geometry (gota) using Lathe
+                const points = [];
+                for (let i = 0; i <= 10; i++) {
+                    const t = i / 10;
+                    // Simple drop-like profile
+                    const x = Math.sin(t * Math.PI) * 0.5 * (1 - t * 0.5);
+                    const y = t;
+                    points.push(new THREE.Vector2(x, y));
+                }
+                torchFireGeom = new THREE.LatheGeometry(points, 16);
             }
 
             const torchGroup = new THREE.Group();
@@ -3911,9 +3922,14 @@
             torchGroup.add(bundle);
 
             // 3. Straps (Dark Brown) - Wrapping the bundle
+            const radiusTop = bundleRadius;
+            const radiusBottom = bundleRadius * 0.8;
             for (let i = 0; i < 3; i++) {
-                // Straps are tighter (radius matches bundle) and thinner (tube 0.002)
-                const strap = new THREE.Mesh(new THREE.TorusGeometry(bundleRadius, 0.002, 8, 16), torchStrapMat);
+                // Calculate exact radius at this height for a flush fit on the tapered bundle
+                const relYPos = (i + 0.5) / 3; // 0 to 1 range
+                const strapRadius = radiusBottom + (radiusTop - radiusBottom) * relYPos;
+
+                const strap = new THREE.Mesh(new THREE.TorusGeometry(strapRadius, 0.002, 8, 16), torchStrapMat);
                 strap.position.y = bundle.position.y - bundleHeight / 2 + (i + 0.5) * (bundleHeight / 3);
                 strap.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.1; // Less random tilt for "tightness"
                 torchGroup.add(strap);
@@ -3922,16 +3938,20 @@
             // 4. Fire Group
             const fireGroup = new THREE.Group();
 
-            // Outer flames
+            // Outer flames (Gota shape)
             for (let i = 0; i < 3; i++) {
-                const fire = new THREE.Mesh(new THREE.ConeGeometry(bundleRadius * 1.2, bundleHeight * 1.5, 8), torchOrangeFireMat);
-                fire.position.set((Math.random() - 0.5) * 0.05, bundleHeight * 0.4, (Math.random() - 0.5) * 0.05);
+                const fire = new THREE.Mesh(torchFireGeom, torchOrangeFireMat);
+                // Scale to match approximate cone size (bundleRadius*2.4 for width, bundleHeight*1.5 for height)
+                fire.scale.set(bundleRadius * 2.4, bundleHeight * 1.5, bundleRadius * 2.4);
+                fire.position.set((Math.random() - 0.5) * 0.05, bundleHeight * 0.1, (Math.random() - 0.5) * 0.05);
                 fire.rotation.y = Math.random() * Math.PI;
                 fireGroup.add(fire);
             }
-            // Inner flame
-            const innerFire = new THREE.Mesh(new THREE.ConeGeometry(bundleRadius * 0.7, bundleHeight * 1.2, 8), torchYellowFireMat);
-            innerFire.position.y = bundleHeight * 0.4;
+            // Inner flame (Gota shape)
+            const innerFire = new THREE.Mesh(torchFireGeom, torchYellowFireMat);
+            innerFire.scale.set(bundleRadius * 1.4, bundleHeight * 1.2, bundleRadius * 1.4);
+            innerFire.position.y = bundleHeight * 0.1;
+            innerFire.userData.isInnerFlame = true; // For identification in animation
             fireGroup.add(innerFire);
 
             fireGroup.position.y = stickHeight + bundleHeight / 4;
@@ -7137,18 +7157,24 @@
             // Animate Campfires
             if (typeof activeCampfires !== 'undefined') {
                 activeCampfires.forEach(cf => {
-                    if (cf.userData.fireGroup) {
+                    const fg = cf.userData.fireGroup;
+                    if (fg) {
                         // Keep fire upright regardless of torch tilt
                         if (cf.userData.type === torchItemName) {
                             const parentQuat = new THREE.Quaternion();
-                            cf.userData.fireGroup.parent.getWorldQuaternion(parentQuat);
-                            cf.userData.fireGroup.quaternion.copy(parentQuat).invert();
+                            fg.parent.getWorldQuaternion(parentQuat);
+                            fg.quaternion.copy(parentQuat).invert();
                         }
 
-                        cf.userData.fireGroup.children.forEach((fire, i) => {
+                        fg.children.forEach((fire, i) => {
                             if (fire instanceof THREE.Mesh) {
-                                fire.scale.y = 0.8 + Math.sin(now * 0.003 + i) * 0.3;
-                                fire.scale.x = fire.scale.z = 0.9 + Math.cos(now * 0.004 + i) * 0.1;
+                                const sBase = 1.0 + Math.sin(now * 0.003 + i) * 0.2;
+                                if (fire.userData.isInnerFlame) {
+                                    fire.scale.set(sBase * 0.8, sBase * 1.1, sBase * 0.8);
+                                } else {
+                                    fire.scale.y = 0.8 + Math.sin(now * 0.003 + i) * 0.3;
+                                    fire.scale.x = fire.scale.z = 0.9 + Math.cos(now * 0.004 + i) * 0.1;
+                                }
                                 fire.rotation.y += 0.02 * delta;
                             }
                         });
@@ -8113,15 +8139,15 @@
 
                 // Animação das chamas da tocha segurada
                 heldFireGroup.children.forEach((fire, i) => {
-                    const s = 1.0 + Math.sin(now * 0.01 + i) * 0.2;
-                    // Check if it's the inner yellow flame (it's the last child in createTorchModel)
-                    const isInner = i === heldFireGroup.children.length - 2; // -1 is Light, -2 is inner fire
-                    if (isInner) {
-                        fire.scale.set(s * 0.8, s * 1.1, s * 0.8);
-                    } else if (fire instanceof THREE.Mesh) {
-                        fire.scale.set(s, s, s);
+                    if (fire instanceof THREE.Mesh) {
+                        const s = 1.0 + Math.sin(now * 0.01 + i) * 0.2;
+                        if (fire.userData.isInnerFlame) {
+                            fire.scale.set(s * 0.8, s * 1.1, s * 0.8);
+                        } else {
+                            fire.scale.set(s, s, s);
+                        }
+                        fire.rotation.y += 0.05;
                     }
-                    if (fire instanceof THREE.Mesh) fire.rotation.y += 0.05;
                 });
             } else {
                 heldTorchGroup.visible = false;
