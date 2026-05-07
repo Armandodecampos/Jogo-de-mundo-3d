@@ -1228,6 +1228,7 @@
         let activeMeteors = [];
         let activeCampfires = [];
         let heldTorchGroup, heldFireGroup, heldTorchLight; // NOVO: Elementos da tocha segurada
+        let torchStickMat, torchBundleMat, torchStrapMat, torchOrangeFireMat, torchYellowFireMat; // Torch materials for reuse
         const sounds = { playPlace: () => {} }; // NOVO: Objeto de sons básico para evitar erros
 
         // NOVO: Gerenciador de carregamento para rastrear quando todos os recursos são carregados
@@ -3868,14 +3869,34 @@
         }
 
         function createTorchModel(isHeld = false) {
+            // Initialize materials if not already created
+            if (!torchStickMat) {
+                torchStickMat = new THREE.MeshStandardMaterial({ color: 0x4d3319 });
+                torchBundleMat = new THREE.MeshStandardMaterial({ color: 0xd2b48c });
+                torchStrapMat = new THREE.MeshStandardMaterial({ color: 0x261a0d });
+                torchOrangeFireMat = new THREE.MeshStandardMaterial({
+                    color: 0xff4500,
+                    emissive: 0xff4500,
+                    emissiveIntensity: 1.5,
+                    transparent: true,
+                    opacity: 0.8
+                });
+                torchYellowFireMat = new THREE.MeshStandardMaterial({
+                    color: 0xffff00,
+                    emissive: 0xffff00,
+                    emissiveIntensity: 2.0,
+                    transparent: true,
+                    opacity: 0.9
+                });
+            }
+
             const torchGroup = new THREE.Group();
             const stickHeight = isHeld ? 0.5 : 0.8;
             const stickRadius = isHeld ? 0.02 : 0.025;
 
             // 1. Stick (tapered and slightly rough)
             const stickGeom = new THREE.CylinderGeometry(stickRadius * 0.8, stickRadius, stickHeight, 8);
-            const stickMat = new THREE.MeshStandardMaterial({ color: 0x4d3319 }); // Darker brown
-            const stick = new THREE.Mesh(stickGeom, stickMat);
+            const stick = new THREE.Mesh(stickGeom, torchStickMat);
             // Position stick so its base is at 0 if we want, but for consistency with existing code:
             // Placed torch had stick.position.y = 0.4 (half of 0.8).
             stick.position.y = stickHeight / 2;
@@ -3885,48 +3906,31 @@
             const bundleRadius = stickRadius * 3;
             const bundleHeight = stickHeight * 0.2;
             const bundleGeom = new THREE.CylinderGeometry(bundleRadius, bundleRadius * 0.8, bundleHeight, 8);
-            const bundleMat = new THREE.MeshStandardMaterial({ color: 0xd2b48c }); // Tan
-            const bundle = new THREE.Mesh(bundleGeom, bundleMat);
+            const bundle = new THREE.Mesh(bundleGeom, torchBundleMat);
             bundle.position.y = stickHeight - bundleHeight / 4;
             torchGroup.add(bundle);
 
             // 3. Straps (Dark Brown) - Wrapping the bundle
-            const strapMat = new THREE.MeshStandardMaterial({ color: 0x261a0d });
             for (let i = 0; i < 3; i++) {
-                const strap = new THREE.Mesh(new THREE.TorusGeometry(bundleRadius + 0.002, 0.004, 8, 16), strapMat);
+                // Straps are tighter (radius matches bundle) and thinner (tube 0.002)
+                const strap = new THREE.Mesh(new THREE.TorusGeometry(bundleRadius, 0.002, 8, 16), torchStrapMat);
                 strap.position.y = bundle.position.y - bundleHeight / 2 + (i + 0.5) * (bundleHeight / 3);
-                strap.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.3;
+                strap.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.1; // Less random tilt for "tightness"
                 torchGroup.add(strap);
             }
 
             // 4. Fire Group
             const fireGroup = new THREE.Group();
-            // Orange outer fire
-            const orangeFireMat = new THREE.MeshStandardMaterial({
-                color: 0xff4500,
-                emissive: 0xff4500,
-                emissiveIntensity: 1.5,
-                transparent: true,
-                opacity: 0.8
-            });
-            // Yellow inner fire
-            const yellowFireMat = new THREE.MeshStandardMaterial({
-                color: 0xffff00,
-                emissive: 0xffff00,
-                emissiveIntensity: 2.0,
-                transparent: true,
-                opacity: 0.9
-            });
 
             // Outer flames
             for (let i = 0; i < 3; i++) {
-                const fire = new THREE.Mesh(new THREE.ConeGeometry(bundleRadius * 1.2, bundleHeight * 1.5, 8), orangeFireMat);
+                const fire = new THREE.Mesh(new THREE.ConeGeometry(bundleRadius * 1.2, bundleHeight * 1.5, 8), torchOrangeFireMat);
                 fire.position.set((Math.random() - 0.5) * 0.05, bundleHeight * 0.4, (Math.random() - 0.5) * 0.05);
                 fire.rotation.y = Math.random() * Math.PI;
                 fireGroup.add(fire);
             }
             // Inner flame
-            const innerFire = new THREE.Mesh(new THREE.ConeGeometry(bundleRadius * 0.7, bundleHeight * 1.2, 8), yellowFireMat);
+            const innerFire = new THREE.Mesh(new THREE.ConeGeometry(bundleRadius * 0.7, bundleHeight * 1.2, 8), torchYellowFireMat);
             innerFire.position.y = bundleHeight * 0.4;
             fireGroup.add(innerFire);
 
@@ -7134,6 +7138,13 @@
             if (typeof activeCampfires !== 'undefined') {
                 activeCampfires.forEach(cf => {
                     if (cf.userData.fireGroup) {
+                        // Keep fire upright regardless of torch tilt
+                        if (cf.userData.type === torchItemName) {
+                            const parentQuat = new THREE.Quaternion();
+                            cf.userData.fireGroup.parent.getWorldQuaternion(parentQuat);
+                            cf.userData.fireGroup.quaternion.copy(parentQuat).invert();
+                        }
+
                         cf.userData.fireGroup.children.forEach((fire, i) => {
                             if (fire instanceof THREE.Mesh) {
                                 fire.scale.y = 0.8 + Math.sin(now * 0.003 + i) * 0.3;
@@ -8094,6 +8105,11 @@
                 // Flickering da tocha segurada
                 const flicker = Math.sin(now * 0.01) * 0.1 + (Math.random() * 0.05);
                 heldTorchLight.intensity = 1.2 + flicker;
+
+                // Keep held fire upright regardless of torch/camera tilt
+                const parentQuat = new THREE.Quaternion();
+                heldFireGroup.parent.getWorldQuaternion(parentQuat);
+                heldFireGroup.quaternion.copy(parentQuat).invert();
 
                 // Animação das chamas da tocha segurada
                 heldFireGroup.children.forEach((fire, i) => {
