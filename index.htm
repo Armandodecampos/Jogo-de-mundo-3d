@@ -3868,8 +3868,7 @@
             return mesh;
         }
 
-        function createTorchModel(isHeld = false) {
-            // Initialize materials if not already created
+        function ensureTorchAssets() {
             if (!torchStickMat) {
                 torchStickMat = new THREE.MeshStandardMaterial({ color: 0x4d3319 });
                 torchBundleMat = new THREE.MeshStandardMaterial({ color: 0xd2b48c });
@@ -3900,6 +3899,11 @@
                 }
                 torchFireGeom = new THREE.LatheGeometry(points, 16);
             }
+        }
+
+        function createTorchModel(isHeld = false) {
+            // Initialize materials if not already created
+            ensureTorchAssets();
 
             const torchGroup = new THREE.Group();
             const stickHeight = isHeld ? 0.5 : 0.8;
@@ -3938,18 +3942,24 @@
             // 4. Fire Group
             const fireGroup = new THREE.Group();
 
-            // Outer flames (Gota shape)
+            // Outer flames (Gota shape) - Reduced scale for realism
             for (let i = 0; i < 3; i++) {
                 const fire = new THREE.Mesh(torchFireGeom, torchOrangeFireMat);
-                // Scale to match approximate cone size (bundleRadius*2.4 for width, bundleHeight*1.5 for height)
-                fire.scale.set(bundleRadius * 2.4, bundleHeight * 1.5, bundleRadius * 2.4);
+                // Reduced scale: bundleRadius*1.5 for width, bundleHeight*1.0 for height
+                const sW = bundleRadius * 1.5;
+                const sH = bundleHeight * 1.0;
+                fire.scale.set(sW, sH, sW);
+                fire.userData.baseScale = { x: sW, y: sH, z: sW };
                 fire.position.set((Math.random() - 0.5) * 0.05, bundleHeight * 0.1, (Math.random() - 0.5) * 0.05);
                 fire.rotation.y = Math.random() * Math.PI;
                 fireGroup.add(fire);
             }
-            // Inner flame (Gota shape)
+            // Inner flame (Gota shape) - Reduced scale
             const innerFire = new THREE.Mesh(torchFireGeom, torchYellowFireMat);
-            innerFire.scale.set(bundleRadius * 1.4, bundleHeight * 1.2, bundleRadius * 1.4);
+            const siW = bundleRadius * 0.9;
+            const siH = bundleHeight * 0.8;
+            innerFire.scale.set(siW, siH, siW);
+            innerFire.userData.baseScale = { x: siW, y: siH, z: siW };
             innerFire.position.y = bundleHeight * 0.1;
             innerFire.userData.isInnerFlame = true; // For identification in animation
             fireGroup.add(innerFire);
@@ -4083,6 +4093,7 @@
                 initialMass = initialStoneFloorMass;
                 durability = stoneFloorDurability;
             } else if (type === campfireItemName) {
+                ensureTorchAssets();
                 width = 0.8; height = 0.5; depth = 0.8;
                 blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
                 blockBody.addShape(blockShape);
@@ -4098,13 +4109,25 @@
                 }
 
                 const fireGroup = new THREE.Group();
-                const fireMat = new THREE.MeshStandardMaterial({ color: 0xff4500, emissive: 0xff4500, emissiveIntensity: 1.5, transparent: true, opacity: 0.8 });
+                // Outer flames (Gota shape)
                 for (let i = 0; i < 4; i++) {
-                    const fire = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.4, 8), fireMat);
+                    const fire = new THREE.Mesh(torchFireGeom, torchOrangeFireMat);
+                    const sW = 0.35; const sH = 0.5;
+                    fire.scale.set(sW, sH, sW); // Proportional scale for campfire
+                    fire.userData.baseScale = { x: sW, y: sH, z: sW };
                     fire.position.set((Math.random()-0.5)*0.2, 0.1, (Math.random()-0.5)*0.2);
                     fire.rotation.y = Math.random() * Math.PI;
                     fireGroup.add(fire);
                 }
+                // Inner flame (Gota shape)
+                const innerFire = new THREE.Mesh(torchFireGeom, torchYellowFireMat);
+                const siW = 0.2; const siH = 0.4;
+                innerFire.scale.set(siW, siH, siW);
+                innerFire.userData.baseScale = { x: siW, y: siH, z: siW };
+                innerFire.position.y = 0.1;
+                innerFire.userData.isInnerFlame = true;
+                fireGroup.add(innerFire);
+
                 campfireGroup.add(fireGroup);
 
                 const light = new THREE.PointLight(0xffaa00, 2.5, 8);
@@ -7167,13 +7190,15 @@
                         }
 
                         fg.children.forEach((fire, i) => {
-                            if (fire instanceof THREE.Mesh) {
+                            if (fire instanceof THREE.Mesh && fire.userData.baseScale) {
+                                const base = fire.userData.baseScale;
                                 const sBase = 1.0 + Math.sin(now * 0.003 + i) * 0.2;
                                 if (fire.userData.isInnerFlame) {
-                                    fire.scale.set(sBase * 0.8, sBase * 1.1, sBase * 0.8);
+                                    fire.scale.set(base.x * sBase, base.y * sBase * 1.1, base.z * sBase);
                                 } else {
-                                    fire.scale.y = 0.8 + Math.sin(now * 0.003 + i) * 0.3;
-                                    fire.scale.x = fire.scale.z = 0.9 + Math.cos(now * 0.004 + i) * 0.1;
+                                    const flickerY = 1.0 + Math.sin(now * 0.003 + i) * 0.3;
+                                    const flickerXZ = 1.0 + Math.cos(now * 0.004 + i) * 0.1;
+                                    fire.scale.set(base.x * flickerXZ, base.y * flickerY, base.z * flickerXZ);
                                 }
                                 fire.rotation.y += 0.02 * delta;
                             }
@@ -8139,12 +8164,13 @@
 
                 // Animação das chamas da tocha segurada
                 heldFireGroup.children.forEach((fire, i) => {
-                    if (fire instanceof THREE.Mesh) {
+                    if (fire instanceof THREE.Mesh && fire.userData.baseScale) {
+                        const base = fire.userData.baseScale;
                         const s = 1.0 + Math.sin(now * 0.01 + i) * 0.2;
                         if (fire.userData.isInnerFlame) {
-                            fire.scale.set(s * 0.8, s * 1.1, s * 0.8);
+                            fire.scale.set(base.x * s, base.y * s * 1.1, base.z * s);
                         } else {
-                            fire.scale.set(s, s, s);
+                            fire.scale.set(base.x * s, base.y * s, base.z * s);
                         }
                         fire.rotation.y += 0.05;
                     }
