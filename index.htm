@@ -4141,6 +4141,7 @@
 
                 blockBody.userData.fireGroup = fireGroup;
                 blockBody.userData.fireLight = light;
+                blockBody.userData.fireOffset = Math.random() * 1000;
                 activeCampfires.push(blockBody);
             } else if (type === torchItemName) {
                 width = 0.2; height = 0.8; depth = 0.2;
@@ -4158,6 +4159,7 @@
 
                 blockBody.userData.fireGroup = fireGroup;
                 blockBody.userData.fireLight = light;
+                blockBody.userData.fireOffset = Math.random() * 1000;
                 activeCampfires.push(blockBody);
             }
             else {
@@ -7192,28 +7194,31 @@
                             fg.quaternion.copy(parentQuat).invert();
                         }
 
+                        const fireOffset = cf.userData.fireOffset || 0;
                         fg.children.forEach((fire, i) => {
                             if (fire instanceof THREE.Mesh && fire.userData.baseScale) {
                                 const base = fire.userData.baseScale;
                                 const speed = fire.userData.animSpeed || 1.0;
-                                const offset = fire.userData.animOffset || 0;
+                                const layerOffset = fire.userData.animOffset || 0;
+                                const totalOffset = fireOffset + layerOffset;
 
-                                // Oscilação vertical rápida
-                                const lick = 1.0 + Math.sin(now * 0.012 * speed + offset) * 0.25;
-                                // Oscilação horizontal
-                                const swayX = Math.sin(now * 0.004 * speed + offset) * 0.08;
-                                const swayZ = Math.cos(now * 0.004 * speed + offset) * 0.08;
-                                // Cintilação
-                                const scale = 1.0 + Math.sin(now * 0.008 * speed + offset) * 0.06;
+                                // Oscilação vertical suave (licking flames reduzido)
+                                const lick = 1.0 + Math.sin(now * 0.006 * speed + totalOffset) * 0.12;
+                                // Oscilação horizontal bem sutil
+                                const swayX = Math.sin(now * 0.002 * speed + totalOffset) * 0.03;
+                                const swayZ = Math.cos(now * 0.002 * speed + totalOffset) * 0.03;
+                                // Cintilação mínima
+                                const scale = 1.0 + Math.sin(now * 0.004 * speed + totalOffset) * 0.02;
 
                                 fire.scale.set(base.x * scale, base.y * lick, base.z * scale);
-                                fire.rotation.set(swayX, now * 0.001 + offset, swayZ);
+                                fire.rotation.set(swayX, now * 0.0005 + totalOffset, swayZ);
                             }
                         });
                     }
                     if (cf.userData.fireLight) {
                         const baseIntensity = cf.userData.type === torchItemName ? 1.5 : 2.5;
-                        cf.userData.fireLight.intensity = (baseIntensity - 0.2) + Math.sin(now * 0.005) * 0.2;
+                        const fireOffset = cf.userData.fireOffset || 0;
+                        cf.userData.fireLight.intensity = (baseIntensity - 0.1) + Math.sin(now * 0.002 + fireOffset) * 0.1;
                     }
                 });
             }
@@ -8169,23 +8174,23 @@
                 heldFireGroup.parent.getWorldQuaternion(parentQuat);
                 heldFireGroup.quaternion.copy(parentQuat).invert();
 
-                // Animação das chamas da tocha segurada (efeito realista com várias camadas)
+                // Animação das chamas da tocha segurada (movimento reduzido e suave)
                 heldFireGroup.children.forEach((fire, i) => {
                     if (fire instanceof THREE.Mesh && fire.userData.baseScale) {
                         const base = fire.userData.baseScale;
                         const speed = fire.userData.animSpeed || 1.0;
                         const offset = fire.userData.animOffset || 0;
 
-                        // Oscilação vertical rápida (licking flames)
-                        const lick = 1.0 + Math.sin(now * 0.015 * speed + offset) * 0.2;
-                        // Oscilação horizontal variada
-                        const swayX = Math.sin(now * 0.005 * speed + offset) * 0.1;
-                        const swayZ = Math.cos(now * 0.005 * speed + offset) * 0.1;
-                        // Cintilação de escala
-                        const scale = 1.0 + Math.sin(now * 0.01 * speed + offset) * 0.05;
+                        // Oscilação vertical suave
+                        const lick = 1.0 + Math.sin(now * 0.007 * speed + offset) * 0.1;
+                        // Oscilação horizontal mínima
+                        const swayX = Math.sin(now * 0.002 * speed + offset) * 0.04;
+                        const swayZ = Math.cos(now * 0.002 * speed + offset) * 0.04;
+                        // Cintilação de escala sutil
+                        const scale = 1.0 + Math.sin(now * 0.005 * speed + offset) * 0.02;
 
                         fire.scale.set(base.x * scale, base.y * lick, base.z * scale);
-                        fire.rotation.set(swayX, now * 0.002 + offset, swayZ);
+                        fire.rotation.set(swayX, now * 0.001 + offset, swayZ);
                     }
                 });
             } else {
