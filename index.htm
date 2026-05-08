@@ -1228,7 +1228,7 @@
         let activeMeteors = [];
         let activeCampfires = [];
         let heldTorchGroup, heldFireGroup, heldTorchLight; // NOVO: Elementos da tocha segurada
-        let torchStickMat, torchBundleMat, torchStrapMat, torchOrangeFireMat, torchYellowFireMat, torchFireGeom; // Torch materials/geom for reuse
+        let torchStickMat, torchBundleMat, torchStrapMat, torchOrangeFireMat, torchYellowFireMat, torchCoreFireMat, torchFireGeom; // Torch materials/geom for reuse
         const sounds = { playPlace: () => {} }; // NOVO: Objeto de sons básico para evitar erros
 
         // NOVO: Gerenciador de carregamento para rastrear quando todos os recursos são carregados
@@ -3873,29 +3873,35 @@
                 torchStickMat = new THREE.MeshStandardMaterial({ color: 0x4d3319 });
                 torchBundleMat = new THREE.MeshStandardMaterial({ color: 0xd2b48c });
                 torchStrapMat = new THREE.MeshStandardMaterial({ color: 0x261a0d });
-                torchOrangeFireMat = new THREE.MeshStandardMaterial({
+                torchOrangeFireMat = new THREE.MeshBasicMaterial({
                     color: 0xff4500,
-                    emissive: 0xff4500,
-                    emissiveIntensity: 1.5,
                     transparent: true,
-                    opacity: 0.8
+                    opacity: 0.5,
+                    blending: THREE.AdditiveBlending,
+                    side: THREE.DoubleSide
                 });
-                torchYellowFireMat = new THREE.MeshStandardMaterial({
-                    color: 0xffff00,
-                    emissive: 0xffff00,
-                    emissiveIntensity: 2.0,
+                torchYellowFireMat = new THREE.MeshBasicMaterial({
+                    color: 0xffaa00,
                     transparent: true,
-                    opacity: 0.9
+                    opacity: 0.7,
+                    blending: THREE.AdditiveBlending,
+                    side: THREE.DoubleSide
+                });
+                torchCoreFireMat = new THREE.MeshBasicMaterial({
+                    color: 0xffff88,
+                    transparent: true,
+                    opacity: 0.9,
+                    blending: THREE.AdditiveBlending,
+                    side: THREE.DoubleSide
                 });
 
-                // Create a drop-shaped geometry (gota) using Lathe
+                // Create a more realistic flame geometry (taller and more pointed)
                 const points = [];
-                for (let i = 0; i <= 10; i++) {
-                    const t = i / 10;
-                    // Simple drop-like profile
-                    const x = Math.sin(t * Math.PI) * 0.5 * (1 - t * 0.5);
-                    const y = t;
-                    points.push(new THREE.Vector2(x, y));
+                for (let i = 0; i <= 12; i++) {
+                    const t = i / 12;
+                    // Realistic flame profile: bulbous at 0.2, tapering sharply to 1.0
+                    const radius = Math.sin(Math.pow(t, 0.4) * Math.PI) * 0.5 * (1 - t);
+                    points.push(new THREE.Vector2(radius, t));
                 }
                 torchFireGeom = new THREE.LatheGeometry(points, 16);
             }
@@ -3942,15 +3948,24 @@
             // 4. Fire Group
             const fireGroup = new THREE.Group();
 
-            // Single unified flame (Gota shape) - Consolidating logic as requested
-            const fire = new THREE.Mesh(torchFireGeom, torchOrangeFireMat);
-            // Significantly increased scale for high visibility
-            const sW = bundleRadius * 5.5;
-            const sH = bundleHeight * 4.5;
-            fire.scale.set(sW, sH, sW);
-            fire.userData.baseScale = { x: sW, y: sH, z: sW };
-            fire.position.y = bundleHeight * 0.1;
-            fireGroup.add(fire);
+            // Layered flames for realism
+            const layers = [
+                { mat: torchOrangeFireMat, s: { w: 5.5, h: 4.5 }, speed: 1.0, offset: 0 },
+                { mat: torchYellowFireMat, s: { w: 3.5, h: 3.5 }, speed: 1.2, offset: 0.2 },
+                { mat: torchCoreFireMat, s: { w: 1.5, h: 2.0 }, speed: 1.5, offset: 0.4 }
+            ];
+
+            layers.forEach(layer => {
+                const fire = new THREE.Mesh(torchFireGeom, layer.mat);
+                const sW = bundleRadius * layer.s.w;
+                const sH = bundleHeight * layer.s.h;
+                fire.scale.set(sW, sH, sW);
+                fire.userData.baseScale = { x: sW, y: sH, z: sW };
+                fire.userData.animSpeed = layer.speed;
+                fire.userData.animOffset = layer.offset;
+                fire.position.y = bundleHeight * 0.1;
+                fireGroup.add(fire);
+            });
 
             fireGroup.position.y = stickHeight + bundleHeight / 4;
             torchGroup.add(fireGroup);
@@ -4097,13 +4112,22 @@
                 }
 
                 const fireGroup = new THREE.Group();
-                // Single unified flame (Gota shape) - Campfire
-                const fire = new THREE.Mesh(torchFireGeom, torchOrangeFireMat);
-                const sW = 0.8; const sH = 1.2; // Larger unified campfire flame
-                fire.scale.set(sW, sH, sW);
-                fire.userData.baseScale = { x: sW, y: sH, z: sW };
-                fire.position.y = -0.05;
-                fireGroup.add(fire);
+                // Layered flames for realism - Campfire
+                const campfireLayers = [
+                    { mat: torchOrangeFireMat, s: { w: 0.8, h: 1.2 }, speed: 0.8, offset: 0 },
+                    { mat: torchYellowFireMat, s: { w: 0.5, h: 0.9 }, speed: 1.1, offset: 0.3 },
+                    { mat: torchCoreFireMat, s: { w: 0.2, h: 0.5 }, speed: 1.4, offset: 0.6 }
+                ];
+
+                campfireLayers.forEach(layer => {
+                    const fire = new THREE.Mesh(torchFireGeom, layer.mat);
+                    fire.scale.set(layer.s.w, layer.s.h, layer.s.w);
+                    fire.userData.baseScale = { x: layer.s.w, y: layer.s.h, z: layer.s.w };
+                    fire.userData.animSpeed = layer.speed;
+                    fire.userData.animOffset = layer.offset;
+                    fire.position.y = -0.05;
+                    fireGroup.add(fire);
+                });
 
                 campfireGroup.add(fireGroup);
 
@@ -7171,12 +7195,19 @@
                         fg.children.forEach((fire, i) => {
                             if (fire instanceof THREE.Mesh && fire.userData.baseScale) {
                                 const base = fire.userData.baseScale;
-                                // Oscilação de escala e inclinação para efeito de chama (cobra)
-                                const s = 1.0 + Math.sin(now * 0.005 + i) * 0.1;
-                                const swayX = Math.sin(now * 0.003 + i) * 0.15;
-                                const swayZ = Math.cos(now * 0.003 + i) * 0.15;
-                                fire.scale.set(base.x * s, base.y * (1.1 + Math.sin(now * 0.007 + i) * 0.2), base.z * s);
-                                fire.rotation.set(swayX, now * 0.002 + i, swayZ);
+                                const speed = fire.userData.animSpeed || 1.0;
+                                const offset = fire.userData.animOffset || 0;
+
+                                // Oscilação vertical rápida
+                                const lick = 1.0 + Math.sin(now * 0.012 * speed + offset) * 0.25;
+                                // Oscilação horizontal
+                                const swayX = Math.sin(now * 0.004 * speed + offset) * 0.08;
+                                const swayZ = Math.cos(now * 0.004 * speed + offset) * 0.08;
+                                // Cintilação
+                                const scale = 1.0 + Math.sin(now * 0.008 * speed + offset) * 0.06;
+
+                                fire.scale.set(base.x * scale, base.y * lick, base.z * scale);
+                                fire.rotation.set(swayX, now * 0.001 + offset, swayZ);
                             }
                         });
                     }
@@ -8138,16 +8169,23 @@
                 heldFireGroup.parent.getWorldQuaternion(parentQuat);
                 heldFireGroup.quaternion.copy(parentQuat).invert();
 
-                // Animação das chamas da tocha segurada (efeito "cobra"/undulação)
+                // Animação das chamas da tocha segurada (efeito realista com várias camadas)
                 heldFireGroup.children.forEach((fire, i) => {
                     if (fire instanceof THREE.Mesh && fire.userData.baseScale) {
                         const base = fire.userData.baseScale;
-                        // Oscilação de escala e inclinação para efeito de chama
-                        const s = 1.0 + Math.sin(now * 0.005) * 0.1;
-                        const swayX = Math.sin(now * 0.003) * 0.15;
-                        const swayZ = Math.cos(now * 0.003) * 0.15;
-                        fire.scale.set(base.x * s, base.y * (1.1 + Math.sin(now * 0.007) * 0.2), base.z * s);
-                        fire.rotation.set(swayX, now * 0.002, swayZ);
+                        const speed = fire.userData.animSpeed || 1.0;
+                        const offset = fire.userData.animOffset || 0;
+
+                        // Oscilação vertical rápida (licking flames)
+                        const lick = 1.0 + Math.sin(now * 0.015 * speed + offset) * 0.2;
+                        // Oscilação horizontal variada
+                        const swayX = Math.sin(now * 0.005 * speed + offset) * 0.1;
+                        const swayZ = Math.cos(now * 0.005 * speed + offset) * 0.1;
+                        // Cintilação de escala
+                        const scale = 1.0 + Math.sin(now * 0.01 * speed + offset) * 0.05;
+
+                        fire.scale.set(base.x * scale, base.y * lick, base.z * scale);
+                        fire.rotation.set(swayX, now * 0.002 + offset, swayZ);
                     }
                 });
             } else {
