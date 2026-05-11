@@ -3504,9 +3504,6 @@
             if (world.time - lastWeatherChange > nextWeatherDuration) {
                 lastWeatherChange = world.time;
 
-                // Define a próxima duração baseada no novo estado
-                nextWeatherDuration = targetRainIntensity > 0 ? (60 + Math.random() * 240) : (60 + Math.random() * 120);
-
                 // Chance de mudar o clima
                 if (targetRainIntensity === 0) {
                     if (Math.random() < 0.125) {
@@ -3516,11 +3513,16 @@
                 } else {
                     // Se já estiver chovendo, só tem a chance de parar.
                     // Removido a mudança de intensidade no meio do ciclo para atender pedido do usuário.
-                    if (Math.random() < 0.4) {
+                    // Chance de parar reduzida para 15% para evitar chuva que "para rápido"
+                    if (Math.random() < 0.15) {
                         targetRainIntensity = 0;
                         rainCloud.active = false;
                     }
                 }
+
+                // Define a próxima duração baseada no NOVO estado (após a possível mudança acima)
+                // Se estiver chovendo agora: 120s a 480s. Se estiver limpo: 180s a 540s.
+                nextWeatherDuration = targetRainIntensity > 0 ? (120 + Math.random() * 360) : (180 + Math.random() * 360);
 
                 // Atualiza a quantidade base de nuvens de forma aleatória a cada mudança de ciclo
                 randomBaseCloudCount = Math.floor(Math.random() * 30);
@@ -6840,6 +6842,7 @@
                         hudWeatherIcon.className = 'fas fa-sun';
                         hudWeatherText.textContent = "Sol";
                     }
+                    nextWeatherDuration = 180 + Math.random() * 360;
                 } else {
                     startRainCycle();
 
@@ -6848,6 +6851,7 @@
                         hudWeatherIcon.className = 'fas fa-cloud-showers-heavy';
                         hudWeatherText.textContent = "Chuva";
                     }
+                    nextWeatherDuration = 120 + Math.random() * 360;
                 }
                 // Força a atualização do tempo de última mudança para não resetar imediatamente
                 lastWeatherChange = world.time;
