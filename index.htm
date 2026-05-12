@@ -52,6 +52,46 @@
             border-radius: 8px;
         }
 
+        #acquisition-container {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 10px;
+            pointer-events: none;
+            z-index: 3000;
+        }
+
+        .acquisition-notification {
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            border-left: 4px solid #4CAF50;
+            font-weight: bold;
+            animation: slideInRight 0.5s ease forwards;
+            opacity: 0;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        .acquisition-notification.fade-out {
+            opacity: 0;
+            transform: translateX(20px);
+        }
+
         #crosshair { /* Style for the crosshair in the center of the screen */
             position: absolute;
             top: 50%;
@@ -848,6 +888,7 @@
     </div>
 
     <div id="notification"></div>
+    <div id="acquisition-container"></div>
 
     <div id="weightDisplay" class="absolute bottom-5 left-5 bg-black/50 text-white px-3 py-1.5 rounded-lg z-[998] text-base font-bold border border-white/20 hidden">
         Peso: 0.0 kg / 500 kg
@@ -1301,6 +1342,7 @@
         const axeItemName = 'machado'; // Nome do item de machado no inventário
         const hammerItemName = 'martelo'; // Nome do item de martelo no inventário
         const stoneItemName = 'pedra'; // NOVO: Nome do item de pedra no inventário
+        const ironOreItemName = 'minerio_ferro'; // NOVO: Nome do item de minério de ferro
         const dirtItemName = 'terra'; // NOVO: Nome do item de terra no inventário
         const sandItemName = 'areia'; // NOVO: Nome do item de areia no inventário
         const shovelItemName = 'pá'; // NOVO: Nome do item de pá no inventário
@@ -1325,7 +1367,7 @@
         const boxItemName = 'caixote'; // NOVO: Nome do item de caixote
 
         // NOVO: Mapeamento de nomes de itens para exibição
-        const itemDisplayNames = {
+        window.itemDisplayNames = {
             [handItemName]: 'Mão',
             [capimItemName]: 'Capim',
             [appleSeedItemName]: 'Semente de Maçã',
@@ -1336,6 +1378,7 @@
             [axeItemName]: 'Machado\nEspecialidade: Madeira',
             [hammerItemName]: 'Martelo\nSem uso',
             [stoneItemName]: 'Pedra',
+            [ironOreItemName]: 'Minério de Ferro',
             [dirtItemName]: 'Terra',
             [sandItemName]: 'Areia',
             [shovelItemName]: 'Pá\nEspecialidade: Terra',
@@ -1368,6 +1411,7 @@
             [axeItemName]: 2.0,
             [hammerItemName]: 2.0,
             [stoneItemName]: 1.0,
+            [ironOreItemName]: 0.8,
             [dirtItemName]: 0.2,
             [sandItemName]: 0.2,
             [shovelItemName]: 2.0,
@@ -1977,6 +2021,29 @@
             }, 3000);
         }
 
+        function addAcquisitionNotification(itemType) {
+            const container = document.getElementById('acquisition-container');
+            if (!container) return;
+
+            // Pega apenas a primeira linha do nome (remove descrições que venham após \n)
+            const displayName = (itemDisplayNames[itemType] || itemType).split('\n')[0];
+            const notification = document.createElement('div');
+            notification.className = 'acquisition-notification';
+            notification.textContent = `Você adquiriu: ${displayName}`;
+
+            container.appendChild(notification);
+
+            // Remove após 10 segundos
+            setTimeout(() => {
+                notification.classList.add('fade-out');
+                setTimeout(() => {
+                    if (notification.parentNode === container) {
+                        container.removeChild(notification);
+                    }
+                }, 500); // Tempo da transição fade-out
+            }, 10000);
+        }
+
         function getItemIconURL(itemName) {
             if (itemName === axeItemName) return axeImageURL;
             if (itemName === capimItemName) return capimImageURL;
@@ -2119,6 +2186,7 @@
 
         // Helper function to add item to inventory (belt or backpack)
         function addItemToInventory(inventoryArray, itemToAdd) {
+            let added = false;
             // Try to stack first
             for (let i = 0; i < inventoryArray.length; i++) {
                 // Skip the hand slot (beltItems[0]) when trying to stack or find empty slot
@@ -2126,19 +2194,31 @@
 
                 if (inventoryArray[i] && inventoryArray[i].name === itemToAdd.name) {
                     inventoryArray[i].quantity += itemToAdd.quantity;
-                    return; // Item stacked
+                    added = true;
+                    break;
                 }
             }
-            // If not stacked, find an empty slot
-            for (let i = 0; i < inventoryArray.length; i++) {
-                // Skip the hand slot (beltItems[0]) when trying to stack or find empty slot
-                if (inventoryArray === beltItems && i === 0) continue;
 
-                if (inventoryArray[i] === null) {
-                    inventoryArray[i] = { ...itemToAdd }; // Add new item
-                    if (inventoryArray === backpackItems) maintainBackpack();
-                    return;
+            if (!added) {
+                // If not stacked, find an empty slot
+                for (let i = 0; i < inventoryArray.length; i++) {
+                    // Skip the hand slot (beltItems[0]) when trying to stack or find empty slot
+                    if (inventoryArray === beltItems && i === 0) continue;
+
+                    if (inventoryArray[i] === null) {
+                        inventoryArray[i] = { ...itemToAdd }; // Add new item
+                        if (inventoryArray === backpackItems) maintainBackpack();
+                        added = true;
+                        break;
+                    }
                 }
+            }
+
+            if (added) {
+                if (inventoryArray === backpackItems || inventoryArray === beltItems) {
+                    addAcquisitionNotification(itemToAdd.name);
+                }
+                return;
             }
 
             console.warn("Inventory is full, could not add item:", itemToAdd.name);
@@ -7354,6 +7434,9 @@
                                 if (mound.isStoneLayer) {
                                     itemToGive = stoneItemName;
                                     quantityToGive = 1;
+                                    if (Math.random() < 0.05) {
+                                        addItemToInventory(backpackItems, { name: ironOreItemName, quantity: 1 });
+                                    }
                                 } else if (mound.itemType) {
                                     itemToGive = mound.itemType;
                                 } else if (distFromCenter > capimRadius) {
@@ -7419,6 +7502,9 @@
                     } else if (destroyTargetMountainInfo) {
                         createDustCloud(destroyTargetMountainInfo.position, destroyTargetColor);
                         addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
+                        if (Math.random() < 0.05) {
+                            addItemToInventory(backpackItems, { name: ironOreItemName, quantity: 1 });
+                        }
                         updateBackpackDisplay();
                         destroyProgress = 0; // Reset mining progress to allow for continuous mining
                     }
@@ -7515,6 +7601,9 @@
                                     }
                                 } else if (destroyTargetBody.userData.type === stoneItemName || destroyTargetBody.userData.type === stoneBlockItemName || destroyTargetBody.userData.type === stoneFloorItemName) {
                                     addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
+                                    if (Math.random() < 0.05) {
+                                        addItemToInventory(backpackItems, { name: ironOreItemName, quantity: 1 });
+                                    }
                                 } else if (destroyTargetBody.userData.type === campfireItemName) {
                                     addItemToInventory(backpackItems, { name: branchItemName, quantity: 2 });
                                 } else if (destroyTargetBody.userData.type === torchItemName) {
