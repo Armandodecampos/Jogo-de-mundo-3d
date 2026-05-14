@@ -14,7 +14,7 @@ test.describe('Iron Ore and Notifications', () => {
             const initialCount = window.backpackItems.filter(i => i && i.name === ironOreItemName).length;
 
             for (let i = 0; i < 200; i++) {
-                if (Math.random() < 0.05) {
+                if (Math.random() < 0.10) {
                     window.addItemToInventory(window.backpackItems, { name: ironOreItemName, quantity: 1 });
                 }
                 if (window.backpackItems.filter(i => i && i.name === ironOreItemName).length > initialCount) {
