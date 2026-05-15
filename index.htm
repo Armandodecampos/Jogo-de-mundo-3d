@@ -8120,6 +8120,9 @@
 
 
             visualMounds.forEach(mound => {
+                // Pula se estiver em processo de cura (já processado no loop de closingMounds)
+                if (mound.closingStartTime !== undefined) return;
+
                 const dx = mound.position.x - playerBody.position.x;
                 const dz = mound.position.z - playerBody.position.z;
 
@@ -8151,14 +8154,18 @@
                 mesh.visible = (dist <= renderDistance + worldSize) && (mesh.geometry ? frustum.intersectsObject(mesh) : true);
             });
 
-            // NOVO: Lógica para fechar buracos inativos (curar terreno após 10 segundos)
-            for (let i = visualMounds.length - 1; i >= 0; i--) {
-                const mound = visualMounds[i];
+            // NOVO: Lógica para fechar buracos inativos (curar terreno após 30 segundos)
+            // Agora percorre a lista master de mounds para garantir que todos curem, independente de distância
+            for (let i = mounds.length - 1; i >= 0; i--) {
+                const mound = mounds[i];
                 // Cura apenas buracos reais abaixo do nível natural (isHole) após 30 segundos de inatividade
-                if (mound !== currentMound && mound.isHole && world.time - mound.lastDugAt > 30) {
-                    mound.closingStartTime = undefined;
+                // Verifica se já não está fechando para não resetar o processo
+                if (mound !== currentMound && mound.isHole && (world.time - mound.lastDugAt > 30) && mound.closingStartTime === undefined) {
+                    mound.closingStartTime = undefined; // Será definido no loop abaixo
                     closingMounds.push(mound);
-                    visualMounds.splice(i, 1);
+                    // Remove da lista visual para que o loop de culling normal não interfira
+                    const vIdx = visualMounds.indexOf(mound);
+                    if (vIdx !== -1) visualMounds.splice(vIdx, 1);
                 }
             }
 
@@ -8169,6 +8176,29 @@
                 if (mound.closingStartTime === undefined) {
                     mound.closingStartTime = world.time;
                     mound.startHeight = mound.height;
+                }
+
+                // NOVO: Atualiza a posição visual e culling para mounds em processo de fechamento
+                const dx = mound.position.x - playerBody.position.x;
+                const dz = mound.position.z - playerBody.position.z;
+
+                let wrappedX = mound.position.x;
+                let wrappedZ = mound.position.z;
+                if (Math.abs(dx) > halfWorldSize) wrappedX += (dx > 0 ? -worldSize : worldSize);
+                if (Math.abs(dz) > halfWorldSize) wrappedZ += (dz > 0 ? -worldSize : worldSize);
+
+                const fDx = wrappedX - playerBody.position.x;
+                const fDz = wrappedZ - playerBody.position.z;
+                const fDy = mound.position.y - playerBody.position.y;
+                const distSq = fDx * fDx + fDy * fDy + fDz * fDz;
+
+                if (distSq > renderDistSq) {
+                    if (mound.mesh) mound.mesh.visible = false;
+                } else if (mound.mesh) {
+                    mound.mesh.position.set(wrappedX - visualOffsetX, mound.position.y, wrappedZ - visualOffsetZ);
+                    mound.mesh.quaternion.copy(mound.quaternion);
+                    mound.mesh.updateMatrixWorld();
+                    mound.mesh.visible = mound.mesh.geometry ? frustum.intersectsObject(mound.mesh) : true;
                 }
 
                 const duration = 5.0; // 5 segundos para curar suavemente
