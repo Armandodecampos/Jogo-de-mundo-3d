@@ -2406,7 +2406,6 @@
                 targetFloorHeight: naturalY,
                 height: 0, // Inicia sem alteração na altura
                 maxHeightChange: isPositive ? 1.0 : (isHorizontal ? (hitPoint.y - naturalY) : -1.0),
-                isHole: !isPositive && (hitPoint.y < naturalY + 0.1), // NOVO: Só cura se for um buraco real abaixo do nível natural
                 flattened: false,
                 position: new THREE.Vector3(vx, isHorizontal ? hitPoint.y : naturalY, vz),
                 mesh: holeGroup,
@@ -8158,10 +8157,12 @@
             // Agora percorre a lista master de mounds para garantir que todos curem, independente de distância
             for (let i = mounds.length - 1; i >= 0; i--) {
                 const mound = mounds[i];
-                // Cura apenas buracos reais abaixo do nível natural (isHole) após 30 segundos de inatividade
+                // Cura qualquer modificação que esteja abaixo do nível original ou marcada como cavagem (negativa)
+                // após 30 segundos de inatividade. Mounds positivos (construções) não curam.
+                const isBelowOriginal = mound.height < -0.01 || mound.maxHeightChange < 0;
+
                 // Verifica se já não está fechando para não resetar o processo
-                if (mound !== currentMound && mound.isHole && (world.time - mound.lastDugAt > 30) && mound.closingStartTime === undefined) {
-                    mound.closingStartTime = undefined; // Será definido no loop abaixo
+                if (mound !== currentMound && isBelowOriginal && (world.time - mound.lastDugAt > 30) && mound.closingStartTime === undefined) {
                     closingMounds.push(mound);
                     // Remove da lista visual para que o loop de culling normal não interfira
                     const vIdx = visualMounds.indexOf(mound);
@@ -8207,7 +8208,8 @@
 
                 const oldHeight = mound.height;
                 mound.height = mound.startHeight * (1 - progress);
-                const currentGroundLevel = islandSurfaceHeight + mound.height;
+                // Usa a altura original do vértice (mesmo em montanhas) para o cálculo do nível do solo
+                const currentGroundLevel = (mound.originalHeight !== undefined ? mound.originalHeight : islandSurfaceHeight) + mound.height;
 
                 // NOVO: Empurra objetos para cima se o buraco estiver fechando (apenas se o terreno subir)
                 const pushRadius = 2.0;
