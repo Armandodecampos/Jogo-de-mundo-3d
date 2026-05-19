@@ -952,7 +952,7 @@
         <div class="flex-grow grid grid-cols-2 gap-4 overflow-y-auto">
             <!-- Painel do Contêiner -->
             <div>
-                <h3 class="text-xl mb-2 text-center">Conteúdo do Caixote</h3>
+                <h3 class="text-xl mb-2 text-center">Conteúdo do Contêiner</h3>
                 <div id="chestSlotsContainer" class="flex flex-col gap-1 bg-black/30 p-2 rounded-md h-[calc(100%-2.5rem)] overflow-y-auto">
                     <!-- Slots do contêiner serão preenchidos dinamicamente -->
                 </div>
@@ -1310,8 +1310,8 @@
         let closeChestButton;
         let chestSlotsContainer;
         let chestBackpackSlotsContainer;
-        const numChestSlots = 50;
-        const numBasketSlots = 17; // NOVO: 1/3 da capacidade do caixote (aprox)
+        const maxChestWeight = 200; // Máximo em kg para o Caixote
+        const maxBasketWeight = 50;  // Máximo em kg para o Cesto
         let openedChest = null; // Guarda a referência para os dados do contêiner aberto
 
         // Inventário (agora separado para cinto e mochila)
@@ -2027,15 +2027,13 @@
             }, 3000);
         }
 
-        function addAcquisitionNotification(itemType) {
+        function addNotification(message) {
             const container = document.getElementById('acquisition-container');
             if (!container) return;
 
-            // Pega apenas a primeira linha do nome (remove descrições que venham após \n)
-            const displayName = (itemDisplayNames[itemType] || itemType).split('\n')[0];
             const notification = document.createElement('div');
             notification.className = 'acquisition-notification';
-            notification.textContent = `Você adquiriu: ${displayName}`;
+            notification.textContent = message;
 
             container.appendChild(notification);
 
@@ -2048,6 +2046,12 @@
                     }
                 }, 500); // Tempo da transição fade-out
             }, 10000);
+        }
+
+        function addAcquisitionNotification(itemType) {
+            // Pega apenas a primeira linha do nome (remove descrições que venham após \n)
+            const displayName = (itemDisplayNames[itemType] || itemType).split('\n')[0];
+            addNotification(`Você adquiriu: ${displayName}`);
         }
 
         function getItemIconURL(itemName) {
@@ -2192,8 +2196,31 @@
         }
         window.maintainBackpack = maintainBackpack;
 
+        function calculateInventoryWeight(inventoryArray) {
+            let total = 0;
+            for (const item of inventoryArray) {
+                if (item) {
+                    const weightPerItem = itemWeights[item.name] || 0;
+                    total += weightPerItem * item.quantity;
+                }
+            }
+            return total;
+        }
+
+        function canAddWeight(inventoryArray, maxWeight, itemToAdd, quantityToAdd = null) {
+            const currentWeight = calculateInventoryWeight(inventoryArray);
+            const weightPerItem = itemWeights[itemToAdd.name] || 0;
+            const quantity = quantityToAdd !== null ? quantityToAdd : itemToAdd.quantity;
+            return (currentWeight + weightPerItem * quantity) <= maxWeight;
+        }
+
         // Helper function to add item to inventory (belt or backpack)
-        function addItemToInventory(inventoryArray, itemToAdd) {
+        function addItemToInventory(inventoryArray, itemToAdd, maxWeight = Infinity, force = false) {
+            if (!force && maxWeight !== Infinity && !canAddWeight(inventoryArray, maxWeight, itemToAdd)) {
+                console.warn("Container weight limit exceeded, could not add item:", itemToAdd.name);
+                return false;
+            }
+
             let added = false;
             // Try to stack first
             for (let i = 0; i < inventoryArray.length; i++) {
@@ -2208,16 +2235,22 @@
             }
 
             if (!added) {
-                // If not stacked, find an empty slot
-                for (let i = 0; i < inventoryArray.length; i++) {
-                    // Skip the hand slot (beltItems[0]) when trying to stack or find empty slot
-                    if (inventoryArray === beltItems && i === 0) continue;
+                // If it's a dynamic inventory (container), we just push
+                if (maxWeight !== Infinity) {
+                    inventoryArray.push({ ...itemToAdd });
+                    added = true;
+                } else {
+                    // If not stacked, find an empty slot (for belt/backpack)
+                    for (let i = 0; i < inventoryArray.length; i++) {
+                        // Skip the hand slot (beltItems[0]) when trying to stack or find empty slot
+                        if (inventoryArray === beltItems && i === 0) continue;
 
-                    if (inventoryArray[i] === null) {
-                        inventoryArray[i] = { ...itemToAdd }; // Add new item
-                        if (inventoryArray === backpackItems) maintainBackpack();
-                        added = true;
-                        break;
+                        if (inventoryArray[i] === null) {
+                            inventoryArray[i] = { ...itemToAdd }; // Add new item
+                            if (inventoryArray === backpackItems) maintainBackpack();
+                            added = true;
+                            break;
+                        }
                     }
                 }
             }
@@ -2226,10 +2259,11 @@
                 if (inventoryArray === backpackItems || inventoryArray === beltItems) {
                     addAcquisitionNotification(itemToAdd.name);
                 }
-                return;
+                return true;
             }
 
             console.warn("Inventory is full, could not add item:", itemToAdd.name);
+            return false;
         }
 
         // Função para atualizar a exibição do cinto de inventário
@@ -2285,14 +2319,36 @@
 
         function updateChestDisplay() {
             if (!openedChest) return;
+
+            const chestTitle = document.querySelector('#chestModal h2');
+            if (chestTitle) {
+                const typeName = itemDisplayNames[openedChest.userData.type] || 'Contêiner';
+                const currentWeight = calculateInventoryWeight(openedChest.userData.inventory);
+                const maxWeight = openedChest.userData.maxWeight;
+                chestTitle.textContent = `${typeName} (${currentWeight.toFixed(1)} / ${maxWeight}kg)`;
+            }
+
             // Conteúdo do Contêiner
             chestSlotsContainer.innerHTML = '';
             const chestInventory = openedChest.userData.inventory;
+
+            // Limpa slots nulos (ex: itens retirados)
+            for (let i = chestInventory.length - 1; i >= 0; i--) {
+                if (chestInventory[i] === null) {
+                    chestInventory.splice(i, 1);
+                }
+            }
+
+            // Renderiza itens existentes
             for (let i = 0; i < chestInventory.length; i++) {
                 const item = chestInventory[i];
-                const slotDiv = renderSlot(item, i, 'chest'); // Novo tipo de contêiner
+                const slotDiv = renderSlot(item, i, 'chest');
                 chestSlotsContainer.appendChild(slotDiv);
             }
+
+            // Renderiza um slot vazio adicional para permitir colocar itens novos
+            const emptySlotDiv = renderSlot(null, chestInventory.length, 'chest');
+            chestSlotsContainer.appendChild(emptySlotDiv);
 
             // Conteúdo da Mochila (na visualização do contêiner)
             chestBackpackSlotsContainer.innerHTML = '';
@@ -2315,11 +2371,16 @@
             const inv = getInventoryByLocation(selectedItem.sourceLocation);
             if (inv) {
                 const idx = selectedItem.sourceIndex;
-                if (inv[idx] === null) {
-                    inv[idx] = selectedItem.item;
+                if (selectedItem.sourceLocation === 'chest') {
+                    // Para contêineres dinâmicos, tentamos recolocar ou empilhar sem restrição de peso (já estava lá)
+                    addItemToInventory(inv, selectedItem.item, Infinity, true);
                 } else {
-                    // Try to stack or find another slot if original is somehow taken
-                    addItemToInventory(inv, selectedItem.item);
+                    if (inv[idx] === null) {
+                        inv[idx] = selectedItem.item;
+                    } else {
+                        // Try to stack or find another slot if original is somehow taken
+                        addItemToInventory(inv, selectedItem.item);
+                    }
                 }
             }
             selectedItem = null;
@@ -2337,6 +2398,13 @@
             else if (selectedItem && !item) {
                 const targetInventory = getInventoryByLocation(containerType);
                 if (targetInventory) {
+                    if (containerType === 'chest' && openedChest) {
+                        const maxW = openedChest.userData.maxWeight;
+                        if (!canAddWeight(targetInventory, maxW, selectedItem.item)) {
+                            addNotification("Limite de peso do contêiner excedido!");
+                            return;
+                        }
+                    }
                     targetInventory[index] = selectedItem.item;
                     if (targetInventory === backpackItems) maintainBackpack();
                     selectedItem = null;
@@ -2344,6 +2412,13 @@
             }
             // Case 3: Stack items if same type
             else if (selectedItem && item && selectedItem.item.name === item.name) {
+                if (containerType === 'chest' && openedChest) {
+                    const maxW = openedChest.userData.maxWeight;
+                    if (!canAddWeight(getInventoryByLocation(containerType), maxW, selectedItem.item)) {
+                        addNotification("Limite de peso do contêiner excedido!");
+                        return;
+                    }
+                }
                 item.quantity += selectedItem.item.quantity;
                 selectedItem = null;
             }
@@ -2462,7 +2537,8 @@
                 originalMass: initialCubeMass,
                 initialPosition: new CANNON.Vec3().copy(boxBody.position),
                 isChest: true, // NOVO: Caixotes agora funcionam como contêiners
-                inventory: new Array(numChestSlots).fill(null) // NOVO: Inventário do caixote
+                maxWeight: maxChestWeight,
+                inventory: [] // NOVO: Inventário dinâmico baseado em peso
             };
 
             const mesh = new THREE.Mesh(cubeGeometry, cubeMaterialMesh);
@@ -2506,7 +2582,8 @@
                 originalMass: initialBasketMass,
                 initialPosition: new CANNON.Vec3().copy(basketBody.position),
                 isChest: true,
-                inventory: new Array(numBasketSlots).fill(null)
+                maxWeight: maxBasketWeight,
+                inventory: [] // NOVO: Inventário dinâmico baseado em peso
             };
 
             const mesh = new THREE.Mesh(basketGeometry, basketMaterialMesh);
@@ -5699,28 +5776,29 @@
             const startingChestPosition = new THREE.Vector3(0, startingChestHeight + 0.5, -5); // 0.5 is half of boxSize (1)
             const startingChestBody = createBox(startingChestPosition, null);
             const startingChestInventory = startingChestBody.userData.inventory;
+            const startingChestMaxWeight = startingChestBody.userData.maxWeight;
 
-            addItemToInventory(startingChestInventory, { name: hammerItemName, quantity: 1 });
-            addItemToInventory(startingChestInventory, { name: stoneItemName, quantity: 10 });
-            addItemToInventory(startingChestInventory, { name: dirtItemName, quantity: 50 });
-            addItemToInventory(startingChestInventory, { name: pickaxeItemName, quantity: 1 });
-            addItemToInventory(startingChestInventory, { name: shovelItemName, quantity: 1 });
-            addItemToInventory(startingChestInventory, { name: cobItemName, quantity: 100 });
-            addItemToInventory(startingChestInventory, { name: floorItemName, quantity: 50 });
-            addItemToInventory(startingChestInventory, { name: treeSaplingItemName, quantity: 10 });
-            addItemToInventory(startingChestInventory, { name: treeTrunkItemName, quantity: 20 });
-            addItemToInventory(startingChestInventory, { name: woodenPlankItemName, quantity: 10 });
-            addItemToInventory(startingChestInventory, { name: boxItemName, quantity: 20 });
-            addItemToInventory(startingChestInventory, { name: raftItemName, quantity: 2 });
-            addItemToInventory(startingChestInventory, { name: stoneBlockItemName, quantity: 100 });
-            addItemToInventory(startingChestInventory, { name: woodenBlockItemName, quantity: 100 });
-            addItemToInventory(startingChestInventory, { name: stoneFloorItemName, quantity: 100 });
-            addItemToInventory(startingChestInventory, { name: axeItemName, quantity: 1 });
-            addItemToInventory(startingChestInventory, { name: ropeItemName, quantity: 10 });
-            addItemToInventory(startingChestInventory, { name: fabricItemName, quantity: 10 });
-            addItemToInventory(startingChestInventory, { name: campfireItemName, quantity: 5 });
-            addItemToInventory(startingChestInventory, { name: torchItemName, quantity: 10 });
-            addItemToInventory(startingChestInventory, { name: basketItemName, quantity: 5 });
+            addItemToInventory(startingChestInventory, { name: hammerItemName, quantity: 1 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: stoneItemName, quantity: 10 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: dirtItemName, quantity: 50 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: pickaxeItemName, quantity: 1 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: shovelItemName, quantity: 1 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: cobItemName, quantity: 100 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: floorItemName, quantity: 50 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: treeSaplingItemName, quantity: 10 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: treeTrunkItemName, quantity: 20 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: woodenPlankItemName, quantity: 10 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: boxItemName, quantity: 20 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: raftItemName, quantity: 2 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: stoneBlockItemName, quantity: 100 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: woodenBlockItemName, quantity: 100 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: stoneFloorItemName, quantity: 100 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: axeItemName, quantity: 1 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: ropeItemName, quantity: 10 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: fabricItemName, quantity: 10 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: campfireItemName, quantity: 5 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: torchItemName, quantity: 10 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: basketItemName, quantity: 5 }, startingChestMaxWeight, true);
 
             // Pega o elemento do cinto de inventário e seus slots
             inventoryBeltElement = document.getElementById('inventoryBelt');
