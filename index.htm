@@ -1341,6 +1341,7 @@
 
         // NOVO: Variáveis para o sistema de destruição de blocos (Machado e Martelo)
         const axeItemName = 'machado'; // Nome do item de machado no inventário
+        window.axeItemName = axeItemName;
         const hammerItemName = 'martelo'; // Nome do item de martelo no inventário
         const stoneItemName = 'pedra'; // NOVO: Nome do item de pedra no inventário
         const ironOreItemName = 'minerio_ferro'; // NOVO: Nome do item de minério de ferro
@@ -1367,6 +1368,8 @@
         const woodenPlankItemName = 'tábuas'; // NOVO: Nome do item de tábuas de madeira
         const boxItemName = 'caixote'; // NOVO: Nome do item de caixote
         const basketItemName = 'cesto_capim'; // NOVO: Nome do item de cesto de capim
+        const bambuItemName = 'bambu'; // NOVO: Nome do item de bambu
+        window.bambuItemName = bambuItemName;
 
         // NOVO: Mapeamento de nomes de itens para exibição
         window.itemDisplayNames = {
@@ -1400,10 +1403,11 @@
             [fabricItemName]: 'Tecido',
             [campfireItemName]: 'Fogueira\nProporciona luz e calor',
             [torchItemName]: 'Tocha\nIlumina o caminho',
-            [basketItemName]: 'Cesto de Capim'
+            [basketItemName]: 'Cesto de Capim',
+            [bambuItemName]: 'Bambu'
         };
 
-        const itemWeights = {
+        window.itemWeights = {
             [handItemName]: 0,
             [capimItemName]: 0.1,
             [appleSeedItemName]: 0.1,
@@ -1434,7 +1438,8 @@
             [ropeItemName]: 0.5,
             [fabricItemName]: 0.3,
             [campfireItemName]: 2.0,
-            [torchItemName]: 0.5
+            [torchItemName]: 0.5,
+            [bambuItemName]: 0.5
         };
 
         const maxWeight = 500; // Peso máximo que o jogador aguenta levar
@@ -1649,6 +1654,10 @@
                 finalTrunkHeight *= 1.5;
                 finalTrunkRadius *= 0.5;
                 finalLeavesRadius *= 1.1;
+            } else if (treeType === 'bamboo') {
+                finalTrunkHeight *= 1.2;
+                finalTrunkRadius *= 0.3;
+                finalLeavesRadius *= 0.5;
             }
 
             // Apply factors
@@ -1671,6 +1680,8 @@
             let groupHeightVisual;
             if (treeType === 'apple') {
                 groupHeightVisual = trunkHeightVisual + (2.5 * leavesRadiusVisual);
+            } else if (treeType === 'bamboo') {
+                groupHeightVisual = trunkHeightVisual + leavesRadiusVisual;
             } else {
                 groupHeightVisual = trunkHeightVisual + (3.24 * leavesRadiusVisual);
             }
@@ -2083,6 +2094,7 @@
             if (itemName === fabricItemName) return "https://placehold.co/100x100/FFFFFF/000000?text=Tecido";
             if (itemName === campfireItemName) return "https://placehold.co/100x100/FF4500/FFFFFF?text=Fogueira";
             if (itemName === torchItemName) return "https://placehold.co/100x100/FFA500/FFFFFF?text=Tocha";
+            if (itemName === bambuItemName) return "https://placehold.co/100x100/228B22/FFFFFF?text=Bambu";
             return handImageURL;
         }
         window.getItemIconURL = getItemIconURL;
@@ -3266,8 +3278,8 @@
         }
 
         function respawnTree() {
-            const typesToCheck = ['normal', 'apple', 'coconut'];
-            const counts = { normal: 0, apple: 0, coconut: 0 };
+            const typesToCheck = ['normal', 'apple', 'coconut', 'bamboo'];
+            const counts = { normal: 0, apple: 0, coconut: 0, bamboo: 0 };
 
             placedConstructionBodies.forEach(body => {
                 if (body.userData && body.userData.growthStage) {
@@ -3281,6 +3293,7 @@
                     let typeToSpawn = treeSaplingItemName;
                     if (treeType === 'apple') typeToSpawn = appleSeedItemName;
                     else if (treeType === 'coconut') typeToSpawn = coconutSeedItemName;
+                    else if (treeType === 'bamboo') typeToSpawn = bambuItemName;
 
                     let spawned = false;
                     let attempts = 0;
@@ -3314,7 +3327,8 @@
             const types = [
                 { type: treeSaplingItemName, stage: 'arvore_adulta', treeType: 'normal' },
                 { type: appleSeedItemName, stage: 'arvore_adulta', treeType: 'apple' },
-                { type: coconutSeedItemName, stage: 'arvore_adulta', treeType: 'coconut' }
+                { type: coconutSeedItemName, stage: 'arvore_adulta', treeType: 'coconut' },
+                { type: bambuItemName, stage: 'arvore_adulta', treeType: 'bamboo' }
             ];
 
             types.forEach(treeInfo => {
@@ -4038,6 +4052,56 @@
                         }
                         if (!window.coconutTrees.includes(blockBody)) window.coconutTrees.push(blockBody);
                     }
+                } else if (treeType === 'bamboo') {
+                    // Visual de Bambu (Cilindros verdes segmentados)
+                    const trunkRadius = stageData.visual.trunk.radius;
+                    const trunkHeight = stageData.visual.trunk.height;
+                    const baseY = stageData.visual.trunk.yOffsetInGroup - (trunkHeight / 2);
+
+                    treeGroup.remove(trunkMesh); // Remove o tronco padrão
+
+                    const segments = 8;
+                    const segmentHeight = trunkHeight / segments;
+                    const nodeHeight = 0.05;
+                    const bambooColor = 0x228B22; // Forest Green
+                    const nodeColor = 0x006400; // Dark Green
+
+                    for (let i = 0; i < segments; i++) {
+                        // Segmento principal
+                        const segGeom = new THREE.CylinderGeometry(trunkRadius, trunkRadius, segmentHeight - nodeHeight, 8);
+                        const segMat = new THREE.MeshStandardMaterial({ color: bambooColor });
+                        const segMesh = new THREE.Mesh(segGeom, segMat);
+                        segMesh.position.y = baseY + (i + 0.5) * segmentHeight;
+                        segMesh.castShadow = true;
+                        segMesh.receiveShadow = true;
+                        treeGroup.add(segMesh);
+
+                        // Nodo (anel mais escuro e ligeiramente mais largo)
+                        if (i < segments - 1) {
+                            const nodeGeom = new THREE.CylinderGeometry(trunkRadius * 1.1, trunkRadius * 1.1, nodeHeight, 8);
+                            const nodeMat = new THREE.MeshStandardMaterial({ color: nodeColor });
+                            const nodeMesh = new THREE.Mesh(nodeGeom, nodeMat);
+                            nodeMesh.position.y = baseY + (i + 1) * segmentHeight;
+                            nodeMesh.castShadow = true;
+                            nodeMesh.receiveShadow = true;
+                            treeGroup.add(nodeMesh);
+
+                            // Algumas folhas saindo dos nodos superiores
+                            if (i > segments / 2 && Math.random() > 0.5) {
+                                const leafGroup = new THREE.Group();
+                                leafGroup.position.y = nodeMesh.position.y;
+                                leafGroup.rotation.y = Math.random() * Math.PI * 2;
+
+                                const leafGeom = new THREE.BoxGeometry(leavesRadius * 0.8, 0.02, leavesRadius * 0.2);
+                                const leafMat = new THREE.MeshStandardMaterial({ color: bambooColor });
+                                const leafMesh = new THREE.Mesh(leafGeom, leafMat);
+                                leafMesh.position.x = leavesRadius * 0.4;
+                                leafMesh.rotation.z = 0.5;
+                                leafGroup.add(leafMesh);
+                                treeGroup.add(leafGroup);
+                            }
+                        }
+                    }
                 } else {
                     const numCones = 3;
                     for (let i = 0; i < numCones; i++) {
@@ -4216,12 +4280,13 @@
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), floorMaterialMesh);
                 initialMass = initialFloorMass;
                 durability = floorDurability;
-            } else if (type === 'muda_arvore' || type === appleSeedItemName || type === pineSeedItemName || type === coconutItemName || type === coconutSeedItemName) {
+            } else if (type === 'muda_arvore' || type === appleSeedItemName || type === pineSeedItemName || type === coconutItemName || type === coconutSeedItemName || type === bambuItemName) {
                 let treeType = 'normal';
                 if (type === appleSeedItemName) treeType = 'apple';
                 else if (type === coconutItemName || type === coconutSeedItemName) treeType = 'coconut';
+                else if (type === bambuItemName) treeType = 'bamboo';
 
-                const stageToUse = initialStage || ((type === appleSeedItemName || type === pineSeedItemName || type === coconutItemName || type === coconutSeedItemName) ? 'semente' : 'muda');
+                const stageToUse = initialStage || ((type === appleSeedItemName || type === pineSeedItemName || type === coconutItemName || type === coconutSeedItemName || type === bambuItemName) ? 'semente' : 'muda');
                 blockBody.userData.growthStage = stageToUse; // Define antes de configurar visuals
                 blockBody.userData.treeType = treeType;
 
@@ -6425,7 +6490,8 @@
                         if (isTree || isWooden) {
                             materialType = 'wood';
                             // NOVO: Restrição estrita de machado para árvores
-                            if (isTree && heldItemName !== axeItemName) {
+                            const treeType = target.body.userData.treeType;
+                            if (isTree && heldItemName !== axeItemName && treeType !== 'bamboo') {
                                 isDestroying = false;
                                 progressContainer.style.display = 'none';
                                 return;
@@ -7711,7 +7777,11 @@
                                 }
 
                                 if (isTreeObject) {
-                                    addItemToInventory(backpackItems, { name: branchItemName, quantity: 3 });
+                                    if (treeType === 'bamboo') {
+                                        addItemToInventory(backpackItems, { name: bambuItemName, quantity: 3 });
+                                    } else {
+                                        addItemToInventory(backpackItems, { name: branchItemName, quantity: 3 });
+                                    }
                                     if (treeType === 'apple') {
                                         addItemToInventory(backpackItems, { name: appleSeedItemName, quantity: 1 });
                                         if (destroyTargetBody.userData.apples) {
@@ -9811,6 +9881,7 @@
             window.waterMatrix = waterMatrix;
             window.THREE = THREE;
             window.addItemToInventory = addItemToInventory;
+            window.calculateInventoryWeight = calculateInventoryWeight;
             window.collectObject = collectObject;
             window.openChest = openChest;
             window.closeChest = closeChest;
