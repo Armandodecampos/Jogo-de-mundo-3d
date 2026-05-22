@@ -1369,7 +1369,9 @@
         const boxItemName = 'caixote'; // NOVO: Nome do item de caixote
         const basketItemName = 'cesto_capim'; // NOVO: Nome do item de cesto de capim
         const bambuItemName = 'bambu'; // NOVO: Nome do item de bambu
+        const bambuSeedItemName = 'semente_bambu';
         window.bambuItemName = bambuItemName;
+        window.bambuSeedItemName = bambuSeedItemName;
 
         // NOVO: Mapeamento de nomes de itens para exibição
         window.itemDisplayNames = {
@@ -1404,7 +1406,8 @@
             [campfireItemName]: 'Fogueira\nProporciona luz e calor',
             [torchItemName]: 'Tocha\nIlumina o caminho',
             [basketItemName]: 'Cesto de Capim',
-            [bambuItemName]: 'Bambu'
+            [bambuItemName]: 'Bambu',
+            [bambuSeedItemName]: 'Semente de Bambu'
         };
 
         window.itemWeights = {
@@ -1439,7 +1442,8 @@
             [fabricItemName]: 0.3,
             [campfireItemName]: 2.0,
             [torchItemName]: 0.5,
-            [bambuItemName]: 0.5
+            [bambuItemName]: 0.5,
+            [bambuSeedItemName]: 0.1
         };
 
         const maxWeight = 500; // Peso máximo que o jogador aguenta levar
@@ -2095,6 +2099,7 @@
             if (itemName === campfireItemName) return "https://placehold.co/100x100/FF4500/FFFFFF?text=Fogueira";
             if (itemName === torchItemName) return "https://placehold.co/100x100/FFA500/FFFFFF?text=Tocha";
             if (itemName === bambuItemName) return "https://placehold.co/100x100/228B22/FFFFFF?text=Bambu";
+            if (itemName === bambuSeedItemName) return "https://placehold.co/100x100/228B22/FFFFFF?text=Semente+Bambu";
             return handImageURL;
         }
         window.getItemIconURL = getItemIconURL;
@@ -3293,7 +3298,7 @@
                     let typeToSpawn = treeSaplingItemName;
                     if (treeType === 'apple') typeToSpawn = appleSeedItemName;
                     else if (treeType === 'coconut') typeToSpawn = coconutSeedItemName;
-                    else if (treeType === 'bamboo') typeToSpawn = bambuItemName;
+                    else if (treeType === 'bamboo') typeToSpawn = bambuSeedItemName;
 
                     let spawned = false;
                     let attempts = 0;
@@ -3328,7 +3333,7 @@
                 { type: treeSaplingItemName, stage: 'arvore_adulta', treeType: 'normal' },
                 { type: appleSeedItemName, stage: 'arvore_adulta', treeType: 'apple' },
                 { type: coconutSeedItemName, stage: 'arvore_adulta', treeType: 'coconut' },
-                { type: bambuItemName, stage: 'arvore_adulta', treeType: 'bamboo' }
+                { type: bambuSeedItemName, stage: 'arvore_adulta', treeType: 'bamboo' }
             ];
 
             types.forEach(treeInfo => {
@@ -4102,6 +4107,23 @@
                             }
                         }
                     }
+
+                    // Cluster de folhas no topo (sempre presente)
+                    const topLeavesGroup = new THREE.Group();
+                    topLeavesGroup.position.y = baseY + trunkHeight;
+                    for (let j = 0; j < 6; j++) {
+                        const leafPivot = new THREE.Group();
+                        leafPivot.rotation.y = (j / 6) * Math.PI * 2;
+
+                        const leafGeom = new THREE.BoxGeometry(leavesRadius * 1.2, 0.02, leavesRadius * 0.3);
+                        const leafMat = new THREE.MeshStandardMaterial({ color: bambooColor });
+                        const leafMesh = new THREE.Mesh(leafGeom, leafMat);
+                        leafMesh.position.x = leavesRadius * 0.6;
+                        leafMesh.rotation.z = 0.2; // Ligeiramente para cima
+                        leafPivot.add(leafMesh);
+                        topLeavesGroup.add(leafPivot);
+                    }
+                    treeGroup.add(topLeavesGroup);
                 } else {
                     const numCones = 3;
                     for (let i = 0; i < numCones; i++) {
@@ -4280,15 +4302,16 @@
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), floorMaterialMesh);
                 initialMass = initialFloorMass;
                 durability = floorDurability;
-            } else if (type === 'muda_arvore' || type === appleSeedItemName || type === pineSeedItemName || type === coconutItemName || type === coconutSeedItemName || type === bambuItemName) {
+            } else if (type === 'muda_arvore' || type === appleSeedItemName || type === pineSeedItemName || type === coconutItemName || type === coconutSeedItemName || type === bambuSeedItemName) {
                 let treeType = 'normal';
                 if (type === appleSeedItemName) treeType = 'apple';
                 else if (type === coconutItemName || type === coconutSeedItemName) treeType = 'coconut';
-                else if (type === bambuItemName) treeType = 'bamboo';
+                else if (type === bambuSeedItemName) treeType = 'bamboo';
 
-                const stageToUse = initialStage || ((type === appleSeedItemName || type === pineSeedItemName || type === coconutItemName || type === coconutSeedItemName || type === bambuItemName) ? 'semente' : 'muda');
+                const stageToUse = initialStage || ((type === appleSeedItemName || type === pineSeedItemName || type === coconutItemName || type === coconutSeedItemName || type === bambuSeedItemName) ? 'semente' : 'muda');
                 blockBody.userData.growthStage = stageToUse; // Define antes de configurar visuals
                 blockBody.userData.treeType = treeType;
+                blockBody.userData.growthStartTime = world.time;
 
                 const treeResult = getTreeDimensions(treeStages[stageToUse], treeType);
                 randomizedTreeDimensions = treeResult.data;
@@ -6259,7 +6282,7 @@
                 // O martelo foi removido temporariamente das ferramentas de destruição
                 if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === branchItemName || item.name === dirtItemName || item.name === sandItemName) return 'destroy';
                 // Itens de colocação
-                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === basketItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName) return 'place';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === basketItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName || item.name === bambuSeedItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
             }
 
@@ -6811,7 +6834,7 @@
                     if (currentBlockType === 'cob' && cobMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === 'piso' && floorMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === 'tábuas' && woodenPlankMaterialMesh) materialLoaded = true;
-                    else if ((currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName) && treeTrunkMaterialMesh && treeLeavesMaterialMesh) materialLoaded = true;
+                    else if ((currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === bambuSeedItemName) && treeTrunkMaterialMesh && treeLeavesMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === 'tronco_arvore' && treeTrunkMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === stoneBlockItemName && stoneBlockMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === woodenBlockItemName && woodenBlockMaterialMesh) materialLoaded = true;
@@ -7778,7 +7801,8 @@
 
                                 if (isTreeObject) {
                                     if (treeType === 'bamboo') {
-                                        addItemToInventory(backpackItems, { name: bambuItemName, quantity: 3 });
+                                        addItemToInventory(backpackItems, { name: bambuItemName, quantity: 8 });
+                                        addItemToInventory(backpackItems, { name: bambuSeedItemName, quantity: 1 });
                                     } else {
                                         addItemToInventory(backpackItems, { name: branchItemName, quantity: 3 });
                                     }
@@ -8773,7 +8797,7 @@
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(woodenBlockWidth, woodenBlockHeight, woodenBlockDepth);
                         } else if (currentBlockType === stoneFloorItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(stoneFloorWidth, stoneFloorHeight, stoneFloorDepth);
-                        } else if (currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === 'muda_arvore') {
+                        } else if (currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === 'muda_arvore' || currentBlockType === bambuSeedItemName) {
                             const seedBaseData = treeStages['semente'];
                             ghostBlockMesh.geometry = new THREE.ConeGeometry(seedBaseData.visual.mound.radius, seedBaseData.visual.mound.height, 8);
                         } else if (currentBlockType === 'tronco_arvore') {
@@ -8841,7 +8865,7 @@
                     else if (currentBlockType === stoneBlockItemName) currentGhostHeight = stoneBlockHeight;
                     else if (currentBlockType === woodenBlockItemName) currentGhostHeight = woodenBlockHeight;
                     else if (currentBlockType === stoneFloorItemName) currentGhostHeight = stoneFloorHeight;
-                    else if (currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === 'muda_arvore') currentGhostHeight = treeStages['semente'].visual.mound.height;
+                    else if (currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === 'muda_arvore' || currentBlockType === bambuSeedItemName) currentGhostHeight = treeStages['semente'].visual.mound.height;
                     else if (currentBlockType === 'tronco_arvore') currentGhostHeight = trunkHeight;
                     else if (currentBlockType === boxItemName) currentGhostHeight = 1;
                     else if (currentBlockType === basketItemName) currentGhostHeight = 0.5;
@@ -8918,7 +8942,7 @@
                                 // NOVO: Alinha a posição Y na grade, considerando a altura da superfície da ilha como a base.
                                 // Isso garante que os blocos se encaixem verticalmente.
                                 // CORREÇÃO: As sementes não devem se encaixar na grade vertical, elas devem ser colocadas no chão.
-                                if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === dirtItemName || currentBlockType === sandItemName || currentBlockType === raftItemName || currentBlockType === torchItemName) {
+                                if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === bambuSeedItemName || currentBlockType === dirtItemName || currentBlockType === sandItemName || currentBlockType === raftItemName || currentBlockType === torchItemName) {
                                     placementPosition.y = basePosition.y;
                                 } else if (currentBlockType === boxItemName) {
                                     placementPosition.y = basePosition.y;
@@ -8954,7 +8978,7 @@
                                     }
 
                                     // Se for uma muda de árvore, verifica a distância das outras árvores
-                                    if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName) {
+                                    if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === bambuSeedItemName) {
                                         for (const existingBody of placedConstructionBodies) {
                                             // Verifica se o corpo existente é uma árvore em qualquer estágio de crescimento
                                             // (muda, media ou arvore_adulta)
@@ -9367,7 +9391,8 @@
                     appleSeedItemName,
                     pineSeedItemName,
                     coconutItemName,
-                    coconutSeedItemName
+                    coconutSeedItemName,
+                    bambuSeedItemName
                 ].includes(blockBody.userData.type);
 
                 if (isPlantableSeed && !blockBody.userData.isFullyGrown) {
