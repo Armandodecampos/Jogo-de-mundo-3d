@@ -61,13 +61,11 @@ test('Bamboo tree verification v2', async ({ page }) => {
     const mesh = window.placedConstructionMeshes.find(m => m.userData.physicsBody === bamboo);
     if (!mesh) return false;
 
-    // The topLeavesGroup was added as a child of treeGroup
-    // It should have 6 children (the leaf pivots)
-    // We can't easily identify it by name since I didn't set .name,
-    // but we can check if there's a group with 6 children among the mesh children.
+    // The topGroup was added as a child of treeGroup
+    // It should have 5 children (the top branches)
     const children = mesh.children;
-    const groupsWith6Children = children.filter(c => c.type === 'Group' && c.children.length === 6);
-    return groupsWith6Children.length >= 1;
+    const groupsWith5Children = children.filter(c => c.type === 'Group' && c.children.length === 5);
+    return groupsWith5Children.length >= 1;
   });
   console.log('Visual leaves check:', visualLeavesCheck);
   expect(visualLeavesCheck).toBe(true);
