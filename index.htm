@@ -4091,39 +4091,62 @@
                             nodeMesh.receiveShadow = true;
                             treeGroup.add(nodeMesh);
 
-                            // Algumas folhas saindo dos nodos superiores
-                            if (i > segments / 2 && Math.random() > 0.5) {
-                                const leafGroup = new THREE.Group();
-                                leafGroup.position.y = nodeMesh.position.y;
-                                leafGroup.rotation.y = Math.random() * Math.PI * 2;
+                            // Galhos e folhas saindo dos nodos superiores
+                            if (i > segments / 2 && Math.random() > 0.4) {
+                                const branchGroup = new THREE.Group();
+                                branchGroup.position.y = nodeMesh.position.y;
+                                branchGroup.rotation.y = Math.random() * Math.PI * 2;
 
-                                const leafGeom = new THREE.BoxGeometry(leavesRadius * 0.8, 0.02, leavesRadius * 0.2);
-                                const leafMat = new THREE.MeshStandardMaterial({ color: bambooColor });
-                                const leafMesh = new THREE.Mesh(leafGeom, leafMat);
-                                leafMesh.position.x = leavesRadius * 0.4;
-                                leafMesh.rotation.z = 0.5;
-                                leafGroup.add(leafMesh);
-                                treeGroup.add(leafGroup);
+                                // Galho fino lateral
+                                const branchLen = leavesRadius * 0.6;
+                                const branchGeom = new THREE.CylinderGeometry(0.01, 0.02, branchLen, 4);
+                                branchGeom.rotateZ(Math.PI / 2.5); // Inclina para cima e fora
+                                branchGeom.translate(branchLen / 2, 0, 0);
+                                const branchMesh = new THREE.Mesh(branchGeom, new THREE.MeshStandardMaterial({ color: nodeColor }));
+                                branchGroup.add(branchMesh);
+
+                                // Cluster de folhas pontiagudas no fim do galho
+                                for (let k = 0; k < 3; k++) {
+                                    const leafGeom = new THREE.ConeGeometry(0.05, 0.4, 4);
+                                    leafGeom.rotateX(Math.PI / 2);
+                                    leafGeom.translate(0, 0, 0.2);
+                                    const leafMesh = new THREE.Mesh(leafGeom, new THREE.MeshStandardMaterial({ color: bambooColor }));
+                                    leafMesh.position.set(branchLen, 0.1, 0);
+                                    leafMesh.rotation.set(0.2, (k / 3) * Math.PI * 2, 0.8);
+                                    branchGroup.add(leafMesh);
+                                }
+                                treeGroup.add(branchGroup);
                             }
                         }
                     }
 
-                    // Cluster de folhas no topo (sempre presente)
-                    const topLeavesGroup = new THREE.Group();
-                    topLeavesGroup.position.y = baseY + trunkHeight;
-                    for (let j = 0; j < 6; j++) {
-                        const leafPivot = new THREE.Group();
-                        leafPivot.rotation.y = (j / 6) * Math.PI * 2;
+                    // Cluster de folhas no topo (mais denso e ramificado)
+                    const topGroup = new THREE.Group();
+                    topGroup.position.y = baseY + trunkHeight;
+                    for (let j = 0; j < 5; j++) {
+                        const topBranch = new THREE.Group();
+                        topBranch.rotation.y = (j / 5) * Math.PI * 2;
 
-                        const leafGeom = new THREE.BoxGeometry(leavesRadius * 1.2, 0.02, leavesRadius * 0.3);
-                        const leafMat = new THREE.MeshStandardMaterial({ color: bambooColor });
-                        const leafMesh = new THREE.Mesh(leafGeom, leafMat);
-                        leafMesh.position.x = leavesRadius * 0.6;
-                        leafMesh.rotation.z = 0.2; // Ligeiramente para cima
-                        leafPivot.add(leafMesh);
-                        topLeavesGroup.add(leafPivot);
+                        // Haste da folha de topo
+                        const stemLen = leavesRadius * 0.5;
+                        const stemGeom = new THREE.CylinderGeometry(0.01, 0.015, stemLen, 4);
+                        stemGeom.rotateZ(Math.PI / 4);
+                        stemGeom.translate(stemLen / 2, 0.1, 0);
+                        topBranch.add(new THREE.Mesh(stemGeom, new THREE.MeshStandardMaterial({ color: nodeColor })));
+
+                        // Múltiplas folhas pontiagudas por haste
+                        for (let k = 0; k < 4; k++) {
+                            const leafGeom = new THREE.ConeGeometry(0.06, 0.5, 4);
+                            leafGeom.rotateX(Math.PI / 2);
+                            leafGeom.translate(0, 0, 0.25);
+                            const leafMesh = new THREE.Mesh(leafGeom, new THREE.MeshStandardMaterial({ color: bambooColor }));
+                            leafMesh.position.set(stemLen, 0.2, 0);
+                            leafMesh.rotation.set(0.3, (k / 4) * Math.PI * 2, 1.0);
+                            topBranch.add(leafMesh);
+                        }
+                        topGroup.add(topBranch);
                     }
-                    treeGroup.add(topLeavesGroup);
+                    treeGroup.add(topGroup);
                 } else {
                     const numCones = 3;
                     for (let i = 0; i < numCones; i++) {
