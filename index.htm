@@ -3285,6 +3285,7 @@
         function respawnTree() {
             const typesToCheck = ['normal', 'apple', 'coconut', 'bamboo'];
             const counts = { normal: 0, apple: 0, coconut: 0, bamboo: 0 };
+            const targets = { normal: 1, apple: 1, coconut: 1, bamboo: 10 };
 
             placedConstructionBodies.forEach(body => {
                 if (body.userData && body.userData.growthStage) {
@@ -3294,7 +3295,7 @@
             });
 
             typesToCheck.forEach(treeType => {
-                if (counts[treeType] === 0) {
+                if (counts[treeType] < targets[treeType]) {
                     let typeToSpawn = treeSaplingItemName;
                     if (treeType === 'apple') typeToSpawn = appleSeedItemName;
                     else if (treeType === 'coconut') typeToSpawn = coconutSeedItemName;
@@ -3330,33 +3331,35 @@
 
         function populateTrees() {
             const types = [
-                { type: treeSaplingItemName, stage: 'arvore_adulta', treeType: 'normal' },
-                { type: appleSeedItemName, stage: 'arvore_adulta', treeType: 'apple' },
-                { type: coconutSeedItemName, stage: 'arvore_adulta', treeType: 'coconut' },
-                { type: bambuSeedItemName, stage: 'arvore_adulta', treeType: 'bamboo' }
+                { type: treeSaplingItemName, stage: 'arvore_adulta', treeType: 'normal', count: 1 },
+                { type: appleSeedItemName, stage: 'arvore_adulta', treeType: 'apple', count: 1 },
+                { type: coconutSeedItemName, stage: 'arvore_adulta', treeType: 'coconut', count: 1 },
+                { type: bambuSeedItemName, stage: 'arvore_adulta', treeType: 'bamboo', count: 10 }
             ];
 
             types.forEach(treeInfo => {
-                let spawned = false;
-                let attempts = 0;
-                while (!spawned && attempts < 200) {
-                    attempts++;
-                    const angle = Math.random() * Math.PI * 2;
-                    let dist;
-                    if (treeInfo.treeType === 'coconut') {
-                        dist = capimRadius + Math.random() * (beachRadius - capimRadius);
-                    } else {
-                        dist = Math.random() * capimRadius;
-                    }
+                for (let i = 0; i < treeInfo.count; i++) {
+                    let spawned = false;
+                    let attempts = 0;
+                    while (!spawned && attempts < 200) {
+                        attempts++;
+                        const angle = Math.random() * Math.PI * 2;
+                        let dist;
+                        if (treeInfo.treeType === 'coconut') {
+                            dist = capimRadius + Math.random() * (beachRadius - capimRadius);
+                        } else {
+                            dist = Math.random() * capimRadius;
+                        }
 
-                    const x = Math.cos(angle) * dist;
-                    const z = Math.sin(angle) * dist;
-                    const y = window.getSurfaceHeight(x, z);
+                        const x = Math.cos(angle) * dist;
+                        const z = Math.sin(angle) * dist;
+                        const y = window.getSurfaceHeight(x, z);
 
-                    if (y > waterLevel + 1.0 && y < 25) {
-                        if (!isAreaOccupiedByConstruction(x, z, 5.0) && !isPositionOccupied(x, z, 2.0)) {
-                            createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), treeInfo.type, treeInfo.stage);
-                            spawned = true;
+                        if (y > waterLevel + 1.0 && y < 25) {
+                            if (!isAreaOccupiedByConstruction(x, z, 5.0) && !isPositionOccupied(x, z, 2.0)) {
+                                createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), treeInfo.type, treeInfo.stage);
+                                spawned = true;
+                            }
                         }
                     }
                 }
