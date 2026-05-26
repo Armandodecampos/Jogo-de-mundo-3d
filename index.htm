@@ -867,11 +867,6 @@
                 </select>
             </div>
         </div>
-            <div class="flex gap-4 w-full mt-4">
-                <button id="exportPresetButton" class="flex-1 bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 rounded transition-colors">Exportar</button>
-                <button id="importPresetButton" class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 rounded transition-colors">Importar</button>
-            </div>
-            <input type="file" id="importPresetInput" accept=".json" style="display:none">
         <button id="backToMenuButton" class="mt-8 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-10 rounded-lg transition-colors">Voltar</button>
     </div>
 
@@ -1044,7 +1039,7 @@
         let coconutTrees = [];
         window.coconutTrees = coconutTrees;
         let targetCapimCount = parseInt(localStorage.getItem('targetCapimCount')) || 1000;
-        let targetStoneCount = parseInt(localStorage.getItem('targetStoneCount')) || 100;
+        let targetStoneCount = 100;
         let showFPS = localStorage.getItem('showFPS') === 'true';
         let fpsFrames = 0;
         let fpsLastTime = performance.now();
@@ -7077,127 +7072,6 @@
             }
 
             const inspectorToggle = document.getElementById('inspectorToggle');
-
-            // Funcionalidade de Exportar e Importar Predefinições
-            const exportBtn = document.getElementById('exportPresetButton');
-            const importBtn = document.getElementById('importPresetButton');
-            const importInput = document.getElementById('importPresetInput');
-
-            if (exportBtn) {
-                exportBtn.addEventListener('click', () => {
-                    const settingsKeys = [
-                        'renderDistance', 'targetCapimCount', 'targetStoneCount',
-                        'useTextures', 'useShadows', 'useInteractionHints',
-                        'showFPS', 'useInspector'
-                    ];
-                    const preset = {};
-                    settingsKeys.forEach(key => {
-                        const val = localStorage.getItem(key);
-                        if (val !== null) preset[key] = val;
-                    });
-
-                    const blob = new Blob([JSON.stringify(preset, null, 2)], { type: 'application/json' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `preset_ilha_${new Date().toISOString().slice(0,10)}.json`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                });
-            }
-
-            if (importBtn && importInput) {
-                importBtn.addEventListener('click', () => importInput.click());
-
-                importInput.addEventListener('change', (e) => {
-                    const file = e.target.files[0];
-                    if (!file) return;
-
-                    const reader = new FileReader();
-                    reader.onload = (event) => {
-                        try {
-                            const preset = JSON.parse(event.target.result);
-                            Object.entries(preset).forEach(([key, value]) => {
-                                localStorage.setItem(key, value);
-                            });
-
-                            // Atualiza variáveis internas e UI
-                            if (preset.renderDistance !== undefined) {
-                                renderDistance = parseInt(preset.renderDistance);
-                                const el = document.getElementById('renderDistanceSlider');
-                                if (el) el.value = renderDistance;
-                                const valEl = document.getElementById('renderDistanceValue');
-                                if (valEl) valEl.textContent = renderDistance;
-                            }
-                            if (preset.targetCapimCount !== undefined) {
-                                targetCapimCount = parseInt(preset.targetCapimCount);
-                                const el = document.getElementById('capimDensitySlider');
-                                if (el) el.value = targetCapimCount;
-                                const valEl = document.getElementById('capimDensityValue');
-                                if (valEl) valEl.textContent = targetCapimCount;
-                            }
-                            if (preset.targetStoneCount !== undefined) {
-                                targetStoneCount = parseInt(preset.targetStoneCount);
-                                const el = document.getElementById('stoneDensitySlider');
-                                if (el) el.value = targetStoneCount;
-                                const valEl = document.getElementById('stoneDensityValue');
-                                if (valEl) valEl.textContent = targetStoneCount;
-                            }
-                            if (preset.useTextures !== undefined) {
-                                useTextures = preset.useTextures === 'true';
-                                const el = document.getElementById('textureToggle');
-                                if (el) el.value = preset.useTextures;
-                                const valEl = document.getElementById('textureStatus');
-                                if (valEl) valEl.textContent = useTextures ? 'Com Textura' : 'Sem Textura (Sólido)';
-                            }
-                            if (preset.useShadows !== undefined) {
-                                useShadows = preset.useShadows === 'true';
-                                const el = document.getElementById('shadowToggle');
-                                if (el) el.value = preset.useShadows;
-                                const valEl = document.getElementById('shadowStatus');
-                                if (valEl) valEl.textContent = useShadows ? 'Ativado' : 'Desativado';
-                            }
-                            if (preset.useInteractionHints !== undefined) {
-                                useInteractionHints = preset.useInteractionHints === 'true';
-                                const el = document.getElementById('hintToggle');
-                                if (el) el.value = preset.useInteractionHints;
-                                const valEl = document.getElementById('hintStatus');
-                                if (valEl) valEl.textContent = useInteractionHints ? 'Ativado' : 'Desativado';
-                            }
-                            if (preset.showFPS !== undefined) {
-                                showFPS = preset.showFPS === 'true';
-                                const el = document.getElementById('fpsToggle');
-                                if (el) el.value = preset.showFPS;
-                                const valEl = document.getElementById('fpsStatus');
-                                if (valEl) valEl.textContent = showFPS ? 'Ativado' : 'Desativado';
-                                if (typeof applyFPSSettings === 'function') applyFPSSettings();
-                            }
-                            if (preset.useInspector !== undefined) {
-                                useInspector = preset.useInspector === 'true';
-                                const el = document.getElementById('inspectorToggle');
-                                if (el) el.value = preset.useInspector;
-                                const valEl = document.getElementById('inspectorStatus');
-                                if (valEl) valEl.textContent = useInspector ? 'Ativado' : 'Desativado';
-                                if (typeof applyInspectorSettings === 'function') applyInspectorSettings();
-                            }
-
-                            if (typeof addNotification === 'function') {
-                                addNotification("Predefinição importada com sucesso!");
-                            } else {
-                                alert("Predefinição importada com sucesso! Algumas alterações podem exigir recarregar.");
-                            }
-                        } catch (err) {
-                            console.error("Erro ao importar predefinição:", err);
-                            alert("Erro ao carregar o arquivo.");
-                        }
-                    };
-                    reader.readAsText(file);
-                });
-            }
-                    };
-                    reader.readAsText(file);
-                });
-            }
             const inspectorStatus = document.getElementById('inspectorStatus');
             const hudInspectorToggle = document.getElementById('hudInspectorToggle');
             const hudInspectorText = document.getElementById('hudInspectorText');
