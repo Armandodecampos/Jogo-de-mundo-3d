@@ -4434,14 +4434,27 @@
                     group.add(leg);
                 });
 
-                // Metal Box on top (ONLY for Workbench)
+                // Drawer units (ONLY for Workbench)
                 if (type === workbenchItemName) {
-                    const boxGeom = new THREE.BoxGeometry(0.3, 0.2, 0.3);
-                    const boxMesh = new THREE.Mesh(boxGeom, metalMat);
-                    boxMesh.position.set(0.3, 0.5, 0.1); // On top of the table
-                    boxMesh.castShadow = true;
-                    boxMesh.receiveShadow = true;
-                    group.add(boxMesh);
+                    const drawerUnitGeom = new THREE.BoxGeometry(0.35, 0.45, 0.6);
+                    const handleGeom = new THREE.BoxGeometry(0.15, 0.03, 0.03);
+
+                    [-0.275, 0.275].forEach(xPos => {
+                        const unit = new THREE.Mesh(drawerUnitGeom, woodMat);
+                        unit.position.set(xPos, 0.075, 0);
+                        unit.castShadow = true;
+                        unit.receiveShadow = true;
+                        group.add(unit);
+
+                        // 2 drawers per unit
+                        [0.12, -0.12].forEach(yOffset => {
+                            const handle = new THREE.Mesh(handleGeom, metalMat);
+                            handle.position.set(xPos, 0.075 + yOffset, 0.31);
+                            handle.castShadow = true;
+                            handle.receiveShadow = true;
+                            group.add(handle);
+                        });
+                    });
                 }
 
                 mesh = group;
@@ -6791,7 +6804,7 @@
                         current = current.parent;
                     }
 
-                    if (body && (allPickableBodies.includes(body) || (allConstructionBodies.includes(body) && body.userData.isCollectible)) && body.userData.type !== campfireItemName) {
+                    if (body && (allPickableBodies.includes(body) || (allConstructionBodies.includes(body) && body.userData.isCollectible)) && body.userData.type !== campfireItemName && body.userData.type !== workbenchItemName && body.userData.type !== mesaItemName) {
                         if (intersects[i].distance <= pickUpDistance) {
                             pickedObjectBody = body;
                             pickedObjectMesh = intersects[i].object;
@@ -8642,7 +8655,11 @@
                                 break;
                             }
                             if (body.userData.isCollectible) {
-                                interactionHintText = "(F) Agarrar / (G) Guardar";
+                                if (body.userData.type === workbenchItemName || body.userData.type === mesaItemName) {
+                                    interactionHintText = "(G) Guardar";
+                                } else {
+                                    interactionHintText = "(F) Agarrar / (G) Guardar";
+                                }
                                 break;
                             }
                             // Adiciona dicas contextuais para ferramentas
