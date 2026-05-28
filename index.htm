@@ -1377,6 +1377,7 @@
         const clayPotItemName = 'pote_barro';
         const pestleItemName = 'pilao';
         const workbenchItemName = 'bancada_trabalho';
+        const mesaItemName = 'mesa';
 
         // NOVO: Mapeamento de nomes de itens para exibição
         window.itemDisplayNames = {
@@ -1420,7 +1421,8 @@
             [workbenchToolkitItemName]: 'Kit de ferramentas para bancada de trabalho',
             [clayPotItemName]: 'Pote de Barro',
             [pestleItemName]: 'Pilão',
-            [workbenchItemName]: 'Bancada de Trabalho'
+            [workbenchItemName]: 'Bancada de Trabalho',
+            [mesaItemName]: 'Mesa'
         };
 
         window.itemWeights = {
@@ -1464,7 +1466,8 @@
             [workbenchToolkitItemName]: 5.0,
             [clayPotItemName]: 2.0,
             [pestleItemName]: 1.5,
-            [workbenchItemName]: 15.0
+            [workbenchItemName]: 15.0,
+            [mesaItemName]: 10.0
         };
 
         const maxWeight = 500; // Peso máximo que o jogador aguenta levar
@@ -2123,6 +2126,7 @@
             if (itemName === clayPotItemName) return "https://placehold.co/100x100/A0522D/FFFFFF?text=Pote";
             if (itemName === pestleItemName) return "https://placehold.co/100x100/D2B48C/FFFFFF?text=Pilao";
             if (itemName === workbenchItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Bancada";
+            if (itemName === mesaItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Mesa";
             return handImageURL;
         }
         window.getItemIconURL = getItemIconURL;
@@ -4397,22 +4401,22 @@
                 blockBody.userData.fireLight = light;
                 blockBody.userData.fireOffset = Math.random() * 1000;
                 activeCampfires.push(blockBody);
-            } else if (type === workbenchItemName) {
-                width = 1.2; height = 0.85; depth = 0.7; // Aumentado um pouco para acomodar a caixa
+            } else if (type === workbenchItemName || type === mesaItemName) {
+                width = 1.2; height = 0.85; depth = 0.7;
                 blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
                 blockBody.addShape(blockShape);
 
-                const workbenchGroup = new THREE.Group();
+                const group = new THREE.Group();
                 const woodMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 }); // Brown
                 const metalMat = new THREE.MeshStandardMaterial({ color: 0x708090 }); // Slate Gray
 
                 // Table Top
                 const topGeom = new THREE.BoxGeometry(1.2, 0.1, 0.7);
                 const topMesh = new THREE.Mesh(topGeom, woodMat);
-                topMesh.position.y = 0.35; // 0.85/2 - 0.1/2 = 0.375, approx
+                topMesh.position.y = 0.35;
                 topMesh.castShadow = true;
                 topMesh.receiveShadow = true;
-                workbenchGroup.add(topMesh);
+                group.add(topMesh);
 
                 // Legs
                 const legGeom = new THREE.BoxGeometry(0.1, 0.75, 0.1);
@@ -4427,19 +4431,21 @@
                     leg.position.set(pos.x, -0.05, pos.z);
                     leg.castShadow = true;
                     leg.receiveShadow = true;
-                    workbenchGroup.add(leg);
+                    group.add(leg);
                 });
 
-                // Metal Box on top
-                const boxGeom = new THREE.BoxGeometry(0.3, 0.2, 0.3);
-                const boxMesh = new THREE.Mesh(boxGeom, metalMat);
-                boxMesh.position.set(0.3, 0.5, 0.1); // On top of the table
-                boxMesh.castShadow = true;
-                boxMesh.receiveShadow = true;
-                workbenchGroup.add(boxMesh);
+                // Metal Box on top (ONLY for Workbench)
+                if (type === workbenchItemName) {
+                    const boxGeom = new THREE.BoxGeometry(0.3, 0.2, 0.3);
+                    const boxMesh = new THREE.Mesh(boxGeom, metalMat);
+                    boxMesh.position.set(0.3, 0.5, 0.1); // On top of the table
+                    boxMesh.castShadow = true;
+                    boxMesh.receiveShadow = true;
+                    group.add(boxMesh);
+                }
 
-                mesh = workbenchGroup;
-                initialMass = 100;
+                mesh = group;
+                initialMass = type === workbenchItemName ? 100 : 80;
                 durability = 2.0;
             }
             else {
@@ -4449,7 +4455,7 @@
 
             world.addBody(blockBody);
             Object.assign(blockBody.userData, {
-                isCollectible: (type === workbenchItemName),
+                isCollectible: (type === workbenchItemName || type === mesaItemName),
                 isDestructible: true,
                 durability: durability,
                 originalMass: initialMass,
@@ -5894,6 +5900,7 @@
             addItemToInventory(startingChestInventory, { name: pestleItemName, quantity: 1 }, startingChestMaxWeight, true);
             addItemToInventory(startingChestInventory, { name: basketItemName, quantity: 5 }, startingChestMaxWeight, true);
             addItemToInventory(startingChestInventory, { name: workbenchItemName, quantity: 10 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: mesaItemName, quantity: 10 }, startingChestMaxWeight, true);
 
             // Pega o elemento do cinto de inventário e seus slots
             inventoryBeltElement = document.getElementById('inventoryBelt');
@@ -6289,7 +6296,7 @@
                 // O martelo foi removido temporariamente das ferramentas de destruição
                 if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === ironAxeItemName || item.name === ironPickaxeItemName || item.name === ironShovelItemName || item.name === branchItemName || item.name === dirtItemName || item.name === sandItemName) return 'destroy';
                 // Itens de colocação
-                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === basketItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName || item.name === workbenchItemName) return 'place';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === basketItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName || item.name === workbenchItemName || item.name === mesaItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
             }
 
@@ -6749,16 +6756,17 @@
                             updateBackpackDisplay();
                             break;
                         }
-                    } else if (clickedBody.userData.type === workbenchItemName) {
+                    } else if (clickedBody.userData.type === workbenchItemName || clickedBody.userData.type === mesaItemName) {
                         const constructionIndex = placedConstructionBodies.indexOf(clickedBody);
                         if (constructionIndex > -1) {
+                            const type = clickedBody.userData.type;
                             scene.remove(placedConstructionMeshes[constructionIndex]);
                             placedConstructionBodies.splice(constructionIndex, 1);
                             placedConstructionMeshes.splice(constructionIndex, 1);
                             world.removeBody(clickedBody);
                             raycastTargetsNeedUpdate = true;
 
-                            addItemToInventory(backpackItems, { name: workbenchItemName, quantity: 1 });
+                            addItemToInventory(backpackItems, { name: type, quantity: 1 });
                             updateBackpackDisplay();
                             break;
                         }
@@ -6870,7 +6878,7 @@
                     else if (currentBlockType === stoneItemName) materialLoaded = true; // Pedra sempre carregada (usa material básico)
                     else if (currentBlockType === campfireItemName) materialLoaded = true;
                     else if (currentBlockType === torchItemName) materialLoaded = true;
-                    else if (currentBlockType === workbenchItemName) materialLoaded = true;
+                    else if (currentBlockType === workbenchItemName || currentBlockType === mesaItemName) materialLoaded = true;
 
                     if (materialLoaded) {
                         if (currentBlockType === boxItemName) {
@@ -8883,37 +8891,39 @@
                                 torchGroup.add(fire);
                             }
                             ghostBlockMesh.add(torchGroup);
-                        } else if (currentBlockType === workbenchItemName) {
+                        } else if (currentBlockType === workbenchItemName || currentBlockType === mesaItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(0, 0, 0);
-                            const workbenchGroup = new THREE.Group();
+                            const group = new THREE.Group();
                             const woodMat = ghostBlockMaterial;
                             const metalMat = ghostBlockMaterial;
 
                             // Table Top
                             const topMesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.7), woodMat);
                             topMesh.position.y = 0.35;
-                            workbenchGroup.add(topMesh);
+                            group.add(topMesh);
 
                             // Legs
                             const legGeom = new THREE.BoxGeometry(0.1, 0.75, 0.1);
                             [{x: 0.5, z: 0.25}, {x: -0.5, z: 0.25}, {x: 0.5, z: -0.25}, {x: -0.5, z: -0.25}].forEach(pos => {
                                 const leg = new THREE.Mesh(legGeom, woodMat);
                                 leg.position.set(pos.x, -0.05, pos.z);
-                                workbenchGroup.add(leg);
+                                group.add(leg);
                             });
 
-                            // Metal Box
-                            const boxMesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.3), metalMat);
-                            boxMesh.position.set(0.3, 0.5, 0.1);
-                            workbenchGroup.add(boxMesh);
+                            // Metal Box (ONLY for Workbench)
+                            if (currentBlockType === workbenchItemName) {
+                                const boxMesh = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.2, 0.3), metalMat);
+                                boxMesh.position.set(0.3, 0.5, 0.1);
+                                group.add(boxMesh);
+                            }
 
-                            ghostBlockMesh.add(workbenchGroup);
+                            ghostBlockMesh.add(group);
                         }
                     }
 
                     // Determina a altura para o cálculo de posicionamento (não muda cada frame, mas precisamos dela)
                     if (currentBlockType === raftItemName) currentGhostHeight = 0.4;
-                    else if (currentBlockType === workbenchItemName) currentGhostHeight = 0.85;
+                    else if (currentBlockType === workbenchItemName || currentBlockType === mesaItemName) currentGhostHeight = 0.85;
                     else if (currentBlockType === 'cob') currentGhostHeight = cobHeight;
                     else if (currentBlockType === 'piso') currentGhostHeight = floorHeight;
                     else if (currentBlockType === 'tábuas') currentGhostHeight = woodenPlankHeight;
@@ -8997,7 +9007,7 @@
                                 // NOVO: Alinha a posição Y na grade, considerando a altura da superfície da ilha como a base.
                                 // Isso garante que os blocos se encaixem verticalmente.
                                 // CORREÇÃO: As sementes não devem se encaixar na grade vertical, elas devem ser colocadas no chão.
-                                if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === dirtItemName || currentBlockType === sandItemName || currentBlockType === raftItemName || currentBlockType === torchItemName || currentBlockType === workbenchItemName) {
+                                if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === dirtItemName || currentBlockType === sandItemName || currentBlockType === raftItemName || currentBlockType === torchItemName || currentBlockType === workbenchItemName || currentBlockType === mesaItemName) {
                                     placementPosition.y = basePosition.y;
                                 } else if (currentBlockType === boxItemName) {
                                     placementPosition.y = basePosition.y;
