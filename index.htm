@@ -1423,7 +1423,7 @@
             [workbenchItemName]: 'Bancada de Trabalho'
         };
 
-        const itemWeights = {
+        window.itemWeights = {
             [handItemName]: 0,
             [capimItemName]: 0.1,
             [appleSeedItemName]: 0.1,
@@ -4449,6 +4449,7 @@
 
             world.addBody(blockBody);
             Object.assign(blockBody.userData, {
+                isCollectible: (type === workbenchItemName),
                 isDestructible: true,
                 durability: durability,
                 originalMass: initialMass,
@@ -6748,6 +6749,19 @@
                             updateBackpackDisplay();
                             break;
                         }
+                    } else if (clickedBody.userData.type === workbenchItemName) {
+                        const constructionIndex = placedConstructionBodies.indexOf(clickedBody);
+                        if (constructionIndex > -1) {
+                            scene.remove(placedConstructionMeshes[constructionIndex]);
+                            placedConstructionBodies.splice(constructionIndex, 1);
+                            placedConstructionMeshes.splice(constructionIndex, 1);
+                            world.removeBody(clickedBody);
+                            raycastTargetsNeedUpdate = true;
+
+                            addItemToInventory(backpackItems, { name: workbenchItemName, quantity: 1 });
+                            updateBackpackDisplay();
+                            break;
+                        }
                     }
                 }
             }
@@ -6756,6 +6770,7 @@
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(raycastTargets, true); // Search recursively
                 const allPickableBodies = collectibleBoxes.map(b => b.body);
+                const allConstructionBodies = placedConstructionBodies;
 
                 for (let i = 0; i < intersects.length; i++) {
                     let body = null;
@@ -6768,7 +6783,7 @@
                         current = current.parent;
                     }
 
-                    if (body && allPickableBodies.includes(body) && body.userData.type !== campfireItemName) {
+                    if (body && (allPickableBodies.includes(body) || (allConstructionBodies.includes(body) && body.userData.isCollectible)) && body.userData.type !== campfireItemName) {
                         if (intersects[i].distance <= pickUpDistance) {
                             pickedObjectBody = body;
                             pickedObjectMesh = intersects[i].object;
@@ -8160,7 +8175,7 @@
             // Lógica para os cubos e blocos: sempre dinâmicos e com massa original, a menos que sejam segurados
             // Apenas os cubos são pickable agora
 
-            allPickableBodies.forEach(body => {
+            allPickableBodies.concat(placedConstructionBodies.filter(b => b.userData.isCollectible)).forEach(body => {
                 // Ignora o objeto que está sendo segurado
                 if (body === pickedObjectBody) {
                     return;
@@ -8174,9 +8189,9 @@
             });
 
             allStaticBodies.forEach(body => {
-                // Blocos (apenas os colocados) devem ser estáticos, exceto jangadas
-                if (body.userData.isRaft) {
-                    return; // Jangadas permanecem dinâmicas
+                // Blocos (apenas os colocados) devem ser estáticos, exceto jangadas e itens segurados
+                if (body.userData.isRaft || body === pickedObjectBody) {
+                    return; // Jangadas e itens segurados permanecem dinâmicos/cinemáticos
                 }
                 body.mass = 0;
                 body.type = CANNON.Body.STATIC;
@@ -9585,6 +9600,7 @@
                     let canDestroyWithHand = false;
                     let isTerraHitWithHand = false;
                     const aimablePickableBodies = collectibleBoxes.map(b => b.body);
+                    const aimableConstructionBodies = placedConstructionBodies;
 
                     for (let i = 0; i < intersects.length; i++) {
                         if (intersects[i].distance > destroyDistance) continue;
@@ -9601,7 +9617,7 @@
                         }
 
                         // Check for collectible
-                        if (body && aimablePickableBodies.includes(body) && intersects[i].distance <= pickUpDistance) {
+                        if (body && (aimablePickableBodies.includes(body) || (aimableConstructionBodies.includes(body) && body.userData.isCollectible)) && intersects[i].distance <= pickUpDistance) {
                             objectInRange = true;
                             break;
                         }
