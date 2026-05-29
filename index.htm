@@ -1251,6 +1251,7 @@
 
         // Variáveis de estado do jogo
         let gamePaused = false; // Novo: Flag para pausar/retomar a lógica do jogo
+        let blockPlacedThisClick = false; // NOVO: Impede que o mesmo clique coloque e pegue o item
         let isClimbing = false; // NOVO: Flag para modo de escalada
         let isFlying = false; // NOVO: Flag para modo de voo
         let climbingTreeBody = null; // NOVO: Referência à árvore que está sendo escalada
@@ -6304,9 +6305,11 @@
                 if (!chestModal.classList.contains('hidden')) return;
 
                 if (event.button === 0) { // Botão esquerdo
+                    blockPlacedThisClick = false; // Reseta a flag
                     const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
                     if (primaryActionType === 'place') {
                         placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
+                        blockPlacedThisClick = true; // Marca que colocamos algo
                     } else {
                         isAttemptingToDestroy = true; // NOVO: Define a intenção
                         startDestruction();
@@ -6330,9 +6333,10 @@
                 const secondaryActionType = getActionType(beltItems[1]);
 
                 if (event.button === 0) { // Botão esquerdo do mouse para cima
-                    if (primaryActionType === 'grab') {
+                    if (primaryActionType === 'grab' && !blockPlacedThisClick) {
                         collectObject();
                     }
+                    blockPlacedThisClick = false; // Limpa a flag
                 }
             });
 
@@ -8696,7 +8700,7 @@
                                 break;
                             }
                             if (body.userData.isCollectible) {
-                                if (body.userData.type === workbenchItemName || body.userData.type === mesaItemName) {
+                                if (body.userData.type === workbenchItemName || body.userData.type === mesaItemName || body.userData.type === bigornaItemName) {
                                     interactionHintText = "(G) Guardar";
                                 } else {
                                     interactionHintText = "(F) Agarrar / (G) Guardar";
