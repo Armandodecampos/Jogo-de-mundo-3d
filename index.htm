@@ -4509,55 +4509,50 @@
                 ensureTorchAssets();
                 width = 1.0; height = 1.2; depth = 1.0;
                 blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
-                blockBody.addShape(blockShape);
-
                 const furnaceGroup = new THREE.Group();
-                const stoneMat = stoneBlockMaterialMesh; // Reuso do material de pedra cinza
+                const stoneMat = stoneBlockMaterialMesh;
 
-                // Main body (Hollow-ish look)
-                // We'll build it with 4 walls and a top to create the "openings" feel
+                // Assembly-style model to avoid z-fighting
+                const wallHeight = 1.0;
+                const wallY = -0.1;
 
-                // Back Wall
-                const backWall = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.2, 0.2), stoneMat);
-                backWall.position.z = -0.4;
-                backWall.castShadow = true;
-                backWall.receiveShadow = true;
-                furnaceGroup.add(backWall);
-
-                // Side Walls
-                const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.2, 0.8), stoneMat);
-                leftWall.position.x = -0.4;
-                leftWall.position.z = 0.1;
+                // Side Walls (Full depth)
+                const leftWall = new THREE.Mesh(new THREE.BoxGeometry(0.2, wallHeight, 1.0), stoneMat);
+                leftWall.position.set(-0.4, wallY, 0);
                 leftWall.castShadow = true;
                 leftWall.receiveShadow = true;
                 furnaceGroup.add(leftWall);
 
-                const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.2, 1.2, 0.8), stoneMat);
-                rightWall.position.x = 0.4;
-                rightWall.position.z = 0.1;
+                const rightWall = new THREE.Mesh(new THREE.BoxGeometry(0.2, wallHeight, 1.0), stoneMat);
+                rightWall.position.set(0.4, wallY, 0);
                 rightWall.castShadow = true;
                 rightWall.receiveShadow = true;
                 furnaceGroup.add(rightWall);
 
-                // Top Slab
-                const topSlab = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.2, 1.0), stoneMat);
-                topSlab.position.y = 0.5;
+                // Back Wall (Fits between side walls)
+                const backWall = new THREE.Mesh(new THREE.BoxGeometry(0.6, wallHeight, 0.2), stoneMat);
+                backWall.position.set(0, wallY, -0.4);
+                backWall.castShadow = true;
+                backWall.receiveShadow = true;
+                furnaceGroup.add(backWall);
+
+                // Top Slab (Slightly larger to cover edges and sunk to avoid top z-fighting)
+                const topSlab = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.2, 1.05), stoneMat);
+                topSlab.position.set(0, 0.45, 0); // Sunk 0.05 units into walls
                 topSlab.castShadow = true;
                 topSlab.receiveShadow = true;
                 furnaceGroup.add(topSlab);
 
                 // Middle Divider (separating lower fuel area from upper cooking area)
                 const middleSlab = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.8), stoneMat);
-                middleSlab.position.y = -0.1;
-                middleSlab.position.z = 0.1;
+                middleSlab.position.set(0, -0.1, 0.1);
                 middleSlab.castShadow = true;
                 middleSlab.receiveShadow = true;
                 furnaceGroup.add(middleSlab);
 
                 // Bottom Front Lip
                 const bottomLip = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.2), stoneMat);
-                bottomLip.position.y = -0.55;
-                bottomLip.position.z = 0.4;
+                bottomLip.position.set(0, -0.55, 0.4);
                 bottomLip.castShadow = true;
                 bottomLip.receiveShadow = true;
                 furnaceGroup.add(bottomLip);
@@ -4594,8 +4589,7 @@
                 blockBody.userData.fireLight = light;
                 blockBody.userData.fireOffset = Math.random() * 1000;
                 activeCampfires.push(blockBody);
-            }
-            else {
+            } else {
                 console.error('Tipo de bloco desconhecido:', type);
                 return;
             }
