@@ -748,6 +748,90 @@
             white-space: pre-wrap;
         }
 
+        /* Crafting Modal Styles */
+        #craftingModal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(50, 50, 50, 0.95);
+            border: 2px solid #777;
+            border-radius: 10px;
+            padding: 50px 20px 20px 20px;
+            z-index: 1000;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            width: 90%;
+            max-width: 800px;
+            max-height: 80%;
+            overflow: hidden;
+        }
+        #craftingModal.active {
+            display: flex;
+        }
+        #craftingModal h2 {
+            color: white;
+            font-size: 2em;
+            margin-bottom: 20px;
+        }
+        #recipesContainer {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 100%;
+            overflow-y: auto;
+            flex-grow: 1;
+            padding-right: 10px;
+        }
+        .recipe-item {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid #555;
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            color: white;
+        }
+        .recipe-icon {
+            width: 50px;
+            height: 50px;
+            object-fit: contain;
+            border-radius: 4px;
+            background: rgba(0,0,0,0.2);
+        }
+        .recipe-info {
+            flex-grow: 1;
+        }
+        .recipe-name {
+            font-weight: bold;
+            font-size: 1.1em;
+            display: block;
+        }
+        .recipe-ingredients {
+            font-size: 0.85em;
+            color: #ccc;
+        }
+        .craft-button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        .craft-button:hover {
+            background-color: #45a049;
+        }
+        .craft-button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
     </style>
 </head>
 <body>
@@ -923,6 +1007,15 @@
         <h2>Mochila</h2>
         <div id="backpackSlotsContainer">
             <!-- Backpack slots will be dynamically filled by JavaScript -->
+        </div>
+    </div>
+
+    <!-- Crafting Modal -->
+    <div id="craftingModal">
+        <button class="close-button" id="closeCraftingButton">X</button>
+        <h2 id="craftingTitle">Criação</h2>
+        <div id="recipesContainer">
+            <!-- Recipes will be dynamically filled by JavaScript -->
         </div>
     </div>
 
@@ -1314,6 +1407,49 @@
         const maxChestWeight = 200; // Máximo em kg para o Caixote
         const maxBasketWeight = 50;  // Máximo em kg para o Cesto
         let openedChest = null; // Guarda a referência para os dados do contêiner aberto
+        let craftingModal, recipesContainer, craftingTitle, closeCraftingButton;
+
+        const recipes = {
+            initial: [
+                { result: { name: 'machado', quantity: 1 }, ingredients: [{ name: 'pedra', quantity: 1 }, { name: 'corda', quantity: 1 }, { name: 'galho', quantity: 1 }] },
+                { result: { name: 'martelo', quantity: 1 }, ingredients: [{ name: 'pedra', quantity: 1 }, { name: 'corda', quantity: 1 }, { name: 'galho', quantity: 1 }] },
+                { result: { name: 'picareta', quantity: 1 }, ingredients: [{ name: 'pedra', quantity: 1 }, { name: 'corda', quantity: 1 }, { name: 'galho', quantity: 1 }] },
+                { result: { name: 'pá', quantity: 1 }, ingredients: [{ name: 'pedra', quantity: 1 }, { name: 'corda', quantity: 1 }, { name: 'galho', quantity: 1 }] },
+                { result: { name: 'cob', quantity: 20 }, ingredients: [{ name: 'terra', quantity: 1 }, { name: 'areia', quantity: 1 }, { name: 'capim', quantity: 20 }] },
+                { result: { name: 'piso', quantity: 60 }, ingredients: [{ name: 'terra', quantity: 1 }, { name: 'areia', quantity: 1 }, { name: 'capim', quantity: 20 }] },
+                { result: { name: 'jangada', quantity: 1 }, ingredients: [{ name: 'tronco_arvore', quantity: 10 }, { name: 'corda', quantity: 50 }, { name: 'tecido', quantity: 20 }] },
+                { result: { name: 'tocha', quantity: 1 }, ingredients: [{ name: 'galho', quantity: 1 }, { name: 'tecido', quantity: 5 }, { name: 'corda', quantity: 1 }, { name: 'oleo_vegetal', quantity: 1 }] },
+                { result: { name: 'fogueira', quantity: 1 }, ingredients: [{ name: 'galho', quantity: 3 }, { name: 'oleo_vegetal', quantity: 1 }] },
+                { result: { name: 'forno', quantity: 1 }, ingredients: [{ name: 'pedra', quantity: 10 }, { name: 'areia', quantity: 1 }, { name: 'terra', quantity: 1 }, { name: 'fogueira', quantity: 1 }] },
+                { result: { name: 'bancada_trabalho', quantity: 1 }, ingredients: [{ name: 'tronco_arvore', quantity: 10 }, { name: 'kit_ferramentas_bancada', quantity: 1 }] },
+                { result: { name: 'corda', quantity: 1 }, ingredients: [{ name: 'capim', quantity: 5 }] },
+                { result: { name: 'cesto_capim', quantity: 1 }, ingredients: [{ name: 'capim', quantity: 15 }, { name: 'corda', quantity: 1 }] }
+            ],
+            furnace: [
+                { result: { name: 'pote_barro', quantity: 20 }, ingredients: [{ name: 'terra', quantity: 1 }, { name: 'areia', quantity: 1 }] },
+                { result: { name: 'barra_ferro', quantity: 1 }, ingredients: [{ name: 'minerio_ferro', quantity: 1 }] },
+                { result: { name: 'bigorna', quantity: 1 }, ingredients: [{ name: 'minerio_ferro', quantity: 10 }] },
+                { result: { name: 'kit_ferramentas_bancada', quantity: 1 }, ingredients: [{ name: 'barra_ferro', quantity: 20 }] }
+            ],
+            anvil: [
+                { result: { name: 'machado_ferro', quantity: 1 }, ingredients: [{ name: 'barra_ferro', quantity: 1 }, { name: 'galho', quantity: 1 }] },
+                { result: { name: 'martelo_ferro', quantity: 1 }, ingredients: [{ name: 'barra_ferro', quantity: 1 }, { name: 'galho', quantity: 1 }] },
+                { result: { name: 'picareta_ferro', quantity: 1 }, ingredients: [{ name: 'barra_ferro', quantity: 1 }, { name: 'galho', quantity: 1 }] },
+                { result: { name: 'pá_ferro', quantity: 1 }, ingredients: [{ name: 'barra_ferro', quantity: 1 }, { name: 'galho', quantity: 1 }] }
+            ],
+            pestle: [
+                { result: { name: 'oleo_vegetal', quantity: 1 }, ingredients: [{ name: 'muda_arvore', quantity: 1 }, { name: 'pote_barro', quantity: 1 }] }
+            ],
+            workbench: [
+                { result: { name: 'pilao', quantity: 1 }, ingredients: [{ name: 'bloco_madeira', quantity: 1 }] },
+                { result: { name: 'caixote', quantity: 1 }, ingredients: [{ name: 'bloco_madeira', quantity: 20 }] },
+                { result: { name: 'tecido', quantity: 1 }, ingredients: [{ name: 'capim', quantity: 5 }] },
+                { result: { name: 'bloco_pedra', quantity: 1 }, ingredients: [{ name: 'pedra', quantity: 1 }] },
+                { result: { name: 'bloco_madeira', quantity: 4 }, ingredients: [{ name: 'tronco_arvore', quantity: 1 }] },
+                { result: { name: 'piso_madeira', quantity: 5 }, ingredients: [{ name: 'bloco_madeira', quantity: 1 }] },
+                { result: { name: 'piso_pedra', quantity: 5 }, ingredients: [{ name: 'pedra', quantity: 1 }] }
+            ]
+        };
 
         // Inventário (agora separado para cinto e mochila)
         let beltItems = new Array(numBeltSlots).fill(null);
@@ -1363,6 +1499,7 @@
         const stoneBlockItemName = 'bloco_pedra';
         const woodenBlockItemName = 'bloco_madeira';
         const stoneFloorItemName = 'piso_pedra';
+        const woodenFloorItemName = 'piso_madeira';
 
 
         // NOVO: Variáveis para o sistema de colocação de blocos (Cob, Piso, Muda de Árvore, Tronco de Árvore, Tábuas)
@@ -1415,6 +1552,7 @@
             [stoneBlockItemName]: 'Bloco de Pedra',
             [woodenBlockItemName]: 'Bloco de Madeira',
             [stoneFloorItemName]: 'Piso de Pedra',
+            [woodenFloorItemName]: 'Piso de Madeira',
             [ropeItemName]: 'Corda',
             [fabricItemName]: 'Tecido',
             [campfireItemName]: 'Fogueira\nProporciona luz e calor',
@@ -1463,6 +1601,7 @@
             [stoneBlockItemName]: 5.0,
             [woodenBlockItemName]: 3.0,
             [stoneFloorItemName]: 2.0,
+            [woodenFloorItemName]: 1.5,
             [ropeItemName]: 0.5,
             [fabricItemName]: 0.3,
             [campfireItemName]: 2.0,
@@ -1526,6 +1665,13 @@
         const stoneFloorDepth = cobDepth;
         const initialStoneFloorMass = 120;
         const stoneFloorDurability = 1.8;
+
+        // Dimensões do piso de madeira
+        const woodenFloorWidth = cobWidth;
+        const woodenFloorHeight = floorHeight;
+        const woodenFloorDepth = cobDepth;
+        const initialWoodenFloorMass = 80;
+        const woodenFloorDurability = 1.2;
 
         // Dimensões da muda de árvore
         const initialTreeSaplingMass = 10; // Massa para as mudas de árvore (leve)
@@ -1990,6 +2136,96 @@
             }
         }
 
+        function openCraftingMenu(type) {
+            currentCraftingMenuType = type;
+            gamePaused = true;
+            craftingModal.classList.add('active');
+
+            const titles = {
+                initial: 'Criação',
+                furnace: 'Menu do Forno',
+                anvil: 'Menu da Bigorna',
+                pestle: 'Menu do Pilão',
+                workbench: 'Menu da Bancada de Trabalho'
+            };
+            craftingTitle.textContent = titles[type] || 'Criação';
+
+            document.getElementById('crosshair').style.display = 'none';
+            document.body.style.cursor = 'default';
+            if (renderer && renderer.domElement) {
+                renderer.domElement.style.cursor = 'default';
+            }
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) {
+                hudButtons.style.display = 'none';
+            }
+            if (ghostBlockMesh) {
+                ghostBlockMesh.visible = false;
+            }
+            pointerLockExitForBackpack = true;
+            document.exitPointerLock();
+            updateCraftingDisplay(type);
+        }
+
+        function closeCraftingMenu() {
+            craftingModal.classList.remove('active');
+            gamePaused = false;
+            pointerLockExitForBackpack = false;
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) {
+                hudButtons.style.display = 'flex';
+            }
+            if (renderer && renderer.domElement) {
+                renderer.domElement.requestPointerLock().catch(error => {
+                    console.warn('Não foi possível bloquear novamente o ponteiro:', error.message);
+                });
+            }
+        }
+
+        function updateCraftingDisplay(type) {
+            recipesContainer.innerHTML = '';
+            const menuRecipes = recipes[type] || [];
+
+            menuRecipes.forEach(recipe => {
+                const item = recipe.result;
+                const recipeDiv = document.createElement('div');
+                recipeDiv.className = 'recipe-item';
+
+                const img = document.createElement('img');
+                img.src = getItemIconURL(item.name);
+                img.className = 'recipe-icon';
+                recipeDiv.appendChild(img);
+
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'recipe-info';
+
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'recipe-name';
+                const displayName = (itemDisplayNames[item.name] || item.name).split('\n')[0];
+                nameSpan.textContent = `${displayName} x${item.quantity}`;
+                infoDiv.appendChild(nameSpan);
+
+                const ingredientsSpan = document.createElement('span');
+                ingredientsSpan.className = 'recipe-ingredients';
+                ingredientsSpan.textContent = 'Precisa de: ' + recipe.ingredients.map(ing => {
+                    const ingName = (itemDisplayNames[ing.name] || ing.name).split('\n')[0];
+                    return `${ing.quantity} ${ingName}`;
+                }).join(' + ');
+                infoDiv.appendChild(ingredientsSpan);
+
+                recipeDiv.appendChild(infoDiv);
+
+                const craftBtn = document.createElement('button');
+                craftBtn.className = 'craft-button';
+                craftBtn.textContent = 'Criar';
+                craftBtn.disabled = !canCraft(recipe);
+                craftBtn.onclick = () => craftItem(recipe);
+                recipeDiv.appendChild(craftBtn);
+
+                recipesContainer.appendChild(recipeDiv);
+            });
+        }
+
         function showSettingsScreen() {
             document.getElementById('settingsScreen').classList.add('active');
             document.getElementById('optionsScreen').classList.remove('active');
@@ -2119,6 +2355,7 @@
             if (itemName === furnaceItemName) return "https://placehold.co/100x100/444444/FFFFFF?text=Forno";
             if (itemName === woodenBlockItemName) return woodenBlockTextureURL;
             if (itemName === stoneFloorItemName) return stoneFloorTextureURL;
+            if (itemName === woodenFloorItemName) return woodenPlankTextureURL;
             if (itemName === boxItemName) return cubeTextureURL;
             if (itemName === basketItemName) return 'https://placehold.co/100x100/2d5a27/FFFFFF?text=Cesto';
             if (itemName === appleItemName) return "https://placehold.co/100x100/ff0000/FFFFFF?text=Maçã"; // Adicionado na etapa 3
@@ -2247,6 +2484,69 @@
             backpackItems.push(...nonNullItems, null);
         }
         window.maintainBackpack = maintainBackpack;
+
+        function canCraft(recipe) {
+            // Check ingredients
+            for (const ing of recipe.ingredients) {
+                let totalFound = 0;
+                // Check belt
+                for (const item of beltItems) {
+                    if (item && item.name === ing.name) totalFound += item.quantity;
+                }
+                // Check backpack
+                for (const item of backpackItems) {
+                    if (item && item.name === ing.name) totalFound += item.quantity;
+                }
+                if (totalFound < ing.quantity) return false;
+            }
+
+            // Check weight limit
+            const resultWeight = (itemWeights[recipe.result.name] || 0) * recipe.result.quantity;
+            const currentWeight = calculateInventoryWeight(beltItems) + calculateInventoryWeight(backpackItems);
+            // We should also account for the weight of removed ingredients, but simplified check:
+            if (currentWeight + resultWeight > maxWeight) return false;
+
+            return true;
+        }
+
+        function craftItem(recipe) {
+            if (!canCraft(recipe)) return;
+
+            // Consume ingredients
+            for (const ing of recipe.ingredients) {
+                let remainingToConsume = ing.quantity;
+
+                // From belt
+                for (let i = 0; i < beltItems.length; i++) {
+                    if (remainingToConsume <= 0) break;
+                    if (beltItems[i] && beltItems[i].name === ing.name) {
+                        const consume = Math.min(beltItems[i].quantity, remainingToConsume);
+                        beltItems[i].quantity -= consume;
+                        remainingToConsume -= consume;
+                        if (beltItems[i].quantity <= 0) beltItems[i] = null;
+                    }
+                }
+
+                // From backpack
+                for (let i = 0; i < backpackItems.length; i++) {
+                    if (remainingToConsume <= 0) break;
+                    if (backpackItems[i] && backpackItems[i].name === ing.name) {
+                        const consume = Math.min(backpackItems[i].quantity, remainingToConsume);
+                        backpackItems[i].quantity -= consume;
+                        remainingToConsume -= consume;
+                        if (backpackItems[i].quantity <= 0) backpackItems[i] = null;
+                    }
+                }
+            }
+
+            // Add result
+            addItemToInventory(backpackItems, { ...recipe.result });
+            addNotification(`Criado: ${itemDisplayNames[recipe.result.name] || recipe.result.name} x${recipe.result.quantity}`);
+            updateUI();
+            updateCraftingDisplay(currentCraftingMenuType);
+        }
+
+        let currentCraftingMenuType = null;
 
         function calculateInventoryWeight(inventoryArray) {
             let total = 0;
@@ -4343,6 +4643,15 @@
                 mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), stoneFloorMaterialMesh);
                 initialMass = initialStoneFloorMass;
                 durability = stoneFloorDurability;
+            } else if (type === woodenFloorItemName) {
+                width = woodenFloorWidth;
+                height = woodenFloorHeight;
+                depth = woodenFloorDepth;
+                blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+                blockBody.addShape(blockShape);
+                mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), woodenPlankMaterialMesh);
+                initialMass = initialWoodenFloorMass;
+                durability = woodenFloorDurability;
             } else if (type === campfireItemName) {
                 ensureTorchAssets();
                 width = 0.8; height = 0.5; depth = 0.8;
@@ -4606,6 +4915,35 @@
                 blockBody.userData.fireLight = light;
                 blockBody.userData.fireOffset = Math.random() * 1000;
                 activeCampfires.push(blockBody);
+            } else if (type === pestleItemName) {
+                width = 0.4; height = 0.5; depth = 0.4;
+                blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+                blockBody.addShape(blockShape);
+
+                const group = new THREE.Group();
+                const woodMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+
+                // Bowl
+                const bowlGeom = new THREE.CylinderGeometry(0.2, 0.15, 0.3, 16);
+                const bowl = new THREE.Mesh(bowlGeom, woodMat);
+                bowl.position.y = -0.1;
+                bowl.castShadow = true;
+                bowl.receiveShadow = true;
+                group.add(bowl);
+
+                // Pestle (Stick)
+                const pestleStickGeom = new THREE.CylinderGeometry(0.04, 0.04, 0.4, 8);
+                const pestleStick = new THREE.Mesh(pestleStickGeom, woodMat);
+                pestleStick.position.set(0.05, 0.1, 0.05);
+                pestleStick.rotation.z = 0.2;
+                pestleStick.rotation.x = 0.2;
+                pestleStick.castShadow = true;
+                pestleStick.receiveShadow = true;
+                group.add(pestleStick);
+
+                mesh = group;
+                initialMass = 10;
+                durability = 1.0;
             } else {
                 console.error('Tipo de bloco desconhecido:', type);
                 return;
@@ -4613,7 +4951,7 @@
 
             world.addBody(blockBody);
             Object.assign(blockBody.userData, {
-                isCollectible: (type === workbenchItemName || type === mesaItemName || type === bigornaItemName || type === furnaceItemName),
+                isCollectible: (type === workbenchItemName || type === mesaItemName || type === bigornaItemName || type === furnaceItemName || type === pestleItemName),
                 isDestructible: true,
                 durability: durability,
                 originalMass: initialMass,
@@ -5985,6 +6323,13 @@
             backpackSlotsContainer = document.getElementById('backpackSlotsContainer');
             trashSlot = document.getElementById('trashSlot');
 
+            craftingModal = document.getElementById('craftingModal');
+            recipesContainer = document.getElementById('recipesContainer');
+            craftingTitle = document.getElementById('craftingTitle');
+            closeCraftingButton = document.getElementById('closeCraftingButton');
+
+            closeCraftingButton.addEventListener('click', closeCraftingMenu);
+
             // Lógica da Lixeira
             trashSlot.addEventListener('click', (e) => {
                 e.stopPropagation();
@@ -6113,6 +6458,8 @@
 
                     if (document.getElementById('settingsScreen').classList.contains('active')) {
                         hideSettingsScreen();
+                    } else if (craftingModal.classList.contains('active')) {
+                        closeCraftingMenu();
                     } else if (gamePaused) {
                         hideOptionsScreen(); // Se o menu estiver aberto, fecha-o
                     } else if (document.pointerLockElement === renderer.domElement) {
@@ -6126,6 +6473,15 @@
                         // (ex: logo após iniciar o jogo e não clicou no canvas),
                         // podemos mostrar o menu diretamente.
                         showOptionsScreen();
+                    }
+                }
+
+                // Toggle crafting menu with 'R' key
+                if (event.key.toLowerCase() === 'r') {
+                    if (craftingModal.classList.contains('active')) {
+                        closeCraftingMenu();
+                    } else {
+                        openCraftingMenu('initial');
                     }
                 }
 
@@ -6411,6 +6767,38 @@
 
                 if (event.button === 0) { // Botão esquerdo
                     blockPlacedThisClick = false; // Reseta a flag
+
+                    // Crafting Workstations check
+                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                    const intersects = raycaster.intersectObjects(raycastTargets, true);
+                    for (const intersect of intersects) {
+                        if (intersect.distance > pickUpDistance) continue;
+                        let body = null;
+                        let current = intersect.object;
+                        while (current) {
+                            if (current.userData && current.userData.physicsBody) {
+                                body = current.userData.physicsBody;
+                                break;
+                            }
+                            current = current.parent;
+                        }
+                        if (body && body.userData) {
+                            if (body.userData.type === furnaceItemName) {
+                                openCraftingMenu('furnace');
+                                return;
+                            } else if (body.userData.type === bigornaItemName) {
+                                openCraftingMenu('anvil');
+                                return;
+                            } else if (body.userData.type === pestleItemName) {
+                                openCraftingMenu('pestle');
+                                return;
+                            } else if (body.userData.type === workbenchItemName) {
+                                openCraftingMenu('workbench');
+                                return;
+                            }
+                        }
+                    }
+
                     const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
                     if (primaryActionType === 'place') {
                         placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
@@ -6459,7 +6847,7 @@
                 // O martelo foi removido temporariamente das ferramentas de destruição
                 if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === ironAxeItemName || item.name === ironPickaxeItemName || item.name === ironShovelItemName || item.name === branchItemName || item.name === dirtItemName || item.name === sandItemName) return 'destroy';
                 // Itens de colocação
-                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === basketItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName || item.name === workbenchItemName || item.name === mesaItemName || item.name === bigornaItemName || item.name === furnaceItemName) return 'place';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === basketItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === woodenFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName || item.name === workbenchItemName || item.name === mesaItemName || item.name === bigornaItemName || item.name === furnaceItemName || item.name === pestleItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
             }
 
@@ -6919,7 +7307,7 @@
                             updateBackpackDisplay();
                             break;
                         }
-                    } else if (clickedBody.userData.type === workbenchItemName || clickedBody.userData.type === mesaItemName || clickedBody.userData.type === bigornaItemName || clickedBody.userData.type === furnaceItemName) {
+                    } else if (clickedBody.userData.type === workbenchItemName || clickedBody.userData.type === mesaItemName || clickedBody.userData.type === bigornaItemName || clickedBody.userData.type === furnaceItemName || clickedBody.userData.type === pestleItemName) {
                         const constructionIndex = placedConstructionBodies.indexOf(clickedBody);
                         if (constructionIndex > -1) {
                             const type = clickedBody.userData.type;
@@ -8027,6 +8415,8 @@
                                     }
                                 } else if (destroyTargetBody.userData.type === stoneItemName || destroyTargetBody.userData.type === stoneBlockItemName || destroyTargetBody.userData.type === stoneFloorItemName) {
                                     addItemToInventory(backpackItems, { name: stoneItemName, quantity: 1 });
+                                } else if (destroyTargetBody.userData.type === woodenFloorItemName) {
+                                    addItemToInventory(backpackItems, { name: woodenBlockItemName, quantity: 1 });
                                 } else if (destroyTargetBody.userData.type === campfireItemName) {
                                     addItemToInventory(backpackItems, { name: branchItemName, quantity: 2 });
                                 } else if (destroyTargetBody.userData.type === torchItemName) {
@@ -8805,7 +9195,7 @@
                                 break;
                             }
                             if (body.userData.isCollectible) {
-                                if (body.userData.type === workbenchItemName || body.userData.type === mesaItemName || body.userData.type === bigornaItemName || body.userData.type === furnaceItemName) {
+                                if (body.userData.type === workbenchItemName || body.userData.type === mesaItemName || body.userData.type === bigornaItemName || body.userData.type === furnaceItemName || body.userData.type === pestleItemName) {
                                     interactionHintText = "(G) Guardar";
                                 } else {
                                     interactionHintText = "(F) Agarrar / (G) Guardar";
@@ -9001,6 +9391,8 @@
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(woodenBlockWidth, woodenBlockHeight, woodenBlockDepth);
                         } else if (currentBlockType === stoneFloorItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(stoneFloorWidth, stoneFloorHeight, stoneFloorDepth);
+                        } else if (currentBlockType === woodenFloorItemName) {
+                            ghostBlockMesh.geometry = new THREE.BoxGeometry(woodenFloorWidth, woodenFloorHeight, woodenFloorDepth);
                         } else if (currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === 'muda_arvore') {
                             const seedBaseData = treeStages['semente'];
                             ghostBlockMesh.geometry = new THREE.ConeGeometry(seedBaseData.visual.mound.radius, seedBaseData.visual.mound.height, 8);
@@ -9106,6 +9498,24 @@
                             group.add(topMesh);
 
                             ghostBlockMesh.add(group);
+                        } else if (currentBlockType === pestleItemName) {
+                            ghostBlockMesh.geometry = new THREE.BoxGeometry(0, 0, 0);
+                            const group = new THREE.Group();
+                            const woodMat = ghostBlockMaterial;
+
+                            const bowlGeom = new THREE.CylinderGeometry(0.2, 0.15, 0.3, 16);
+                            const bowl = new THREE.Mesh(bowlGeom, woodMat);
+                            bowl.position.y = -0.1;
+                            group.add(bowl);
+
+                            const pestleStickGeom = new THREE.CylinderGeometry(0.04, 0.04, 0.4, 8);
+                            const pestleStick = new THREE.Mesh(pestleStickGeom, woodMat);
+                            pestleStick.position.set(0.05, 0.1, 0.05);
+                            pestleStick.rotation.z = 0.2;
+                            pestleStick.rotation.x = 0.2;
+                            group.add(pestleStick);
+
+                            ghostBlockMesh.add(group);
                         }
                     }
 
@@ -9119,6 +9529,7 @@
                     else if (currentBlockType === stoneBlockItemName) currentGhostHeight = stoneBlockHeight;
                     else if (currentBlockType === woodenBlockItemName) currentGhostHeight = woodenBlockHeight;
                     else if (currentBlockType === stoneFloorItemName) currentGhostHeight = stoneFloorHeight;
+                    else if (currentBlockType === woodenFloorItemName) currentGhostHeight = woodenFloorHeight;
                     else if (currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === 'muda_arvore') currentGhostHeight = treeStages['semente'].visual.mound.height;
                     else if (currentBlockType === 'tronco_arvore') currentGhostHeight = trunkHeight;
                     else if (currentBlockType === boxItemName) currentGhostHeight = 1;
@@ -10165,6 +10576,9 @@
             window.closeChest = closeChest;
             window.openBackpack = openBackpack;
             window.closeBackpack = closeBackpack;
+            window.openCraftingMenu = openCraftingMenu;
+            window.closeCraftingMenu = closeCraftingMenu;
+            window.updateCraftingDisplay = updateCraftingDisplay;
             window.grabObject = grabObject;
             window.dropObject = dropObject;
             window.placeBlock = placeBlock;
