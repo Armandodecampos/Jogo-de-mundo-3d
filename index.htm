@@ -701,6 +701,7 @@
         }
         #healthBarFill { background-color: #ff4444; }
         #breathBarFill { background-color: #4444ff; }
+        #hungerBarFill { background-color: #ff9800; }
         .bar-text {
             position: absolute;
             width: 100%;
@@ -987,6 +988,10 @@
             <div id="breathBarFill" class="bar-fill"></div>
             <div class="bar-text">FOLEGO</div>
         </div>
+        <div class="bar-container">
+            <div id="hungerBarFill" class="bar-fill"></div>
+            <div class="bar-text">FOME</div>
+        </div>
     </div>
 
     <div id="faintedOverlay">
@@ -1108,8 +1113,10 @@
         let playerBody;
         let playerHealth = 100, playerMaxHealth = 100;
         let playerBreath = 100, playerMaxBreath = 100;
+        let playerHunger = 100, playerMaxHunger = 100;
+        let hungerDecayRate = 0.5;
         let isFainted = false;
-        let healthBarFill, breathBarFill, faintedOverlay, statBars;
+        let healthBarFill, breathBarFill, hungerBarFill, faintedOverlay, statBars;
 
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let raftBodies = []; // NOVO: Array para armazenar corpos das jangadas
@@ -2803,6 +2810,17 @@
             if (typeof updateFloatingItem === 'function') {
                 updateFloatingItem();
             }
+        }
+
+        function eatItem(item, index) {
+            if (!item) return;
+            playerHunger = Math.min(playerMaxHunger, playerHunger + 20);
+            item.quantity--;
+            if (item.quantity <= 0) {
+                beltItems[index] = null;
+            }
+            addNotification(`Você comeu ${itemDisplayNames[item.name] || item.name}`);
+            updateUI();
         }
 
         function createMound(intersect, isPositive = false, itemType = null) {
@@ -6314,6 +6332,7 @@
             interactionHintElement = document.getElementById('interactionHint');
             healthBarFill = document.getElementById('healthBarFill');
             breathBarFill = document.getElementById('breathBarFill');
+            hungerBarFill = document.getElementById('hungerBarFill');
             faintedOverlay = document.getElementById('faintedOverlay');
             statBars = document.getElementById('statBars');
 
@@ -6808,10 +6827,17 @@
                         }
                     }
 
-                    const primaryActionType = getActionType(beltItems[selectedSlotIndex]);
+                    const heldItem = beltItems[selectedSlotIndex];
+                    const primaryActionType = getActionType(heldItem);
                     if (primaryActionType === 'place') {
-                        placeBlock(beltItems[selectedSlotIndex], selectedSlotIndex);
-                        blockPlacedThisClick = true; // Marca que colocamos algo
+                        // Se for comida, prioriza comer a menos que esteja agachado (para plantar)
+                        if (heldItem && (heldItem.name === appleItemName || heldItem.name === coconutItemName) && !isCrouching) {
+                            eatItem(heldItem, selectedSlotIndex);
+                            blockPlacedThisClick = true;
+                        } else {
+                            placeBlock(heldItem, selectedSlotIndex);
+                            blockPlacedThisClick = true; // Marca que colocamos algo
+                        }
                     } else {
                         isAttemptingToDestroy = true; // NOVO: Define a intenção
                         startDestruction();
@@ -7891,6 +7917,7 @@
         function respawnPlayer() {
             playerHealth = playerMaxHealth;
             playerBreath = playerMaxBreath;
+            playerHunger = playerMaxHunger;
 
             // Reset position to island center
             if (playerBody) {
@@ -10407,13 +10434,18 @@
                 }
                 playerHealth = Math.max(0, Math.min(playerMaxHealth, playerHealth));
 
-                if (playerHealth <= 0) {
+                // Hunger decay
+                playerHunger -= delta * hungerDecayRate;
+                playerHunger = Math.max(0, Math.min(playerMaxHunger, playerHunger));
+
+                if (playerHealth <= 0 || playerHunger <= 0) {
                     faintPlayer();
                 }
 
                 // Atualiza UI das barras
                 if (healthBarFill) healthBarFill.style.width = `${(playerHealth / playerMaxHealth) * 100}%`;
                 if (breathBarFill) breathBarFill.style.width = `${(playerBreath / playerMaxBreath) * 100}%`;
+                if (hungerBarFill) hungerBarFill.style.width = `${(playerHunger / playerMaxHunger) * 100}%`;
             }
 
             // Atualiza o tempo para as ondas da água
@@ -10539,12 +10571,16 @@
             window.activeCampfires = activeCampfires;
             Object.defineProperty(window, 'playerHealth', { get: () => playerHealth, set: (v) => { playerHealth = v; } });
             Object.defineProperty(window, 'playerBreath', { get: () => playerBreath, set: (v) => { playerBreath = v; } });
+            Object.defineProperty(window, 'playerHunger', { get: () => playerHunger, set: (v) => { playerHunger = v; } });
+            Object.defineProperty(window, 'hungerDecayRate', { get: () => hungerDecayRate, set: (v) => { hungerDecayRate = v; } });
+            Object.defineProperty(window, 'isCrouching', { get: () => isCrouching, set: (v) => { isCrouching = v; } });
             Object.defineProperty(window, 'isFainted', { get: () => isFainted, set: (v) => { isFainted = v; } });
             Object.defineProperty(window, 'openedChest', { get: () => openedChest, set: (v) => { openedChest = v; } });
             window.heldTorchGroup = heldTorchGroup;
             Object.defineProperty(window, 'isJumpBoosting', { get: () => isJumpBoosting, set: (v) => { isJumpBoosting = v; } });
             window.faintPlayer = faintPlayer;
             window.respawnPlayer = respawnPlayer;
+            window.eatItem = eatItem;
             Object.defineProperty(window, 'renderDistance', {
                 get: () => renderDistance,
                 set: (v) => { renderDistance = v; }
