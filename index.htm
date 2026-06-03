@@ -998,7 +998,7 @@
                 <div class="bar-text">VIDA</div>
             </div>
         </div>
-        <div class="stat-row">
+        <div id="breathStatRow" class="stat-row">
             <i class="fas fa-wind stat-icon" style="color: #4444ff;"></i>
             <div class="bar-container">
                 <div id="breathBarFill" class="bar-fill"></div>
@@ -1139,7 +1139,7 @@
         let playerHunger = 100, playerMaxHunger = 100;
         let hungerDecayRate = 0.1;
         let isFainted = false;
-        let healthBarFill, breathBarFill, hungerBarFill, hungerOverlay, hungerWarning, faintedOverlay, statBars;
+        let healthBarFill, breathBarFill, breathStatRow, hungerBarFill, hungerOverlay, hungerWarning, faintedOverlay, statBars;
 
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let raftBodies = []; // NOVO: Array para armazenar corpos das jangadas
@@ -6355,6 +6355,7 @@
             interactionHintElement = document.getElementById('interactionHint');
             healthBarFill = document.getElementById('healthBarFill');
             breathBarFill = document.getElementById('breathBarFill');
+            breathStatRow = document.getElementById('breathStatRow');
             hungerBarFill = document.getElementById('hungerBarFill');
             hungerOverlay = document.getElementById('hungerOverlay');
             hungerWarning = document.getElementById('hungerWarning');
@@ -10477,7 +10478,12 @@
 
                 // Atualiza UI das barras
                 if (healthBarFill) healthBarFill.style.width = `${(playerHealth / playerMaxHealth) * 100}%`;
-                if (breathBarFill) breathBarFill.style.width = `${(playerBreath / playerMaxBreath) * 100}%`;
+                if (breathBarFill) {
+                    breathBarFill.style.width = `${(playerBreath / playerMaxBreath) * 100}%`;
+                    if (breathStatRow) {
+                        breathStatRow.style.display = playerBreath < playerMaxBreath ? 'flex' : 'none';
+                    }
+                }
                 if (hungerBarFill) hungerBarFill.style.width = `${(playerHunger / playerMaxHunger) * 100}%`;
 
                 // Hunger effects (below 10%)
