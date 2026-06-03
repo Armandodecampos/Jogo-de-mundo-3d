@@ -1026,7 +1026,7 @@
     <div id="hungerOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: black; opacity: 0; pointer-events: none; z-index: 9000;"></div>
     <div id="hungerWarning" style="position: absolute; top: 20%; left: 50%; transform: translateX(-50%); color: #ff0000; font-size: 2em; font-weight: bold; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8); z-index: 9001; display: none; pointer-events: none;">Você está muito faminto</div>
 
-    <div id="exhaustedWarning" style="position: absolute; top: 25%; left: 50%; transform: translateX(-50%); color: #ffff00; font-size: 2em; font-weight: bold; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8); z-index: 9600; display: none; pointer-events: none;">Você está exausto</div>
+    <div id="exhaustedWarning" style="position: absolute; top: 25%; left: 50%; transform: translateX(-50%); color: #ffff00; font-size: 2em; font-weight: bold; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8); z-index: 9800; display: none; pointer-events: none;">Você está exausto</div>
 
     <div id="faintedOverlay">
         <p>Você desmaiou...</p>
@@ -8633,9 +8633,12 @@
                 currentMoveSpeed *= (0.5 + 0.5 * hungerFactor); // Gradual reduction to 50% speed
             }
 
-            // Energy speed penalty (scales linearly from 100% to 50% speed)
-            const energySpeedFactor = 0.5 + 0.5 * (playerEnergy / playerMaxEnergy);
-            currentMoveSpeed *= energySpeedFactor;
+            // Energy speed penalty (scales linearly from 100% to 50% speed, starting at 30% energy)
+            if (playerEnergy < playerMaxEnergy * 0.3) {
+                const energyFactor30 = playerEnergy / (playerMaxEnergy * 0.3); // 1.0 at 30%, 0.0 at 0%
+                const energySpeedFactor = 0.5 + 0.5 * energyFactor30;
+                currentMoveSpeed *= energySpeedFactor;
+            }
 
             const forward = new THREE.Vector3();
             const right = new THREE.Vector3();
@@ -10612,11 +10615,11 @@
                     if (hungerWarning) hungerWarning.style.display = 'none';
                 }
 
-                // Energy effects (Exhaustion below 10%)
-                if (!isSleeping && playerEnergy < playerMaxEnergy * 0.1) {
+                // Energy effects (Exhaustion below 30%)
+                if (!isSleeping && playerEnergy < playerMaxEnergy * 0.3) {
                     if (exhaustedWarning) exhaustedWarning.style.display = 'block';
 
-                    const energyFactor = playerEnergy / (playerMaxEnergy * 0.1); // 1.0 at 10%, 0.0 at 0%
+                    const energyFactor = playerEnergy / (playerMaxEnergy * 0.3); // 1.0 at 30%, 0.0 at 0%
                     const cycle = 4.0 - 2.0 * energyFactor;
                     const blackDuration = cycle * (0.8 - 0.6 * energyFactor);
 
@@ -10624,7 +10627,8 @@
                     if (blinkTimer > cycle) blinkTimer = 0;
 
                     if (sleepOverlay) {
-                        sleepOverlay.style.opacity = (blinkTimer < blackDuration) ? 1 : 0;
+                        const maxOpacity = 1.0 - 0.7 * energyFactor; // 0.3 at 30% energy, 1.0 at 0% energy
+                        sleepOverlay.style.opacity = (blinkTimer < blackDuration) ? maxOpacity : 0;
                     }
                 } else {
                     if (exhaustedWarning) exhaustedWarning.style.display = 'none';
@@ -10765,6 +10769,7 @@
             Object.defineProperty(window, 'isCrouching', { get: () => isCrouching, set: (v) => { isCrouching = v; } });
             Object.defineProperty(window, 'isFainted', { get: () => isFainted, set: (v) => { isFainted = v; } });
             Object.defineProperty(window, 'openedChest', { get: () => openedChest, set: (v) => { openedChest = v; } });
+            Object.defineProperty(window, 'blinkTimer', { get: () => blinkTimer, set: (v) => { blinkTimer = v; } });
             window.heldTorchGroup = heldTorchGroup;
             Object.defineProperty(window, 'isJumpBoosting', { get: () => isJumpBoosting, set: (v) => { isJumpBoosting = v; } });
             window.faintPlayer = faintPlayer;
