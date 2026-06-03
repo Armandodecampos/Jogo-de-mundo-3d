@@ -713,6 +713,7 @@
         #healthBarFill { background-color: #ff4444; }
         #breathBarFill { background-color: #4444ff; }
         #hungerBarFill { background-color: #ff9800; }
+        #energyBarFill { background-color: #ffff00; }
         .bar-text {
             position: absolute;
             width: 100%;
@@ -1012,10 +1013,20 @@
                 <div class="bar-text">FOME</div>
             </div>
         </div>
+        <div class="stat-row">
+            <i class="fas fa-bolt stat-icon" style="color: #ffff00;"></i>
+            <div class="bar-container">
+                <div id="energyBarFill" class="bar-fill"></div>
+                <div class="bar-text">ENERGIA</div>
+            </div>
+        </div>
     </div>
 
     <div id="hungerOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: black; opacity: 0; pointer-events: none; z-index: 9000;"></div>
     <div id="hungerWarning" style="position: absolute; top: 20%; left: 50%; transform: translateX(-50%); color: #ff0000; font-size: 2em; font-weight: bold; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8); z-index: 9001; display: none; pointer-events: none;">Você está muito faminto</div>
+
+    <div id="sleepOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: black; opacity: 0; pointer-events: none; z-index: 9500;"></div>
+    <div id="exhaustedWarning" style="position: absolute; top: 25%; left: 50%; transform: translateX(-50%); color: #ffff00; font-size: 2em; font-weight: bold; text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8); z-index: 9600; display: none; pointer-events: none;">Você está exausto</div>
 
     <div id="faintedOverlay">
         <p>Você desmaiou...</p>
@@ -1137,9 +1148,14 @@
         let playerHealth = 100, playerMaxHealth = 100;
         let playerBreath = 100, playerMaxBreath = 100;
         let playerHunger = 100, playerMaxHunger = 100;
+        let playerEnergy = 100, playerMaxEnergy = 100;
         let hungerDecayRate = 0.1;
+        let energyDecayRate = 0.05;
         let isFainted = false;
-        let healthBarFill, breathBarFill, breathStatRow, hungerBarFill, hungerOverlay, hungerWarning, faintedOverlay, statBars;
+        let isSleeping = false;
+        let sleepTimer = 0;
+        let blinkTimer = 0;
+        let healthBarFill, breathBarFill, breathStatRow, hungerBarFill, energyBarFill, hungerOverlay, hungerWarning, sleepOverlay, exhaustedWarning, faintedOverlay, statBars;
 
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let raftBodies = []; // NOVO: Array para armazenar corpos das jangadas
@@ -6360,6 +6376,9 @@
             hungerOverlay = document.getElementById('hungerOverlay');
             hungerWarning = document.getElementById('hungerWarning');
             faintedOverlay = document.getElementById('faintedOverlay');
+            energyBarFill = document.getElementById('energyBarFill');
+            sleepOverlay = document.getElementById('sleepOverlay');
+            exhaustedWarning = document.getElementById('exhaustedWarning');
             statBars = document.getElementById('statBars');
 
             // Pega o elemento de exibição de peso
@@ -6545,6 +6564,42 @@
                         closeBackpack();
                     } else {
                         openBackpack();
+                    }
+                }
+
+                // Sleep with 'M' key
+                if (event.key.toLowerCase() === 'm') {
+                    if (event.repeat) return;
+                    if (isSleeping) {
+                        isSleeping = false;
+                        return;
+                    }
+
+                    const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
+                    const isInWater = playerBottomY < waterLevel && hasWaterAt(playerBody.position.x, playerBody.position.z);
+
+                    if (isInWater) {
+                        showNotification("Você não pode dormir na água");
+                        return;
+                    }
+
+                    // Check if looking at ground
+                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                    const intersects = raycaster.intersectObjects(raycastTargets, true);
+                    let lookingAtGround = false;
+                    for (const intersect of intersects) {
+                        if (intersect.distance > 5) continue;
+                        if (islandMeshes.some(m => m.mesh === intersect.object)) {
+                            lookingAtGround = true;
+                            break;
+                        }
+                    }
+
+                    if (lookingAtGround) {
+                        isSleeping = true;
+                        sleepTimer = 0;
+                    } else {
+                        showNotification("Você precisa olhar para o chão para dormir");
                     }
                 }
 
@@ -8572,6 +8627,10 @@
                 currentMoveSpeed *= (0.5 + 0.5 * hungerFactor); // Gradual reduction to 50% speed
             }
 
+            // Energy speed penalty (scales linearly from 100% to 50% speed)
+            const energySpeedFactor = 0.5 + 0.5 * (playerEnergy / playerMaxEnergy);
+            currentMoveSpeed *= energySpeedFactor;
+
             const forward = new THREE.Vector3();
             const right = new THREE.Vector3();
             const movementVector = new THREE.Vector3(0, 0, 0);
@@ -8593,7 +8652,38 @@
                 }
             }
 
-            if (isFlying) {
+            if (isSleeping) {
+                // Sleep transition and recovery
+                sleepTimer += delta;
+                const transitionDuration = 2.0;
+                const t = Math.min(1.0, sleepTimer / transitionDuration);
+
+                // Smoothly look at the ground
+                camera.rotation.x = camera.rotation.x * (1 - 0.05) + (-Math.PI / 2) * 0.05;
+
+                // Fade to black
+                if (sleepOverlay) sleepOverlay.style.opacity = t;
+
+                // Recover energy
+                playerEnergy += delta * 25; // Recover in 4 seconds
+                if (playerEnergy >= playerMaxEnergy) {
+                    playerEnergy = playerMaxEnergy;
+                    isSleeping = false;
+                    sleepTimer = 0;
+                }
+
+                // Stop sleeping if movement keys are pressed
+                if (keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d'] || keysPressed[' ']) {
+                    isSleeping = false;
+                    sleepTimer = 0;
+                }
+
+                if (!isSleeping && sleepOverlay) {
+                    sleepOverlay.style.opacity = 0;
+                }
+
+                playerBody.velocity.set(0, 0, 0);
+            } else if (isFlying) {
                 const flySpeed = 50;
                 let flyVector = new THREE.Vector3(0, 0, 0);
                 if (keysPressed['w']) flyVector.add(forward);
@@ -10472,8 +10562,26 @@
                 playerHunger -= delta * hungerDecayRate;
                 playerHunger = Math.max(0, Math.min(playerMaxHunger, playerHunger));
 
+                // Energy decay
+                if (!isSleeping) {
+                    playerEnergy -= delta * energyDecayRate;
+                }
+                playerEnergy = Math.max(0, Math.min(playerMaxEnergy, playerEnergy));
+
                 if (playerHealth <= 0 || playerHunger <= 0) {
                     faintPlayer();
+                }
+
+                // Auto-sleep at 0% energy
+                if (playerEnergy <= 0 && !isSleeping) {
+                    const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
+                    const isInWater = playerBottomY < waterLevel && hasWaterAt(playerBody.position.x, playerBody.position.z);
+                    if (isInWater) {
+                        faintPlayer();
+                    } else {
+                        isSleeping = true;
+                        sleepTimer = 0;
+                    }
                 }
 
                 // Atualiza UI das barras
@@ -10485,6 +10593,7 @@
                     }
                 }
                 if (hungerBarFill) hungerBarFill.style.width = `${(playerHunger / playerMaxHunger) * 100}%`;
+                if (energyBarFill) energyBarFill.style.width = `${(playerEnergy / playerMaxEnergy) * 100}%`;
 
                 // Hunger effects (below 10%)
                 if (playerHunger < playerMaxHunger * 0.1) {
@@ -10494,6 +10603,26 @@
                 } else {
                     if (hungerOverlay) hungerOverlay.style.opacity = 0;
                     if (hungerWarning) hungerWarning.style.display = 'none';
+                }
+
+                // Energy effects (Exhaustion below 10%)
+                if (!isSleeping && playerEnergy < playerMaxEnergy * 0.1) {
+                    if (exhaustedWarning) exhaustedWarning.style.display = 'block';
+
+                    const energyFactor = playerEnergy / (playerMaxEnergy * 0.1); // 1.0 at 10%, 0.0 at 0%
+                    const cycle = 0.5 + 2.0 * energyFactor;
+                    const blackDuration = cycle * (0.8 - 0.6 * energyFactor);
+
+                    blinkTimer += delta;
+                    if (blinkTimer > cycle) blinkTimer = 0;
+
+                    if (sleepOverlay) {
+                        sleepOverlay.style.opacity = (blinkTimer < blackDuration) ? 1 : 0;
+                    }
+                } else {
+                    if (exhaustedWarning) exhaustedWarning.style.display = 'none';
+                    if (!isSleeping && sleepOverlay) sleepOverlay.style.opacity = 0;
+                    blinkTimer = 0;
                 }
             }
 
@@ -10621,7 +10750,9 @@
             Object.defineProperty(window, 'playerHealth', { get: () => playerHealth, set: (v) => { playerHealth = v; } });
             Object.defineProperty(window, 'playerBreath', { get: () => playerBreath, set: (v) => { playerBreath = v; } });
             Object.defineProperty(window, 'playerHunger', { get: () => playerHunger, set: (v) => { playerHunger = v; } });
+            Object.defineProperty(window, 'playerEnergy', { get: () => playerEnergy, set: (v) => { playerEnergy = v; } });
             Object.defineProperty(window, 'hungerDecayRate', { get: () => hungerDecayRate, set: (v) => { hungerDecayRate = v; } });
+            Object.defineProperty(window, 'energyDecayRate', { get: () => energyDecayRate, set: (v) => { energyDecayRate = v; } });
             Object.defineProperty(window, 'isCrouching', { get: () => isCrouching, set: (v) => { isCrouching = v; } });
             Object.defineProperty(window, 'isFainted', { get: () => isFainted, set: (v) => { isFainted = v; } });
             Object.defineProperty(window, 'openedChest', { get: () => openedChest, set: (v) => { openedChest = v; } });
