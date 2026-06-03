@@ -7657,7 +7657,7 @@
                         pickedObjectBody.quaternion.copy(currentQuaternion);
                     }
                     // Lógica de rotação da câmera
-                    else if (!isRightButtonPressed) { // Apenas gira a câmera se o botão direito NÃO estiver pressionado
+                    else if (!isRightButtonPressed && !isSleeping) { // Apenas gira a câmera se o botão direito NÃO estiver pressionado e NÃO estiver dormindo
                         camera.rotation.y -= deltaX * 0.005;
                         camera.rotation.x -= deltaY * 0.005;
                         camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
@@ -8020,6 +8020,12 @@
             const now = performance.now();
             const delta = Math.min((now - lastTime) / 1000, 0.1);
             lastTime = now;
+
+            // Determina o passo de tempo da física (acelerado se estiver dormindo)
+            let physicsDelta = delta;
+            if (isSleeping && (typeof sleepTimer !== 'undefined' ? sleepTimer : 0) >= 2.0) {
+                physicsDelta = delta * 20.0; // Tempo passa 20x mais rápido
+            }
 
             // Update camera position and matrices for accurate culling
             if (playerBody) {
@@ -8664,8 +8670,9 @@
                 // Fade to black
                 if (sleepOverlay) sleepOverlay.style.opacity = t;
 
-                // Recover energy
-                playerEnergy += delta * 25; // Recover in 4 seconds
+                // Recover energy based on accelerated physics time
+                // 100% in 8 hours (100 game seconds) = 1.0 per game second
+                playerEnergy += physicsDelta * 1.0;
                 if (playerEnergy >= playerMaxEnergy) {
                     playerEnergy = playerMaxEnergy;
                     isSleeping = false;
@@ -8872,7 +8879,7 @@
             });
 
             // Atualiza o mundo da física e o tempo simulado
-            world.step(1 / 60, delta, 10);
+            world.step(1 / 60, physicsDelta, isSleeping ? 100 : 10);
 
             // Re-apply zero velocity after physics step if player is supposed to be static
             // to prevent tiny movements accumulated during the step on slopes.
@@ -10747,6 +10754,8 @@
 
             isWorldReady = true; window.isWorldReady = true;
             window.activeCampfires = activeCampfires;
+            Object.defineProperty(window, 'isSleeping', { get: () => isSleeping, set: (v) => { isSleeping = v; } });
+            Object.defineProperty(window, 'sleepTimer', { get: () => sleepTimer, set: (v) => { sleepTimer = v; } });
             Object.defineProperty(window, 'playerHealth', { get: () => playerHealth, set: (v) => { playerHealth = v; } });
             Object.defineProperty(window, 'playerBreath', { get: () => playerBreath, set: (v) => { playerBreath = v; } });
             Object.defineProperty(window, 'playerHunger', { get: () => playerHunger, set: (v) => { playerHunger = v; } });
