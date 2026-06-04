@@ -849,6 +849,8 @@
 </head>
 <body>
     <div id="sleepOverlay" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: black; opacity: 0; pointer-events: none; z-index: 9500;"></div>
+    <div id="eyeTop" style="position: fixed; top: 0; left: 0; width: 100%; height: 0; background-color: black; pointer-events: none; z-index: 9500; transition: height 0.1s ease-out;"></div>
+    <div id="eyeBottom" style="position: fixed; bottom: 0; left: 0; width: 100%; height: 0; background-color: black; pointer-events: none; z-index: 9500; transition: height 0.1s ease-out;"></div>
     <div id="tooltip"></div>
     <div id="startScreen">
         <h1>Small World</h1>
@@ -1155,7 +1157,7 @@
         let isSleeping = false;
         let sleepTimer = 0;
         let blinkTimer = 0;
-        let healthBarFill, breathBarFill, breathStatRow, hungerBarFill, energyBarFill, hungerOverlay, hungerWarning, sleepOverlay, exhaustedWarning, faintedOverlay, statBars;
+        let healthBarFill, breathBarFill, breathStatRow, hungerBarFill, energyBarFill, hungerOverlay, hungerWarning, sleepOverlay, eyeTop, eyeBottom, exhaustedWarning, faintedOverlay, statBars;
 
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let raftBodies = []; // NOVO: Array para armazenar corpos das jangadas
@@ -6378,6 +6380,8 @@
             faintedOverlay = document.getElementById('faintedOverlay');
             energyBarFill = document.getElementById('energyBarFill');
             sleepOverlay = document.getElementById('sleepOverlay');
+            eyeTop = document.getElementById('eyeTop');
+            eyeBottom = document.getElementById('eyeBottom');
             exhaustedWarning = document.getElementById('exhaustedWarning');
             statBars = document.getElementById('statBars');
 
@@ -8672,6 +8676,9 @@
 
                 // Fade to black
                 if (sleepOverlay) sleepOverlay.style.opacity = t;
+                // Ensure eye bars are fully closed during sleep
+                if (eyeTop) eyeTop.style.height = '50%';
+                if (eyeBottom) eyeBottom.style.height = '50%';
 
                 // Recover energy based on accelerated physics time
                 // 100% in 8 hours (100 game seconds) = 1.0 per game second
@@ -10620,19 +10627,14 @@
                     if (exhaustedWarning) exhaustedWarning.style.display = 'block';
 
                     const energyFactor = playerEnergy / (playerMaxEnergy * 0.3); // 1.0 at 30%, 0.0 at 0%
-                    const cycle = 4.0 - 2.0 * energyFactor;
-                    const blackDuration = cycle * (0.8 - 0.6 * energyFactor);
+                    const eyeHeight = (1.0 - energyFactor) * 50; // 0% at 30% energy, 50% at 0% energy
 
-                    blinkTimer += delta;
-                    if (blinkTimer > cycle) blinkTimer = 0;
-
-                    if (sleepOverlay) {
-                        const maxOpacity = 1.0 - 0.7 * energyFactor; // 0.3 at 30% energy, 1.0 at 0% energy
-                        sleepOverlay.style.opacity = (blinkTimer < blackDuration) ? maxOpacity : 0;
-                    }
+                    if (eyeTop) eyeTop.style.height = `${eyeHeight}%`;
+                    if (eyeBottom) eyeBottom.style.height = `${eyeHeight}%`;
                 } else {
                     if (exhaustedWarning) exhaustedWarning.style.display = 'none';
-                    if (!isSleeping && sleepOverlay) sleepOverlay.style.opacity = 0;
+                    if (eyeTop) eyeTop.style.height = '0%';
+                    if (eyeBottom) eyeBottom.style.height = '0%';
                     blinkTimer = 0;
                 }
             }
