@@ -1419,21 +1419,48 @@
         let currentLookedAtBody = null; // Reutilizado para o hint e para o comando de girar
 
         function rotateLookedAtObject() {
-            if (pickedObjectBody || gamePaused || !currentLookedAtBody) return;
+            try {
+                if (pickedObjectBody || gamePaused || !currentLookedAtBody) return;
 
-            const body = currentLookedAtBody;
-            if (body && body.userData && rotatableItems.includes(body.userData.type)) {
-                // Incremento de rotação (90 graus)
-                const angle = Math.PI / 2;
-                const rotationIncrement = new CANNON.Quaternion();
-                rotationIncrement.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), angle);
+                const body = currentLookedAtBody;
+                if (body && body.userData && rotatableItems.includes(body.userData.type)) {
+                    // Usamos THREE.Quaternion para o cálculo por ser extremamente estável
+                    const currentQuat = new THREE.Quaternion(
+                        body.quaternion.x || 0,
+                        body.quaternion.y || 0,
+                        body.quaternion.z || 0,
+                        body.quaternion.w || 1
+                    );
+                    const rotationIncrement = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
+                    currentQuat.multiply(rotationIncrement);
+                    currentQuat.normalize();
 
-                // Aplica a rotação SEM substituir a referência do objeto quaternion
-                const newQuat = body.quaternion.mult(rotationIncrement);
-                body.quaternion.copy(newQuat);
-                body.quaternion.normalize();
+                    if (isNaN(currentQuat.x) || isNaN(currentQuat.y) || isNaN(currentQuat.z) || isNaN(currentQuat.w)) {
+                        console.warn("Rotação resultou em NaN, abortando.");
+                        return;
+                    }
 
-                // O loop de animação cuidará da sincronização visual no próximo frame.
+                    // Aplica ao corpo de física (Cannon.js) usando .copy() ou .set()
+                    body.quaternion.set(currentQuat.x, currentQuat.y, currentQuat.z, currentQuat.w);
+                    if (body.updateAABB) body.updateAABB();
+
+                    // Sincronização visual imediata para evitar lag visual
+                    let mesh = null;
+                    const constructionIndex = placedConstructionBodies.indexOf(body);
+                    if (constructionIndex !== -1) {
+                        mesh = placedConstructionMeshes[constructionIndex];
+                    } else {
+                        const boxIndex = collectibleBoxes.findIndex(b => b.body === body);
+                        if (boxIndex !== -1) mesh = collectibleBoxes[boxIndex].mesh;
+                    }
+
+                    if (mesh) {
+                        mesh.quaternion.set(currentQuat.x, currentQuat.y, currentQuat.z, currentQuat.w);
+                        mesh.updateMatrixWorld();
+                    }
+                }
+            } catch (e) {
+                console.error("Erro ao girar objeto:", e);
             }
         }
 
@@ -7796,9 +7823,17 @@
                     }
                     // Lógica de rotação da câmera
                     else if (!isRightButtonPressed && !isSleeping) { // Apenas gira a câmera se o botão direito NÃO estiver pressionado e NÃO estiver dormindo
-                        camera.rotation.y -= deltaX * 0.005;
-                        camera.rotation.x -= deltaY * 0.005;
-                        camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+                        // Recuperação de NaN se necessário
+                        if (isNaN(camera.rotation.x)) camera.rotation.x = 0;
+                        if (isNaN(camera.rotation.y)) camera.rotation.y = 0;
+
+                        const newRotY = camera.rotation.y - deltaX * 0.005;
+                        const newRotX = camera.rotation.x - deltaY * 0.005;
+
+                        if (!isNaN(newRotY) && !isNaN(newRotX)) {
+                            camera.rotation.y = newRotY;
+                            camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, newRotX));
+                        }
 
                         // Se o botão direito não estiver pressionado, reseta as rotações do ghost block
                         if (isPrimaryToolPlacing) {
@@ -8167,9 +8202,15 @@
 
             // Update camera position and matrices for accurate culling
             if (playerBody) {
-                camera.position.copy(playerBody.position);
-                camera.position.y += (typeof cameraEyeLevelOffset !== 'undefined' ? cameraEyeLevelOffset : playerRadius);
-                camera.updateMatrixWorld();
+                if (!isNaN(playerBody.position.x) && !isNaN(playerBody.position.y) && !isNaN(playerBody.position.z)) {
+                    camera.position.copy(playerBody.position);
+                    camera.position.y += (typeof cameraEyeLevelOffset !== 'undefined' ? cameraEyeLevelOffset : playerRadius);
+                    camera.updateMatrixWorld();
+                } else {
+                    console.warn("Player position is NaN, resetting...");
+                    playerBody.position.set(0, 10, 0);
+                    playerBody.velocity.set(0, 0, 0);
+                }
             }
 
             // Update FPS counter and performance monitoring
@@ -9208,6 +9249,8 @@
             collectibleBoxes.forEach(box => {
                 const body = box.body;
                 const mesh = box.mesh;
+                if (!body || !mesh) return;
+
                 const dx = body.position.x - playerBody.position.x;
                 const dz = body.position.z - playerBody.position.z;
 
@@ -9225,7 +9268,7 @@
                     mesh.visible = false;
                 } else {
                     mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
-                    mesh.quaternion.copy(body.quaternion);
+                    mesh.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
                     mesh.updateMatrixWorld();
                     // Adiciona frustum culling manual
                     mesh.visible = mesh.geometry ? frustum.intersectsObject(mesh) : true;
@@ -9234,6 +9277,8 @@
 
             placedConstructionBodies.forEach((body, index) => {
                 const mesh = placedConstructionMeshes[index];
+                if (!body || !mesh) return;
+
                 const dx = body.position.x - playerBody.position.x;
                 const dz = body.position.z - playerBody.position.z;
 
@@ -9251,7 +9296,7 @@
                     mesh.visible = false;
                 } else {
                     mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
-                    mesh.quaternion.copy(body.quaternion);
+                    mesh.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
                     mesh.updateMatrixWorld();
                     // Adiciona frustum culling manual
                     mesh.visible = mesh.geometry ? frustum.intersectsObject(mesh) : true;
@@ -11099,6 +11144,7 @@
                 set: (v) => { currentLookedAtBody = v; }
             });
             window.rotatableItems = rotatableItems;
+            window.rotateLookedAtObject = rotateLookedAtObject;
         }
 
         // Listener de evento para o botão "Jogar"
