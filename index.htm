@@ -1414,6 +1414,49 @@
         let torchStickMat, torchBundleMat, torchStrapMat, torchOrangeFireMat, torchYellowFireMat, torchCoreFireMat, torchFireGeom; // Torch materials/geom for reuse
         const sounds = { playPlace: () => {} }; // NOVO: Objeto de sons básico para evitar erros
 
+        // Initialized later in init() to use ItemName constants
+        let rotatableItems = [];
+
+        function rotateLookedAtObject() {
+            if (pickedObjectBody || gamePaused) return;
+
+            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+            const intersects = raycaster.intersectObjects(raycastTargets, true);
+
+            for (let i = 0; i < intersects.length; i++) {
+                if (intersects[i].distance > pickUpDistance) continue;
+
+                let body = null;
+                let current = intersects[i].object;
+                while (current) {
+                    if (current.userData && current.userData.physicsBody) {
+                        body = current.userData.physicsBody;
+                        break;
+                    }
+                    current = current.parent;
+                }
+
+                if (body && body.userData && rotatableItems.includes(body.userData.type)) {
+                    // Rotate 90 degrees around Y axis
+                    const currentEuler = new THREE.Euler().setFromQuaternion(body.quaternion, 'YXZ');
+                    currentEuler.y += Math.PI / 2;
+                    body.quaternion.setFromEuler(currentEuler.x, currentEuler.y, currentEuler.z);
+
+                    // Sync visual mesh immediately
+                    const meshIndex = placedConstructionBodies.indexOf(body);
+                    if (meshIndex !== -1) {
+                        placedConstructionMeshes[meshIndex].quaternion.copy(body.quaternion);
+                    } else {
+                        const boxIndex = collectibleBoxes.findIndex(b => b.body === body);
+                        if (boxIndex !== -1) {
+                            collectibleBoxes[boxIndex].mesh.quaternion.copy(body.quaternion);
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
         // NOVO: Gerenciador de carregamento para rastrear quando todos os recursos são carregados
         const loadingManager = new THREE.LoadingManager();
         loadingManager.onLoad = () => {
@@ -6748,6 +6791,11 @@
                     }
                 }
 
+                if (event.key.toLowerCase() === 't') {
+                    if (event.repeat) return;
+                    rotateLookedAtObject();
+                }
+
                 // NOVO: Toggle voo com 'V'
                 if (event.key.toLowerCase() === 'v') {
                     if (event.repeat) return;
@@ -9481,30 +9529,36 @@
                         }
 
                         if (body && body.userData) {
+                            let identified = false;
                             if (body.userData.isChest) {
                                 interactionHintText = "(E) Abrir / (F) Agarrar / (G) Guardar";
-                                break;
-                            }
-                            if (body.userData.isRaft) {
+                                identified = true;
+                            } else if (body.userData.isRaft) {
                                 interactionHintText = "(E) Navegar / (F) Agarrar / (G) Guardar";
-                                break;
-                            }
-                            if (body.userData.isCollectible) {
+                                identified = true;
+                            } else if (body.userData.isCollectible) {
                                 if (body.userData.type === workbenchItemName || body.userData.type === mesaItemName || body.userData.type === bigornaItemName || body.userData.type === furnaceItemName || body.userData.type === pestleItemName) {
                                     interactionHintText = "(G) Guardar";
                                 } else {
                                     interactionHintText = "(F) Agarrar / (G) Guardar";
                                 }
-                                break;
-                            }
-                            // Adiciona dicas contextuais para ferramentas
-                            if (body.userData.isDestructible) {
+                                identified = true;
+                            } else if (body.userData.isDestructible) {
                                 if (body.userData.growthStage) {
                                     interactionHintText = "(Botão Esq.) Cortar Árvore\n(P) Escalar";
+                                    identified = true;
                                 } else if (body.userData.type === stoneBlockItemName || body.userData.type === stoneFloorItemName) {
                                     interactionHintText = "(Botão Esq.) Minerar Pedra";
+                                    identified = true;
                                 } else {
                                     interactionHintText = "(Botão Esq.) Destruir";
+                                    identified = true;
+                                }
+                            }
+
+                            if (identified) {
+                                if (rotatableItems.includes(body.userData.type)) {
+                                    interactionHintText += " / (T) Girar";
                                 }
                                 break;
                             }
@@ -10880,6 +10934,11 @@
                 inventoryBeltElement.style.visibility = 'visible'; // Mostra o cinto de inventário ao iniciar o jogo
                 inventoryBeltElement.style.opacity = '1';
             }
+
+            rotatableItems = [
+                bedItemName, sleepingMatItemName, mesaItemName, workbenchItemName,
+                pestleItemName, furnaceItemName, bigornaItemName
+            ];
 
             window.isWorldReady = true;
             isWorldReady = true;
