@@ -1556,7 +1556,7 @@
                 { result: { name: 'bloco_madeira', quantity: 4 }, ingredients: [{ name: 'tronco_arvore', quantity: 1 }] },
                 { result: { name: 'piso_madeira', quantity: 5 }, ingredients: [{ name: 'bloco_madeira', quantity: 1 }] },
                 { result: { name: 'piso_pedra', quantity: 5 }, ingredients: [{ name: 'pedra', quantity: 1 }] },
-                { result: { name: bedItemName, quantity: 1 }, ingredients: [{ name: woodenBlockItemName, quantity: 10 }, { name: fabricItemName, quantity: 5 }, { name: ropeItemName, quantity: 5 }] }
+                { result: { name: bedItemName, quantity: 1 }, ingredients: [{ name: woodenBlockItemName, quantity: 10 }, { name: fabricItemName, quantity: 10 }, { name: capimItemName, quantity: 50 }, { name: ropeItemName, quantity: 2 }] }
             ]
         };
 
@@ -1610,7 +1610,7 @@
             [fabricItemName]: 'Tecido',
             [campfireItemName]: 'Fogueira\nProporciona luz e calor',
             [torchItemName]: 'Tocha\nIlumina o caminho',
-            [sleepingMatItemName]: 'Colchonete\nRecupera 75% de energia',
+            [sleepingMatItemName]: 'Colchonete\nRecupera 100% de energia',
             [bedItemName]: 'Cama de Madeira\nRecupera 100% de energia',
             [basketItemName]: 'Cesto de Capim',
             [vegetableOilItemName]: 'Óleo Vegetal',
@@ -6657,6 +6657,11 @@
                         return;
                     }
 
+                    if (playerEnergy >= playerMaxEnergy) {
+                        showNotification("Você não está cansado");
+                        return;
+                    }
+
                     const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
                     const isInWater = playerBottomY < waterLevel && hasWaterAt(playerBody.position.x, playerBody.position.z);
 
@@ -7457,6 +7462,10 @@
                         if (body.userData.type === sleepingMatItemName || body.userData.type === bedItemName) {
                             if (isSleeping) {
                                 isSleeping = false;
+                                return true;
+                            }
+                            if (playerEnergy >= playerMaxEnergy) {
+                                showNotification("Você não está cansado");
                                 return true;
                             }
                             isSleeping = true;
@@ -8788,9 +8797,7 @@
 
                 // Recover energy based on accelerated physics time
                 // 100% in 8 hours (100 game seconds) = 1.0 per game second
-                let maxRecovery = playerMaxEnergy * 0.5;
-                if (playerBody.userData.sleepTarget === sleepingMatItemName) maxRecovery = playerMaxEnergy * 0.75;
-                else if (playerBody.userData.sleepTarget === bedItemName) maxRecovery = playerMaxEnergy * 1.0;
+                let maxRecovery = playerMaxEnergy;
 
                 if (playerEnergy < maxRecovery) {
                     playerEnergy += physicsDelta * 1.0;
@@ -8800,9 +8807,6 @@
                 if (playerEnergy >= maxRecovery) {
                     isSleeping = false;
                     sleepTimer = 0;
-                    if (maxRecovery < playerMaxEnergy) {
-                        showNotification("Você não consegue descansar mais aqui");
-                    }
                 }
 
                 // Stop sleeping if movement keys are pressed
