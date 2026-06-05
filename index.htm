@@ -1416,44 +1416,51 @@
 
         // Initialized later in init() to use ItemName constants
         let rotatableItems = [];
+        let currentLookedAtBody = null; // Reutilizado para o hint e para o comando de girar
 
         function rotateLookedAtObject() {
-            if (pickedObjectBody || gamePaused) return;
+            try {
+                if (pickedObjectBody || gamePaused || !currentLookedAtBody) return;
 
-            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-            const intersects = raycaster.intersectObjects(raycastTargets, true);
-
-            for (let i = 0; i < intersects.length; i++) {
-                if (intersects[i].distance > pickUpDistance) continue;
-
-                let body = null;
-                let current = intersects[i].object;
-                while (current) {
-                    if (current.userData && current.userData.physicsBody) {
-                        body = current.userData.physicsBody;
-                        break;
-                    }
-                    current = current.parent;
-                }
-
+                const body = currentLookedAtBody;
                 if (body && body.userData && rotatableItems.includes(body.userData.type)) {
-                    // Rotate 90 degrees around Y axis
-                    const currentEuler = new THREE.Euler().setFromQuaternion(body.quaternion, 'YXZ');
-                    currentEuler.y += Math.PI / 2;
-                    body.quaternion.setFromEuler(currentEuler.x, currentEuler.y, currentEuler.z);
+                    // Usamos THREE.Quaternion para o cálculo por ser extremamente estável
+                    const currentQuat = new THREE.Quaternion(
+                        body.quaternion.x || 0,
+                        body.quaternion.y || 0,
+                        body.quaternion.z || 0,
+                        body.quaternion.w || 1
+                    );
+                    const rotationIncrement = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
+                    currentQuat.multiply(rotationIncrement);
+                    currentQuat.normalize();
 
-                    // Sync visual mesh immediately
-                    const meshIndex = placedConstructionBodies.indexOf(body);
-                    if (meshIndex !== -1) {
-                        placedConstructionMeshes[meshIndex].quaternion.copy(body.quaternion);
+                    if (isNaN(currentQuat.x) || isNaN(currentQuat.y) || isNaN(currentQuat.z) || isNaN(currentQuat.w)) {
+                        console.warn("Rotação resultou em NaN, abortando.");
+                        return;
+                    }
+
+                    // Aplica ao corpo de física (Cannon.js) usando .copy() ou .set()
+                    body.quaternion.set(currentQuat.x, currentQuat.y, currentQuat.z, currentQuat.w);
+                    if (body.updateAABB) body.updateAABB();
+
+                    // Sincronização visual imediata para evitar lag visual
+                    let mesh = null;
+                    const constructionIndex = placedConstructionBodies.indexOf(body);
+                    if (constructionIndex !== -1) {
+                        mesh = placedConstructionMeshes[constructionIndex];
                     } else {
                         const boxIndex = collectibleBoxes.findIndex(b => b.body === body);
-                        if (boxIndex !== -1) {
-                            collectibleBoxes[boxIndex].mesh.quaternion.copy(body.quaternion);
-                        }
+                        if (boxIndex !== -1) mesh = collectibleBoxes[boxIndex].mesh;
                     }
-                    break;
+
+                    if (mesh) {
+                        mesh.quaternion.set(currentQuat.x, currentQuat.y, currentQuat.z, currentQuat.w);
+                        mesh.updateMatrixWorld();
+                    }
                 }
+            } catch (e) {
+                console.error("Erro ao girar objeto:", e);
             }
         }
 
@@ -7816,9 +7823,17 @@
                     }
                     // Lógica de rotação da câmera
                     else if (!isRightButtonPressed && !isSleeping) { // Apenas gira a câmera se o botão direito NÃO estiver pressionado e NÃO estiver dormindo
-                        camera.rotation.y -= deltaX * 0.005;
-                        camera.rotation.x -= deltaY * 0.005;
-                        camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, camera.rotation.x));
+                        // Recuperação de NaN se necessário
+                        if (isNaN(camera.rotation.x)) camera.rotation.x = 0;
+                        if (isNaN(camera.rotation.y)) camera.rotation.y = 0;
+
+                        const newRotY = camera.rotation.y - deltaX * 0.005;
+                        const newRotX = camera.rotation.x - deltaY * 0.005;
+
+                        if (!isNaN(newRotY) && !isNaN(newRotX)) {
+                            camera.rotation.y = newRotY;
+                            camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, newRotX));
+                        }
 
                         // Se o botão direito não estiver pressionado, reseta as rotações do ghost block
                         if (isPrimaryToolPlacing) {
@@ -8187,9 +8202,15 @@
 
             // Update camera position and matrices for accurate culling
             if (playerBody) {
-                camera.position.copy(playerBody.position);
-                camera.position.y += (typeof cameraEyeLevelOffset !== 'undefined' ? cameraEyeLevelOffset : playerRadius);
-                camera.updateMatrixWorld();
+                if (!isNaN(playerBody.position.x) && !isNaN(playerBody.position.y) && !isNaN(playerBody.position.z)) {
+                    camera.position.copy(playerBody.position);
+                    camera.position.y += (typeof cameraEyeLevelOffset !== 'undefined' ? cameraEyeLevelOffset : playerRadius);
+                    camera.updateMatrixWorld();
+                } else {
+                    console.warn("Player position is NaN, resetting...");
+                    playerBody.position.set(0, 10, 0);
+                    playerBody.velocity.set(0, 0, 0);
+                }
             }
 
             // Update FPS counter and performance monitoring
@@ -9228,6 +9249,8 @@
             collectibleBoxes.forEach(box => {
                 const body = box.body;
                 const mesh = box.mesh;
+                if (!body || !mesh) return;
+
                 const dx = body.position.x - playerBody.position.x;
                 const dz = body.position.z - playerBody.position.z;
 
@@ -9245,7 +9268,7 @@
                     mesh.visible = false;
                 } else {
                     mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
-                    mesh.quaternion.copy(body.quaternion);
+                    mesh.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
                     mesh.updateMatrixWorld();
                     // Adiciona frustum culling manual
                     mesh.visible = mesh.geometry ? frustum.intersectsObject(mesh) : true;
@@ -9254,6 +9277,8 @@
 
             placedConstructionBodies.forEach((body, index) => {
                 const mesh = placedConstructionMeshes[index];
+                if (!body || !mesh) return;
+
                 const dx = body.position.x - playerBody.position.x;
                 const dz = body.position.z - playerBody.position.z;
 
@@ -9271,7 +9296,7 @@
                     mesh.visible = false;
                 } else {
                     mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
-                    mesh.quaternion.copy(body.quaternion);
+                    mesh.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
                     mesh.updateMatrixWorld();
                     // Adiciona frustum culling manual
                     mesh.visible = mesh.geometry ? frustum.intersectsObject(mesh) : true;
@@ -9501,6 +9526,7 @@
             // PERFORM MAIN RAYCAST ONCE PER FRAME for crosshair and interaction checks
             let mainIntersects = [];
             let interactionHintText = "";
+            currentLookedAtBody = null; // Reset a cada frame
             if (document.pointerLockElement === renderer.domElement && !gamePaused) {
                 if (pickedObjectBody) {
                     interactionHintText = "(F) Soltar";
@@ -9529,6 +9555,7 @@
                         }
 
                         if (body && body.userData) {
+                            currentLookedAtBody = body; // Salva para uso em rotateLookedAtObject
                             let identified = false;
                             if (body.userData.isChest) {
                                 interactionHintText = "(E) Abrir / (F) Agarrar / (G) Guardar";
@@ -9556,12 +9583,16 @@
                                 }
                             }
 
-                            if (identified) {
-                                if (rotatableItems.includes(body.userData.type)) {
-                                    interactionHintText += " / (T) Girar";
+                            // Se o objeto for rotacionável, garantimos que ele seja identificado e mostre o hint
+                            if (rotatableItems.includes(body.userData.type)) {
+                                if (!identified) {
+                                    interactionHintText = "(G) Guardar"; // Fallback para móveis que não se encaixam em outras categorias
+                                    identified = true;
                                 }
-                                break;
+                                interactionHintText += " / (T) Girar";
                             }
+
+                            if (identified) break;
                         }
 
                         // Verificação de terreno (Cavar / Colher Capim)
@@ -11106,6 +11137,14 @@
             window.toggleInspectorLogic = toggleInspectorLogic;
             window.applyInspectorSettings = applyInspectorSettings;
             Object.defineProperty(window, 'useInspector', { get: () => useInspector, set: (v) => { useInspector = v; applyInspectorSettings(); } });
+
+            // Expose for testing
+            Object.defineProperty(window, 'currentLookedAtBody', {
+                get: () => currentLookedAtBody,
+                set: (v) => { currentLookedAtBody = v; }
+            });
+            window.rotatableItems = rotatableItems;
+            window.rotateLookedAtObject = rotateLookedAtObject;
         }
 
         // Listener de evento para o botão "Jogar"
