@@ -1416,44 +1416,24 @@
 
         // Initialized later in init() to use ItemName constants
         let rotatableItems = [];
+        let currentLookedAtBody = null; // Reutilizado para o hint e para o comando de girar
 
         function rotateLookedAtObject() {
-            if (pickedObjectBody || gamePaused) return;
+            if (pickedObjectBody || gamePaused || !currentLookedAtBody) return;
 
-            raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-            const intersects = raycaster.intersectObjects(raycastTargets, true);
+            const body = currentLookedAtBody;
+            if (body && body.userData && rotatableItems.includes(body.userData.type)) {
+                // Incremento de rotação (90 graus)
+                const angle = Math.PI / 2;
+                const rotationIncrement = new CANNON.Quaternion();
+                rotationIncrement.setFromAxisAngle(new CANNON.Vec3(0, 1, 0), angle);
 
-            for (let i = 0; i < intersects.length; i++) {
-                if (intersects[i].distance > pickUpDistance) continue;
+                // Aplica a rotação SEM substituir a referência do objeto quaternion
+                const newQuat = body.quaternion.mult(rotationIncrement);
+                body.quaternion.copy(newQuat);
+                body.quaternion.normalize();
 
-                let body = null;
-                let current = intersects[i].object;
-                while (current) {
-                    if (current.userData && current.userData.physicsBody) {
-                        body = current.userData.physicsBody;
-                        break;
-                    }
-                    current = current.parent;
-                }
-
-                if (body && body.userData && rotatableItems.includes(body.userData.type)) {
-                    // Rotate 90 degrees around Y axis
-                    const currentEuler = new THREE.Euler().setFromQuaternion(body.quaternion, 'YXZ');
-                    currentEuler.y += Math.PI / 2;
-                    body.quaternion.setFromEuler(currentEuler.x, currentEuler.y, currentEuler.z);
-
-                    // Sync visual mesh immediately
-                    const meshIndex = placedConstructionBodies.indexOf(body);
-                    if (meshIndex !== -1) {
-                        placedConstructionMeshes[meshIndex].quaternion.copy(body.quaternion);
-                    } else {
-                        const boxIndex = collectibleBoxes.findIndex(b => b.body === body);
-                        if (boxIndex !== -1) {
-                            collectibleBoxes[boxIndex].mesh.quaternion.copy(body.quaternion);
-                        }
-                    }
-                    break;
-                }
+                // O loop de animação cuidará da sincronização visual no próximo frame.
             }
         }
 
@@ -9501,6 +9481,7 @@
             // PERFORM MAIN RAYCAST ONCE PER FRAME for crosshair and interaction checks
             let mainIntersects = [];
             let interactionHintText = "";
+            currentLookedAtBody = null; // Reset a cada frame
             if (document.pointerLockElement === renderer.domElement && !gamePaused) {
                 if (pickedObjectBody) {
                     interactionHintText = "(F) Soltar";
@@ -9529,6 +9510,7 @@
                         }
 
                         if (body && body.userData) {
+                            currentLookedAtBody = body; // Salva para uso em rotateLookedAtObject
                             let identified = false;
                             if (body.userData.isChest) {
                                 interactionHintText = "(E) Abrir / (F) Agarrar / (G) Guardar";
@@ -9556,12 +9538,16 @@
                                 }
                             }
 
-                            if (identified) {
-                                if (rotatableItems.includes(body.userData.type)) {
-                                    interactionHintText += " / (T) Girar";
+                            // Se o objeto for rotacionável, garantimos que ele seja identificado e mostre o hint
+                            if (rotatableItems.includes(body.userData.type)) {
+                                if (!identified) {
+                                    interactionHintText = "(G) Guardar"; // Fallback para móveis que não se encaixam em outras categorias
+                                    identified = true;
                                 }
-                                break;
+                                interactionHintText += " / (T) Girar";
                             }
+
+                            if (identified) break;
                         }
 
                         // Verificação de terreno (Cavar / Colher Capim)
@@ -11106,6 +11092,13 @@
             window.toggleInspectorLogic = toggleInspectorLogic;
             window.applyInspectorSettings = applyInspectorSettings;
             Object.defineProperty(window, 'useInspector', { get: () => useInspector, set: (v) => { useInspector = v; applyInspectorSettings(); } });
+
+            // Expose for testing
+            Object.defineProperty(window, 'currentLookedAtBody', {
+                get: () => currentLookedAtBody,
+                set: (v) => { currentLookedAtBody = v; }
+            });
+            window.rotatableItems = rotatableItems;
         }
 
         // Listener de evento para o botão "Jogar"
