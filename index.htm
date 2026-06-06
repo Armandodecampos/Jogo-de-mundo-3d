@@ -1402,6 +1402,9 @@
         let pointerLockExitForBackpack = false; // NOVO: Flag para controlar a saída do pointer lock devido à mochila
         let isEscExit = false; // NOVO: Flag para controlar a saída do pointer lock via tecla ESC
         let isWorldReady = false; window.isWorldReady = isWorldReady; // NOVO: Flag para rastrear se o mundo está pronto para interações
+        let isPrimaryToolPlacing = false;
+        let isPrimaryToolDestroying = false;
+        let isPrimaryToolGrabbing = false;
         let lowPerformance = false; // NOVO: Flag para modo de baixa performance
         let useInspector = localStorage.getItem('useInspector') === 'true'; // NOVO: Flag para o modo inspetor
         let lowFPSStart = null;
@@ -1425,10 +1428,10 @@
 
             // Base quaternion should always be valid
             const baseQuat = new THREE.Quaternion(
-                body.userData.baseQuaternion._x,
-                body.userData.baseQuaternion._y,
-                body.userData.baseQuaternion._z,
-                body.userData.baseQuaternion._w
+                body.userData.baseQuaternion.x,
+                body.userData.baseQuaternion.y,
+                body.userData.baseQuaternion.z,
+                body.userData.baseQuaternion.w
             );
 
             if (body.userData.isOpen) {
@@ -1459,10 +1462,10 @@
                     // Se for uma porta, giramos o baseQuaternion e mantemos o estado (aberta/fechada)
                     if (body.userData.type === doorItemName) {
                         const baseQuat = new THREE.Quaternion(
-                            body.userData.baseQuaternion._x,
-                            body.userData.baseQuaternion._y,
-                            body.userData.baseQuaternion._z,
-                            body.userData.baseQuaternion._w
+                            body.userData.baseQuaternion.x,
+                            body.userData.baseQuaternion.y,
+                            body.userData.baseQuaternion.z,
+                            body.userData.baseQuaternion.w
                         );
                         const rotationIncrement = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
                         baseQuat.multiply(rotationIncrement);
@@ -6476,6 +6479,7 @@
             ghostBlockMesh.visible = false; // Inicialmente invisível
             scene.add(ghostBlockMesh);
             window.ghostBlockMesh = ghostBlockMesh;
+            window.ghostBlockMaterial = ghostBlockMaterial;
 
             // NOVO: Carrega a textura do buraco para a ferramenta pá e o modelo do buraco
             textureLoader.load(holeTextureURL, (texture) => {
@@ -6717,6 +6721,7 @@
             addItemToInventory(startingChestInventory, { name: mesaItemName, quantity: 10 }, startingChestMaxWeight, true);
             addItemToInventory(startingChestInventory, { name: sleepingMatItemName, quantity: 2 }, startingChestMaxWeight, true);
             addItemToInventory(startingChestInventory, { name: bedItemName, quantity: 2 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: doorItemName, quantity: 10 }, startingChestMaxWeight, true);
 
             // Pega o elemento do cinto de inventário e seus slots
             inventoryBeltElement = document.getElementById('inventoryBelt');
@@ -7820,7 +7825,7 @@
                     else if (currentBlockType === campfireItemName) materialLoaded = true;
                     else if (currentBlockType === torchItemName) materialLoaded = true;
                     else if (currentBlockType === sleepingMatItemName || currentBlockType === bedItemName) materialLoaded = true;
-                    else if (currentBlockType === workbenchItemName || currentBlockType === mesaItemName || currentBlockType === bigornaItemName || currentBlockType === furnaceItemName || currentBlockType === pestleItemName) materialLoaded = true;
+                    else if (currentBlockType === workbenchItemName || currentBlockType === mesaItemName || currentBlockType === bigornaItemName || currentBlockType === furnaceItemName || currentBlockType === pestleItemName || currentBlockType === doorItemName) materialLoaded = true;
 
                     if (materialLoaded) {
                         if (currentBlockType === boxItemName) {
@@ -7872,7 +7877,7 @@
 
                 // Determine the primary tool for visual feedback
                 const primaryToolForVisuals = beltItems[selectedSlotIndex]; // Usa o slot selecionado
-                const isPrimaryToolPlacing = primaryToolForVisuals && (
+                isPrimaryToolPlacing = primaryToolForVisuals && (
                     primaryToolForVisuals.name === cobItemName ||
                     primaryToolForVisuals.name === floorItemName ||
                     primaryToolForVisuals.name === treeSaplingItemName ||
@@ -7882,9 +7887,21 @@
                     primaryToolForVisuals.name === stoneBlockItemName ||
                     primaryToolForVisuals.name === woodenBlockItemName ||
                     primaryToolForVisuals.name === stoneItemName ||
-                    primaryToolForVisuals.name === pestleItemName
+                    primaryToolForVisuals.name === pestleItemName ||
+                    primaryToolForVisuals.name === doorItemName ||
+                    primaryToolForVisuals.name === campfireItemName ||
+                    primaryToolForVisuals.name === torchItemName ||
+                    primaryToolForVisuals.name === workbenchItemName ||
+                    primaryToolForVisuals.name === mesaItemName ||
+                    primaryToolForVisuals.name === bigornaItemName ||
+                    primaryToolForVisuals.name === furnaceItemName ||
+                    primaryToolForVisuals.name === sleepingMatItemName ||
+                    primaryToolForVisuals.name === bedItemName ||
+                    primaryToolForVisuals.name === stoneFloorItemName ||
+                    primaryToolForVisuals.name === woodenFloorItemName ||
+                    primaryToolForVisuals.name === raftItemName
                 );
-                const isPrimaryToolGrabbing = primaryToolForVisuals === null; // Hand is active if slot 0 is null
+                isPrimaryToolGrabbing = primaryToolForVisuals === null; // Hand is active if slot 0 is null
 
 
                 if (isDragging && !gamePaused) { // Processa o movimento do mouse apenas se o jogo não estiver pausado
@@ -9613,9 +9630,9 @@
             // Determine the primary tool for visual feedback and ghost block logic
             const primaryTool = beltItems[selectedSlotIndex]; // Usa o slot selecionado
             // Declaração única das variáveis
-            let isPrimaryToolPlacing = false;
-            let isPrimaryToolDestroying = false;
-            let isPrimaryToolGrabbing = false;
+            isPrimaryToolPlacing = false;
+            isPrimaryToolDestroying = false;
+            isPrimaryToolGrabbing = false;
 
             const actionType = getActionType(primaryTool);
             if (actionType === 'grab') {
@@ -9995,10 +10012,8 @@
                         } else if (currentBlockType === bedItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(1.2, 0.6, 2.2);
                         } else if (currentBlockType === doorItemName) {
-                            ghostBlockMesh.geometry = new THREE.BoxGeometry(0, 0, 0);
-                            const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.4, 0.1), ghostBlockMaterial);
-                            doorMesh.position.set(0.6, 0, 0); // Offset para a dobradiça (1.2 / 2)
-                            ghostBlockMesh.add(doorMesh);
+                            ghostBlockMesh.geometry = new THREE.BoxGeometry(1.2, 2.4, 0.1);
+                            ghostBlockMesh.geometry.translate(0.6, 0, 0);
                         } else if (currentBlockType === pestleItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(0, 0, 0);
                             const group = new THREE.Group();
@@ -10651,9 +10666,9 @@
             // Determine the active tool based on the left slot (primary action)
             const primaryToolForCrosshair = beltItems[selectedSlotIndex]; // Usa o slot selecionado
             // Declaração única das variáveis
-            isPrimaryToolPlacing = false;
-            isPrimaryToolDestroying = false;
-            isPrimaryToolGrabbing = false;
+            // isPrimaryToolPlacing = false; // Já declarado globalmente
+            // isPrimaryToolDestroying = false;
+            // isPrimaryToolGrabbing = false;
 
             const crosshairActionType = getActionType(primaryToolForCrosshair);
             if (crosshairActionType === 'grab') {
@@ -11176,6 +11191,9 @@
             window.updateUI = updateUI;
             window.coconutTrees = coconutTrees;
             window.doorItemName = doorItemName;
+            Object.defineProperty(window, 'isPrimaryToolPlacing', { get: () => isPrimaryToolPlacing });
+            Object.defineProperty(window, 'isPrimaryToolDestroying', { get: () => isPrimaryToolDestroying });
+            Object.defineProperty(window, 'isPrimaryToolGrabbing', { get: () => isPrimaryToolGrabbing });
             Object.defineProperty(window, 'selectedSlotIndex', {
                 get: () => selectedSlotIndex,
                 set: (v) => { selectedSlotIndex = v; }
@@ -11265,6 +11283,12 @@
             window.rotatableItems = rotatableItems;
             window.rotateLookedAtObject = rotateLookedAtObject;
             window.toggleDoor = toggleDoor;
+            window.getActionType = getActionType;
+            window.ghostBlockMesh = ghostBlockMesh;
+            window.itemDisplayNames = itemDisplayNames;
+            window.placedConstructionBodies = placedConstructionBodies;
+            Object.defineProperty(window, 'currentBlockType', { get: () => currentBlockType });
+            Object.defineProperty(window, 'isPrimaryToolPlacing', { get: () => isPrimaryToolPlacing });
         }
 
         // Listener de evento para o botão "Jogar"
