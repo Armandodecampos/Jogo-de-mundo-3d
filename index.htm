@@ -1422,7 +1422,7 @@
         let currentLookedAtBody = null; // Reutilizado para o hint e para o comando de girar
 
         function toggleDoor(body) {
-            if (!body || !body.userData || body.userData.type !== doorItemName) return;
+            if (!body || !body.userData || (body.userData.type !== doorItemName && body.userData.type !== windowItemName)) return;
 
             body.userData.isOpen = !body.userData.isOpen;
 
@@ -1459,8 +1459,8 @@
 
                 const body = currentLookedAtBody;
                 if (body && body.userData && rotatableItems.includes(body.userData.type)) {
-                    // Se for uma porta, giramos o baseQuaternion e mantemos o estado (aberta/fechada)
-                    if (body.userData.type === doorItemName) {
+                    // Se for uma porta ou janela, giramos o baseQuaternion e mantemos o estado (aberta/fechada)
+                    if (body.userData.type === doorItemName || body.userData.type === windowItemName) {
                         const baseQuat = new THREE.Quaternion(
                             body.userData.baseQuaternion.x,
                             body.userData.baseQuaternion.y,
@@ -1592,6 +1592,7 @@
         const sleepingMatItemName = 'colchonete';
         const bedItemName = 'cama';
         const doorItemName = 'porta';
+        const windowItemName = 'janela';
 
         // NOVO: Variáveis para o sistema de destruição de blocos (Machado e Martelo)
         const axeItemName = 'machado'; // Nome do item de machado no inventário
@@ -1678,7 +1679,8 @@
                 { result: { name: 'piso_madeira', quantity: 5 }, ingredients: [{ name: 'bloco_madeira', quantity: 1 }] },
                 { result: { name: 'piso_pedra', quantity: 5 }, ingredients: [{ name: 'pedra', quantity: 1 }] },
                 { result: { name: bedItemName, quantity: 1 }, ingredients: [{ name: woodenBlockItemName, quantity: 10 }, { name: fabricItemName, quantity: 10 }, { name: capimItemName, quantity: 50 }, { name: ropeItemName, quantity: 2 }] },
-                { result: { name: doorItemName, quantity: 1 }, ingredients: [{ name: woodenBlockItemName, quantity: 4 }] }
+                { result: { name: doorItemName, quantity: 1 }, ingredients: [{ name: woodenBlockItemName, quantity: 4 }] },
+                { result: { name: windowItemName, quantity: 1 }, ingredients: [{ name: woodenBlockItemName, quantity: 2 }] }
             ]
         };
 
@@ -1742,6 +1744,7 @@
             [pestleItemName]: 'Pilão',
             [workbenchItemName]: 'Bancada de Trabalho',
             [mesaItemName]: 'Mesa',
+            [windowItemName]: 'Janela',
             [bigornaItemName]: 'Bigorna',
             [furnaceItemName]: 'Forno\nUsado para processar materiais'
         };
@@ -1793,6 +1796,7 @@
             [pestleItemName]: 1.5,
             [workbenchItemName]: 15.0,
             [mesaItemName]: 10.0,
+            [windowItemName]: 5.0,
             [bigornaItemName]: 20.0,
             [furnaceItemName]: 30.0
         };
@@ -1911,6 +1915,8 @@
         let treeSaplingMaterialMesh; // New material for tree saplings icon
         let treeTrunkMaterialMesh; // Material for tree trunks (3D model)
         let doorMaterialMesh; // Material for doors
+        let windowMaterialMesh; // Material for window frames
+        let windowGlassMaterialMesh; // Material for window glass
         let treeLeavesMaterialMesh; // Material for tree leaves (3D model)
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
         let stoneBlockMaterialMesh;
@@ -2094,6 +2100,7 @@
             if (treeLeavesMaterialMesh) treeLeavesMaterialMesh.map = useTextures ? (texturesRegistry.treeLeaves || null) : null;
             if (treeSaplingMaterialMesh) treeSaplingMaterialMesh.map = useTextures ? (texturesRegistry.treeSapling || null) : null;
             if (doorMaterialMesh) doorMaterialMesh.map = useTextures ? (texturesRegistry.woodenBlock || null) : null;
+            if (windowMaterialMesh) windowMaterialMesh.map = useTextures ? (texturesRegistry.woodenBlock || null) : null;
             if (holeMaterial) holeMaterial.map = useTextures ? (texturesRegistry.hole || null) : null;
             if (stoneHoleMaterial) stoneHoleMaterial.map = useTextures ? (texturesRegistry.stone || null) : null;
 
@@ -2101,7 +2108,7 @@
             [cubeMaterialMesh, basketMaterialMesh, cobMaterialMesh, floorMaterialMesh, woodenPlankMaterialMesh,
              stoneBlockMaterialMesh, woodenBlockMaterialMesh, stoneFloorMaterialMesh,
              raftMaterialMesh, sailMaterialMesh, treeTrunkMaterialMesh, treeLeavesMaterialMesh,
-             treeSaplingMaterialMesh, doorMaterialMesh, holeMaterial, stoneHoleMaterial].forEach(m => {
+             treeSaplingMaterialMesh, doorMaterialMesh, windowMaterialMesh, windowGlassMaterialMesh, holeMaterial, stoneHoleMaterial].forEach(m => {
                 if (m) m.needsUpdate = true;
             });
 
@@ -2546,6 +2553,7 @@
             if (itemName === coconutSeedItemName) return "https://placehold.co/100x100/D2B48C/FFFFFF?text=Semente+Coco";
             if (itemName === coconutItemName) return "https://placehold.co/100x100/F5F5DC/FFFFFF?text=Coco";
             if (itemName === ropeItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Corda";
+            if (itemName === windowItemName) return "https://placehold.co/100x100/87CEEB/FFFFFF?text=Janela";
             if (itemName === fabricItemName) return "https://placehold.co/100x100/FFFFFF/000000?text=Tecido";
             if (itemName === campfireItemName) return "https://placehold.co/100x100/FF4500/FFFFFF?text=Fogueira";
             if (itemName === torchItemName) return "https://placehold.co/100x100/FFA500/FFFFFF?text=Tocha";
@@ -4883,6 +4891,60 @@
                     currentQuat.multiply(openRotation);
                     blockBody.quaternion.set(currentQuat.x, currentQuat.y, currentQuat.z, currentQuat.w);
                 }
+            } else if (type === windowItemName) {
+                width = 0.8; // 2 blocks wide
+                height = 0.8; // 2 blocks high
+                depth = 0.1;
+
+                blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+                blockBody.addShape(blockShape, new CANNON.Vec3(width / 2, 0, -depth / 2));
+
+                const group = new THREE.Group();
+
+                // Frame parts (top, bottom, left, right)
+                const frameThickness = 0.08;
+                const frameDepth = 0.12;
+                const frameMat = windowMaterialMesh;
+
+                // Horizontal frame parts
+                const horGeom = new THREE.BoxGeometry(width, frameThickness, frameDepth);
+                const frameTop = new THREE.Mesh(horGeom, frameMat);
+                frameTop.position.set(width / 2, height / 2 - frameThickness / 2, -depth / 2);
+                group.add(frameTop);
+
+                const frameBottom = new THREE.Mesh(horGeom, frameMat);
+                frameBottom.position.set(width / 2, -height / 2 + frameThickness / 2, -depth / 2);
+                group.add(frameBottom);
+
+                // Vertical frame parts
+                const verGeom = new THREE.BoxGeometry(frameThickness, height - frameThickness * 2, frameDepth);
+                const frameLeft = new THREE.Mesh(verGeom, frameMat);
+                frameLeft.position.set(frameThickness / 2, 0, -depth / 2);
+                group.add(frameLeft);
+
+                const frameRight = new THREE.Mesh(verGeom, frameMat);
+                frameRight.position.set(width - frameThickness / 2, 0, -depth / 2);
+                group.add(frameRight);
+
+                // Glass pane
+                const glassGeom = new THREE.BoxGeometry(width - frameThickness * 2, height - frameThickness * 2, 0.02);
+                const glass = new THREE.Mesh(glassGeom, windowGlassMaterialMesh);
+                glass.position.set(width / 2, 0, -depth / 2);
+                group.add(glass);
+
+                mesh = group;
+                initialMass = initialWoodenBlockMass / 2;
+                durability = woodenBlockDurability;
+
+                blockBody.userData.isOpen = initialStage === 'open';
+                blockBody.userData.baseQuaternion = new THREE.Quaternion(blockBody.quaternion.x, blockBody.quaternion.y, blockBody.quaternion.z, blockBody.quaternion.w);
+
+                if (blockBody.userData.isOpen) {
+                    const openRotation = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), -Math.PI / 2);
+                    const currentQuat = new THREE.Quaternion(blockBody.quaternion.x, blockBody.quaternion.y, blockBody.quaternion.z, blockBody.quaternion.w);
+                    currentQuat.multiply(openRotation);
+                    blockBody.quaternion.set(currentQuat.x, currentQuat.y, currentQuat.z, currentQuat.w);
+                }
             } else if (type === campfireItemName) {
                 ensureTorchAssets();
                 width = 0.8; height = 0.5; depth = 0.8;
@@ -5255,7 +5317,7 @@
 
             world.addBody(blockBody);
             Object.assign(blockBody.userData, {
-                isCollectible: (type === workbenchItemName || type === mesaItemName || type === bigornaItemName || type === furnaceItemName || type === pestleItemName || type === doorItemName),
+                isCollectible: (type === workbenchItemName || type === mesaItemName || type === bigornaItemName || type === furnaceItemName || type === pestleItemName || type === doorItemName || type === windowItemName),
                 isDestructible: true,
                 durability: durability,
                 originalMass: initialMass,
@@ -5670,6 +5732,8 @@
             treeSaplingMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 });
             treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
             doorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            windowMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            windowGlassMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x87CEEB, transparent: true, opacity: 0.5 });
             treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22, transparent: true, alphaTest: 0.5 });
 
             // Define o offset inicial do nível dos olhos da câmera como o raio da esfera
@@ -6726,6 +6790,7 @@
             addItemToInventory(startingChestInventory, { name: sleepingMatItemName, quantity: 2 }, startingChestMaxWeight, true);
             addItemToInventory(startingChestInventory, { name: bedItemName, quantity: 2 }, startingChestMaxWeight, true);
             addItemToInventory(startingChestInventory, { name: doorItemName, quantity: 10 }, startingChestMaxWeight, true);
+            addItemToInventory(startingChestInventory, { name: windowItemName, quantity: 10 }, startingChestMaxWeight, true);
 
             // Pega o elemento do cinto de inventário e seus slots
             inventoryBeltElement = document.getElementById('inventoryBelt');
@@ -7173,7 +7238,7 @@
                             } else if (body.userData.type === workbenchItemName) {
                                 openCraftingMenu('workbench');
                                 return;
-                            } else if (body.userData.type === doorItemName) {
+                            } else if (body.userData.type === doorItemName || body.userData.type === windowItemName) {
                                 toggleDoor(body);
                                 return;
                             }
@@ -9693,7 +9758,7 @@
                             } else if (body.userData.isRaft) {
                                 interactionHintText = "(E) Navegar / (F) Agarrar / (G) Guardar";
                                 identified = true;
-                            } else if (body.userData.type === doorItemName) {
+                            } else if (body.userData.type === doorItemName || body.userData.type === windowItemName) {
                                 interactionHintText = `(Botão Esq.) ${body.userData.isOpen ? 'Fechar' : 'Abrir'} / (G) Guardar`;
                                 identified = true;
                             } else if (body.userData.isCollectible) {
@@ -10018,6 +10083,9 @@
                         } else if (currentBlockType === doorItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(1.2, 2.4, 0.1);
                             ghostBlockMesh.geometry.translate(0.6, 0, -0.05);
+                        } else if (currentBlockType === windowItemName) {
+                            ghostBlockMesh.geometry = new THREE.BoxGeometry(0.8, 0.8, 0.1);
+                            ghostBlockMesh.geometry.translate(0.4, 0, -0.05);
                         } else if (currentBlockType === pestleItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(0, 0, 0);
                             const group = new THREE.Group();
@@ -10069,6 +10137,7 @@
                     else if (currentBlockType === torchItemName) currentGhostHeight = 0.8;
                     else if (currentBlockType === pestleItemName) currentGhostHeight = 0.5;
                     else if (currentBlockType === doorItemName) currentGhostHeight = 2.4;
+                    else if (currentBlockType === windowItemName) currentGhostHeight = 0.8;
                     // Update ghost block geometry
                     // ghostBlockMesh.geometry = new THREE.BoxGeometry(currentGhostWidth, currentGhostHeight, currentGhostDepth); // Removido para lidar individualmente
 
@@ -10130,8 +10199,8 @@
                                     const unwrappedZ = basePosition.z + visualOffsetZ;
 
                                     let snappedUnwrappedX, snappedUnwrappedZ;
-                                    if (currentBlockType === doorItemName) {
-                                        // Porta alinha com as ARESTAS dos blocos (0.2, 0.6, 1.0...)
+                                    if (currentBlockType === doorItemName || currentBlockType === windowItemName) {
+                                        // Porta/Janela alinha com as ARESTAS dos blocos (0.2, 0.6, 1.0...)
                                         // já que sua origem/dobradiça fica na lateral.
                                         snappedUnwrappedX = Math.round((unwrappedX - cobSize / 2) / cobSize) * cobSize + cobSize / 2;
                                         snappedUnwrappedZ = Math.round((unwrappedZ - cobSize / 2) / cobSize) * cobSize + cobSize / 2;
@@ -10149,7 +10218,7 @@
                                 // NOVO: Alinha a posição Y na grade, considerando a altura da superfície da ilha como a base.
                                 // Isso garante que os blocos se encaixem verticalmente.
                                 // CORREÇÃO: As sementes não devem se encaixar na grade vertical, elas devem ser colocadas no chão.
-                                if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === dirtItemName || currentBlockType === sandItemName || currentBlockType === raftItemName || currentBlockType === torchItemName || currentBlockType === workbenchItemName || currentBlockType === mesaItemName || currentBlockType === bigornaItemName || currentBlockType === furnaceItemName || currentBlockType === pestleItemName || currentBlockType === doorItemName) {
+                                if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === dirtItemName || currentBlockType === sandItemName || currentBlockType === raftItemName || currentBlockType === torchItemName || currentBlockType === workbenchItemName || currentBlockType === mesaItemName || currentBlockType === bigornaItemName || currentBlockType === furnaceItemName || currentBlockType === pestleItemName || currentBlockType === doorItemName || currentBlockType === windowItemName) {
                                     placementPosition.y = basePosition.y;
                                 } else if (currentBlockType === boxItemName) {
                                     placementPosition.y = basePosition.y;
@@ -11115,7 +11184,7 @@
 
             rotatableItems = [
                 bedItemName, sleepingMatItemName, mesaItemName, workbenchItemName,
-                pestleItemName, furnaceItemName, bigornaItemName, doorItemName
+                pestleItemName, furnaceItemName, bigornaItemName, doorItemName, windowItemName
             ];
 
             window.isWorldReady = true;
@@ -11205,6 +11274,7 @@
             window.updateUI = updateUI;
             window.coconutTrees = coconutTrees;
             window.doorItemName = doorItemName;
+            window.windowItemName = windowItemName;
             window.woodenBlockItemName = woodenBlockItemName;
             Object.defineProperty(window, 'isPrimaryToolPlacing', { get: () => isPrimaryToolPlacing });
             Object.defineProperty(window, 'isPrimaryToolDestroying', { get: () => isPrimaryToolDestroying });
