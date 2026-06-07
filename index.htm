@@ -2093,6 +2093,7 @@
             if (treeTrunkMaterialMesh) treeTrunkMaterialMesh.map = useTextures ? (texturesRegistry.treeBark || null) : null;
             if (treeLeavesMaterialMesh) treeLeavesMaterialMesh.map = useTextures ? (texturesRegistry.treeLeaves || null) : null;
             if (treeSaplingMaterialMesh) treeSaplingMaterialMesh.map = useTextures ? (texturesRegistry.treeSapling || null) : null;
+            if (doorMaterialMesh) doorMaterialMesh.map = useTextures ? (texturesRegistry.woodenBlock || null) : null;
             if (holeMaterial) holeMaterial.map = useTextures ? (texturesRegistry.hole || null) : null;
             if (stoneHoleMaterial) stoneHoleMaterial.map = useTextures ? (texturesRegistry.stone || null) : null;
 
@@ -2100,7 +2101,7 @@
             [cubeMaterialMesh, basketMaterialMesh, cobMaterialMesh, floorMaterialMesh, woodenPlankMaterialMesh,
              stoneBlockMaterialMesh, woodenBlockMaterialMesh, stoneFloorMaterialMesh,
              raftMaterialMesh, sailMaterialMesh, treeTrunkMaterialMesh, treeLeavesMaterialMesh,
-             treeSaplingMaterialMesh, holeMaterial, stoneHoleMaterial].forEach(m => {
+             treeSaplingMaterialMesh, doorMaterialMesh, holeMaterial, stoneHoleMaterial].forEach(m => {
                 if (m) m.needsUpdate = true;
             });
 
@@ -2556,6 +2557,7 @@
             if (itemName === pestleItemName) return "https://placehold.co/100x100/D2B48C/FFFFFF?text=Pilao";
             if (itemName === workbenchItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Bancada";
             if (itemName === mesaItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Mesa";
+            if (itemName === doorItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Porta";
             return handImageURL;
         }
         window.getItemIconURL = getItemIconURL;
@@ -4852,19 +4854,20 @@
                 height = 2.4; // 6 blocks high (6 * 0.4)
                 depth = 0.1;
                 // Physics body needs to be offset so the hinge is at the body origin
+                // We offset by -depth/2 in Z so the door rotates around its edge surface
                 blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
-                blockBody.addShape(blockShape, new CANNON.Vec3(width / 2, 0, 0));
+                blockBody.addShape(blockShape, new CANNON.Vec3(width / 2, 0, -depth / 2));
 
                 const group = new THREE.Group();
                 const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), doorMaterialMesh);
-                doorMesh.position.set(width / 2, 0, 0);
+                doorMesh.position.set(width / 2, 0, -depth / 2);
                 group.add(doorMesh);
 
                 // Add handle
                 const handleGeom = new THREE.BoxGeometry(0.05, 0.2, 0.15);
                 const handleMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
                 const handle = new THREE.Mesh(handleGeom, handleMat);
-                handle.position.set(width - 0.1, 0, 0);
+                handle.position.set(width - 0.1, 0, -depth / 2);
                 group.add(handle);
 
                 mesh = group;
@@ -10014,7 +10017,7 @@
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(1.2, 0.6, 2.2);
                         } else if (currentBlockType === doorItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(1.2, 2.4, 0.1);
-                            ghostBlockMesh.geometry.translate(0.6, 0, 0);
+                            ghostBlockMesh.geometry.translate(0.6, 0, -0.05);
                         } else if (currentBlockType === pestleItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(0, 0, 0);
                             const group = new THREE.Group();
