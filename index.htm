@@ -5277,6 +5277,7 @@
             scene.add(mesh);
             placedConstructionMeshes.push(mesh);
             raycastTargetsNeedUpdate = true;
+            return blockBody;
         }
 
         // Function to clear all smoke particles
@@ -10124,9 +10125,19 @@
                                     // Calcula a posição "desenrolada" (absoluta)
                                     const unwrappedX = basePosition.x + visualOffsetX;
                                     const unwrappedZ = basePosition.z + visualOffsetZ;
-                                    // Alinha na grade de construção
-                                    const snappedUnwrappedX = Math.round(unwrappedX / cobSize) * cobSize;
-                                    const snappedUnwrappedZ = Math.round(unwrappedZ / cobSize) * cobSize;
+
+                                    let snappedUnwrappedX, snappedUnwrappedZ;
+                                    if (currentBlockType === doorItemName) {
+                                        // Porta alinha com as ARESTAS dos blocos (0.2, 0.6, 1.0...)
+                                        // já que sua origem/dobradiça fica na lateral.
+                                        snappedUnwrappedX = Math.round((unwrappedX - cobSize / 2) / cobSize) * cobSize + cobSize / 2;
+                                        snappedUnwrappedZ = Math.round((unwrappedZ - cobSize / 2) / cobSize) * cobSize + cobSize / 2;
+                                    } else {
+                                        // Blocos alinham nos CENTROS da grade (0.0, 0.4, 0.8...)
+                                        snappedUnwrappedX = Math.round(unwrappedX / cobSize) * cobSize;
+                                        snappedUnwrappedZ = Math.round(unwrappedZ / cobSize) * cobSize;
+                                    }
+
                                     // Converte de volta para as coordenadas do mundo visível
                                     placementPosition.x = snappedUnwrappedX - visualOffsetX;
                                     placementPosition.z = snappedUnwrappedZ - visualOffsetZ;
@@ -11191,6 +11202,7 @@
             window.updateUI = updateUI;
             window.coconutTrees = coconutTrees;
             window.doorItemName = doorItemName;
+            window.woodenBlockItemName = woodenBlockItemName;
             Object.defineProperty(window, 'isPrimaryToolPlacing', { get: () => isPrimaryToolPlacing });
             Object.defineProperty(window, 'isPrimaryToolDestroying', { get: () => isPrimaryToolDestroying });
             Object.defineProperty(window, 'isPrimaryToolGrabbing', { get: () => isPrimaryToolGrabbing });
@@ -11288,7 +11300,6 @@
             window.itemDisplayNames = itemDisplayNames;
             window.placedConstructionBodies = placedConstructionBodies;
             Object.defineProperty(window, 'currentBlockType', { get: () => currentBlockType });
-            Object.defineProperty(window, 'isPrimaryToolPlacing', { get: () => isPrimaryToolPlacing });
         }
 
         // Listener de evento para o botão "Jogar"
