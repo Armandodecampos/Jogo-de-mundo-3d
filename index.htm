@@ -1278,6 +1278,9 @@
 
         const islandAmbientUrl = "https://dl.dropbox.com/scl/fi/3dolt8qlwr3rh51j5oy4l/wind_island_nature_t_-2-1774031396110.mp3?rlkey=u6kc916o88hg0f1tqf7kfkp52&st=yktjz581&dl=1";
         const beachAmbientUrl = "https://dl.dropbox.com/scl/fi/3qs6wkjtqu39aoidghorr/wind_beach_island_-4-1774031023927.mp3?rlkey=ml8fmu53qoyxpmbpavb9ftg0w&st=akxmu8qk&dl=1";
+        const grassStepUrl = "https://dl.dropbox.com/scl/fi/lk7jbjl0geyhtia8q9qvv/step_in_the_grass_-3-1781042170968.mp3?rlkey=z7qsi5p9r6wugl52xkdvd2fsr&st=wkz9axxy&dl=1";
+        const sandStepUrl = "https://dl.dropbox.com/scl/fi/lzrkkil2qp5ua72l9u1hz/walking_on_the_sand_-3-1781042767660.mp3?rlkey=9o2uetbuwu4tcvxmbsputmkts&st=es337xoe&dl=1";
+        const swimStepUrl = "https://dl.dropbox.com/scl/fi/vk9ebser1j3ryt6reuugj/Splashing_water_soun_-2-1781042635696.mp3?rlkey=hnrkkkolk9fkiat9sq0cfoiuh&st=ldc9eirs&dl=1";
 
         const birdSoundUrls = [
             "https://dl.dropbox.com/scl/fi/eqw59rwqync9f3ky3rdoa/bird_singing_-1-1774014921293.mp3?rlkey=s4g2iyvptt761ekbrq0f7tisl&st=1mvzcxbd&dl=1",
@@ -1313,6 +1316,12 @@
         let beachGainNode = null;
         let islandSourceNode = null;
         let beachSourceNode = null;
+        let grassGainNode = null;
+        let sandGainNode = null;
+        let swimGainNode = null;
+        let grassSourceNode = null;
+        let sandSourceNode = null;
+        let swimSourceNode = null;
 
         async function loadAudioBuffer(url) {
             if (!gameAudioContext) {
@@ -8392,6 +8401,19 @@
         function animate() {
             requestAnimationFrame(animate);
 
+            if (isFainted) {
+                if (gameAudioContext) {
+                    if (grassGainNode) grassGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                    if (sandGainNode) sandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                    if (swimGainNode) swimGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                    if (islandGainNode) islandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                    if (beachGainNode) beachGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                    if (rainGainNode) rainGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                }
+                renderer.render(scene, camera);
+                return;
+            }
+
             const now = performance.now();
             const delta = Math.min((now - lastTime) / 1000, 0.1);
             lastTime = now;
@@ -8517,6 +8539,48 @@
 
                     islandGainNode.gain.setTargetAtTime(islandVol, gameAudioContext.currentTime, 0.1);
                     beachGainNode.gain.setTargetAtTime(beachVol, gameAudioContext.currentTime, 0.1);
+                }
+            }
+
+            // Atualiza volume e velocidade dos sons de passos e nado
+            if (gameAudioContext && grassGainNode && sandGainNode && swimGainNode) {
+                if (gamePaused || isSleeping || isDrivingRaft || isFlying) {
+                    grassGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                    sandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                    swimGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                } else {
+                    const isMoving = (keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d']);
+                    const onGround = window.onWalkableGround;
+                    const playerPos = playerBody.position;
+                    const playerBottomY = playerPos.y - (isCrouching ? crouchRadius : playerRadius);
+                    const isInWater = playerBottomY < waterLevel && hasWaterAt(playerPos.x, playerPos.z);
+                    const centerPos = new THREE.Vector3(0, playerPos.y, 0);
+                    const dist = calculateWrappedDistance(playerPos, centerPos);
+
+                    let targetGrass = 0;
+                    let targetSand = 0;
+                    let targetSwim = 0;
+
+                    if (isMoving) {
+                        if (isInWater) {
+                            targetSwim = 0.5;
+                        } else if (onGround) {
+                            if (dist < capimRadius) {
+                                targetGrass = 0.5;
+                            } else {
+                                targetSand = 0.5;
+                            }
+                        }
+                    }
+
+                    grassGainNode.gain.setTargetAtTime(targetGrass, gameAudioContext.currentTime, 0.1);
+                    sandGainNode.gain.setTargetAtTime(targetSand, gameAudioContext.currentTime, 0.1);
+                    swimGainNode.gain.setTargetAtTime(targetSwim, gameAudioContext.currentTime, 0.1);
+
+                    const playbackRate = (keysPressed['shift'] && !isCrouching) ? 1.4 : 1.0;
+                    if (grassSourceNode) grassSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
+                    if (sandSourceNode) sandSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
+                    if (swimSourceNode) swimSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
                 }
             }
 
@@ -9281,6 +9345,20 @@
             // Re-apply zero velocity after physics step if player is supposed to be static
             // to prevent tiny movements accumulated during the step on slopes.
             if (!gamePaused && !isFlying && !isClimbing && !isDrivingRaft) {
+                // Sincroniza flag de estar no chão imediatamente após o step da física
+                let onWalkableGround = false;
+                for (let i = 0; i < world.contacts.length; i++) {
+                    const c = world.contacts[i];
+                    if (c.bi === playerBody || c.bj === playerBody) {
+                        const surfaceNormalY = (c.bi === playerBody) ? -c.ni.y : c.ni.y;
+                        if (surfaceNormalY >= 0.5) {
+                            onWalkableGround = true;
+                            break;
+                        }
+                    }
+                }
+                window.onWalkableGround = onWalkableGround;
+
                 const noMovementKeys = !(keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d'] || keysPressed[' ']);
                 if (noMovementKeys && window.onWalkableGround) {
                     playerBody.velocity.x = 0;
@@ -11148,9 +11226,24 @@
             beachGainNode.gain.value = 0;
             beachGainNode.connect(gameAudioContext.destination);
 
+            grassGainNode = gameAudioContext.createGain();
+            grassGainNode.gain.value = 0;
+            grassGainNode.connect(gameAudioContext.destination);
+
+            sandGainNode = gameAudioContext.createGain();
+            sandGainNode.gain.value = 0;
+            sandGainNode.connect(gameAudioContext.destination);
+
+            swimGainNode = gameAudioContext.createGain();
+            swimGainNode.gain.value = 0;
+            swimGainNode.connect(gameAudioContext.destination);
+
             async function startAmbientSounds() {
                 const islandBuf = await loadAudioBuffer(islandAmbientUrl);
                 const beachBuf = await loadAudioBuffer(beachAmbientUrl);
+                const grassBuf = await loadAudioBuffer(grassStepUrl);
+                const sandBuf = await loadAudioBuffer(sandStepUrl);
+                const swimBuf = await loadAudioBuffer(swimStepUrl);
 
                 if (islandBuf) {
                     islandSourceNode = gameAudioContext.createBufferSource();
@@ -11166,6 +11259,30 @@
                     beachSourceNode.loop = true;
                     beachSourceNode.connect(beachGainNode);
                     beachSourceNode.start(0);
+                }
+
+                if (grassBuf) {
+                    grassSourceNode = gameAudioContext.createBufferSource();
+                    grassSourceNode.buffer = grassBuf;
+                    grassSourceNode.loop = true;
+                    grassSourceNode.connect(grassGainNode);
+                    grassSourceNode.start(0);
+                }
+
+                if (sandBuf) {
+                    sandSourceNode = gameAudioContext.createBufferSource();
+                    sandSourceNode.buffer = sandBuf;
+                    sandSourceNode.loop = true;
+                    sandSourceNode.connect(sandGainNode);
+                    sandSourceNode.start(0);
+                }
+
+                if (swimBuf) {
+                    swimSourceNode = gameAudioContext.createBufferSource();
+                    swimSourceNode.buffer = swimBuf;
+                    swimSourceNode.loop = true;
+                    swimSourceNode.connect(swimGainNode);
+                    swimSourceNode.start(0);
                 }
 
                 // Pre-load bird sounds
