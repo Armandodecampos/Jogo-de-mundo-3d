@@ -8542,47 +8542,6 @@
                 }
             }
 
-            // Atualiza volume e velocidade dos sons de passos e nado
-            if (gameAudioContext && grassGainNode && sandGainNode && swimGainNode) {
-                if (gamePaused || isSleeping || isDrivingRaft || isFlying) {
-                    grassGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                    sandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                    swimGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                } else {
-                    const isMoving = (keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d']);
-                    const onGround = window.onWalkableGround;
-                    const playerPos = playerBody.position;
-                    const playerBottomY = playerPos.y - (isCrouching ? crouchRadius : playerRadius);
-                    const isInWater = playerBottomY < waterLevel && hasWaterAt(playerPos.x, playerPos.z);
-                    const centerPos = new THREE.Vector3(0, playerPos.y, 0);
-                    const dist = calculateWrappedDistance(playerPos, centerPos);
-
-                    let targetGrass = 0;
-                    let targetSand = 0;
-                    let targetSwim = 0;
-
-                    if (isMoving) {
-                        if (isInWater) {
-                            targetSwim = 0.5;
-                        } else if (onGround) {
-                            if (dist < capimRadius) {
-                                targetGrass = 0.5;
-                            } else {
-                                targetSand = 0.5;
-                            }
-                        }
-                    }
-
-                    grassGainNode.gain.setTargetAtTime(targetGrass, gameAudioContext.currentTime, 0.1);
-                    sandGainNode.gain.setTargetAtTime(targetSand, gameAudioContext.currentTime, 0.1);
-                    swimGainNode.gain.setTargetAtTime(targetSwim, gameAudioContext.currentTime, 0.1);
-
-                    const playbackRate = (keysPressed['shift'] && !isCrouching) ? 1.4 : 1.0;
-                    if (grassSourceNode) grassSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
-                    if (sandSourceNode) sandSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
-                    if (swimSourceNode) swimSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
-                }
-            }
 
             if (typeof raycastTargetsNeedUpdate !== 'undefined' && raycastTargetsNeedUpdate) {
                 updateRaycastTargets();
@@ -9358,6 +9317,49 @@
                     }
                 }
                 window.onWalkableGround = onWalkableGround;
+
+                // Atualiza volume e velocidade dos sons de passos e nado
+                if (gameAudioContext && grassGainNode && sandGainNode && swimGainNode) {
+                    if (gamePaused || isSleeping || isDrivingRaft || isFlying) {
+                        grassGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                        sandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                        swimGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                    } else {
+                        const isMoving = (keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d']);
+                        const onGround = window.onWalkableGround;
+                        const playerPos = playerBody.position;
+                        const playerBottomY = playerPos.y - (isCrouching ? crouchRadius : playerRadius);
+                        const isInWater = playerBottomY < waterLevel && hasWaterAt(playerPos.x, playerPos.z);
+                        const centerPos = new THREE.Vector3(0, playerPos.y, 0);
+                        const dist = calculateWrappedDistance(playerPos, centerPos);
+
+
+                        let targetGrass = 0;
+                        let targetSand = 0;
+                        let targetSwim = 0;
+
+                        if (isMoving) {
+                            if (isInWater) {
+                                targetSwim = 0.5;
+                            } else if (onGround) {
+                                if (dist < capimRadius) {
+                                    targetGrass = 0.5;
+                                } else {
+                                    targetSand = 0.5;
+                                }
+                            }
+                        }
+
+                        grassGainNode.gain.setTargetAtTime(targetGrass, gameAudioContext.currentTime, 0.1);
+                        sandGainNode.gain.setTargetAtTime(targetSand, gameAudioContext.currentTime, 0.1);
+                        swimGainNode.gain.setTargetAtTime(targetSwim, gameAudioContext.currentTime, 0.1);
+
+                        const playbackRate = (keysPressed['shift'] && !isCrouching) ? 1.4 : 1.0;
+                        if (grassSourceNode) grassSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
+                        if (sandSourceNode) sandSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
+                        if (swimSourceNode) swimSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
+                    }
+                }
 
                 const noMovementKeys = !(keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d'] || keysPressed[' ']);
                 if (noMovementKeys && window.onWalkableGround) {
