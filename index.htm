@@ -1278,8 +1278,9 @@
 
         const islandAmbientUrl = "https://dl.dropbox.com/scl/fi/3dolt8qlwr3rh51j5oy4l/wind_island_nature_t_-2-1774031396110.mp3?rlkey=u6kc916o88hg0f1tqf7kfkp52&st=yktjz581&dl=1";
         const beachAmbientUrl = "https://dl.dropbox.com/scl/fi/3qs6wkjtqu39aoidghorr/wind_beach_island_-4-1774031023927.mp3?rlkey=ml8fmu53qoyxpmbpavb9ftg0w&st=akxmu8qk&dl=1";
-        const grassStepUrl = "https://dl.dropbox.com/scl/fi/lk7jbjl0geyhtia8q9qvv/step_in_the_grass_-3-1781042170968.mp3?rlkey=z7qsi5p9r6wugl52xkdvd2fsr&st=wkz9axxy&dl=1";
+        const grassStepUrl = "https://dl.dropbox.com/scl/fi/jgj1y0e1xe18j5n9apfes/passos-na-grama.mp3?rlkey=l39ipbmtt37r1wpd14e7mxlck&st=ekcy7ysd&dl=1";
         const sandStepUrl = "https://dl.dropbox.com/scl/fi/lzrkkil2qp5ua72l9u1hz/walking_on_the_sand_-3-1781042767660.mp3?rlkey=9o2uetbuwu4tcvxmbsputmkts&st=es337xoe&dl=1";
+        const diggingUrl = "https://dl.dropbox.com/scl/fi/xtor1zj17v4vycgkkaybf/cavando-terra-e-areia.mp3?rlkey=n7as7ibw4wojnwdkya6e3mjcj&st=wpwg16d7&dl=1";
         const swimStepUrl = "https://dl.dropbox.com/scl/fi/vk9ebser1j3ryt6reuugj/Splashing_water_soun_-2-1781042635696.mp3?rlkey=hnrkkkolk9fkiat9sq0cfoiuh&st=ldc9eirs&dl=1";
 
         const birdSoundUrls = [
@@ -1319,9 +1320,11 @@
         let grassGainNode = null;
         let sandGainNode = null;
         let swimGainNode = null;
+        let diggingGainNode = null;
         let grassSourceNode = null;
         let sandSourceNode = null;
         let swimSourceNode = null;
+        let diggingSourceNode = null;
 
         async function loadAudioBuffer(url) {
             if (!gameAudioContext) {
@@ -9319,11 +9322,12 @@
                 window.onWalkableGround = onWalkableGround;
 
                 // Atualiza volume e velocidade dos sons de passos e nado
-                if (gameAudioContext && grassGainNode && sandGainNode && swimGainNode) {
+                if (gameAudioContext && grassGainNode && sandGainNode && swimGainNode && diggingGainNode) {
                     if (gamePaused || isSleeping || isDrivingRaft || isFlying) {
                         grassGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                         sandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                         swimGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                        diggingGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                     } else {
                         const isMoving = (keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d']);
                         const onGround = window.onWalkableGround;
@@ -9337,6 +9341,7 @@
                         let targetGrass = 0;
                         let targetSand = 0;
                         let targetSwim = 0;
+                        let targetDigging = 0;
 
                         if (isMoving) {
                             if (isInWater) {
@@ -9350,9 +9355,14 @@
                             }
                         }
 
+                        if (isDestroying && !destructionComplete && destroyTargetDigInfo && (destroyTargetColor === 0xA0522D || destroyTargetColor === 0xc2b280)) {
+                            targetDigging = 0.5;
+                        }
+
                         grassGainNode.gain.setTargetAtTime(targetGrass, gameAudioContext.currentTime, 0.1);
                         sandGainNode.gain.setTargetAtTime(targetSand, gameAudioContext.currentTime, 0.1);
                         swimGainNode.gain.setTargetAtTime(targetSwim, gameAudioContext.currentTime, 0.1);
+                        diggingGainNode.gain.setTargetAtTime(targetDigging, gameAudioContext.currentTime, 0.1);
 
                         const playbackRate = (keysPressed['shift'] && !isCrouching) ? 1.4 : 1.0;
                         if (grassSourceNode) grassSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
@@ -11240,12 +11250,17 @@
             swimGainNode.gain.value = 0;
             swimGainNode.connect(gameAudioContext.destination);
 
+            diggingGainNode = gameAudioContext.createGain();
+            diggingGainNode.gain.value = 0;
+            diggingGainNode.connect(gameAudioContext.destination);
+
             async function startAmbientSounds() {
                 const islandBuf = await loadAudioBuffer(islandAmbientUrl);
                 const beachBuf = await loadAudioBuffer(beachAmbientUrl);
                 const grassBuf = await loadAudioBuffer(grassStepUrl);
                 const sandBuf = await loadAudioBuffer(sandStepUrl);
                 const swimBuf = await loadAudioBuffer(swimStepUrl);
+                const diggingBuf = await loadAudioBuffer(diggingUrl);
 
                 if (islandBuf) {
                     islandSourceNode = gameAudioContext.createBufferSource();
@@ -11287,6 +11302,14 @@
                     swimSourceNode.start(0);
                 }
 
+                if (diggingBuf) {
+                    diggingSourceNode = gameAudioContext.createBufferSource();
+                    diggingSourceNode.buffer = diggingBuf;
+                    diggingSourceNode.loop = true;
+                    diggingSourceNode.connect(diggingGainNode);
+                    diggingSourceNode.start(0);
+                }
+
                 // Pre-load bird sounds
                 birdSoundUrls.forEach(url => loadAudioBuffer(url));
                 seagullSoundUrls.forEach(url => loadAudioBuffer(url));
@@ -11315,6 +11338,8 @@
 
             window.isWorldReady = true;
             isWorldReady = true;
+            window.grassStepUrl = grassStepUrl;
+            window.diggingUrl = diggingUrl;
             window.activeCampfires = activeCampfires;
             Object.defineProperty(window, 'isSleeping', { get: () => isSleeping, set: (v) => { isSleeping = v; } });
             Object.defineProperty(window, 'sleepTimer', { get: () => sleepTimer, set: (v) => { sleepTimer = v; } });
