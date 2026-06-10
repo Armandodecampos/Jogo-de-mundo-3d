@@ -1278,6 +1278,7 @@
 
         const islandAmbientUrl = "https://dl.dropbox.com/scl/fi/3dolt8qlwr3rh51j5oy4l/wind_island_nature_t_-2-1774031396110.mp3?rlkey=u6kc916o88hg0f1tqf7kfkp52&st=yktjz581&dl=1";
         const beachAmbientUrl = "https://dl.dropbox.com/scl/fi/3qs6wkjtqu39aoidghorr/wind_beach_island_-4-1774031023927.mp3?rlkey=ml8fmu53qoyxpmbpavb9ftg0w&st=akxmu8qk&dl=1";
+        const underwaterAmbientUrl = "https://dl.dropbox.com/scl/fi/01d0vevg72ih6q5a9g3ji/resonant-underwater.mp3?rlkey=k2bvw8nrfkqyfheco3twwtqy2&st=4uv9bygj&dl=1";
         const grassStepUrl = "https://dl.dropbox.com/scl/fi/jgj1y0e1xe18j5n9apfes/passos-na-grama.mp3?rlkey=l39ipbmtt37r1wpd14e7mxlck&st=ekcy7ysd&dl=1";
         const sandStepUrl = "https://dl.dropbox.com/scl/fi/lzrkkil2qp5ua72l9u1hz/walking_on_the_sand_-3-1781042767660.mp3?rlkey=9o2uetbuwu4tcvxmbsputmkts&st=es337xoe&dl=1";
         const diggingUrl = "https://dl.dropbox.com/scl/fi/xtor1zj17v4vycgkkaybf/cavando-terra-e-areia.mp3?rlkey=n7as7ibw4wojnwdkya6e3mjcj&st=wpwg16d7&dl=1";
@@ -1316,8 +1317,10 @@
         let audioBuffers = {};
         let islandGainNode = null;
         let beachGainNode = null;
+        let underwaterGainNode = null;
         let islandSourceNode = null;
         let beachSourceNode = null;
+        let underwaterSourceNode = null;
         let grassGainNode = null;
         let sandGainNode = null;
         let swimGainNode = null;
@@ -8521,14 +8524,16 @@
             }
 
             // Atualiza volume dos sons ambientais da ilha e da praia
-            if (islandGainNode && beachGainNode) {
+            if (islandGainNode && beachGainNode && underwaterGainNode) {
                 if (gamePaused) {
                     islandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                     beachGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                    underwaterGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                 } else {
                     const playerPos = playerBody.position;
                     const centerPos = new THREE.Vector3(0, playerPos.y, 0);
                     const dist = calculateWrappedDistance(playerPos, centerPos);
+                    const isUnderwater = camera.position.y < waterLevel && hasWaterAt(camera.position.x, camera.position.z);
 
                     // Volume da praia: 0 em capimRadius (100) até 1 em beachRadius (200) e além
                     let beachVolBase = Math.max(0, Math.min(1, (dist - capimRadius) / (beachRadius - capimRadius)));
@@ -8543,8 +8548,15 @@
                     // Aplica oscilação ao som da ilha
                     const islandVol = islandVolBase * 0.70 * (0.8 + 0.2 * Math.sin(world.time * 0.5));
 
-                    islandGainNode.gain.setTargetAtTime(islandVol, gameAudioContext.currentTime, 0.1);
-                    beachGainNode.gain.setTargetAtTime(beachVol, gameAudioContext.currentTime, 0.1);
+                    if (isUnderwater) {
+                        islandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.1);
+                        beachGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.1);
+                        underwaterGainNode.gain.setTargetAtTime(0.8, gameAudioContext.currentTime, 0.1);
+                    } else {
+                        islandGainNode.gain.setTargetAtTime(islandVol, gameAudioContext.currentTime, 0.1);
+                        beachGainNode.gain.setTargetAtTime(beachVol, gameAudioContext.currentTime, 0.1);
+                        underwaterGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.1);
+                    }
                 }
             }
 
@@ -11250,6 +11262,10 @@
             beachGainNode.gain.value = 0;
             beachGainNode.connect(gameAudioContext.destination);
 
+            underwaterGainNode = gameAudioContext.createGain();
+            underwaterGainNode.gain.value = 0;
+            underwaterGainNode.connect(gameAudioContext.destination);
+
             grassGainNode = gameAudioContext.createGain();
             grassGainNode.gain.value = 0;
             grassGainNode.connect(gameAudioContext.destination);
@@ -11273,6 +11289,7 @@
             async function startAmbientSounds() {
                 const islandBuf = await loadAudioBuffer(islandAmbientUrl);
                 const beachBuf = await loadAudioBuffer(beachAmbientUrl);
+                const underwaterBuf = await loadAudioBuffer(underwaterAmbientUrl);
                 const grassBuf = await loadAudioBuffer(grassStepUrl);
                 const sandBuf = await loadAudioBuffer(sandStepUrl);
                 const swimBuf = await loadAudioBuffer(swimStepUrl);
@@ -11293,6 +11310,14 @@
                     beachSourceNode.loop = true;
                     beachSourceNode.connect(beachGainNode);
                     beachSourceNode.start(0);
+                }
+
+                if (underwaterBuf) {
+                    underwaterSourceNode = gameAudioContext.createBufferSource();
+                    underwaterSourceNode.buffer = underwaterBuf;
+                    underwaterSourceNode.loop = true;
+                    underwaterSourceNode.connect(underwaterGainNode);
+                    underwaterSourceNode.start(0);
                 }
 
                 if (grassBuf) {
@@ -11402,6 +11427,7 @@
             Object.defineProperty(window, 'rainGainNode', { get: () => rainGainNode });
             Object.defineProperty(window, 'islandGainNode', { get: () => islandGainNode });
             Object.defineProperty(window, 'beachGainNode', { get: () => beachGainNode });
+            Object.defineProperty(window, 'underwaterGainNode', { get: () => underwaterGainNode });
             Object.defineProperty(window, 'rainIntensity', { get: () => rainIntensity, set: (v) => { rainIntensity = v; } });
             Object.defineProperty(window, 'localRainIntensity', { get: () => localRainIntensity, set: (v) => { localRainIntensity = v; } });
             Object.defineProperty(window, 'targetRainIntensity', { get: () => targetRainIntensity, set: (v) => { targetRainIntensity = v; } });
