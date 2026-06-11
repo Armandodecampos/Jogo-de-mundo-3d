@@ -1349,6 +1349,66 @@
             }
         }
 
+        function playSyntheticJumpSound() {
+            if (!gameAudioContext) return;
+            const osc = gameAudioContext.createOscillator();
+            const gain = gameAudioContext.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(150, gameAudioContext.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(300, gameAudioContext.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.15, gameAudioContext.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, gameAudioContext.currentTime + 0.1);
+            osc.connect(gain);
+            gain.connect(gameAudioContext.destination);
+            osc.start();
+            osc.stop(gameAudioContext.currentTime + 0.1);
+        }
+
+        function playSyntheticImpactSound(intensity) {
+            if (!gameAudioContext) return;
+            const osc = gameAudioContext.createOscillator();
+            const gain = gameAudioContext.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(100, gameAudioContext.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(40, gameAudioContext.currentTime + 0.2);
+            gain.gain.setValueAtTime(Math.min(intensity * 0.05, 0.4), gameAudioContext.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, gameAudioContext.currentTime + 0.2);
+            osc.connect(gain);
+            gain.connect(gameAudioContext.destination);
+            osc.start();
+            osc.stop(gameAudioContext.currentTime + 0.2);
+        }
+
+        function playSyntheticCollectSound() {
+            if (!gameAudioContext) return;
+            const osc = gameAudioContext.createOscillator();
+            const gain = gameAudioContext.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(880, gameAudioContext.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(1320, gameAudioContext.currentTime + 0.1);
+            gain.gain.setValueAtTime(0.1, gameAudioContext.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, gameAudioContext.currentTime + 0.2);
+            osc.connect(gain);
+            gain.connect(gameAudioContext.destination);
+            osc.start();
+            osc.stop(gameAudioContext.currentTime + 0.2);
+        }
+
+        function playSyntheticObjectImpactSound(intensity) {
+            if (!gameAudioContext) return;
+            const osc = gameAudioContext.createOscillator();
+            const gain = gameAudioContext.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(150, gameAudioContext.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(60, gameAudioContext.currentTime + 0.15);
+            gain.gain.setValueAtTime(Math.min(intensity * 0.03, 0.2), gameAudioContext.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, gameAudioContext.currentTime + 0.15);
+            osc.connect(gain);
+            gain.connect(gameAudioContext.destination);
+            osc.start();
+            osc.stop(gameAudioContext.currentTime + 0.15);
+        }
+
         let rainNoiseNode = null;
         let rainFilterNode = null;
         let rainGainNode = null;
@@ -3110,6 +3170,12 @@
             if (quaternion) {
                 boxBody.quaternion.copy(quaternion);
             }
+            boxBody.addEventListener('collide', (event) => {
+                const impactVelocity = Math.abs(event.contact.getImpactVelocityAlongNormal());
+                if (impactVelocity > 2) {
+                    playSyntheticObjectImpactSound(impactVelocity);
+                }
+            });
             world.addBody(boxBody);
             boxBody.userData = {
                 isCollectible: true,
@@ -3155,6 +3221,12 @@
             if (quaternion) {
                 basketBody.quaternion.copy(quaternion);
             }
+            basketBody.addEventListener('collide', (event) => {
+                const impactVelocity = Math.abs(event.contact.getImpactVelocityAlongNormal());
+                if (impactVelocity > 2) {
+                    playSyntheticObjectImpactSound(impactVelocity);
+                }
+            });
             world.addBody(basketBody);
             basketBody.userData = {
                 isCollectible: true,
@@ -3196,6 +3268,12 @@
                 angularDamping: 0.4,
             });
             itemBody.position.copy(position);
+            itemBody.addEventListener('collide', (event) => {
+                const impactVelocity = Math.abs(event.contact.getImpactVelocityAlongNormal());
+                if (impactVelocity > 2) {
+                    playSyntheticObjectImpactSound(impactVelocity);
+                }
+            });
             // Adiciona um pequeno impulso aleatório para espalhar os itens
             itemBody.applyImpulse(
                 new CANNON.Vec3(
@@ -3340,6 +3418,12 @@
             if (quaternion) {
                 raftBody.quaternion.copy(quaternion);
             }
+            raftBody.addEventListener('collide', (event) => {
+                const impactVelocity = Math.abs(event.contact.getImpactVelocityAlongNormal());
+                if (impactVelocity > 2) {
+                    playSyntheticObjectImpactSound(impactVelocity);
+                }
+            });
             world.addBody(raftBody);
             raftBody.userData = {
                 isDestructible: true,
@@ -3379,6 +3463,12 @@
             if (quaternion) {
                 stoneBody.quaternion.copy(quaternion);
             }
+            stoneBody.addEventListener('collide', (event) => {
+                const impactVelocity = Math.abs(event.contact.getImpactVelocityAlongNormal());
+                if (impactVelocity > 2) {
+                    playSyntheticObjectImpactSound(impactVelocity);
+                }
+            });
             world.addBody(stoneBody);
             stoneBody.userData = {
                 isCollectible: true,
@@ -4776,6 +4866,12 @@
             if (quaternion) {
                 blockBody.quaternion.copy(quaternion);
             }
+            blockBody.addEventListener('collide', (event) => {
+                const impactVelocity = Math.abs(event.contact.getImpactVelocityAlongNormal());
+                if (impactVelocity > 2) {
+                    playSyntheticObjectImpactSound(impactVelocity);
+                }
+            });
             blockBody.userData = {};
 
             if (type === 'cob') {
@@ -6518,6 +6614,11 @@
                 if (event.body !== pickedObjectBody && allGroundBodies.includes(event.body)) {
                     canJump = true; window.canJump = true;
                     isJumpBoosting = false; // Landed on walkable ground, stop boosting
+
+                    const impactVelocity = Math.abs(event.contact.getImpactVelocityAlongNormal());
+                    if (impactVelocity > 5) {
+                        playSyntheticImpactSound(impactVelocity);
+                    }
                 }
             });
 
@@ -7109,6 +7210,7 @@
                             const jumpImpulse = 600;
                             playerBody.applyImpulse(new CANNON.Vec3(0, jumpImpulse, 0));
                             canJump = false; window.canJump = false; // Impede pulos múltiplos
+                            playSyntheticJumpSound();
                         }
                     }
                 }
@@ -7672,6 +7774,7 @@
                             obj.visible = false;
                             addItemToInventory(backpackItems, { name: appleItemName, quantity: 1 });
                             updateBackpackDisplay();
+                            playSyntheticCollectSound();
                             return true;
                         }
                     }
@@ -7684,6 +7787,7 @@
                             obj.visible = false;
                             addItemToInventory(backpackItems, { name: coconutItemName, quantity: 1 });
                             updateBackpackDisplay();
+                            playSyntheticCollectSound();
                             return true;
                         }
                     }
@@ -7776,6 +7880,7 @@
 
                         addItemToInventory(backpackItems, { name: itemType, quantity: itemQuantity });
                         updateBackpackDisplay();
+                        playSyntheticCollectSound();
 
                         break;
                     } else if (clickedBody.userData.isRaft) {
@@ -7793,6 +7898,7 @@
 
                             addItemToInventory(backpackItems, { name: raftItemName, quantity: 1 });
                             updateBackpackDisplay();
+                            playSyntheticCollectSound();
                             break;
                         }
                     } else if (clickedBody.userData.type === workbenchItemName || clickedBody.userData.type === mesaItemName || clickedBody.userData.type === bigornaItemName || clickedBody.userData.type === furnaceItemName || clickedBody.userData.type === pestleItemName) {
@@ -7807,6 +7913,7 @@
 
                             addItemToInventory(backpackItems, { name: type, quantity: 1 });
                             updateBackpackDisplay();
+                            playSyntheticCollectSound();
                             break;
                         }
                     }
