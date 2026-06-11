@@ -1349,64 +1349,155 @@
             }
         }
 
+        let cachedNoiseBuffer = null;
+        function getNoiseBuffer() {
+            if (!gameAudioContext) return null;
+            if (cachedNoiseBuffer) return cachedNoiseBuffer;
+            const bufferSize = gameAudioContext.sampleRate * 1.0;
+            cachedNoiseBuffer = gameAudioContext.createBuffer(1, bufferSize, gameAudioContext.sampleRate);
+            const output = cachedNoiseBuffer.getChannelData(0);
+            for (let i = 0; i < bufferSize; i++) {
+                output[i] = Math.random() * 2 - 1;
+            }
+            return cachedNoiseBuffer;
+        }
+
         function playSyntheticJumpSound() {
             if (!gameAudioContext) return;
+            const now = gameAudioContext.currentTime;
+
+            // "Push" thud
             const osc = gameAudioContext.createOscillator();
-            const gain = gameAudioContext.createGain();
+            const oscGain = gameAudioContext.createGain();
             osc.type = 'triangle';
-            osc.frequency.setValueAtTime(150, gameAudioContext.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(300, gameAudioContext.currentTime + 0.1);
-            gain.gain.setValueAtTime(0.15, gameAudioContext.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, gameAudioContext.currentTime + 0.1);
-            osc.connect(gain);
-            gain.connect(gameAudioContext.destination);
-            osc.start();
-            osc.stop(gameAudioContext.currentTime + 0.1);
+            osc.frequency.setValueAtTime(120, now);
+            osc.frequency.exponentialRampToValueAtTime(40, now + 0.1);
+            oscGain.gain.setValueAtTime(0.1, now);
+            oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.connect(oscGain);
+            oscGain.connect(gameAudioContext.destination);
+            osc.start(now);
+            osc.stop(now + 0.1);
+
+            // "Whoosh" noise
+            const noise = gameAudioContext.createBufferSource();
+            noise.buffer = getNoiseBuffer();
+            const filter = gameAudioContext.createBiquadFilter();
+            const noiseGain = gameAudioContext.createGain();
+            filter.type = 'highpass';
+            filter.frequency.setValueAtTime(1000, now);
+            filter.frequency.exponentialRampToValueAtTime(2000, now + 0.15);
+            noiseGain.gain.setValueAtTime(0.05, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+            noise.connect(filter);
+            filter.connect(noiseGain);
+            noiseGain.connect(gameAudioContext.destination);
+            noise.start(now);
+            noise.stop(now + 0.15);
         }
 
         function playSyntheticImpactSound(intensity) {
             if (!gameAudioContext) return;
+            const now = gameAudioContext.currentTime;
+            const volume = Math.min(intensity * 0.05, 0.5);
+
+            // Body thud
             const osc = gameAudioContext.createOscillator();
-            const gain = gameAudioContext.createGain();
+            const oscGain = gameAudioContext.createGain();
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(100, gameAudioContext.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(40, gameAudioContext.currentTime + 0.2);
-            gain.gain.setValueAtTime(Math.min(intensity * 0.05, 0.4), gameAudioContext.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, gameAudioContext.currentTime + 0.2);
-            osc.connect(gain);
-            gain.connect(gameAudioContext.destination);
-            osc.start();
-            osc.stop(gameAudioContext.currentTime + 0.2);
+            osc.frequency.setValueAtTime(80, now);
+            osc.frequency.exponentialRampToValueAtTime(20, now + 0.15);
+            oscGain.gain.setValueAtTime(volume * 0.6, now);
+            oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+            osc.connect(oscGain);
+            oscGain.connect(gameAudioContext.destination);
+            osc.start(now);
+            osc.stop(now + 0.15);
+
+            // Ground crunch noise
+            const noise = gameAudioContext.createBufferSource();
+            noise.buffer = getNoiseBuffer();
+            const filter = gameAudioContext.createBiquadFilter();
+            const noiseGain = gameAudioContext.createGain();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(600, now);
+            filter.frequency.exponentialRampToValueAtTime(100, now + 0.2);
+            noiseGain.gain.setValueAtTime(volume * 0.4, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+            noise.connect(filter);
+            filter.connect(noiseGain);
+            noiseGain.connect(gameAudioContext.destination);
+            noise.start(now);
+            noise.stop(now + 0.2);
         }
 
         function playSyntheticCollectSound() {
             if (!gameAudioContext) return;
-            const osc = gameAudioContext.createOscillator();
-            const gain = gameAudioContext.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(880, gameAudioContext.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(1320, gameAudioContext.currentTime + 0.1);
-            gain.gain.setValueAtTime(0.1, gameAudioContext.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, gameAudioContext.currentTime + 0.2);
-            osc.connect(gain);
-            gain.connect(gameAudioContext.destination);
-            osc.start();
-            osc.stop(gameAudioContext.currentTime + 0.2);
+            const now = gameAudioContext.currentTime;
+
+            // Resonant "ting"
+            [1200, 1500].forEach((freq, i) => {
+                const osc = gameAudioContext.createOscillator();
+                const oscGain = gameAudioContext.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(freq, now);
+                osc.frequency.exponentialRampToValueAtTime(freq * 0.8, now + 0.2);
+                oscGain.gain.setValueAtTime(0.05, now);
+                oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+                osc.connect(oscGain);
+                oscGain.connect(gameAudioContext.destination);
+                osc.start(now);
+                osc.stop(now + 0.2);
+            });
+
+            // Short noise clink
+            const noise = gameAudioContext.createBufferSource();
+            noise.buffer = getNoiseBuffer();
+            const filter = gameAudioContext.createBiquadFilter();
+            const noiseGain = gameAudioContext.createGain();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(3000, now);
+            noiseGain.gain.setValueAtTime(0.03, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+            noise.connect(filter);
+            filter.connect(noiseGain);
+            noiseGain.connect(gameAudioContext.destination);
+            noise.start(now);
+            noise.stop(now + 0.05);
         }
 
         function playSyntheticObjectImpactSound(intensity) {
             if (!gameAudioContext) return;
+            const now = gameAudioContext.currentTime;
+            const volume = Math.min(intensity * 0.03, 0.3);
+
+            // Wood/Box knock thud
             const osc = gameAudioContext.createOscillator();
-            const gain = gameAudioContext.createGain();
+            const oscGain = gameAudioContext.createGain();
             osc.type = 'triangle';
-            osc.frequency.setValueAtTime(150, gameAudioContext.currentTime);
-            osc.frequency.exponentialRampToValueAtTime(60, gameAudioContext.currentTime + 0.15);
-            gain.gain.setValueAtTime(Math.min(intensity * 0.03, 0.2), gameAudioContext.currentTime);
-            gain.gain.exponentialRampToValueAtTime(0.01, gameAudioContext.currentTime + 0.15);
-            osc.connect(gain);
-            gain.connect(gameAudioContext.destination);
-            osc.start();
-            osc.stop(gameAudioContext.currentTime + 0.15);
+            osc.frequency.setValueAtTime(150, now);
+            osc.frequency.exponentialRampToValueAtTime(60, now + 0.1);
+            oscGain.gain.setValueAtTime(volume * 0.5, now);
+            oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.connect(oscGain);
+            oscGain.connect(gameAudioContext.destination);
+            osc.start(now);
+            osc.stop(now + 0.1);
+
+            // Solid impact noise
+            const noise = gameAudioContext.createBufferSource();
+            noise.buffer = getNoiseBuffer();
+            const filter = gameAudioContext.createBiquadFilter();
+            const noiseGain = gameAudioContext.createGain();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(800, now);
+            noiseGain.gain.setValueAtTime(volume * 0.5, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            noise.connect(filter);
+            filter.connect(noiseGain);
+            noiseGain.connect(gameAudioContext.destination);
+            noise.start(now);
+            noise.stop(now + 0.1);
         }
 
         let rainNoiseNode = null;
