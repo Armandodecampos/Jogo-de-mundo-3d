@@ -1277,6 +1277,7 @@
         let birdBodyGeom, birdWingGeom, birdTailGeom, birdMat;
 
         const islandAmbientUrl = "https://dl.dropbox.com/scl/fi/3dolt8qlwr3rh51j5oy4l/wind_island_nature_t_-2-1774031396110.mp3?rlkey=u6kc916o88hg0f1tqf7kfkp52&st=yktjz581&dl=1";
+        const jumpCollectUrl = "https://dl.dropbox.com/scl/fi/sjpuxweazroikuidy9zxd/jump_from_the_grass.mp3?rlkey=rnk2n6irrt9lys5twbwcsd8g9&st=ck8xzpsg&dl=1";
         const beachAmbientUrl = "https://dl.dropbox.com/scl/fi/3qs6wkjtqu39aoidghorr/wind_beach_island_-4-1774031023927.mp3?rlkey=ml8fmu53qoyxpmbpavb9ftg0w&st=akxmu8qk&dl=1";
         const underwaterAmbientUrl = "https://dl.dropbox.com/scl/fi/01d0vevg72ih6q5a9g3ji/resonant-underwater.mp3?rlkey=k2bvw8nrfkqyfheco3twwtqy2&st=4uv9bygj&dl=1";
         const grassStepUrl = "https://dl.dropbox.com/scl/fi/jgj1y0e1xe18j5n9apfes/passos-na-grama.mp3?rlkey=l39ipbmtt37r1wpd14e7mxlck&st=ekcy7ysd&dl=1";
@@ -1362,108 +1363,29 @@
             return cachedNoiseBuffer;
         }
 
-        function playSyntheticJumpSound() {
-            if (!gameAudioContext) return;
+        function playJumpCollectSound(volume = 0.5) {
+            if (!gameAudioContext || !audioBuffers[jumpCollectUrl]) return;
             const now = gameAudioContext.currentTime;
+            const source = gameAudioContext.createBufferSource();
+            source.buffer = audioBuffers[jumpCollectUrl];
+            const gainNode = gameAudioContext.createGain();
+            gainNode.gain.setValueAtTime(volume, now);
+            source.connect(gainNode);
+            gainNode.connect(gameAudioContext.destination);
+            source.start(now);
+        }
 
-            // "Push" thud
-            const osc = gameAudioContext.createOscillator();
-            const oscGain = gameAudioContext.createGain();
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(120, now);
-            osc.frequency.exponentialRampToValueAtTime(40, now + 0.1);
-            oscGain.gain.setValueAtTime(0.1, now);
-            oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-            osc.connect(oscGain);
-            oscGain.connect(gameAudioContext.destination);
-            osc.start(now);
-            osc.stop(now + 0.1);
-
-            // "Whoosh" noise
-            const noise = gameAudioContext.createBufferSource();
-            noise.buffer = getNoiseBuffer();
-            const filter = gameAudioContext.createBiquadFilter();
-            const noiseGain = gameAudioContext.createGain();
-            filter.type = 'highpass';
-            filter.frequency.setValueAtTime(1000, now);
-            filter.frequency.exponentialRampToValueAtTime(2000, now + 0.15);
-            noiseGain.gain.setValueAtTime(0.05, now);
-            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-            noise.connect(filter);
-            filter.connect(noiseGain);
-            noiseGain.connect(gameAudioContext.destination);
-            noise.start(now);
-            noise.stop(now + 0.15);
+        function playSyntheticJumpSound() {
+            playJumpCollectSound(0.5);
         }
 
         function playSyntheticImpactSound(intensity) {
-            if (!gameAudioContext) return;
-            const now = gameAudioContext.currentTime;
             const volume = Math.min(intensity * 0.05, 0.5);
-
-            // Body thud
-            const osc = gameAudioContext.createOscillator();
-            const oscGain = gameAudioContext.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(80, now);
-            osc.frequency.exponentialRampToValueAtTime(20, now + 0.15);
-            oscGain.gain.setValueAtTime(volume * 0.6, now);
-            oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-            osc.connect(oscGain);
-            oscGain.connect(gameAudioContext.destination);
-            osc.start(now);
-            osc.stop(now + 0.15);
-
-            // Ground crunch noise
-            const noise = gameAudioContext.createBufferSource();
-            noise.buffer = getNoiseBuffer();
-            const filter = gameAudioContext.createBiquadFilter();
-            const noiseGain = gameAudioContext.createGain();
-            filter.type = 'lowpass';
-            filter.frequency.setValueAtTime(600, now);
-            filter.frequency.exponentialRampToValueAtTime(100, now + 0.2);
-            noiseGain.gain.setValueAtTime(volume * 0.4, now);
-            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-            noise.connect(filter);
-            filter.connect(noiseGain);
-            noiseGain.connect(gameAudioContext.destination);
-            noise.start(now);
-            noise.stop(now + 0.2);
+            playJumpCollectSound(volume);
         }
 
         function playSyntheticCollectSound() {
-            if (!gameAudioContext) return;
-            const now = gameAudioContext.currentTime;
-
-            // Resonant "ting"
-            [1200, 1500].forEach((freq, i) => {
-                const osc = gameAudioContext.createOscillator();
-                const oscGain = gameAudioContext.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(freq, now);
-                osc.frequency.exponentialRampToValueAtTime(freq * 0.8, now + 0.2);
-                oscGain.gain.setValueAtTime(0.05, now);
-                oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
-                osc.connect(oscGain);
-                oscGain.connect(gameAudioContext.destination);
-                osc.start(now);
-                osc.stop(now + 0.2);
-            });
-
-            // Short noise clink
-            const noise = gameAudioContext.createBufferSource();
-            noise.buffer = getNoiseBuffer();
-            const filter = gameAudioContext.createBiquadFilter();
-            const noiseGain = gameAudioContext.createGain();
-            filter.type = 'bandpass';
-            filter.frequency.setValueAtTime(3000, now);
-            noiseGain.gain.setValueAtTime(0.03, now);
-            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
-            noise.connect(filter);
-            filter.connect(noiseGain);
-            noiseGain.connect(gameAudioContext.destination);
-            noise.start(now);
-            noise.stop(now + 0.05);
+            playJumpCollectSound(0.5);
         }
 
         function playSyntheticObjectImpactSound(intensity) {
@@ -11487,6 +11409,7 @@
 
             async function startAmbientSounds() {
                 const islandBuf = await loadAudioBuffer(islandAmbientUrl);
+                await loadAudioBuffer(jumpCollectUrl);
                 const beachBuf = await loadAudioBuffer(beachAmbientUrl);
                 const underwaterBuf = await loadAudioBuffer(underwaterAmbientUrl);
                 const grassBuf = await loadAudioBuffer(grassStepUrl);
