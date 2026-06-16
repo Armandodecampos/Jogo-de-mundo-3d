@@ -1286,6 +1286,8 @@
         const diggingUrl = "https://dl.dropbox.com/scl/fi/xtor1zj17v4vycgkkaybf/cavando-terra-e-areia.mp3?rlkey=n7as7ibw4wojnwdkya6e3mjcj&st=wpwg16d7&dl=1";
         const miningUrl = "https://dl.dropbox.com/scl/fi/6me6x5lkgop8m5lv6gmmy/minerando-pedra.mp3?rlkey=stz92ds8nhaau960i4u6cea8c&st=h3gy4llf&dl=1";
         const swimStepUrl = "https://dl.dropbox.com/scl/fi/vk9ebser1j3ryt6reuugj/Splashing_water_soun_-2-1781042635696.mp3?rlkey=hnrkkkolk9fkiat9sq0cfoiuh&st=ldc9eirs&dl=1";
+        const doorOpenUrl = "https://dl.dropbox.com/scl/fi/yjb97af868w3ge9sjeowr/porta-abre.mp3?rlkey=zb51lodk583gmto3iklt0t9tf&st=a03mgapm&dl=1";
+        const doorCloseUrl = "https://dl.dropbox.com/scl/fi/2ao06e3otbges6ls4rwih/porta-fecha.mp3?rlkey=9ntzo034ol0fj7eqr6hjxx0yz&st=l3dt7o22&dl=1";
 
         const birdSoundUrls = [
             "https://dl.dropbox.com/scl/fi/eqw59rwqync9f3ky3rdoa/bird_singing_-1-1774014921293.mp3?rlkey=s4g2iyvptt761ekbrq0f7tisl&st=1mvzcxbd&dl=1",
@@ -1369,6 +1371,19 @@
             const now = gameAudioContext.currentTime;
             const source = gameAudioContext.createBufferSource();
             source.buffer = audioBuffers[jumpCollectUrl];
+            const gainNode = gameAudioContext.createGain();
+            gainNode.gain.setValueAtTime(volume, now);
+            source.connect(gainNode);
+            gainNode.connect(gameAudioContext.destination);
+            source.start(now);
+        }
+
+        function playDoorSound(isOpen, volume = 0.5) {
+            const url = isOpen ? doorOpenUrl : doorCloseUrl;
+            if (!gameAudioContext || !audioBuffers[url]) return;
+            const now = gameAudioContext.currentTime;
+            const source = gameAudioContext.createBufferSource();
+            source.buffer = audioBuffers[url];
             const gainNode = gameAudioContext.createGain();
             gainNode.gain.setValueAtTime(volume, now);
             source.connect(gainNode);
@@ -1517,6 +1532,7 @@
             if (!body || !body.userData || (body.userData.type !== doorItemName && body.userData.type !== windowItemName)) return;
 
             body.userData.isOpen = !body.userData.isOpen;
+            playDoorSound(body.userData.isOpen);
 
             // Base quaternion should always be valid
             const baseQuat = new THREE.Quaternion(
@@ -11429,6 +11445,8 @@
                 const swimBuf = await loadAudioBuffer(swimStepUrl);
                 const diggingBuf = await loadAudioBuffer(diggingUrl);
                 const miningBuf = await loadAudioBuffer(miningUrl);
+                await loadAudioBuffer(doorOpenUrl);
+                await loadAudioBuffer(doorCloseUrl);
 
                 if (islandBuf) {
                     islandSourceNode = gameAudioContext.createBufferSource();
