@@ -7399,37 +7399,6 @@
                 if (event.button === 0) { // Botão esquerdo
                     blockPlacedThisClick = false; // Reseta a flag
 
-                    // Crafting Workstations check
-                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                    const intersects = raycaster.intersectObjects(raycastTargets, true);
-                    for (const intersect of intersects) {
-                        if (intersect.distance > pickUpDistance) continue;
-                        let body = null;
-                        let current = intersect.object;
-                        while (current) {
-                            if (current.userData && current.userData.physicsBody) {
-                                body = current.userData.physicsBody;
-                                break;
-                            }
-                            current = current.parent;
-                        }
-                        if (body && body.userData) {
-                            if (body.userData.type === furnaceItemName) {
-                                openCraftingMenu('furnace');
-                                return;
-                            } else if (body.userData.type === bigornaItemName) {
-                                openCraftingMenu('anvil');
-                                return;
-                            } else if (body.userData.type === pestleItemName) {
-                                openCraftingMenu('pestle');
-                                return;
-                            } else if (body.userData.type === workbenchItemName) {
-                                openCraftingMenu('workbench');
-                                return;
-                            }
-                        }
-                    }
-
                     const heldItem = beltItems[selectedSlotIndex];
                     const primaryActionType = getActionType(heldItem);
                     if (primaryActionType === 'place') {
@@ -7865,6 +7834,20 @@
                     }
 
                     if (body && body.userData) {
+                        if (body.userData.type === furnaceItemName) {
+                            openCraftingMenu('furnace');
+                            return true;
+                        } else if (body.userData.type === bigornaItemName) {
+                            openCraftingMenu('anvil');
+                            return true;
+                        } else if (body.userData.type === pestleItemName) {
+                            openCraftingMenu('pestle');
+                            return true;
+                        } else if (body.userData.type === workbenchItemName) {
+                            openCraftingMenu('workbench');
+                            return true;
+                        }
+
                         if (body.userData.isChest) {
                             openChest(body);
                             return true;
@@ -10064,7 +10047,9 @@
                                 interactionHintText = `(E) ${body.userData.isOpen ? 'Fechar' : 'Abrir'} / (G) Guardar`;
                                 identified = true;
                             } else if (body.userData.isCollectible) {
-                                if (body.userData.type === workbenchItemName || body.userData.type === mesaItemName || body.userData.type === bigornaItemName || body.userData.type === furnaceItemName || body.userData.type === pestleItemName) {
+                                if (body.userData.type === workbenchItemName || body.userData.type === bigornaItemName || body.userData.type === furnaceItemName || body.userData.type === pestleItemName) {
+                                    interactionHintText = "(E) Acessar / (G) Guardar";
+                                } else if (body.userData.type === mesaItemName) {
                                     interactionHintText = "(G) Guardar";
                                 } else {
                                     interactionHintText = "(F) Agarrar / (G) Guardar";
