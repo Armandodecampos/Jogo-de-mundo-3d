@@ -1294,6 +1294,8 @@
         const anvilOpenUrl = "https://dl.dropbox.com/scl/fi/bntn04bjxmwhe36sxkji4/abrir-bigorna.mp3?rlkey=w5926dx0jmbm6zso9wz1yvpa2&st=vfrag0v6&dl=1";
         const workbenchOpenUrl = "https://dl.dropbox.com/scl/fi/voq9045gm8lr8618th1iu/acessar-bancada-de-trabalho.mp3?rlkey=hpel51w0grvqganou7xmy3daz&st=tu3vumwb&dl=1";
         const pestleOpenUrl = "https://dl.dropbox.com/scl/fi/qzhsu1euccn3mw23xvqu0/usando-pil-o.mp3?rlkey=9buzkcoz518gij9qulis091x3&st=w9s4ahfs&dl=1";
+        const torchSoundUrl = "https://dl.dropbox.com/scl/fi/65kf28rvhtu7b9ff6hgnk/tocha.mp3?rlkey=ej47rbviavphftwkh3yyu09xf&st=5h5rh7c5&dl=1";
+        const campfireSoundUrl = "https://dl.dropbox.com/scl/fi/7y5cwg18iv375a66qmdlw/fogueira.mp3?rlkey=1ma751rka0aqq5q6y0ib2257t&st=dzyvct23&dl=1";
 
         const birdSoundUrls = [
             "https://dl.dropbox.com/scl/fi/eqw59rwqync9f3ky3rdoa/bird_singing_-1-1774014921293.mp3?rlkey=s4g2iyvptt761ekbrq0f7tisl&st=1mvzcxbd&dl=1",
@@ -1341,6 +1343,10 @@
         let swimSourceNode = null;
         let diggingSourceNode = null;
         let miningSourceNode = null;
+        let torchGainNode = null;
+        let campfireGainNode = null;
+        let torchSourceNode = null;
+        let campfireSourceNode = null;
 
         async function loadAudioBuffer(url) {
             if (!gameAudioContext) {
@@ -8581,6 +8587,8 @@
                     if (islandGainNode) islandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                     if (beachGainNode) beachGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                     if (rainGainNode) rainGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                    if (torchGainNode) torchGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                    if (campfireGainNode) campfireGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                 }
                 renderer.render(scene, camera);
                 return;
@@ -9500,13 +9508,15 @@
                 window.onWalkableGround = onWalkableGround;
 
                 // Atualiza volume e velocidade dos sons de passos e nado
-                if (gameAudioContext && grassGainNode && sandGainNode && swimGainNode && diggingGainNode && miningGainNode) {
+                if (gameAudioContext && grassGainNode && sandGainNode && swimGainNode && diggingGainNode && miningGainNode && torchGainNode && campfireGainNode) {
                     if (gamePaused || isSleeping || isDrivingRaft || isFlying) {
                         grassGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                         sandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                         swimGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                         diggingGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                         miningGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                        torchGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                        campfireGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                     } else {
                         const isMoving = (keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d']);
                         const onGround = window.onWalkableGround;
@@ -9517,12 +9527,39 @@
                         const centerPos = new THREE.Vector3(0, playerPos.y, 0);
                         const dist = calculateWrappedDistance(playerPos, centerPos);
 
+                        let minTorchDist = Infinity;
+                        let minCampfireDist = Infinity;
+
+                        const heldItem = beltItems[selectedSlotIndex];
+                        const isHoldingTorch = heldItem && heldItem.name === torchItemName;
+                        if (isHoldingTorch) minTorchDist = 0;
+
+                        if (typeof activeCampfires !== 'undefined') {
+                            activeCampfires.forEach(cf => {
+                                const d = calculateWrappedDistance(playerPos, cf.position);
+                                if (cf.userData.type === torchItemName) {
+                                    if (d < minTorchDist) minTorchDist = d;
+                                } else if (cf.userData.type === campfireItemName) {
+                                    if (d < minCampfireDist) minCampfireDist = d;
+                                }
+                            });
+                        }
 
                         let targetGrass = 0;
                         let targetSand = 0;
                         let targetSwim = 0;
                         let targetDigging = 0;
                         let targetMining = 0;
+                        let targetTorch = 0;
+                        let targetCampfire = 0;
+
+                        const maxAudioDist = 20;
+                        if (minTorchDist < maxAudioDist) {
+                            targetTorch = 1.0 - (minTorchDist / maxAudioDist);
+                        }
+                        if (minCampfireDist < maxAudioDist) {
+                            targetCampfire = 1.0 - (minCampfireDist / maxAudioDist);
+                        }
 
                         if (isMoving) {
                             if (isInWater && !isUnderwater) {
@@ -9551,6 +9588,8 @@
                         swimGainNode.gain.setTargetAtTime(targetSwim, gameAudioContext.currentTime, 0.1);
                         diggingGainNode.gain.setTargetAtTime(targetDigging, gameAudioContext.currentTime, 0.1);
                         miningGainNode.gain.setTargetAtTime(targetMining, gameAudioContext.currentTime, 0.1);
+                        torchGainNode.gain.setTargetAtTime(targetTorch, gameAudioContext.currentTime, 0.1);
+                        campfireGainNode.gain.setTargetAtTime(targetCampfire, gameAudioContext.currentTime, 0.1);
 
                         const playbackRate = (keysPressed['shift'] && !isCrouching) ? 1.4 : 1.0;
                         if (grassSourceNode) grassSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
@@ -11452,6 +11491,14 @@
             miningGainNode.gain.value = 0;
             miningGainNode.connect(gameAudioContext.destination);
 
+            torchGainNode = gameAudioContext.createGain();
+            torchGainNode.gain.value = 0;
+            torchGainNode.connect(gameAudioContext.destination);
+
+            campfireGainNode = gameAudioContext.createGain();
+            campfireGainNode.gain.value = 0;
+            campfireGainNode.connect(gameAudioContext.destination);
+
             async function startAmbientSounds() {
                 const islandBuf = await loadAudioBuffer(islandAmbientUrl);
                 await loadAudioBuffer(jumpCollectUrl);
@@ -11463,6 +11510,8 @@
                 const swimBuf = await loadAudioBuffer(swimStepUrl);
                 const diggingBuf = await loadAudioBuffer(diggingUrl);
                 const miningBuf = await loadAudioBuffer(miningUrl);
+                const torchBuf = await loadAudioBuffer(torchSoundUrl);
+                const campfireBuf = await loadAudioBuffer(campfireSoundUrl);
                 await loadAudioBuffer(doorOpenUrl);
                 await loadAudioBuffer(doorCloseUrl);
                 await loadAudioBuffer(chestOpenUrl);
@@ -11536,6 +11585,22 @@
                     miningSourceNode.start(0);
                 }
 
+                if (torchBuf) {
+                    torchSourceNode = gameAudioContext.createBufferSource();
+                    torchSourceNode.buffer = torchBuf;
+                    torchSourceNode.loop = true;
+                    torchSourceNode.connect(torchGainNode);
+                    torchSourceNode.start(0);
+                }
+
+                if (campfireBuf) {
+                    campfireSourceNode = gameAudioContext.createBufferSource();
+                    campfireSourceNode.buffer = campfireBuf;
+                    campfireSourceNode.loop = true;
+                    campfireSourceNode.connect(campfireGainNode);
+                    campfireSourceNode.start(0);
+                }
+
                 // Pre-load bird sounds
                 birdSoundUrls.forEach(url => loadAudioBuffer(url));
                 seagullSoundUrls.forEach(url => loadAudioBuffer(url));
@@ -11605,6 +11670,9 @@
             Object.defineProperty(window, 'beachGainNode', { get: () => beachGainNode });
             Object.defineProperty(window, 'underwaterGainNode', { get: () => underwaterGainNode });
             Object.defineProperty(window, 'swimGainNode', { get: () => swimGainNode });
+            Object.defineProperty(window, 'torchGainNode', { get: () => torchGainNode });
+            Object.defineProperty(window, 'campfireGainNode', { get: () => campfireGainNode });
+            Object.defineProperty(window, 'gameAudioContext', { get: () => gameAudioContext });
             Object.defineProperty(window, 'rainIntensity', { get: () => rainIntensity, set: (v) => { rainIntensity = v; } });
             Object.defineProperty(window, 'localRainIntensity', { get: () => localRainIntensity, set: (v) => { localRainIntensity = v; } });
             Object.defineProperty(window, 'targetRainIntensity', { get: () => targetRainIntensity, set: (v) => { targetRainIntensity = v; } });
