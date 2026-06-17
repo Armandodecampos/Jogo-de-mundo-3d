@@ -1288,6 +1288,12 @@
         const swimStepUrl = "https://dl.dropbox.com/scl/fi/vk9ebser1j3ryt6reuugj/Splashing_water_soun_-2-1781042635696.mp3?rlkey=hnrkkkolk9fkiat9sq0cfoiuh&st=ldc9eirs&dl=1";
         const doorOpenUrl = "https://dl.dropbox.com/scl/fi/yjb97af868w3ge9sjeowr/porta-abre.mp3?rlkey=zb51lodk583gmto3iklt0t9tf&st=a03mgapm&dl=1";
         const doorCloseUrl = "https://dl.dropbox.com/scl/fi/2ao06e3otbges6ls4rwih/porta-fecha.mp3?rlkey=9ntzo034ol0fj7eqr6hjxx0yz&st=l3dt7o22&dl=1";
+        const chestOpenUrl = "https://dl.dropbox.com/scl/fi/ynmy8ml276yk7t5li91xg/abrir-b-u.mp3?rlkey=4s735w5e5ke4hhv0zq7rcclks&st=0ky6fyl8&dl=1";
+        const basketOpenUrl = "https://dl.dropbox.com/scl/fi/g9etwnmajene0vrwml6cr/abrir-cesta.mp3?rlkey=reruftsxa3vodb91b8ha3viry&st=g0mk111g&dl=1";
+        const furnaceOpenUrl = "https://dl.dropbox.com/scl/fi/cuxplm9blybsmmi4ldszo/abrir-forno.mp3?rlkey=mfsdremd9oyj57qhwf9v8esg1&st=vrm3o54z&dl=1";
+        const anvilOpenUrl = "https://dl.dropbox.com/scl/fi/bntn04bjxmwhe36sxkji4/abrir-bigorna.mp3?rlkey=w5926dx0jmbm6zso9wz1yvpa2&st=vfrag0v6&dl=1";
+        const workbenchOpenUrl = "https://dl.dropbox.com/scl/fi/voq9045gm8lr8618th1iu/acessar-bancada-de-trabalho.mp3?rlkey=hpel51w0grvqganou7xmy3daz&st=tu3vumwb&dl=1";
+        const pestleOpenUrl = "https://dl.dropbox.com/scl/fi/qzhsu1euccn3mw23xvqu0/usando-pil-o.mp3?rlkey=9buzkcoz518gij9qulis091x3&st=w9s4ahfs&dl=1";
 
         const birdSoundUrls = [
             "https://dl.dropbox.com/scl/fi/eqw59rwqync9f3ky3rdoa/bird_singing_-1-1774014921293.mp3?rlkey=s4g2iyvptt761ekbrq0f7tisl&st=1mvzcxbd&dl=1",
@@ -1371,6 +1377,18 @@
             const now = gameAudioContext.currentTime;
             const source = gameAudioContext.createBufferSource();
             source.buffer = audioBuffers[jumpCollectUrl];
+            const gainNode = gameAudioContext.createGain();
+            gainNode.gain.setValueAtTime(volume, now);
+            source.connect(gainNode);
+            gainNode.connect(gameAudioContext.destination);
+            source.start(now);
+        }
+
+        function playInterfaceSound(url, volume = 0.5) {
+            if (!gameAudioContext || !audioBuffers[url]) return;
+            const now = gameAudioContext.currentTime;
+            const source = gameAudioContext.createBufferSource();
+            source.buffer = audioBuffers[url];
             const gainNode = gameAudioContext.createGain();
             gainNode.gain.setValueAtTime(volume, now);
             source.connect(gainNode);
@@ -2440,6 +2458,13 @@
 
         function openCraftingMenu(type) {
             currentCraftingMenuType = type;
+
+            // Play sound based on menu type
+            if (type === 'furnace') playInterfaceSound(furnaceOpenUrl);
+            else if (type === 'anvil') playInterfaceSound(anvilOpenUrl);
+            else if (type === 'pestle') playInterfaceSound(pestleOpenUrl);
+            else if (type === 'workbench') playInterfaceSound(workbenchOpenUrl);
+
             gamePaused = true;
             craftingModal.classList.add('active');
 
@@ -2546,6 +2571,14 @@
         // NOVO: Função para abrir o contêiner
         function openChest(chestBody) {
             openedChest = chestBody;
+
+            // Play sound based on container type
+            if (chestBody.userData.type === basketItemName) {
+                playInterfaceSound(basketOpenUrl);
+            } else {
+                playInterfaceSound(chestOpenUrl);
+            }
+
             gamePaused = true;
             chestModal.classList.remove('hidden');
             document.getElementById('crosshair').style.display = 'none';
@@ -11447,6 +11480,12 @@
                 const miningBuf = await loadAudioBuffer(miningUrl);
                 await loadAudioBuffer(doorOpenUrl);
                 await loadAudioBuffer(doorCloseUrl);
+                await loadAudioBuffer(chestOpenUrl);
+                await loadAudioBuffer(basketOpenUrl);
+                await loadAudioBuffer(furnaceOpenUrl);
+                await loadAudioBuffer(anvilOpenUrl);
+                await loadAudioBuffer(workbenchOpenUrl);
+                await loadAudioBuffer(pestleOpenUrl);
 
                 if (islandBuf) {
                     islandSourceNode = gameAudioContext.createBufferSource();
