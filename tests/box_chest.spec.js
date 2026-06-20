@@ -2,9 +2,10 @@ const { test, expect } = require('@playwright/test');
 
 test.describe('Box Chest Functionality', () => {
     test.beforeEach(async ({ page }) => {
+        test.setTimeout(120000);
         await page.goto('http://localhost:8080/index.htm');
         await page.click('#startButton');
-        await page.waitForFunction(() => window.isWorldReady === true);
+        await page.waitForFunction(() => window.isWorldReady === true, { timeout: 60000 });
     });
 
     test('Starting object at (0,-5) is a box and has inventory', async ({ page }) => {

@@ -1078,6 +1078,34 @@
         <img id="floatingItemIcon" src="" style="width: 50px; height: 50px; object-fit: contain; background: rgba(0,0,0,0.3); border-radius: 8px; border: 2px solid #FFD700; padding: 5px;">
     </div>
 
+    <!-- Modal de Combustível -->
+    <div id="fuelModal" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-800/95 border-2 border-orange-600 rounded-lg p-6 z-[1005] w-80 flex flex-col text-white shadow-2xl">
+        <button id="closeFuelButton" class="close-button">X</button>
+        <h2 id="fuelTitle" class="text-2xl font-bold mb-4 text-center text-orange-500">Tocha</h2>
+
+        <div class="mb-6 bg-black/40 p-4 rounded-lg">
+            <div class="flex justify-between mb-2">
+                <span>Combustível:</span>
+                <span id="fuelLevelText">0 / 100</span>
+            </div>
+            <div class="w-full bg-stone-700 h-4 rounded-full overflow-hidden">
+                <div id="fuelProgressBar" class="bg-orange-500 h-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <div class="flex flex-col gap-3">
+            <button id="addFuelButton" class="bg-green-600 hover:bg-green-500 py-3 rounded-md font-bold transition-colors">
+                Abastecer (1 Galho)
+            </button>
+            <button id="toggleFireButton" class="bg-blue-600 hover:bg-blue-500 py-3 rounded-md font-bold transition-colors">
+                (E) Ligar / Desligar
+            </button>
+            <button id="accessFurnaceButton" class="hidden bg-orange-600 hover:bg-orange-500 py-3 rounded-md font-bold transition-colors">
+                Acessar Forno
+            </button>
+        </div>
+    </div>
+
     <div id="chestModal" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-800/90 border-2 border-stone-600 rounded-lg p-4 pt-12 z-[1001] w-4/5 max-w-4xl max-h-[80%] flex flex-col text-white">
         <button id="closeChestButton" class="close-button">X</button>
         <div class="flex justify-between items-center mb-4">
@@ -1551,6 +1579,110 @@
         // Initialized later in init() to use ItemName constants
         let rotatableItems = [];
         let currentLookedAtBody = null; // Reutilizado para o hint e para o comando de girar
+        let currentFuelBody = null; // Corpo que está sendo abastecido/manipulado no menu de combustível
+        let openedFurnace = null; // Referência para o forno atualmente aberto para crafting
+
+        function openFuelMenu(body) {
+            if (!body || !body.userData) return;
+            currentFuelBody = body;
+            gamePaused = true;
+            document.exitPointerLock();
+
+            const modal = document.getElementById('fuelModal');
+            const title = document.getElementById('fuelTitle');
+            const accessBtn = document.getElementById('accessFurnaceButton');
+
+            modal.classList.remove('hidden');
+
+            // Configurar título e botões específicos
+            if (body.userData.type === furnaceItemName) {
+                title.textContent = "Forno";
+                accessBtn.classList.remove('hidden');
+            } else if (body.userData.type === campfireItemName) {
+                title.textContent = "Fogueira";
+                accessBtn.classList.add('hidden');
+            } else {
+                title.textContent = "Tocha";
+                accessBtn.classList.add('hidden');
+            }
+
+            updateFuelUI();
+        }
+
+        function updateFuelUI() {
+            if (!currentFuelBody) return;
+            const fuel = currentFuelBody.userData.fuel || 0;
+            const maxFuel = 100;
+            const percent = (fuel / maxFuel) * 100;
+
+            document.getElementById('fuelLevelText').textContent = `${Math.floor(fuel)} / ${maxFuel}`;
+            document.getElementById('fuelProgressBar').style.width = `${percent}%`;
+
+            const toggleBtn = document.getElementById('toggleFireButton');
+            if (currentFuelBody.userData.isOn) {
+                toggleBtn.textContent = "Desligar";
+                toggleBtn.className = "bg-red-600 hover:bg-red-500 py-3 rounded-md font-bold transition-colors";
+            } else {
+                toggleBtn.textContent = "Ligar";
+                toggleBtn.className = "bg-green-600 hover:bg-green-500 py-3 rounded-md font-bold transition-colors";
+            }
+        }
+
+        function closeFuelMenu() {
+            currentFuelBody = null;
+            gamePaused = false;
+            document.getElementById('fuelModal').classList.add('hidden');
+            canvas.requestPointerLock();
+        }
+
+        function addFuel() {
+            if (!currentFuelBody) return;
+
+            // Tenta remover 1 galho da mochila
+            const branchIndex = backpackItems.findIndex(item => item && item.name === branchItemName);
+
+            if (branchIndex !== -1) {
+                if (currentFuelBody.userData.fuel < 100) {
+                    currentFuelBody.userData.fuel = Math.min(100, (currentFuelBody.userData.fuel || 0) + 20);
+                    backpackItems[branchIndex].quantity--;
+                    if (backpackItems[branchIndex].quantity <= 0) {
+                        backpackItems[branchIndex] = null;
+                    }
+                    updateBackpackDisplay();
+                    updateFuelUI();
+                    showNotification("Combustível adicionado!");
+                } else {
+                    showNotification("Tanque cheio!");
+                }
+            } else {
+                showNotification("Você não tem Galhos!");
+            }
+        }
+
+        function toggleFire() {
+            if (!currentFuelBody) return;
+
+            if (!currentFuelBody.userData.isOn && (currentFuelBody.userData.fuel || 0) <= 0) {
+                showNotification("Sem combustível!");
+                return;
+            }
+
+            currentFuelBody.userData.isOn = !currentFuelBody.userData.isOn;
+
+            // Atualizar visual imediatamente se possível
+            const constructionIndex = placedConstructionBodies.indexOf(currentFuelBody);
+            if (constructionIndex !== -1) {
+                const mesh = placedConstructionMeshes[constructionIndex];
+                if (mesh) {
+                    const fireGroup = mesh.userData.fireGroup;
+                    const fireLight = mesh.userData.fireLight;
+                    if (fireGroup) fireGroup.visible = currentFuelBody.userData.isOn;
+                    if (fireLight) fireLight.visible = currentFuelBody.userData.isOn;
+                }
+            }
+
+            updateFuelUI();
+        }
 
         function toggleDoor(body) {
             if (!body || !body.userData || (body.userData.type !== doorItemName && body.userData.type !== windowItemName)) return;
@@ -2503,6 +2635,7 @@
         function closeCraftingMenu() {
             craftingModal.classList.remove('active');
             gamePaused = false;
+            openedFurnace = null;
             pointerLockExitForBackpack = false;
             const hudButtons = document.getElementById('hudButtons');
             if (hudButtons) {
@@ -2517,6 +2650,20 @@
 
         function updateCraftingDisplay(type) {
             recipesContainer.innerHTML = '';
+
+            if (type === 'furnace' && openedFurnace && !openedFurnace.userData.isOn) {
+                const warning = document.createElement('div');
+                warning.style.color = '#ff4444';
+                warning.style.textAlign = 'center';
+                warning.style.padding = '10px';
+                warning.style.fontWeight = 'bold';
+                warning.style.marginBottom = '10px';
+                warning.style.background = 'rgba(0,0,0,0.5)';
+                warning.style.borderRadius = '5px';
+                warning.textContent = 'Forno Apagado - Abasteça e ligue para usar';
+                recipesContainer.appendChild(warning);
+            }
+
             const menuRecipes = recipes[type] || [];
 
             menuRecipes.forEach(recipe => {
@@ -2832,6 +2979,11 @@
         window.maintainBackpack = maintainBackpack;
 
         function canCraft(recipe) {
+            // If it's a furnace recipe, furnace must be on
+            if (currentCraftingMenuType === 'furnace') {
+                if (!openedFurnace || !openedFurnace.userData.isOn) return false;
+            }
+
             // Check ingredients
             for (const ing of recipe.ingredients) {
                 let totalFound = 0;
@@ -5180,6 +5332,10 @@
                 blockBody.userData.fireGroup = fireGroup;
                 blockBody.userData.fireLight = light;
                 blockBody.userData.fireOffset = Math.random() * 1000;
+                blockBody.userData.fuel = 0;
+                blockBody.userData.isOn = false;
+                fireGroup.visible = false;
+                if (light) light.visible = false;
                 activeCampfires.push(blockBody);
             } else if (type === torchItemName) {
                 width = 0.2; height = 0.8; depth = 0.2;
@@ -5198,6 +5354,10 @@
                 blockBody.userData.fireGroup = fireGroup;
                 blockBody.userData.fireLight = light;
                 blockBody.userData.fireOffset = Math.random() * 1000;
+                blockBody.userData.fuel = 0;
+                blockBody.userData.isOn = false;
+                fireGroup.visible = false;
+                if (light) light.visible = false;
                 activeCampfires.push(blockBody);
             } else if (type === workbenchItemName || type === mesaItemName) {
                 width = type === workbenchItemName ? 2.0 : 1.2;
@@ -5460,6 +5620,10 @@
                 blockBody.userData.fireGroup = fireGroup;
                 blockBody.userData.fireLight = light;
                 blockBody.userData.fireOffset = Math.random() * 1000;
+                blockBody.userData.fuel = 0;
+                blockBody.userData.isOn = false;
+                fireGroup.visible = false;
+                if (light) light.visible = false;
                 activeCampfires.push(blockBody);
             } else if (type === pestleItemName) {
                 width = 0.4; height = 0.5; depth = 0.4;
@@ -7030,6 +7194,18 @@
 
             // Configura os Listeners de Eventos para teclado e mouse
             window.addEventListener('keydown', (event) => {
+                // Fuel modal handling
+                if (!document.getElementById('fuelModal').classList.contains('hidden')) {
+                    if (event.key === 'Escape') {
+                        closeFuelMenu();
+                        return;
+                    }
+                    if (event.key.toLowerCase() === 'e') {
+                        toggleFire();
+                        return;
+                    }
+                }
+
                 // A lógica de Escape/Menu deve funcionar mesmo que o mundo não esteja pronto
                 if (event.key === 'Escape') {
                     event.preventDefault(); // IMPEDE O COMPORTAMENTO PADRÃO DO NAVEGADOR (sair do pointer lock)
@@ -7840,8 +8016,8 @@
                     }
 
                     if (body && body.userData) {
-                        if (body.userData.type === furnaceItemName) {
-                            openCraftingMenu('furnace');
+                        if (body.userData.type === furnaceItemName || body.userData.type === campfireItemName || body.userData.type === torchItemName) {
+                            openFuelMenu(body);
                             return true;
                         } else if (body.userData.type === bigornaItemName) {
                             openCraftingMenu('anvil');
@@ -8781,8 +8957,29 @@
             // Animate Campfires
             if (typeof activeCampfires !== 'undefined') {
                 activeCampfires.forEach(cf => {
+                    // Fuel consumption
+                    if (cf.userData.isOn) {
+                        cf.userData.fuel = Math.max(0, (cf.userData.fuel || 0) - (0.1 * delta));
+                        if (cf.userData.fuel <= 0) {
+                            cf.userData.isOn = false;
+                            if (cf.userData.fireGroup) cf.userData.fireGroup.visible = false;
+                            if (cf.userData.fireLight) cf.userData.fireLight.visible = false;
+                            if (currentFuelBody === cf) updateFuelUI();
+                            // If it's a furnace and the menu is open, update the craft buttons
+                            if (openedFurnace === cf && currentCraftingMenuType === 'furnace') {
+                                updateCraftingDisplay('furnace');
+                            }
+                        }
+                    }
+
                     const fg = cf.userData.fireGroup;
                     if (fg) {
+                        // Update visibility based on isOn
+                        fg.visible = cf.userData.isOn;
+                        if (cf.userData.fireLight) cf.userData.fireLight.visible = cf.userData.isOn;
+
+                        if (!fg.visible) return;
+
                         // Keep fire upright regardless of torch tilt
                         if (cf.userData.type === torchItemName) {
                             const parentQuat = new THREE.Quaternion();
@@ -9536,6 +9733,7 @@
 
                         if (typeof activeCampfires !== 'undefined') {
                             activeCampfires.forEach(cf => {
+                                if (!cf.userData.isOn) return;
                                 const d = calculateWrappedDistance(playerPos, cf.position);
                                 if (cf.userData.type === torchItemName) {
                                     if (d < minTorchDist) minTorchDist = d;
@@ -11451,6 +11649,15 @@
             chestBackpackSlotsContainer = document.getElementById('chestBackpackSlotsContainer');
             closeChestButton.addEventListener('click', closeChest);
 
+            document.getElementById('closeFuelButton').addEventListener('click', closeFuelMenu);
+            document.getElementById('addFuelButton').addEventListener('click', addFuel);
+            document.getElementById('toggleFireButton').addEventListener('click', toggleFire);
+            document.getElementById('accessFurnaceButton').addEventListener('click', () => {
+                openedFurnace = currentFuelBody;
+                closeFuelMenu();
+                openCraftingMenu('furnace');
+            });
+
             chestModal.addEventListener('click', (e) => {
                 if (e.target === chestModal && selectedItem) {
                     returnSelectedItemToSource();
@@ -11636,6 +11843,12 @@
             window.diggingUrl = diggingUrl;
             window.miningUrl = miningUrl;
             window.activeCampfires = activeCampfires;
+            window.currentFuelBody = currentFuelBody;
+            window.openedFurnace = openedFurnace;
+            window.addFuel = addFuel;
+            window.toggleFire = toggleFire;
+            window.openFuelMenu = openFuelMenu;
+            window.closeFuelMenu = closeFuelMenu;
             Object.defineProperty(window, 'isSleeping', { get: () => isSleeping, set: (v) => { isSleeping = v; } });
             Object.defineProperty(window, 'sleepTimer', { get: () => sleepTimer, set: (v) => { sleepTimer = v; } });
             Object.defineProperty(window, 'playerHealth', { get: () => playerHealth, set: (v) => { playerHealth = v; } });
