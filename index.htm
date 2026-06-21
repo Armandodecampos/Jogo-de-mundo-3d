@@ -1591,6 +1591,7 @@
             const modal = document.getElementById('fuelModal');
             const title = document.getElementById('fuelTitle');
             const accessBtn = document.getElementById('accessFurnaceButton');
+            const addBtn = document.getElementById('addFuelButton');
 
             modal.classList.remove('hidden');
 
@@ -1598,12 +1599,15 @@
             if (body.userData.type === furnaceItemName) {
                 title.textContent = "Forno";
                 accessBtn.classList.remove('hidden');
+                addBtn.textContent = "Abastecer (1 Galho)";
             } else if (body.userData.type === campfireItemName) {
                 title.textContent = "Fogueira";
                 accessBtn.classList.add('hidden');
+                addBtn.textContent = "Abastecer (1 Galho)";
             } else {
                 title.textContent = "Tocha";
                 accessBtn.classList.add('hidden');
+                addBtn.textContent = "Abastecer (1 Óleo + 1 Tecido)";
             }
 
             updateFuelUI();
@@ -1632,30 +1636,57 @@
             currentFuelBody = null;
             gamePaused = false;
             document.getElementById('fuelModal').classList.add('hidden');
-            canvas.requestPointerLock();
+            if (renderer && renderer.domElement) {
+                renderer.domElement.requestPointerLock().catch(() => {});
+            }
         }
 
         function addFuel() {
             if (!currentFuelBody) return;
 
-            // Tenta remover 1 galho da mochila
-            const branchIndex = backpackItems.findIndex(item => item && item.name === branchItemName);
+            if (currentFuelBody.userData.type === torchItemName) {
+                const oilIndex = backpackItems.findIndex(item => item && item.name === vegetableOilItemName);
+                const fabricIndex = backpackItems.findIndex(item => item && item.name === fabricItemName);
 
-            if (branchIndex !== -1) {
-                if (currentFuelBody.userData.fuel < 100) {
-                    currentFuelBody.userData.fuel = Math.min(100, (currentFuelBody.userData.fuel || 0) + 20);
-                    backpackItems[branchIndex].quantity--;
-                    if (backpackItems[branchIndex].quantity <= 0) {
-                        backpackItems[branchIndex] = null;
+                if (oilIndex !== -1 && fabricIndex !== -1) {
+                    if (currentFuelBody.userData.fuel < 100) {
+                        currentFuelBody.userData.fuel = Math.min(100, (currentFuelBody.userData.fuel || 0) + 20);
+
+                        backpackItems[oilIndex].quantity--;
+                        if (backpackItems[oilIndex].quantity <= 0) backpackItems[oilIndex] = null;
+
+                        backpackItems[fabricIndex].quantity--;
+                        if (backpackItems[fabricIndex].quantity <= 0) backpackItems[fabricIndex] = null;
+
+                        updateBackpackDisplay();
+                        updateFuelUI();
+                        showNotification("Tocha reabastecida!");
+                    } else {
+                        showNotification("Tanque cheio!");
                     }
-                    updateBackpackDisplay();
-                    updateFuelUI();
-                    showNotification("Combustível adicionado!");
                 } else {
-                    showNotification("Tanque cheio!");
+                    showNotification("Você precisa de Óleo e Tecido!");
                 }
             } else {
-                showNotification("Você não tem Galhos!");
+                // Tenta remover 1 galho da mochila para Fogueira/Forno
+                const branchIndex = backpackItems.findIndex(item => item && item.name === branchItemName);
+
+                if (branchIndex !== -1) {
+                    if (currentFuelBody.userData.fuel < 100) {
+                        currentFuelBody.userData.fuel = Math.min(100, (currentFuelBody.userData.fuel || 0) + 20);
+                        backpackItems[branchIndex].quantity--;
+                        if (backpackItems[branchIndex].quantity <= 0) {
+                            backpackItems[branchIndex] = null;
+                        }
+                        updateBackpackDisplay();
+                        updateFuelUI();
+                        showNotification("Combustível adicionado!");
+                    } else {
+                        showNotification("Tanque cheio!");
+                    }
+                } else {
+                    showNotification("Você não tem Galhos!");
+                }
             }
         }
 
