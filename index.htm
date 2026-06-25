@@ -1103,6 +1103,9 @@
             <button id="accessFurnaceButton" class="hidden bg-orange-600 hover:bg-orange-500 py-3 rounded-md font-bold transition-colors">
                 Acessar Forno
             </button>
+            <button id="useTorchButton" class="hidden bg-purple-600 hover:bg-purple-500 py-3 rounded-md font-bold transition-colors">
+                Utilizar
+            </button>
         </div>
     </div>
 
@@ -1592,6 +1595,7 @@
             const title = document.getElementById('fuelTitle');
             const accessBtn = document.getElementById('accessFurnaceButton');
             const addBtn = document.getElementById('addFuelButton');
+            const useBtn = document.getElementById('useTorchButton');
 
             modal.classList.remove('hidden');
 
@@ -1600,14 +1604,17 @@
                 title.textContent = "Forno";
                 accessBtn.classList.remove('hidden');
                 addBtn.textContent = "Abastecer (1 Galho)";
+                if (useBtn) useBtn.classList.add('hidden');
             } else if (body.userData.type === campfireItemName) {
                 title.textContent = "Fogueira";
                 accessBtn.classList.add('hidden');
                 addBtn.textContent = "Abastecer (1 Galho)";
+                if (useBtn) useBtn.classList.add('hidden');
             } else {
                 title.textContent = "Tocha";
                 accessBtn.classList.add('hidden');
                 addBtn.textContent = "Abastecer (1 Óleo + 1 Tecido)";
+                if (useBtn) useBtn.classList.remove('hidden');
             }
 
             updateFuelUI();
@@ -1641,24 +1648,75 @@
             }
         }
 
+        function takeToBelt() {
+            if (!currentFuelBody) return;
+            const type = currentFuelBody.userData.type;
+            const fuel = currentFuelBody.userData.fuel || 0;
+            const isOn = currentFuelBody.userData.isOn || false;
+
+            const item = {
+                name: type,
+                quantity: 1,
+                fuel: fuel,
+                isOn: isOn
+            };
+
+            if (addItemToInventory(beltItems, item)) {
+                // Remove do mundo
+                if (currentFuelBody.userData.fireGroup) scene.remove(currentFuelBody.userData.fireGroup);
+                if (currentFuelBody.userData.fireLight) scene.remove(currentFuelBody.userData.fireLight);
+                world.removeBody(currentFuelBody);
+
+                const index = activeCampfires.indexOf(currentFuelBody);
+                if (index !== -1) activeCampfires.splice(index, 1);
+
+                // Se era um mesh visual
+                if (currentFuelBody.userData.visualMesh) {
+                    scene.remove(currentFuelBody.userData.visualMesh);
+                }
+
+                closeFuelMenu();
+                updateUI();
+                showNotification("Tocha coletada!");
+            } else {
+                showNotification("Cinto cheio!");
+            }
+        }
+
+        function findItemInInventory(itemName) {
+            // Search in belt (excluding hand slot 0)
+            for (let i = 1; i < beltItems.length; i++) {
+                if (beltItems[i] && beltItems[i].name === itemName) {
+                    return { container: beltItems, index: i };
+                }
+            }
+            // Search in backpack
+            for (let i = 0; i < backpackItems.length; i++) {
+                if (backpackItems[i] && backpackItems[i].name === itemName) {
+                    return { container: backpackItems, index: i };
+                }
+            }
+            return null;
+        }
+
         function addFuel() {
             if (!currentFuelBody) return;
 
             if (currentFuelBody.userData.type === torchItemName) {
-                const oilIndex = backpackItems.findIndex(item => item && item.name === vegetableOilItemName);
-                const fabricIndex = backpackItems.findIndex(item => item && item.name === fabricItemName);
+                const oilData = findItemInInventory(vegetableOilItemName);
+                const fabricData = findItemInInventory(fabricItemName);
 
-                if (oilIndex !== -1 && fabricIndex !== -1) {
+                if (oilData && fabricData) {
                     if (currentFuelBody.userData.fuel < 100) {
                         currentFuelBody.userData.fuel = Math.min(100, (currentFuelBody.userData.fuel || 0) + 20);
 
-                        backpackItems[oilIndex].quantity--;
-                        if (backpackItems[oilIndex].quantity <= 0) backpackItems[oilIndex] = null;
+                        oilData.container[oilData.index].quantity--;
+                        if (oilData.container[oilData.index].quantity <= 0) oilData.container[oilData.index] = null;
 
-                        backpackItems[fabricIndex].quantity--;
-                        if (backpackItems[fabricIndex].quantity <= 0) backpackItems[fabricIndex] = null;
+                        fabricData.container[fabricData.index].quantity--;
+                        if (fabricData.container[fabricData.index].quantity <= 0) fabricData.container[fabricData.index] = null;
 
-                        updateBackpackDisplay();
+                        updateUI();
                         updateFuelUI();
                         showNotification("Tocha reabastecida!");
                     } else {
@@ -1668,17 +1726,17 @@
                     showNotification("Você precisa de Óleo e Tecido!");
                 }
             } else {
-                // Tenta remover 1 galho da mochila para Fogueira/Forno
-                const branchIndex = backpackItems.findIndex(item => item && item.name === branchItemName);
+                // Tenta remover 1 galho para Fogueira/Forno
+                const branchData = findItemInInventory(branchItemName);
 
-                if (branchIndex !== -1) {
+                if (branchData) {
                     if (currentFuelBody.userData.fuel < 100) {
                         currentFuelBody.userData.fuel = Math.min(100, (currentFuelBody.userData.fuel || 0) + 20);
-                        backpackItems[branchIndex].quantity--;
-                        if (backpackItems[branchIndex].quantity <= 0) {
-                            backpackItems[branchIndex] = null;
+                        branchData.container[branchData.index].quantity--;
+                        if (branchData.container[branchData.index].quantity <= 0) {
+                            branchData.container[branchData.index] = null;
                         }
-                        updateBackpackDisplay();
+                        updateUI();
                         updateFuelUI();
                         showNotification("Combustível adicionado!");
                     } else {
@@ -2925,6 +2983,27 @@
             if (item) {
                 const img = document.createElement('img');
                 const quantitySpan = document.createElement('span');
+
+                // Barra de combustível para tocha nos slots
+                if (item.name === torchItemName) {
+                    const fuelContainer = document.createElement('div');
+                    fuelContainer.style.position = 'absolute';
+                    fuelContainer.style.bottom = '2px';
+                    fuelContainer.style.left = '2px';
+                    fuelContainer.style.right = '2px';
+                    fuelContainer.style.height = '4px';
+                    fuelContainer.style.background = 'rgba(0,0,0,0.5)';
+                    fuelContainer.style.borderRadius = '2px';
+                    fuelContainer.style.overflow = 'hidden';
+                    fuelContainer.style.pointerEvents = 'none';
+
+                    const fuelFill = document.createElement('div');
+                    fuelFill.style.height = '100%';
+                    fuelFill.style.width = `${item.fuel !== undefined ? item.fuel : 100}%`;
+                    fuelFill.style.background = '#f97316'; // orange-500
+                    fuelContainer.appendChild(fuelFill);
+                    slotDiv.appendChild(fuelContainer);
+                }
 
                 // Define o ícone com base no nome do item
                 img.src = getItemIconURL(item.name);
@@ -8985,6 +9064,15 @@
 
             updateMeteors(delta);
 
+            // Fuel consumption for held torch
+            const heldItemForFuel = beltItems[selectedSlotIndex];
+            if (heldItemForFuel && heldItemForFuel.name === torchItemName && heldItemForFuel.isOn && !gamePaused) {
+                heldItemForFuel.fuel = Math.max(0, (heldItemForFuel.fuel || 0) - (0.1 * delta));
+                if (heldItemForFuel.fuel <= 0) {
+                    heldItemForFuel.isOn = false;
+                }
+            }
+
             // Animate Campfires
             if (typeof activeCampfires !== 'undefined') {
                 activeCampfires.forEach(cf => {
@@ -11683,6 +11771,7 @@
             document.getElementById('closeFuelButton').addEventListener('click', closeFuelMenu);
             document.getElementById('addFuelButton').addEventListener('click', addFuel);
             document.getElementById('toggleFireButton').addEventListener('click', toggleFire);
+            document.getElementById('useTorchButton').addEventListener('click', takeToBelt);
             document.getElementById('accessFurnaceButton').addEventListener('click', () => {
                 openedFurnace = currentFuelBody;
                 closeFuelMenu();
@@ -11874,10 +11963,11 @@
             window.diggingUrl = diggingUrl;
             window.miningUrl = miningUrl;
             window.activeCampfires = activeCampfires;
-            window.currentFuelBody = currentFuelBody;
+            Object.defineProperty(window, 'currentFuelBody', { get: () => currentFuelBody });
             window.openedFurnace = openedFurnace;
             window.addFuel = addFuel;
             window.toggleFire = toggleFire;
+            window.takeToBelt = takeToBelt;
             window.openFuelMenu = openFuelMenu;
             window.closeFuelMenu = closeFuelMenu;
             Object.defineProperty(window, 'isSleeping', { get: () => isSleeping, set: (v) => { isSleeping = v; } });
@@ -12068,6 +12158,9 @@
             window.itemDisplayNames = itemDisplayNames;
             window.placedConstructionBodies = placedConstructionBodies;
             Object.defineProperty(window, 'currentBlockType', { get: () => currentBlockType });
+            window.torchItemName = torchItemName;
+            window.fabricItemName = fabricItemName;
+            window.vegetableOilItemName = vegetableOilItemName;
         }
 
         // Listener de evento para o botão "Jogar"
