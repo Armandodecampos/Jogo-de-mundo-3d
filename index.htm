@@ -1663,17 +1663,23 @@
 
             if (addItemToInventory(beltItems, item)) {
                 // Remove do mundo
-                if (currentFuelBody.userData.fireGroup) scene.remove(currentFuelBody.userData.fireGroup);
-                if (currentFuelBody.userData.fireLight) scene.remove(currentFuelBody.userData.fireLight);
+                const constructionIndex = placedConstructionBodies.indexOf(currentFuelBody);
+                if (constructionIndex !== -1) {
+                    const mesh = placedConstructionMeshes[constructionIndex];
+                    if (mesh) {
+                        if (mesh.userData.fireGroup) scene.remove(mesh.userData.fireGroup);
+                        if (mesh.userData.fireLight) scene.remove(mesh.userData.fireLight);
+                        scene.remove(mesh);
+                    }
+                    placedConstructionBodies.splice(constructionIndex, 1);
+                    placedConstructionMeshes.splice(constructionIndex, 1);
+                    raycastTargetsNeedUpdate = true;
+                }
+
                 world.removeBody(currentFuelBody);
 
-                const index = activeCampfires.indexOf(currentFuelBody);
-                if (index !== -1) activeCampfires.splice(index, 1);
-
-                // Se era um mesh visual
-                if (currentFuelBody.userData.visualMesh) {
-                    scene.remove(currentFuelBody.userData.visualMesh);
-                }
+                const campfireIndex = activeCampfires.indexOf(currentFuelBody);
+                if (campfireIndex !== -1) activeCampfires.splice(campfireIndex, 1);
 
                 closeFuelMenu();
                 updateUI();
@@ -1684,8 +1690,8 @@
         }
 
         function findItemInInventory(itemName) {
-            // Search in belt (excluding hand slot 0)
-            for (let i = 1; i < beltItems.length; i++) {
+            // Search in belt
+            for (let i = 0; i < beltItems.length; i++) {
                 if (beltItems[i] && beltItems[i].name === itemName) {
                     return { container: beltItems, index: i };
                 }
@@ -3182,15 +3188,17 @@
             }
 
             let added = false;
-            // Try to stack first
-            for (let i = 0; i < inventoryArray.length; i++) {
-                // Skip the hand slot (beltItems[0]) when trying to stack or find empty slot
-                if (inventoryArray === beltItems && i === 0) continue;
+            // Try to stack first (only if item doesn't have unique state like fuel)
+            if (itemToAdd.fuel === undefined) {
+                for (let i = 0; i < inventoryArray.length; i++) {
+                    // Skip the hand slot (beltItems[0]) when trying to stack or find empty slot
+                    if (inventoryArray === beltItems && i === 0) continue;
 
-                if (inventoryArray[i] && inventoryArray[i].name === itemToAdd.name) {
-                    inventoryArray[i].quantity += itemToAdd.quantity;
-                    added = true;
-                    break;
+                    if (inventoryArray[i] && inventoryArray[i].name === itemToAdd.name && inventoryArray[i].fuel === undefined) {
+                        inventoryArray[i].quantity += itemToAdd.quantity;
+                        added = true;
+                        break;
+                    }
                 }
             }
 
@@ -8192,7 +8200,7 @@
                     if (!clickedBody || !clickedBody.userData) continue;
 
                     if (!clickedBody.userData.isCollectible && !clickedBody.userData.isRaft) continue;
-                    if (clickedBody.userData.type === campfireItemName || clickedBody.userData.type === torchItemName) continue;
+                    if (clickedBody.userData.type === campfireItemName) continue;
 
                     // NOVO: Se for um contêiner (contêiner/caixote), só permite guardar se estiver vazio
                     if (clickedBody.userData.isChest) {
@@ -8239,17 +8247,39 @@
                             playSyntheticCollectSound();
                             break;
                         }
-                    } else if (clickedBody.userData.type === workbenchItemName || clickedBody.userData.type === mesaItemName || clickedBody.userData.type === bigornaItemName || clickedBody.userData.type === furnaceItemName || clickedBody.userData.type === pestleItemName) {
+                    } else if (clickedBody.userData.type === workbenchItemName || clickedBody.userData.type === mesaItemName || clickedBody.userData.type === bigornaItemName || clickedBody.userData.type === furnaceItemName || clickedBody.userData.type === pestleItemName || clickedBody.userData.type === torchItemName) {
                         const constructionIndex = placedConstructionBodies.indexOf(clickedBody);
                         if (constructionIndex > -1) {
                             const type = clickedBody.userData.type;
-                            scene.remove(placedConstructionMeshes[constructionIndex]);
+                            const fuel = clickedBody.userData.fuel;
+                            const isOn = clickedBody.userData.isOn;
+
+                            const mesh = placedConstructionMeshes[constructionIndex];
+                            if (mesh) {
+                                if (mesh.userData.fireGroup) scene.remove(mesh.userData.fireGroup);
+                                if (mesh.userData.fireLight) scene.remove(mesh.userData.fireLight);
+                                scene.remove(mesh);
+                            }
+
                             placedConstructionBodies.splice(constructionIndex, 1);
                             placedConstructionMeshes.splice(constructionIndex, 1);
                             world.removeBody(clickedBody);
+
+                            if (type === torchItemName || type === furnaceItemName) {
+                                const campfireIndex = activeCampfires.indexOf(clickedBody);
+                                if (campfireIndex !== -1) activeCampfires.splice(campfireIndex, 1);
+                            }
+
                             raycastTargetsNeedUpdate = true;
 
-                            addItemToInventory(backpackItems, { name: type, quantity: 1 });
+                            const item = {
+                                name: type,
+                                quantity: 1
+                            };
+                            if (fuel !== undefined) item.fuel = fuel;
+                            if (isOn !== undefined) item.isOn = isOn;
+
+                            addItemToInventory(backpackItems, item);
                             updateBackpackDisplay();
                             playSyntheticCollectSound();
                             break;
@@ -10294,6 +10324,11 @@
             const heldItem = beltItems[selectedSlotIndex];
             if (heldItem && heldItem.name === torchItemName && !gamePaused) {
                 heldTorchGroup.visible = true;
+
+                // Show/hide fire and light based on isOn state
+                heldFireGroup.visible = heldItem.isOn;
+                heldTorchLight.visible = heldItem.isOn;
+
                 // Flickering da tocha segurada
                 const flicker = Math.sin(now * 0.01) * 0.1 + (Math.random() * 0.05);
                 heldTorchLight.intensity = 1.2 + flicker;
@@ -10396,7 +10431,10 @@
                         if (body && body.userData) {
                             currentLookedAtBody = body; // Salva para uso em rotateLookedAtObject
                             let identified = false;
-                            if (body.userData.isChest) {
+                            if (body.userData.type === torchItemName) {
+                                interactionHintText = "(E) Interagir / (G) Guardar";
+                                identified = true;
+                            } else if (body.userData.isChest) {
                                 interactionHintText = "(E) Abrir / (F) Agarrar / (G) Guardar";
                                 identified = true;
                             } else if (body.userData.isRaft) {
