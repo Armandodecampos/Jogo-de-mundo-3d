@@ -5184,7 +5184,7 @@
         }
 
         // Função para criar um novo bloco físico e visual (cob ou piso)
-        function createPlaceableBlock(position, quaternion, type, initialStage = null) {
+        function createPlaceableBlock(position, quaternion, type, initialStage = null, extraData = null) {
             let blockShape, initialMass;
             let width, height, depth;
             let mesh; // This will hold either a THREE.Mesh or a THREE.Group
@@ -5450,10 +5450,10 @@
                 blockBody.userData.fireGroup = fireGroup;
                 blockBody.userData.fireLight = light;
                 blockBody.userData.fireOffset = Math.random() * 1000;
-                blockBody.userData.fuel = 0;
-                blockBody.userData.isOn = false;
-                fireGroup.visible = false;
-                if (light) light.visible = false;
+                blockBody.userData.fuel = (extraData && extraData.fuel !== undefined) ? extraData.fuel : 0;
+                blockBody.userData.isOn = (extraData && extraData.isOn !== undefined) ? extraData.isOn : false;
+                fireGroup.visible = blockBody.userData.isOn;
+                if (light) light.visible = blockBody.userData.isOn;
                 activeCampfires.push(blockBody);
             } else if (type === torchItemName) {
                 width = 0.2; height = 0.8; depth = 0.2;
@@ -5472,10 +5472,10 @@
                 blockBody.userData.fireGroup = fireGroup;
                 blockBody.userData.fireLight = light;
                 blockBody.userData.fireOffset = Math.random() * 1000;
-                blockBody.userData.fuel = 0;
-                blockBody.userData.isOn = false;
-                fireGroup.visible = false;
-                if (light) light.visible = false;
+                blockBody.userData.fuel = (extraData && extraData.fuel !== undefined) ? extraData.fuel : 0;
+                blockBody.userData.isOn = (extraData && extraData.isOn !== undefined) ? extraData.isOn : false;
+                fireGroup.visible = blockBody.userData.isOn;
+                if (light) light.visible = blockBody.userData.isOn;
                 activeCampfires.push(blockBody);
             } else if (type === workbenchItemName || type === mesaItemName) {
                 width = type === workbenchItemName ? 2.0 : 1.2;
@@ -5738,10 +5738,10 @@
                 blockBody.userData.fireGroup = fireGroup;
                 blockBody.userData.fireLight = light;
                 blockBody.userData.fireOffset = Math.random() * 1000;
-                blockBody.userData.fuel = 0;
-                blockBody.userData.isOn = false;
-                fireGroup.visible = false;
-                if (light) light.visible = false;
+                blockBody.userData.fuel = (extraData && extraData.fuel !== undefined) ? extraData.fuel : 0;
+                blockBody.userData.isOn = (extraData && extraData.isOn !== undefined) ? extraData.isOn : false;
+                fireGroup.visible = blockBody.userData.isOn;
+                if (light) light.visible = blockBody.userData.isOn;
                 activeCampfires.push(blockBody);
             } else if (type === pestleItemName) {
                 width = 0.4; height = 0.5; depth = 0.4;
@@ -8415,9 +8415,9 @@
                         } else if (currentBlockType === stoneItemName) {
                             createStone(ghostBlockMesh.position, ghostBlockMesh.quaternion);
                         } else if (currentBlockType === campfireItemName) {
-                            createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, campfireItemName);
+                            createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, campfireItemName, null, { fuel: item.fuel, isOn: item.isOn });
                         } else if (currentBlockType === torchItemName) {
-                            createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, torchItemName);
+                            createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, torchItemName, null, { fuel: item.fuel, isOn: item.isOn });
                         }
                         else {
                             createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, currentBlockType);
@@ -9877,7 +9877,7 @@
                         let minCampfireDist = Infinity;
 
                         const heldItem = beltItems[selectedSlotIndex];
-                        const isHoldingTorch = heldItem && heldItem.name === torchItemName;
+                        const isHoldingTorch = heldItem && heldItem.name === torchItemName && heldItem.isOn;
                         if (isHoldingTorch) minTorchDist = 0;
 
                         if (typeof activeCampfires !== 'undefined') {
