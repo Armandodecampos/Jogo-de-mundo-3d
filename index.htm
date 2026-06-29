@@ -1079,7 +1079,21 @@
     </div>
 
     <!-- Modal de Combustível -->
-    <div id="fuelModal" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-800/95 border-2 border-orange-600 rounded-lg p-6 z-[1005] w-80 flex flex-col text-white shadow-2xl">
+    <!-- Modal de Corte de Lenha -->
+    <div id="cuttingModal" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-800/95 border-2 border-orange-600 rounded-lg p-6 z-[9800] w-80 flex flex-col text-white shadow-2xl">
+        <button id="closeCuttingButton" class="close-button">X</button>
+        <h2 class="text-2xl font-bold mb-6 text-center text-orange-500">Corte de Madeira</h2>
+        <div class="flex flex-col gap-4">
+            <button id="cutTrunkButton" class="bg-green-600 hover:bg-green-500 py-3 rounded-md font-bold transition-colors">
+                Cortar tronco
+            </button>
+            <button id="createFirewoodButton" class="bg-blue-600 hover:bg-blue-500 py-3 rounded-md font-bold transition-colors">
+                Criar lenha
+            </button>
+        </div>
+    </div>
+
+    <div id="fuelModal" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-800/95 border-2 border-orange-600 rounded-lg p-6 z-[9800] w-80 flex flex-col text-white shadow-2xl">
         <button id="closeFuelButton" class="close-button">X</button>
         <h2 id="fuelTitle" class="text-2xl font-bold mb-4 text-center text-orange-500">Tocha</h2>
 
@@ -1732,10 +1746,39 @@
                     showNotification("Você precisa de Óleo e Tecido!");
                 }
             } else {
-                // Tenta remover 1 galho para Fogueira/Forno
+                // Tenta remover Lenha ou Galho para Fogueira/Forno
+                const firewoodData = findItemInInventory(firewoodItemName);
                 const branchData = findItemInInventory(branchItemName);
 
-                if (branchData) {
+                const cutTrunkData = findItemInInventory(cutTrunkItemName);
+
+                if (cutTrunkData) {
+                    if (currentFuelBody.userData.fuel < 100) {
+                        currentFuelBody.userData.fuel = Math.min(100, (currentFuelBody.userData.fuel || 0) + 80);
+                        cutTrunkData.container[cutTrunkData.index].quantity--;
+                        if (cutTrunkData.container[cutTrunkData.index].quantity <= 0) {
+                            cutTrunkData.container[cutTrunkData.index] = null;
+                        }
+                        updateUI();
+                        updateFuelUI();
+                        showNotification("Tronco cortado adicionado!");
+                    } else {
+                        showNotification("Tanque cheio!");
+                    }
+                } else if (firewoodData) {
+                    if (currentFuelBody.userData.fuel < 100) {
+                        currentFuelBody.userData.fuel = Math.min(100, (currentFuelBody.userData.fuel || 0) + 50);
+                        firewoodData.container[firewoodData.index].quantity--;
+                        if (firewoodData.container[firewoodData.index].quantity <= 0) {
+                            firewoodData.container[firewoodData.index] = null;
+                        }
+                        updateUI();
+                        updateFuelUI();
+                        showNotification("Lenha adicionada!");
+                    } else {
+                        showNotification("Tanque cheio!");
+                    }
+                } else if (branchData) {
                     if (currentFuelBody.userData.fuel < 100) {
                         currentFuelBody.userData.fuel = Math.min(100, (currentFuelBody.userData.fuel || 0) + 20);
                         branchData.container[branchData.index].quantity--;
@@ -1744,12 +1787,12 @@
                         }
                         updateUI();
                         updateFuelUI();
-                        showNotification("Combustível adicionado!");
+                        showNotification("Galho adicionado!");
                     } else {
                         showNotification("Tanque cheio!");
                     }
                 } else {
-                    showNotification("Você não tem Galhos!");
+                    showNotification("Você não tem Lenha ou Galhos!");
                 }
             }
         }
@@ -1985,6 +2028,9 @@
         const floorItemName = 'piso'; // Nome do item de piso no inventário
         const treeSaplingItemName = 'muda_arvore'; // Nome do item de muda de árvore no inventário
         const treeTrunkItemName = 'tronco_arvore'; // NOVO: Nome do item de tronco de árvore
+        const cutTrunkItemName = 'tronco_cortado'; // NOVO: Nome do item de tronco cortado
+        const firewoodItemName = 'lenha'; // NOVO: Nome do item de lenha
+        const firewoodUrl = "https://dl.dropbox.com/scl/fi/zflbrbr35n236bqmmhfh2/Cortando-lenha.mp3?rlkey=a36724k4ccx3zoaizuc9d42wr&st=1f39mn2z&dl=1";
         const woodenPlankItemName = 'tábuas'; // NOVO: Nome do item de tábuas de madeira
         const boxItemName = 'caixote'; // NOVO: Nome do item de caixote
         const basketItemName = 'cesto_capim'; // NOVO: Nome do item de cesto de capim
@@ -2084,6 +2130,8 @@
             [floorItemName]: 'Piso de Barro',
             [treeSaplingItemName]: 'Muda de Árvore',
             [treeTrunkItemName]: 'Tronco de Árvore',
+            [cutTrunkItemName]: 'Tronco Cortado',
+            [firewoodItemName]: 'Lenha',
             [woodenPlankItemName]: 'Piso de Madeira',
             [boxItemName]: 'Caixote',
             [raftItemName]: 'Jangada\nPara navegar no mar', // NOVO
@@ -2137,6 +2185,8 @@
             [floorItemName]: 1.0,
             [treeSaplingItemName]: 0.1,
             [treeTrunkItemName]: 12.0,
+            [cutTrunkItemName]: 6.0,
+            [firewoodItemName]: 2.0,
             [doorItemName]: 10.0,
             [woodenPlankItemName]: 1.5,
             [boxItemName]: 12.0,
@@ -2846,6 +2896,113 @@
             updateChestDisplay();
         }
 
+        function openCuttingMenu() {
+            gamePaused = true;
+            document.getElementById('cuttingModal').classList.remove('hidden');
+            document.getElementById('crosshair').style.display = 'none';
+            document.body.style.cursor = 'default';
+            if (renderer && renderer.domElement) {
+                renderer.domElement.style.cursor = 'default';
+            }
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) hudButtons.style.display = 'none';
+            if (ghostBlockMesh) ghostBlockMesh.visible = false;
+
+            pointerLockExitForBackpack = true;
+            document.exitPointerLock();
+        }
+
+        function closeCuttingMenu() {
+            gamePaused = false;
+            document.getElementById('cuttingModal').classList.add('hidden');
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) hudButtons.style.display = 'flex';
+            pointerLockExitForBackpack = false;
+            if (renderer && renderer.domElement) {
+                renderer.domElement.requestPointerLock().catch(() => {});
+            }
+        }
+
+        function handleCutTrunk() {
+            const hasAxe = findItemInInventory(axeItemName) || findItemInInventory(ironAxeItemName);
+            const trunkData = findItemInInventory(treeTrunkItemName);
+
+            if (!hasAxe) {
+                showNotification("Você precisa de um machado!");
+                return;
+            }
+
+            if (!trunkData) {
+                showNotification("Você precisa de um tronco!");
+                return;
+            }
+
+            // Consume trunk
+            trunkData.container[trunkData.index].quantity--;
+            if (trunkData.container[trunkData.index].quantity <= 0) trunkData.container[trunkData.index] = null;
+            updateUI();
+
+            // Play sound
+            playInterfaceSound(firewoodUrl);
+
+            // Spawn 2 cut trunks
+            const pos = playerBody.position.clone();
+            const forward = new THREE.Vector3();
+            camera.getWorldDirection(forward);
+            pos.x += forward.x * 1.5;
+            pos.z += forward.z * 1.5;
+            pos.y += 0.5;
+
+            for (let i = 0; i < 2; i++) {
+                const offset = (i === 0 ? -0.3 : 0.3);
+                const spawnPos = new CANNON.Vec3(pos.x + offset, pos.y, pos.z);
+                const velocity = new CANNON.Vec3(offset * 2, 2, (Math.random() - 0.5));
+                createCutTrunk(spawnPos, velocity);
+            }
+            showNotification("Tronco cortado!");
+            closeCuttingMenu();
+        }
+
+        function handleCreateFirewood() {
+            const hasAxe = findItemInInventory(axeItemName) || findItemInInventory(ironAxeItemName);
+            const cutTrunkData = findItemInInventory(cutTrunkItemName);
+
+            if (!hasAxe) {
+                showNotification("Você precisa de um machado!");
+                return;
+            }
+
+            if (!cutTrunkData) {
+                showNotification("Você precisa de um tronco cortado!");
+                return;
+            }
+
+            // Consume cut trunk
+            cutTrunkData.container[cutTrunkData.index].quantity--;
+            if (cutTrunkData.container[cutTrunkData.index].quantity <= 0) cutTrunkData.container[cutTrunkData.index] = null;
+            updateUI();
+
+            // Play sound
+            playInterfaceSound(firewoodUrl);
+
+            // Spawn 2 firewood
+            const pos = playerBody.position.clone();
+            const forward = new THREE.Vector3();
+            camera.getWorldDirection(forward);
+            pos.x += forward.x * 1.5;
+            pos.z += forward.z * 1.5;
+            pos.y += 0.5;
+
+            for (let i = 0; i < 2; i++) {
+                const offset = (i === 0 ? -0.2 : 0.2);
+                const spawnPos = new CANNON.Vec3(pos.x, pos.y, pos.z + offset);
+                const velocity = new CANNON.Vec3((Math.random() - 0.5), 2, offset * 3);
+                createFirewood(spawnPos, velocity);
+            }
+            showNotification("Lenha criada!");
+            closeCuttingMenu();
+        }
+
         // NOVO: Função para fechar o contêiner
         function closeChest() {
             closeSplitModal();
@@ -2932,6 +3089,8 @@
             if (itemName === treeSaplingItemName) return treeSaplingTextureURL;
             if (itemName === branchItemName) return branchImageURL;
             if (itemName === treeTrunkItemName) return treeTrunkImageURL;
+            if (itemName === cutTrunkItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Tronco+Cortado";
+            if (itemName === firewoodItemName) return "https://placehold.co/100x100/A0522D/FFFFFF?text=Lenha";
             if (itemName === woodenPlankItemName) return woodenPlankTextureURL;
             if (itemName === raftItemName) return treeBarkTextureURL;
             if (itemName === stoneBlockItemName) return stoneBlockTextureURL;
@@ -3587,6 +3746,93 @@
             raycastTargetsNeedUpdate = true;
 
             return basketBody;
+        }
+
+        function createCutTrunk(position, velocity) {
+            const fwRadius = 0.2;
+            const fwHeight = 0.5;
+            const fwMass = 10;
+            const fwShape = new CANNON.Cylinder(fwRadius, fwRadius, fwHeight, 8);
+            const fwGeometry = new THREE.CylinderGeometry(fwRadius, fwRadius, fwHeight, 8);
+
+            const fwBody = new CANNON.Body({
+                mass: fwMass,
+                shape: fwShape,
+                material: cubeMaterial,
+                linearDamping: 0.3,
+                angularDamping: 0.3,
+                allowSleep: true
+            });
+            fwBody.position.copy(position);
+            if (velocity) fwBody.velocity.copy(velocity);
+            fwBody.quaternion.setFromEuler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+
+            fwBody.addEventListener('collide', (event) => {
+                const impactVelocity = Math.abs(event.contact.getImpactVelocityAlongNormal());
+                if (impactVelocity > 2) playSyntheticObjectImpactSound(impactVelocity);
+            });
+            world.addBody(fwBody);
+
+            fwBody.userData = {
+                isCollectible: true,
+                type: cutTrunkItemName,
+                originalMass: fwMass,
+                initialPosition: new CANNON.Vec3().copy(fwBody.position)
+            };
+
+            const mesh = new THREE.Mesh(fwGeometry, treeTrunkMaterialMesh);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.userData.physicsBody = fwBody;
+            scene.add(mesh);
+
+            collectibleBoxes.push({ body: fwBody, mesh: mesh });
+            raycastTargetsNeedUpdate = true;
+            return fwBody;
+        }
+
+        function createFirewood(position, velocity) {
+            const fwRadius = 0.1;
+            const fwHeight = 0.4;
+            const fwMass = 3;
+            // Firewood is a quarter-cylinder or small cylinder
+            const fwShape = new CANNON.Cylinder(fwRadius, fwRadius, fwHeight, 8);
+            const fwGeometry = new THREE.CylinderGeometry(fwRadius, fwRadius, fwHeight, 8);
+
+            const fwBody = new CANNON.Body({
+                mass: fwMass,
+                shape: fwShape,
+                material: cubeMaterial,
+                linearDamping: 0.3,
+                angularDamping: 0.3,
+                allowSleep: true
+            });
+            fwBody.position.copy(position);
+            if (velocity) fwBody.velocity.copy(velocity);
+            fwBody.quaternion.setFromEuler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+
+            fwBody.addEventListener('collide', (event) => {
+                const impactVelocity = Math.abs(event.contact.getImpactVelocityAlongNormal());
+                if (impactVelocity > 2) playSyntheticObjectImpactSound(impactVelocity);
+            });
+            world.addBody(fwBody);
+
+            fwBody.userData = {
+                isCollectible: true,
+                type: firewoodItemName,
+                originalMass: fwMass,
+                initialPosition: new CANNON.Vec3().copy(fwBody.position)
+            };
+
+            const mesh = new THREE.Mesh(fwGeometry, treeTrunkMaterialMesh);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+            mesh.userData.physicsBody = fwBody;
+            scene.add(mesh);
+
+            collectibleBoxes.push({ body: fwBody, mesh: mesh });
+            raycastTargetsNeedUpdate = true;
+            return fwBody;
         }
 
         // NOVO: Função genérica para dropar itens
@@ -7465,6 +7711,8 @@
 
                     if (isHoldingSeed && ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
                         placeBlock(heldItem, selectedSlotIndex);
+                    } else if (currentLookedAtBody && (currentLookedAtBody.userData.type === treeTrunkItemName || currentLookedAtBody.userData.type === cutTrunkItemName)) {
+                        openCuttingMenu();
                     }
                 }
 
@@ -10434,7 +10682,25 @@
                         if (body && body.userData) {
                             currentLookedAtBody = body; // Salva para uso em rotateLookedAtObject
                             let identified = false;
-                            if (body.userData.type === torchItemName) {
+                            if (body.userData.type === treeTrunkItemName || body.userData.type === cutTrunkItemName) {
+                                // Check for obstructions above
+                                const rayStart = new CANNON.Vec3(body.position.x, body.position.y, body.position.z);
+                                const rayEnd = new CANNON.Vec3(body.position.x, body.position.y + 0.6, body.position.z);
+                                const rayResult = new CANNON.RaycastResult();
+                                world.raycastClosest(rayStart, rayEnd, { collisionFilterMask: ~2 }, rayResult);
+
+                                if (!rayResult.hasHit || rayResult.body === playerBody) {
+                                    const hasAxe = findItemInInventory(axeItemName) || findItemInInventory(ironAxeItemName);
+                                    if (hasAxe) {
+                                        interactionHintText = "(L) Opções de Corte / (F) Agarrar / (G) Guardar";
+                                    } else {
+                                        interactionHintText = "Você precisa de um machado\n(F) Agarrar / (G) Guardar";
+                                    }
+                                } else {
+                                    interactionHintText = "(F) Agarrar / (G) Guardar";
+                                }
+                                identified = true;
+                            } else if (body.userData.type === torchItemName) {
                                 interactionHintText = "(E) Interagir / (G) Guardar";
                                 identified = true;
                             } else if (body.userData.isChest) {
@@ -11809,6 +12075,10 @@
             chestBackpackSlotsContainer = document.getElementById('chestBackpackSlotsContainer');
             closeChestButton.addEventListener('click', closeChest);
 
+            document.getElementById('closeCuttingButton').addEventListener('click', closeCuttingMenu);
+            document.getElementById('cutTrunkButton').addEventListener('click', handleCutTrunk);
+            document.getElementById('createFirewoodButton').addEventListener('click', handleCreateFirewood);
+
             document.getElementById('closeFuelButton').addEventListener('click', closeFuelMenu);
             document.getElementById('addFuelButton').addEventListener('click', addFuel);
             document.getElementById('toggleFireButton').addEventListener('click', toggleFire);
@@ -11881,6 +12151,7 @@
                 const swimBuf = await loadAudioBuffer(swimStepUrl);
                 const diggingBuf = await loadAudioBuffer(diggingUrl);
                 const miningBuf = await loadAudioBuffer(miningUrl);
+                await loadAudioBuffer(firewoodUrl);
                 const torchBuf = await loadAudioBuffer(torchSoundUrl);
                 const campfireBuf = await loadAudioBuffer(campfireSoundUrl);
                 await loadAudioBuffer(doorOpenUrl);
@@ -12120,6 +12391,14 @@
             });
             window.dirtMountains = dirtMountains;
             window.useTextures = useTextures;
+            window.firewoodItemName = firewoodItemName;
+            window.cutTrunkItemName = cutTrunkItemName;
+            window.treeTrunkItemName = treeTrunkItemName;
+            window.axeItemName = axeItemName;
+            window.openCuttingMenu = openCuttingMenu;
+            window.closeCuttingMenu = closeCuttingMenu;
+            window.handleCutTrunk = handleCutTrunk;
+            window.handleCreateFirewood = handleCreateFirewood;
             window.createBox = createBox;
             window.createBasket = createBasket;
             window.closingMounds = closingMounds;
