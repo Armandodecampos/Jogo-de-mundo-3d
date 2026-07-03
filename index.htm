@@ -1079,20 +1079,6 @@
     </div>
 
     <!-- Modal de Combustível -->
-    <!-- Modal de Corte de Lenha -->
-    <div id="cuttingModal" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-800/95 border-2 border-orange-600 rounded-lg p-6 z-[9800] w-80 flex flex-col text-white shadow-2xl">
-        <button id="closeCuttingButton" class="close-button">X</button>
-        <h2 class="text-2xl font-bold mb-6 text-center text-orange-500">Corte de Madeira</h2>
-        <div class="flex flex-col gap-4">
-            <button id="cutTrunkButton" class="bg-green-600 hover:bg-green-500 py-3 rounded-md font-bold transition-colors">
-                Cortar tronco
-            </button>
-            <button id="createFirewoodButton" class="bg-blue-600 hover:bg-blue-500 py-3 rounded-md font-bold transition-colors">
-                Criar lenha
-            </button>
-        </div>
-    </div>
-
     <div id="fuelModal" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-800/95 border-2 border-orange-600 rounded-lg p-6 z-[9800] w-80 flex flex-col text-white shadow-2xl">
         <button id="closeFuelButton" class="close-button">X</button>
         <h2 id="fuelTitle" class="text-2xl font-bold mb-4 text-center text-orange-500">Tocha</h2>
@@ -2300,12 +2286,12 @@
         const sandImageURL = 'https://placehold.co/100x100/c2b280/FFFFFF?text=Areia'; // NOVO: Imagem para a areia
         const shovelImageURL = 'https://placehold.co/100x100/808080/FFFFFF?text=Pá'; // NOVO: Imagem para a pá
         const pickaxeImageURL = 'https://file.loading.io/resources/icon/whnsbw.svg'; // NOVO: Imagem para a picareta
-        const treeBarkTextureURL = 'https://dl.dropbox.com/scl/fi/njc60aje7lvqcju60ug8s/ChatGPT-Image-6-de-fev.-de-2026-21_52_132.png?rlkey=3ji8sf4ipjyjymhak24203mr5&st=lh4h3hc8&dl=0'; // Corrected URL
-        const treeLeavesTextureURL = 'https://dl.dropbox.com/scl/fi/u636vo3d674wnbku37w0f/ChatGPT-Image-6-de-fev.-de-2026-21_55_222.png?rlkey=ia0p0yck3kgec32olpezpov16&st=d5u2tnhg&dl=0'; // Corrected URL
+        const treeBarkTextureURL = 'https://dl.dropbox.com/scl/fi/njc60aje7lvqcju60ug8s/ChatGPT-Image-6-de-fev.-de-2026-21_52_132.png?rlkey=3ji8sf4ipjyjymhak24203mr5&st=a27l6vgi&dl=1';
+        const treeLeavesTextureURL = 'https://dl.dropbox.com/scl/fi/u636vo3d674wnbku37w0f/ChatGPT-Image-6-de-fev.-de-2026-21_55_222.png?rlkey=ia0p0yck3kgec32olpezpov16&st=d5u2tnhg&dl=1';
         const handImageURL = 'https://dl.dropbox.com/scl/fi/adirqfks81emnagkoljcw/m-o-direita.png?rlkey=pj17lswbeg8lene1n5ypdbmob&st=i2qtxssr&dl=0';
         const branchImageURL = 'https://placehold.co/100x100/8B4513/FFFFFF?text=Galho'; // NOVO: Ícone para o galho
         const treeTrunkImageURL = 'https://dl.dropbox.com/scl/fi/njc60aje7lvqcju60ug8s/ChatGPT-Image-6-de-fev.-de-2026-21_52_132.png?rlkey=3ji8sf4ipjyjymhak24203mr5&st=lh4h3hc8&dl=0'; // NOVO: Ícone para o tronco de árvore (placeholder)
-        const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=42utz3gy&dl=0'; // NOVO: Ícone para as tábuas
+        const woodenPlankTextureURL = 'https://dl.dropbox.com/scl/fi/0fvzfv95cncu8rnx389xj/tabua.png?rlkey=1c9vxdh6hsf8mmk0fbf7owslk&st=nw17zqyl&dl=1';
         const stoneTextureURL = 'https://dl.dropbox.com/scl/fi/m1fkx9ccbjxlwyvcrdbio/Textura-de-pedra.png?rlkey=vlbwqpy001vcjqiedh1wrdo53&st=sy0pevfr&dl=1'; // NOVO: Textura de pedra para aplicar
         const holeTextureURL = "https://dl.dropbox.com/scl/fi/42sa7tz724dwunu8imycm/textura-de-terra-2.png?rlkey=7hibzddcn7cco8jeolqada3ho&dl=1";
         const stoneBlockTextureURL = 'https://dl.dropbox.com/scl/fi/m1fkx9ccbjxlwyvcrdbio/Textura-de-pedra.png?rlkey=vlbwqpy001vcjqiedh1wrdo53&st=sy0pevfr&dl=1';
@@ -2489,11 +2475,10 @@
         function updateRaycastTargets() {
             if (typeof raycastTargets === 'undefined') return;
             raycastTargets.length = 0;
-            islandMeshes.forEach(tile => raycastTargets.push(tile.mesh));
-            waterMeshes.forEach(tile => raycastTargets.push(tile.mesh)); // NOVO: Água para colocação de jangada
-            raycastTargets.push(...placedConstructionMeshes);
-            collectibleBoxes.forEach(box => raycastTargets.push(box.mesh));
-            // Hitboxes do capim removidas para otimização de performance
+            islandMeshes.forEach(tile => { if (tile && tile.mesh) raycastTargets.push(tile.mesh); });
+            waterMeshes.forEach(tile => { if (tile && tile.mesh) raycastTargets.push(tile.mesh); });
+            placedConstructionMeshes.forEach(mesh => { if (mesh) raycastTargets.push(mesh); });
+            collectibleBoxes.forEach(box => { if (box && box.mesh) raycastTargets.push(box.mesh); });
         }
 
         function applyTextureSettings() {
@@ -2896,112 +2881,6 @@
             updateChestDisplay();
         }
 
-        function openCuttingMenu() {
-            gamePaused = true;
-            document.getElementById('cuttingModal').classList.remove('hidden');
-            document.getElementById('crosshair').style.display = 'none';
-            document.body.style.cursor = 'default';
-            if (renderer && renderer.domElement) {
-                renderer.domElement.style.cursor = 'default';
-            }
-            const hudButtons = document.getElementById('hudButtons');
-            if (hudButtons) hudButtons.style.display = 'none';
-            if (ghostBlockMesh) ghostBlockMesh.visible = false;
-
-            pointerLockExitForBackpack = true;
-            document.exitPointerLock();
-        }
-
-        function closeCuttingMenu() {
-            gamePaused = false;
-            document.getElementById('cuttingModal').classList.add('hidden');
-            const hudButtons = document.getElementById('hudButtons');
-            if (hudButtons) hudButtons.style.display = 'flex';
-            pointerLockExitForBackpack = false;
-            if (renderer && renderer.domElement) {
-                renderer.domElement.requestPointerLock().catch(() => {});
-            }
-        }
-
-        function handleCutTrunk() {
-            const hasAxe = findItemInInventory(axeItemName) || findItemInInventory(ironAxeItemName);
-            const trunkData = findItemInInventory(treeTrunkItemName);
-
-            if (!hasAxe) {
-                showNotification("Você precisa de um machado!");
-                return;
-            }
-
-            if (!trunkData) {
-                showNotification("Você precisa de um tronco!");
-                return;
-            }
-
-            // Consume trunk
-            trunkData.container[trunkData.index].quantity--;
-            if (trunkData.container[trunkData.index].quantity <= 0) trunkData.container[trunkData.index] = null;
-            updateUI();
-
-            // Play sound
-            playInterfaceSound(firewoodUrl);
-
-            // Spawn 2 cut trunks
-            const pos = playerBody.position.clone();
-            const forward = new THREE.Vector3();
-            camera.getWorldDirection(forward);
-            pos.x += forward.x * 1.5;
-            pos.z += forward.z * 1.5;
-            pos.y += 0.5;
-
-            for (let i = 0; i < 2; i++) {
-                const offset = (i === 0 ? -0.3 : 0.3);
-                const spawnPos = new CANNON.Vec3(pos.x + offset, pos.y, pos.z);
-                const velocity = new CANNON.Vec3(offset * 2, 2, (Math.random() - 0.5));
-                createCutTrunk(spawnPos, velocity);
-            }
-            showNotification("Tronco cortado!");
-            closeCuttingMenu();
-        }
-
-        function handleCreateFirewood() {
-            const hasAxe = findItemInInventory(axeItemName) || findItemInInventory(ironAxeItemName);
-            const cutTrunkData = findItemInInventory(cutTrunkItemName);
-
-            if (!hasAxe) {
-                showNotification("Você precisa de um machado!");
-                return;
-            }
-
-            if (!cutTrunkData) {
-                showNotification("Você precisa de um tronco cortado!");
-                return;
-            }
-
-            // Consume cut trunk
-            cutTrunkData.container[cutTrunkData.index].quantity--;
-            if (cutTrunkData.container[cutTrunkData.index].quantity <= 0) cutTrunkData.container[cutTrunkData.index] = null;
-            updateUI();
-
-            // Play sound
-            playInterfaceSound(firewoodUrl);
-
-            // Spawn 2 firewood
-            const pos = playerBody.position.clone();
-            const forward = new THREE.Vector3();
-            camera.getWorldDirection(forward);
-            pos.x += forward.x * 1.5;
-            pos.z += forward.z * 1.5;
-            pos.y += 0.5;
-
-            for (let i = 0; i < 2; i++) {
-                const offset = (i === 0 ? -0.2 : 0.2);
-                const spawnPos = new CANNON.Vec3(pos.x, pos.y, pos.z + offset);
-                const velocity = new CANNON.Vec3((Math.random() - 0.5), 2, offset * 3);
-                createFirewood(spawnPos, velocity);
-            }
-            showNotification("Lenha criada!");
-            closeCuttingMenu();
-        }
 
         // NOVO: Função para fechar o contêiner
         function closeChest() {
@@ -3748,91 +3627,134 @@
             return basketBody;
         }
 
-        function createCutTrunk(position, velocity) {
-            const fwRadius = 0.2;
-            const fwHeight = 0.5;
-            const fwMass = 10;
-            const fwShape = new CANNON.Cylinder(fwRadius, fwRadius, fwHeight, 8);
-            const fwGeometry = new THREE.CylinderGeometry(fwRadius, fwRadius, fwHeight, 8);
 
-            const fwBody = new CANNON.Body({
-                mass: fwMass,
-                shape: fwShape,
+        function createCutTrunk(position, velocity) {
+            const radius = 0.2;
+            const height = 0.5;
+            const mass = 10;
+
+            // Approximation for semi-cylinder physics
+            const shape = new CANNON.Box(new CANNON.Vec3(radius, height / 2, radius / 2));
+
+            const body = new CANNON.Body({
+                mass: mass,
+                shape: shape,
                 material: cubeMaterial,
                 linearDamping: 0.3,
                 angularDamping: 0.3,
                 allowSleep: true
             });
-            fwBody.position.copy(position);
-            if (velocity) fwBody.velocity.copy(velocity);
-            fwBody.quaternion.setFromEuler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+            body.position.copy(position);
+            if (velocity) body.velocity.copy(velocity);
+            body.quaternion.setFromEuler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
 
-            fwBody.addEventListener('collide', (event) => {
+            body.addEventListener('collide', (event) => {
                 const impactVelocity = Math.abs(event.contact.getImpactVelocityAlongNormal());
                 if (impactVelocity > 2) playSyntheticObjectImpactSound(impactVelocity);
             });
-            world.addBody(fwBody);
+            world.addBody(body);
 
-            fwBody.userData = {
+            body.userData = {
                 isCollectible: true,
                 type: cutTrunkItemName,
-                originalMass: fwMass,
-                initialPosition: new CANNON.Vec3().copy(fwBody.position)
+                originalMass: mass,
+                initialPosition: new CANNON.Vec3().copy(body.position)
             };
 
-            const mesh = new THREE.Mesh(fwGeometry, treeTrunkMaterialMesh);
-            mesh.castShadow = true;
-            mesh.receiveShadow = true;
-            mesh.userData.physicsBody = fwBody;
-            scene.add(mesh);
+            const group = new THREE.Group();
 
-            collectibleBoxes.push({ body: fwBody, mesh: mesh });
+            // Outer bark (curved)
+            const curvedGeom = new THREE.CylinderGeometry(radius, radius, height, 12, 1, false, 0, Math.PI);
+            const curvedMesh = new THREE.Mesh(curvedGeom, [treeTrunkMaterialMesh, woodenPlankMaterialMesh, woodenPlankMaterialMesh]);
+            group.add(curvedMesh);
+
+            // Flat face (the cut)
+            const planeGeom = new THREE.PlaneGeometry(radius * 2, height);
+            const planeMesh = new THREE.Mesh(planeGeom, woodenPlankMaterialMesh);
+            planeMesh.rotation.y = Math.PI / 2;
+            group.add(planeMesh);
+
+            group.traverse(child => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+
+            group.userData.physicsBody = body;
+            scene.add(group);
+
+            collectibleBoxes.push({ body: body, mesh: group });
             raycastTargetsNeedUpdate = true;
-            return fwBody;
+            return body;
         }
 
-        function createFirewood(position, velocity) {
-            const fwRadius = 0.1;
-            const fwHeight = 0.4;
-            const fwMass = 3;
-            // Firewood is a quarter-cylinder or small cylinder
-            const fwShape = new CANNON.Cylinder(fwRadius, fwRadius, fwHeight, 8);
-            const fwGeometry = new THREE.CylinderGeometry(fwRadius, fwRadius, fwHeight, 8);
 
-            const fwBody = new CANNON.Body({
-                mass: fwMass,
-                shape: fwShape,
+        function createFirewood(position, velocity) {
+            const radius = 0.15;
+            const height = 0.4;
+            const mass = 3;
+
+            // Approximation for quarter-cylinder physics
+            const shape = new CANNON.Box(new CANNON.Vec3(radius / 2, height / 2, radius / 2));
+
+            const body = new CANNON.Body({
+                mass: mass,
+                shape: shape,
                 material: cubeMaterial,
                 linearDamping: 0.3,
                 angularDamping: 0.3,
                 allowSleep: true
             });
-            fwBody.position.copy(position);
-            if (velocity) fwBody.velocity.copy(velocity);
-            fwBody.quaternion.setFromEuler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+            body.position.copy(position);
+            if (velocity) body.velocity.copy(velocity);
+            body.quaternion.setFromEuler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
 
-            fwBody.addEventListener('collide', (event) => {
+            body.addEventListener('collide', (event) => {
                 const impactVelocity = Math.abs(event.contact.getImpactVelocityAlongNormal());
                 if (impactVelocity > 2) playSyntheticObjectImpactSound(impactVelocity);
             });
-            world.addBody(fwBody);
+            world.addBody(body);
 
-            fwBody.userData = {
+            body.userData = {
                 isCollectible: true,
                 type: firewoodItemName,
-                originalMass: fwMass,
-                initialPosition: new CANNON.Vec3().copy(fwBody.position)
+                originalMass: mass,
+                initialPosition: new CANNON.Vec3().copy(body.position)
             };
 
-            const mesh = new THREE.Mesh(fwGeometry, treeTrunkMaterialMesh);
-            mesh.castShadow = true;
-            mesh.receiveShadow = true;
-            mesh.userData.physicsBody = fwBody;
-            scene.add(mesh);
+            const group = new THREE.Group();
 
-            collectibleBoxes.push({ body: fwBody, mesh: mesh });
+            // Curved bark
+            const curvedGeom = new THREE.CylinderGeometry(radius, radius, height, 8, 1, false, 0, Math.PI / 2);
+            const curvedMesh = new THREE.Mesh(curvedGeom, [treeTrunkMaterialMesh, woodenPlankMaterialMesh, woodenPlankMaterialMesh]);
+            group.add(curvedMesh);
+
+            // Two flat faces
+            const faceGeom = new THREE.PlaneGeometry(radius, height);
+
+            const face1 = new THREE.Mesh(faceGeom, woodenPlankMaterialMesh);
+            face1.position.set(radius / 2, 0, 0);
+            group.add(face1);
+
+            const face2 = new THREE.Mesh(faceGeom, woodenPlankMaterialMesh);
+            face2.position.set(0, 0, radius / 2);
+            face2.rotation.y = Math.PI / 2;
+            group.add(face2);
+
+            group.traverse(child => {
+                if (child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+
+            group.userData.physicsBody = body;
+            scene.add(group);
+
+            collectibleBoxes.push({ body: body, mesh: group });
             raycastTargetsNeedUpdate = true;
-            return fwBody;
+            return body;
         }
 
         // NOVO: Função genérica para dropar itens
@@ -7711,8 +7633,83 @@
 
                     if (isHoldingSeed && ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
                         placeBlock(heldItem, selectedSlotIndex);
-                    } else if (currentLookedAtBody && (currentLookedAtBody.userData.type === treeTrunkItemName || currentLookedAtBody.userData.type === cutTrunkItemName)) {
-                        openCuttingMenu();
+                    } else if (currentLookedAtBody && currentLookedAtBody.userData.type === treeTrunkItemName) {
+                        // Check for obstructions above the trunk
+                        const body = currentLookedAtBody;
+                        const rayStart = new CANNON.Vec3(body.position.x, body.position.y + 0.55, body.position.z);
+                        const rayEnd = new CANNON.Vec3(body.position.x, body.position.y + 1.5, body.position.z);
+                        const rayResult = new CANNON.RaycastResult();
+                        world.raycastClosest(rayStart, rayEnd, {}, rayResult);
+
+                        if (rayResult.hasHit && rayResult.body !== playerBody && rayResult.body !== body) return;
+
+                        const hasAxe = findItemInInventory(axeItemName) || findItemInInventory(ironAxeItemName);
+                        if (!hasAxe) {
+                            showNotification("Você precisa de um machado");
+                            return;
+                        }
+
+                        const trunkData = findItemInInventory(treeTrunkItemName);
+                        if (!trunkData) {
+                            showNotification("Você precisa de um tronco de árvore na bolsa");
+                            return;
+                        }
+
+                        // Consume 1 trunk from inventory
+                        trunkData.container[trunkData.index].quantity--;
+                        if (trunkData.container[trunkData.index].quantity <= 0) trunkData.container[trunkData.index] = null;
+                        updateUI();
+
+                        // Play cutting sound
+                        playInterfaceSound(firewoodUrl);
+
+                        // Spawn 2 cut trunks (intermediate stage)
+                        const pos = body.position.clone();
+                        for (let i = 0; i < 2; i++) {
+                            const offset = (i === 0 ? -0.4 : 0.4);
+                            const spawnPos = new CANNON.Vec3(pos.x + offset, pos.y + 0.5, pos.z);
+                            const velocity = new CANNON.Vec3(offset * 3, 2, (Math.random() - 0.5));
+                            createCutTrunk(spawnPos, velocity);
+                        }
+                        showNotification("Tronco cortado!");
+                    } else if (currentLookedAtBody && currentLookedAtBody.userData.type === cutTrunkItemName) {
+                        // Check for obstructions above the cut trunk
+                        const body = currentLookedAtBody;
+                        const rayStart = new CANNON.Vec3(body.position.x, body.position.y + 0.3, body.position.z);
+                        const rayEnd = new CANNON.Vec3(body.position.x, body.position.y + 1.0, body.position.z);
+                        const rayResult = new CANNON.RaycastResult();
+                        world.raycastClosest(rayStart, rayEnd, {}, rayResult);
+
+                        if (rayResult.hasHit && rayResult.body !== playerBody && rayResult.body !== body) return;
+
+                        const hasAxe = findItemInInventory(axeItemName) || findItemInInventory(ironAxeItemName);
+                        if (!hasAxe) {
+                            showNotification("Você precisa de um machado");
+                            return;
+                        }
+
+                        // Play cutting sound
+                        playInterfaceSound(firewoodUrl);
+
+                        // Remove cut trunk from world
+                        const body = currentLookedAtBody;
+                        const index = collectibleBoxes.findIndex(b => b.body === body);
+                        if (index !== -1) {
+                            scene.remove(collectibleBoxes[index].mesh);
+                            collectibleBoxes.splice(index, 1);
+                        }
+                        world.removeBody(body);
+                        raycastTargetsNeedUpdate = true;
+
+                        // Spawn 2 firewood
+                        const pos = body.position.clone();
+                        for (let i = 0; i < 2; i++) {
+                            const offset = (i === 0 ? -0.2 : 0.2);
+                            const spawnPos = new CANNON.Vec3(pos.x, pos.y + 0.3, pos.z + offset);
+                            const velocity = new CANNON.Vec3((Math.random() - 0.5), 2, offset * 3);
+                            createFirewood(spawnPos, velocity);
+                        }
+                        showNotification("Lenha criada!");
                     }
                 }
 
@@ -8053,7 +8050,7 @@
                     const hitPoint = intersects[i].point;
 
                     // Verifica se é o terreno
-                    const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
+                    const isIslandMesh = islandMeshes.some(m => m && m.mesh === obj);
                     if (isIslandMesh) {
                         // Verifica se há capim perto para priorizar
                         let nearCapim = null;
@@ -10684,18 +10681,16 @@
                             let identified = false;
                             if (body.userData.type === treeTrunkItemName || body.userData.type === cutTrunkItemName) {
                                 // Check for obstructions above
-                                const rayStart = new CANNON.Vec3(body.position.x, body.position.y, body.position.z);
-                                const rayEnd = new CANNON.Vec3(body.position.x, body.position.y + 0.6, body.position.z);
+                                const isFullTrunk = body.userData.type === treeTrunkItemName;
+                                const topOffset = isFullTrunk ? 0.55 : 0.3;
+                                const rayStart = new CANNON.Vec3(body.position.x, body.position.y + topOffset, body.position.z);
+                                const rayEnd = new CANNON.Vec3(body.position.x, body.position.y + topOffset + 0.5, body.position.z);
                                 const rayResult = new CANNON.RaycastResult();
-                                world.raycastClosest(rayStart, rayEnd, { collisionFilterMask: ~2 }, rayResult);
+                                world.raycastClosest(rayStart, rayEnd, {}, rayResult);
 
-                                if (!rayResult.hasHit || rayResult.body === playerBody) {
-                                    const hasAxe = findItemInInventory(axeItemName) || findItemInInventory(ironAxeItemName);
-                                    if (hasAxe) {
-                                        interactionHintText = "(L) Opções de Corte / (F) Agarrar / (G) Guardar";
-                                    } else {
-                                        interactionHintText = "Você precisa de um machado\n(F) Agarrar / (G) Guardar";
-                                    }
+                                if (!rayResult.hasHit || rayResult.body === playerBody || rayResult.body === body) {
+                                    const action = "Cortar lenha";
+                                    interactionHintText = `(L) ${action} / (F) Agarrar / (G) Guardar`;
                                 } else {
                                     interactionHintText = "(F) Agarrar / (G) Guardar";
                                 }
@@ -12075,9 +12070,6 @@
             chestBackpackSlotsContainer = document.getElementById('chestBackpackSlotsContainer');
             closeChestButton.addEventListener('click', closeChest);
 
-            document.getElementById('closeCuttingButton').addEventListener('click', closeCuttingMenu);
-            document.getElementById('cutTrunkButton').addEventListener('click', handleCutTrunk);
-            document.getElementById('createFirewoodButton').addEventListener('click', handleCreateFirewood);
 
             document.getElementById('closeFuelButton').addEventListener('click', closeFuelMenu);
             document.getElementById('addFuelButton').addEventListener('click', addFuel);
@@ -12271,6 +12263,8 @@
 
             window.isWorldReady = true;
             isWorldReady = true;
+            window.findItemInInventory = findItemInInventory;
+            window.createFirewood = createFirewood;
             window.grassStepUrl = grassStepUrl;
             window.diggingUrl = diggingUrl;
             window.miningUrl = miningUrl;
@@ -12393,12 +12387,9 @@
             window.useTextures = useTextures;
             window.firewoodItemName = firewoodItemName;
             window.cutTrunkItemName = cutTrunkItemName;
+            window.createCutTrunk = createCutTrunk;
             window.treeTrunkItemName = treeTrunkItemName;
             window.axeItemName = axeItemName;
-            window.openCuttingMenu = openCuttingMenu;
-            window.closeCuttingMenu = closeCuttingMenu;
-            window.handleCutTrunk = handleCutTrunk;
-            window.handleCreateFirewood = handleCreateFirewood;
             window.createBox = createBox;
             window.createBasket = createBasket;
             window.closingMounds = closingMounds;
