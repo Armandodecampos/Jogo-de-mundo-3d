@@ -1079,6 +1079,20 @@
     </div>
 
     <!-- Modal de Combustível -->
+    <!-- Modal de Corte de Lenha -->
+    <div id="cuttingModal" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-800/95 border-2 border-orange-600 rounded-lg p-6 z-[9800] w-80 flex flex-col text-white shadow-2xl">
+        <button id="closeCuttingButton" class="close-button">X</button>
+        <h2 class="text-2xl font-bold mb-6 text-center text-orange-500">Corte de Madeira</h2>
+        <div class="flex flex-col gap-4">
+            <button id="cutTrunkButton" class="bg-green-600 hover:bg-green-500 py-3 rounded-md font-bold transition-colors">
+                Cortar tronco
+            </button>
+            <button id="createFirewoodButton" class="bg-blue-600 hover:bg-blue-500 py-3 rounded-md font-bold transition-colors">
+                Criar lenha
+            </button>
+        </div>
+    </div>
+
     <div id="fuelModal" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-stone-800/95 border-2 border-orange-600 rounded-lg p-6 z-[9800] w-80 flex flex-col text-white shadow-2xl">
         <button id="closeFuelButton" class="close-button">X</button>
         <h2 id="fuelTitle" class="text-2xl font-bold mb-4 text-center text-orange-500">Tocha</h2>
@@ -1643,6 +1657,113 @@
             currentFuelBody = null;
             gamePaused = false;
             document.getElementById('fuelModal').classList.add('hidden');
+            if (renderer && renderer.domElement) {
+                renderer.domElement.requestPointerLock().catch(() => {});
+            }
+        }
+
+        function handleCutTrunk() {
+            const hasAxe = findItemInInventory(axeItemName) || findItemInInventory(ironAxeItemName);
+            const trunkData = findItemInInventory(treeTrunkItemName);
+
+            if (!hasAxe) {
+                showNotification("Você precisa de um machado!");
+                return;
+            }
+
+            if (!trunkData) {
+                showNotification("Você precisa de um tronco!");
+                return;
+            }
+
+            // Consume trunk
+            trunkData.container[trunkData.index].quantity--;
+            if (trunkData.container[trunkData.index].quantity <= 0) trunkData.container[trunkData.index] = null;
+            updateUI();
+
+            // Play sound
+            playInterfaceSound(firewoodUrl);
+
+            // Spawn 2 cut trunks
+            const pos = playerBody.position.clone();
+            const forward = new THREE.Vector3();
+            camera.getWorldDirection(forward);
+            pos.x += forward.x * 1.5;
+            pos.z += forward.z * 1.5;
+            pos.y += 0.5;
+
+            for (let i = 0; i < 2; i++) {
+                const offset = (i === 0 ? -0.3 : 0.3);
+                const spawnPos = new CANNON.Vec3(pos.x + offset, pos.y, pos.z);
+                const velocity = new CANNON.Vec3(offset * 2, 2, (Math.random() - 0.5));
+                createCutTrunk(spawnPos, velocity);
+            }
+            showNotification("Tronco cortado!");
+            closeCuttingMenu();
+        }
+
+        function handleCreateFirewood() {
+            const hasAxe = findItemInInventory(axeItemName) || findItemInInventory(ironAxeItemName);
+            const cutTrunkData = findItemInInventory(cutTrunkItemName);
+
+            if (!hasAxe) {
+                showNotification("Você precisa de um machado!");
+                return;
+            }
+
+            if (!cutTrunkData) {
+                showNotification("Você precisa de um tronco cortado!");
+                return;
+            }
+
+            // Consume cut trunk
+            cutTrunkData.container[cutTrunkData.index].quantity--;
+            if (cutTrunkData.container[cutTrunkData.index].quantity <= 0) cutTrunkData.container[cutTrunkData.index] = null;
+            updateUI();
+
+            // Play sound
+            playInterfaceSound(firewoodUrl);
+
+            // Spawn 2 firewood
+            const pos = playerBody.position.clone();
+            const forward = new THREE.Vector3();
+            camera.getWorldDirection(forward);
+            pos.x += forward.x * 1.5;
+            pos.z += forward.z * 1.5;
+            pos.y += 0.5;
+
+            for (let i = 0; i < 2; i++) {
+                const offset = (i === 0 ? -0.2 : 0.2);
+                const spawnPos = new CANNON.Vec3(pos.x, pos.y, pos.z + offset);
+                const velocity = new CANNON.Vec3((Math.random() - 0.5), 2, offset * 3);
+                createFirewood(spawnPos, velocity);
+            }
+            showNotification("Lenha criada!");
+            closeCuttingMenu();
+        }
+
+        function openCuttingMenu() {
+            gamePaused = true;
+            document.getElementById('cuttingModal').classList.remove('hidden');
+            document.getElementById('crosshair').style.display = 'none';
+            document.body.style.cursor = 'default';
+            if (renderer && renderer.domElement) {
+                renderer.domElement.style.cursor = 'default';
+            }
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) hudButtons.style.display = 'none';
+            if (ghostBlockMesh) ghostBlockMesh.visible = false;
+
+            pointerLockExitForBackpack = true;
+            document.exitPointerLock();
+        }
+
+        function closeCuttingMenu() {
+            gamePaused = false;
+            document.getElementById('cuttingModal').classList.add('hidden');
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) hudButtons.style.display = 'flex';
+            pointerLockExitForBackpack = false;
             if (renderer && renderer.domElement) {
                 renderer.domElement.requestPointerLock().catch(() => {});
             }
@@ -3425,6 +3546,8 @@
                         return;
                     }
                 }
+
+
                 item.quantity += selectedItem.item.quantity;
                 selectedItem = null;
             }
@@ -7483,6 +7606,14 @@
 
             // Configura os Listeners de Eventos para teclado e mouse
             window.addEventListener('keydown', (event) => {
+                // Cutting modal handling
+                if (!document.getElementById('cuttingModal').classList.contains('hidden')) {
+                    if (event.key === 'Escape') {
+                        closeCuttingMenu();
+                        return;
+                    }
+                }
+
                 // Fuel modal handling
                 if (!document.getElementById('fuelModal').classList.contains('hidden')) {
                     if (event.key === 'Escape') {
@@ -7499,7 +7630,9 @@
                 if (event.key === 'Escape') {
                     event.preventDefault(); // IMPEDE O COMPORTAMENTO PADRÃO DO NAVEGADOR (sair do pointer lock)
 
-                    if (document.getElementById('settingsScreen').classList.contains('active')) {
+                    if (!document.getElementById('cuttingModal').classList.contains('hidden')) {
+                        closeCuttingMenu();
+                    } else if (document.getElementById('settingsScreen').classList.contains('active')) {
                         hideSettingsScreen();
                     } else if (craftingModal.classList.contains('active')) {
                         closeCraftingMenu();
@@ -7534,6 +7667,15 @@
                         closeBackpack();
                     } else {
                         openBackpack();
+                    }
+                }
+
+                // Woodcutting with 'L' key
+                if (event.key.toLowerCase() === 'l') {
+                    if (!document.getElementById('cuttingModal').classList.contains('hidden')) {
+                        closeCuttingMenu();
+                    } else {
+                        openCuttingMenu();
                     }
                 }
 
@@ -7633,82 +7775,8 @@
 
                     if (isHoldingSeed && ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
                         placeBlock(heldItem, selectedSlotIndex);
-                    } else if (currentLookedAtBody && currentLookedAtBody.userData.type === treeTrunkItemName) {
-                        // Check for obstructions above the trunk
-                        const body = currentLookedAtBody;
-                        const rayStart = new CANNON.Vec3(body.position.x, body.position.y + 0.55, body.position.z);
-                        const rayEnd = new CANNON.Vec3(body.position.x, body.position.y + 1.5, body.position.z);
-                        const rayResult = new CANNON.RaycastResult();
-                        world.raycastClosest(rayStart, rayEnd, {}, rayResult);
-
-                        if (rayResult.hasHit && rayResult.body !== playerBody && rayResult.body !== body) return;
-
-                        const hasAxe = findItemInInventory(axeItemName) || findItemInInventory(ironAxeItemName);
-                        if (!hasAxe) {
-                            showNotification("Você precisa de um machado");
-                            return;
-                        }
-
-                        const trunkData = findItemInInventory(treeTrunkItemName);
-                        if (!trunkData) {
-                            showNotification("Você precisa de um tronco de árvore na bolsa");
-                            return;
-                        }
-
-                        // Consume 1 trunk from inventory
-                        trunkData.container[trunkData.index].quantity--;
-                        if (trunkData.container[trunkData.index].quantity <= 0) trunkData.container[trunkData.index] = null;
-                        updateUI();
-
-                        // Play cutting sound
-                        playInterfaceSound(firewoodUrl);
-
-                        // Spawn 2 cut trunks (intermediate stage)
-                        const pos = body.position.clone();
-                        for (let i = 0; i < 2; i++) {
-                            const offset = (i === 0 ? -0.4 : 0.4);
-                            const spawnPos = new CANNON.Vec3(pos.x + offset, pos.y + 0.5, pos.z);
-                            const velocity = new CANNON.Vec3(offset * 3, 2, (Math.random() - 0.5));
-                            createCutTrunk(spawnPos, velocity);
-                        }
-                        showNotification("Tronco cortado!");
-                    } else if (currentLookedAtBody && currentLookedAtBody.userData.type === cutTrunkItemName) {
-                        // Check for obstructions above the cut trunk
-                        const body = currentLookedAtBody;
-                        const rayStart = new CANNON.Vec3(body.position.x, body.position.y + 0.3, body.position.z);
-                        const rayEnd = new CANNON.Vec3(body.position.x, body.position.y + 1.0, body.position.z);
-                        const rayResult = new CANNON.RaycastResult();
-                        world.raycastClosest(rayStart, rayEnd, {}, rayResult);
-
-                        if (rayResult.hasHit && rayResult.body !== playerBody && rayResult.body !== body) return;
-
-                        const hasAxe = findItemInInventory(axeItemName) || findItemInInventory(ironAxeItemName);
-                        if (!hasAxe) {
-                            showNotification("Você precisa de um machado");
-                            return;
-                        }
-
-                        // Play cutting sound
-                        playInterfaceSound(firewoodUrl);
-
-                        // Remove cut trunk from world
-                        const index = collectibleBoxes.findIndex(b => b.body === body);
-                        if (index !== -1) {
-                            scene.remove(collectibleBoxes[index].mesh);
-                            collectibleBoxes.splice(index, 1);
-                        }
-                        world.removeBody(body);
-                        raycastTargetsNeedUpdate = true;
-
-                        // Spawn 2 firewood
-                        const pos = body.position.clone();
-                        for (let i = 0; i < 2; i++) {
-                            const offset = (i === 0 ? -0.2 : 0.2);
-                            const spawnPos = new CANNON.Vec3(pos.x, pos.y + 0.3, pos.z + offset);
-                            const velocity = new CANNON.Vec3((Math.random() - 0.5), 2, offset * 3);
-                            createFirewood(spawnPos, velocity);
-                        }
-                        showNotification("Lenha criada!");
+                    } else if (currentLookedAtBody && (currentLookedAtBody.userData.type === treeTrunkItemName || currentLookedAtBody.userData.type === cutTrunkItemName)) {
+                        openCuttingMenu();
                     }
                 }
 
@@ -10688,8 +10756,7 @@
                                 world.raycastClosest(rayStart, rayEnd, {}, rayResult);
 
                                 if (!rayResult.hasHit || rayResult.body === playerBody || rayResult.body === body) {
-                                    const action = "Cortar lenha";
-                                    interactionHintText = `(L) ${action} / (F) Agarrar / (G) Guardar`;
+                                    interactionHintText = "(L) Opções de corte / (F) Agarrar / (G) Guardar";
                                 } else {
                                     interactionHintText = "(F) Agarrar / (G) Guardar";
                                 }
@@ -12070,6 +12137,9 @@
             chestBackpackSlotsContainer = document.getElementById('chestBackpackSlotsContainer');
             closeChestButton.addEventListener('click', closeChest);
 
+            document.getElementById('closeCuttingButton').addEventListener('click', closeCuttingMenu);
+            document.getElementById('cutTrunkButton').addEventListener('click', handleCutTrunk);
+            document.getElementById('createFirewoodButton').addEventListener('click', handleCreateFirewood);
 
             document.getElementById('closeFuelButton').addEventListener('click', closeFuelMenu);
             document.getElementById('addFuelButton').addEventListener('click', addFuel);
@@ -12276,6 +12346,10 @@
             window.takeToBelt = takeToBelt;
             window.openFuelMenu = openFuelMenu;
             window.closeFuelMenu = closeFuelMenu;
+            window.openCuttingMenu = openCuttingMenu;
+            window.closeCuttingMenu = closeCuttingMenu;
+            window.handleCutTrunk = handleCutTrunk;
+            window.handleCreateFirewood = handleCreateFirewood;
             Object.defineProperty(window, 'isSleeping', { get: () => isSleeping, set: (v) => { isSleeping = v; } });
             Object.defineProperty(window, 'sleepTimer', { get: () => sleepTimer, set: (v) => { sleepTimer = v; } });
             Object.defineProperty(window, 'playerHealth', { get: () => playerHealth, set: (v) => { playerHealth = v; } });
