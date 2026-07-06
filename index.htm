@@ -6491,7 +6491,7 @@
             woodenBlockMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
             stoneFloorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x888888 });
             treeSaplingMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 });
-            treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+            treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513, side: THREE.DoubleSide });
             doorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
             windowMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
             windowGlassMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x87CEEB, transparent: true, opacity: 0.5 });
@@ -7670,15 +7670,6 @@
                     }
                 }
 
-                // Woodcutting with 'L' key
-                if (event.key.toLowerCase() === 'l') {
-                    if (!document.getElementById('cuttingModal').classList.contains('hidden')) {
-                        closeCuttingMenu();
-                    } else {
-                        openCuttingMenu();
-                    }
-                }
-
                 // Sleep with 'M' key
                 if (event.key.toLowerCase() === 'm') {
                     if (event.repeat) return;
@@ -7775,8 +7766,6 @@
 
                     if (isHoldingSeed && ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
                         placeBlock(heldItem, selectedSlotIndex);
-                    } else if (currentLookedAtBody && (currentLookedAtBody.userData.type === treeTrunkItemName || currentLookedAtBody.userData.type === cutTrunkItemName)) {
-                        openCuttingMenu();
                     }
                 }
 
@@ -8403,6 +8392,26 @@
                 destroyTargetPosition = null;
             }
 
+            function isTrunkObstructed(body) {
+                const start = body.position;
+                // O tronco tem altura 1.0, então o topo está em body.position.y + 0.5
+                // Iniciamos o raio um pouco acima do topo
+                const rayStart = new CANNON.Vec3(start.x, start.y + 0.55, start.z);
+                const rayEnd = new CANNON.Vec3(start.x, start.y + 2.0, start.z);
+
+                const result = new CANNON.RaycastResult();
+                const rayOptions = {
+                    collisionFilterMask: ~0,
+                    collisionFilterGroup: ~0,
+                    skipBackfaces: true
+                };
+
+                world.raycastClosest(rayStart, rayEnd, rayOptions, result);
+
+                // Se atingiu algo que não seja o próprio corpo (embora comece fora dele)
+                return result.hasHit && result.body !== body;
+            }
+
             function interact() {
                 if (!isWorldReady || gamePaused || !document.pointerLockElement) return false;
 
@@ -8489,6 +8498,15 @@
                             isSleeping = true;
                             sleepTimer = 0;
                             playerBody.userData.sleepTarget = body.userData.type;
+                            return true;
+                        }
+
+                        if (body.userData.type === treeTrunkItemName || body.userData.type === cutTrunkItemName) {
+                            if (isTrunkObstructed(body)) {
+                                showNotification("Remova os objetos de cima do tronco para cortar!");
+                                return true;
+                            }
+                            openCuttingMenu();
                             return true;
                         }
                     }
@@ -10747,16 +10765,8 @@
                             currentLookedAtBody = body; // Salva para uso em rotateLookedAtObject
                             let identified = false;
                             if (body.userData.type === treeTrunkItemName || body.userData.type === cutTrunkItemName) {
-                                // Check for obstructions above
-                                const isFullTrunk = body.userData.type === treeTrunkItemName;
-                                const topOffset = isFullTrunk ? 0.55 : 0.3;
-                                const rayStart = new CANNON.Vec3(body.position.x, body.position.y + topOffset, body.position.z);
-                                const rayEnd = new CANNON.Vec3(body.position.x, body.position.y + topOffset + 0.5, body.position.z);
-                                const rayResult = new CANNON.RaycastResult();
-                                world.raycastClosest(rayStart, rayEnd, {}, rayResult);
-
-                                if (!rayResult.hasHit || rayResult.body === playerBody || rayResult.body === body) {
-                                    interactionHintText = "(L) Opções de corte / (F) Agarrar / (G) Guardar";
+                                if (!isTrunkObstructed(body)) {
+                                    interactionHintText = "(E) Opções de corte / (F) Agarrar / (G) Guardar";
                                 } else {
                                     interactionHintText = "(F) Agarrar / (G) Guardar";
                                 }
