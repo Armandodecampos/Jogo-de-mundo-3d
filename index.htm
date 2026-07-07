@@ -8421,10 +8421,10 @@
                     }
                 }
 
-                // 2. Verificação via Raycast descendente (para detectar objetos flutuando ou sem contato direto ainda)
+                // 2. Verificação via Raycast descendente (para detectar objetos flutuando ou sobrepostos estaticamente)
                 body.updateAABB();
                 const topY = body.aabb.upperBound.y;
-                const r = 0.15;
+                const r = 0.1; // Testamos um pouco mais para o centro para evitar erros de borda
                 const startX = body.position.x;
                 const startZ = body.position.z;
 
@@ -8439,16 +8439,16 @@
 
                 const rayOptions = { collisionFilterMask: ~0, collisionFilterGroup: ~0, skipBackfaces: true };
                 for (const p of points) {
-                    const rayStart = new CANNON.Vec3(p.x, topY + 0.5, p.z);
-                    const rayEnd = new CANNON.Vec3(p.x, topY - 0.05, p.z);
+                    // Iniciamos o raio 2 metros acima para garantir que pegamos objetos empilhados (tronco tem 1m)
+                    const rayStart = new CANNON.Vec3(p.x, topY + 2.0, p.z);
+                    // Terminamos o raio logo acima da superfície (5mm)
+                    const rayEnd = new CANNON.Vec3(p.x, topY + 0.005, p.z);
                     const result = new CANNON.RaycastResult();
                     world.raycastClosest(rayStart, rayEnd, rayOptions, result);
 
                     if (result.hasHit && result.body !== body && result.body !== playerBody && result.body.collisionResponse) {
-                        // Se o ponto de impacto está acima ou muito perto do topo do tronco
-                        if (result.hitPointWorld.y > topY - 0.02) {
-                            return true;
-                        }
+                        // Qualquer colisão encontrada entre o topo e o raio superior é uma obstrução
+                        return true;
                     }
                 }
 
