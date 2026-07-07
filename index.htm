@@ -5556,8 +5556,13 @@
                 width = trunkRadius * 2; // Diâmetro para largura
                 height = trunkHeight;
                 depth = trunkRadius * 2; // Diâmetro para profundidade
-                blockShape = new CANNON.Cylinder(trunkRadius, trunkRadius, trunkHeight, trunkSegments);
-                blockBody.addShape(blockShape);
+                // CANNON.Cylinder is created along the Z-axis by default, but in Cannon-es it might be different or require a quaternion.
+                // However, often it's easier to use a box or rotate the shape.
+                // In Cannon-es, Cylinder(topRadius, bottomRadius, height, numSegments) is along the local Y axis.
+                // For more reliable obstruction detection and simpler math, we use a Box shape for the trunk.
+                const boxShape = new CANNON.Box(new CANNON.Vec3(trunkRadius, trunkHeight / 2, trunkRadius));
+                blockBody.addShape(boxShape);
+
                 mesh = new THREE.Mesh(new THREE.CylinderGeometry(trunkRadius, trunkRadius, trunkHeight, trunkSegments), treeTrunkMaterialMesh);
                 initialMass = initialTrunkMass;
                 durability = treeTrunkDurability;
@@ -8393,23 +8398,61 @@
             }
 
             function isTrunkObstructed(body) {
-                const start = body.position;
-                // O tronco tem altura 1.0, então o topo está em body.position.y + 0.5
-                // Iniciamos o raio um pouco acima do topo
-                const rayStart = new CANNON.Vec3(start.x, start.y + 0.55, start.z);
-                const rayEnd = new CANNON.Vec3(start.x, start.y + 2.0, start.z);
+                // 1. Verificar contatos físicos (mais confiável para objetos apoiados)
+                for (let i = 0; i < world.contacts.length; i++) {
+                    const c = world.contacts[i];
+                    if (c.bi === body || c.bj === body) {
+                        const other = (c.bi === body) ? c.bj : c.bi;
+                        // Ignorar o corpo do jogador e sensores/objetos sem colisão
+                        if (other === playerBody || !other.collisionResponse) continue;
 
-                const result = new CANNON.RaycastResult();
-                const rayOptions = {
-                    collisionFilterMask: ~0,
-                    collisionFilterGroup: ~0,
-                    skipBackfaces: true
-                };
+                        // Verificar a normal do contato
+                        let normalY;
+                        if (c.bi === body) {
+                            normalY = c.ni.y; // Aponta para fora do bi (tronco)
+                        } else {
+                            normalY = -c.ni.y; // Aponta para fora do bj (tronco)
+                        }
 
-                world.raycastClosest(rayStart, rayEnd, rayOptions, result);
+                        // Se a normal aponta significativamente para cima, algo está apoiado no topo
+                        if (normalY > 0.7) {
+                            return true;
+                        }
+                    }
+                }
 
-                // Se atingiu algo que não seja o próprio corpo (embora comece fora dele)
-                return result.hasHit && result.body !== body;
+                // 2. Verificação via Raycast descendente (para detectar objetos flutuando ou sem contato direto ainda)
+                body.updateAABB();
+                const topY = body.aabb.upperBound.y;
+                const r = 0.15;
+                const startX = body.position.x;
+                const startZ = body.position.z;
+
+                // Testamos 5 pontos no topo
+                const points = [
+                    {x: startX, z: startZ},
+                    {x: startX + r, z: startZ},
+                    {x: startX - r, z: startZ},
+                    {x: startX, z: startZ + r},
+                    {x: startX, z: startZ - r}
+                ];
+
+                const rayOptions = { collisionFilterMask: ~0, collisionFilterGroup: ~0, skipBackfaces: true };
+                for (const p of points) {
+                    const rayStart = new CANNON.Vec3(p.x, topY + 0.5, p.z);
+                    const rayEnd = new CANNON.Vec3(p.x, topY - 0.05, p.z);
+                    const result = new CANNON.RaycastResult();
+                    world.raycastClosest(rayStart, rayEnd, rayOptions, result);
+
+                    if (result.hasHit && result.body !== body && result.body !== playerBody && result.body.collisionResponse) {
+                        // Se o ponto de impacto está acima ou muito perto do topo do tronco
+                        if (result.hitPointWorld.y > topY - 0.02) {
+                            return true;
+                        }
+                    }
+                }
+
+                return false;
             }
 
             function interact() {
@@ -12343,6 +12386,7 @@
 
             window.isWorldReady = true;
             isWorldReady = true;
+            window.isTrunkObstructed = isTrunkObstructed;
             window.findItemInInventory = findItemInInventory;
             window.createFirewood = createFirewood;
             window.grassStepUrl = grassStepUrl;
