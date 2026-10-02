@@ -9592,6 +9592,21 @@
                 // Se estiver na mira, continua o progresso
                 destroyProgress += delta;
 
+                // Mantém o timer de inatividade zerado e cancela a cura do terreno se houver interação ativa
+                if (currentMound) {
+                    currentMound.lastDugAt = world.time;
+                }
+                const activeMound = destroyTargetDigInfo ? destroyTargetDigInfo.mound : null;
+                if (activeMound) {
+                    activeMound.lastDugAt = world.time;
+                    if (activeMound.closingStartTime !== undefined) {
+                        activeMound.closingStartTime = undefined;
+                        const cIdx = closingMounds.indexOf(activeMound);
+                        if (cIdx !== -1) closingMounds.splice(cIdx, 1);
+                        if (!visualMounds.includes(activeMound)) visualMounds.push(activeMound);
+                    }
+                }
+
                 // Efeitos de partículas unificados
                 if (destroyTargetDigInfo && Math.random() < 0.5) {
                     createSmokeEffect(destroyTargetDigInfo.mound.position, destroyTargetColor);

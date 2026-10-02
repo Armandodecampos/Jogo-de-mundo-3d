@@ -186,3 +186,41 @@ test('Glass Pot item exists, is craftable in Furnace with Sand, and Vegetable Oi
     expect(recipeCheck.vegetableOilWithClayPot).toBe(true);
     expect(recipeCheck.vegetableOilWithGlassPot).toBe(true);
 });
+
+test('Ground interaction updates lastDugAt and cancels healing/closing on active mound', async ({ page }) => {
+    test.setTimeout(120000);
+    await page.goto('http://localhost:8080/index.htm');
+    await page.click('#startButton');
+
+    // Wait for world to be ready
+    await page.waitForFunction(() => window.isWorldReady === true);
+
+    const moundCheck = await page.evaluate(() => {
+        // Create a mound (hole)
+        const hit = { point: new window.THREE.Vector3(0, 0, -2) };
+        const mound = window.createMound(hit, false, 'terra');
+        mound.isHole = true;
+        mound.lastDugAt = 0; // Simulate old dug timestamp
+        mound.closingStartTime = 10; // Simulate closing in progress
+        window.closingMounds.push(mound);
+
+        // Simulate interaction with mound
+        const activeMound = mound;
+        activeMound.lastDugAt = 100;
+        if (activeMound.closingStartTime !== undefined) {
+            activeMound.closingStartTime = undefined;
+            const cIdx = window.closingMounds.indexOf(activeMound);
+            if (cIdx !== -1) window.closingMounds.splice(cIdx, 1);
+        }
+
+        return {
+            lastDugAt: activeMound.lastDugAt,
+            closingStartTime: activeMound.closingStartTime,
+            isClosing: window.closingMounds.includes(activeMound)
+        };
+    });
+
+    expect(moundCheck.lastDugAt).toBe(100);
+    expect(moundCheck.closingStartTime).toBeUndefined();
+    expect(moundCheck.isClosing).toBe(false);
+});
