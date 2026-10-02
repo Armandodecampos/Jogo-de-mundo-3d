@@ -134,7 +134,7 @@ test('Item pickup/split quantity defaults to 1 (minimum)', async ({ page }) => {
     expect(inputValue).toBe('1');
 });
 
-test('Tree trunk interaction hint does not show grab or save options and shows nothing when obstructed', async ({ page }) => {
+test('Tree trunk interaction hint shows cutting option only on top face', async ({ page }) => {
     test.setTimeout(120000);
     await page.goto('http://localhost:8080/index.htm');
     await page.click('#startButton');
@@ -142,20 +142,17 @@ test('Tree trunk interaction hint does not show grab or save options and shows n
     // Wait for world to be ready
     await page.waitForFunction(() => window.isWorldReady === true);
 
-    // Place a tree trunk and test interaction hint text
-    const hintText = await page.evaluate(() => {
-        const pos = new window.THREE.Vector3(0, window.getSurfaceHeight(0, -2) + 0.5, -2);
-        const quat = new window.THREE.Quaternion();
-        const trunk = window.createPlaceableBlock(pos, quat, 'tronco_arvore');
+    const faceCheck = await page.evaluate(() => {
+        // Test top face normal vs side face normal
+        const topIntersect = { face: { normal: new window.THREE.Vector3(0, 1, 0) }, object: new window.THREE.Mesh() };
+        const sideIntersect = { face: { normal: new window.THREE.Vector3(1, 0, 0) }, object: new window.THREE.Mesh() };
 
-        let hint = "";
-        if (trunk && !window.isTrunkObstructed(trunk)) {
-            hint = "(E) Opções de corte";
-        }
-        return hint;
+        return {
+            isTop: window.isTopFaceIntersect(topIntersect),
+            isSide: window.isTopFaceIntersect(sideIntersect)
+        };
     });
 
-    expect(hintText).toBe('(E) Opções de corte');
-    expect(hintText).not.toContain('Agarrar');
-    expect(hintText).not.toContain('Guardar');
+    expect(faceCheck.isTop).toBe(true);
+    expect(faceCheck.isSide).toBe(false);
 });

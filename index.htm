@@ -8403,6 +8403,17 @@
                 destroyTargetPosition = null;
             }
 
+            function isTopFaceIntersect(intersect) {
+                if (!intersect || !intersect.face) return false;
+                const worldNormal = intersect.face.normal.clone();
+                if (intersect.object) {
+                    const worldQuat = new THREE.Quaternion();
+                    intersect.object.getWorldQuaternion(worldQuat);
+                    worldNormal.applyQuaternion(worldQuat);
+                }
+                return worldNormal.y > 0.7;
+            }
+
             function isTrunkObstructed(body) {
                 // 1. Verificar contatos físicos (mais confiável para objetos apoiados)
                 for (let i = 0; i < world.contacts.length; i++) {
@@ -8551,6 +8562,9 @@
                         }
 
                         if (body.userData.type === treeTrunkItemName || body.userData.type === cutTrunkItemName) {
+                            if (!isTopFaceIntersect(intersect)) {
+                                continue;
+                            }
                             if (isTrunkObstructed(body)) {
                                 showNotification("Remova os objetos de cima do tronco para cortar!");
                                 return true;
@@ -10814,7 +10828,7 @@
                             currentLookedAtBody = body; // Salva para uso em rotateLookedAtObject
                             let identified = false;
                             if (body.userData.type === treeTrunkItemName || body.userData.type === cutTrunkItemName) {
-                                if (!isTrunkObstructed(body)) {
+                                if (isTopFaceIntersect(intersect) && !isTrunkObstructed(body)) {
                                     interactionHintText = "(E) Opções de corte";
                                 } else {
                                     interactionHintText = "";
@@ -12396,6 +12410,7 @@
 
             window.isWorldReady = true;
             isWorldReady = true;
+            window.isTopFaceIntersect = isTopFaceIntersect;
             window.isTrunkObstructed = isTrunkObstructed;
             window.findItemInInventory = findItemInInventory;
             window.createFirewood = createFirewood;
