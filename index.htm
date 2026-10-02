@@ -1279,6 +1279,8 @@
         let destroyTargetCapimInfo = null; // NOVO: Para destruição de capim sem física
         let destroyTargetColor = 0xA0522D; // NOVO: Cor do alvo sendo destruído
         let destroyTargetPosition = null;
+        let destroyTargetMaterialType = null;
+        let lastWoodCutSoundTime = 0;
         let destructionComplete = false; // NOVO: Flag para gerenciar o estado de destruição
         let currentMound = null; // NOVO: Referência ao buraco que está sendo cavado
         const moundGrowthStages = [0.25, 0.5, 0.75, 1.0]; // NOVO: Estágios de crescimento
@@ -1470,7 +1472,50 @@
         }
 
         function playHandWoodImpactSound() {
-            playSyntheticObjectImpactSound(5.0);
+            if (!gameAudioContext) return;
+            const now = gameAudioContext.currentTime;
+
+            // Low frequency punchy bass thud (220Hz -> 45Hz)
+            const osc = gameAudioContext.createOscillator();
+            const oscGain = gameAudioContext.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(220, now);
+            osc.frequency.exponentialRampToValueAtTime(45, now + 0.12);
+            oscGain.gain.setValueAtTime(0.8, now);
+            oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.12);
+            osc.connect(oscGain);
+            oscGain.connect(gameAudioContext.destination);
+            osc.start(now);
+            osc.stop(now + 0.12);
+
+            // Wood body resonance knock
+            const woodOsc = gameAudioContext.createOscillator();
+            const woodGain = gameAudioContext.createGain();
+            woodOsc.type = 'sine';
+            woodOsc.frequency.setValueAtTime(160, now);
+            woodOsc.frequency.exponentialRampToValueAtTime(70, now + 0.15);
+            woodGain.gain.setValueAtTime(0.6, now);
+            woodGain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+            woodOsc.connect(woodGain);
+            woodGain.connect(gameAudioContext.destination);
+            woodOsc.start(now);
+            woodOsc.stop(now + 0.15);
+
+            // Solid wood impact crack
+            const noise = gameAudioContext.createBufferSource();
+            noise.buffer = getNoiseBuffer();
+            const filter = gameAudioContext.createBiquadFilter();
+            const noiseGain = gameAudioContext.createGain();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(1200, now);
+            filter.Q.setValueAtTime(2.0, now);
+            noiseGain.gain.setValueAtTime(0.6, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            noise.connect(filter);
+            filter.connect(noiseGain);
+            noiseGain.connect(gameAudioContext.destination);
+            noise.start(now);
+            noise.stop(now + 0.1);
         }
 
         function playToolWoodImpactSound() {
@@ -8372,6 +8417,8 @@
                     }
 
                     targetDestroyTime = baseDurability * multiplier;
+                    destroyTargetMaterialType = materialType;
+                    lastWoodCutSoundTime = Date.now();
 
                     // Reproduz o som de impacto ao clicar para cortar árvore ou tronco de madeira
                     if (materialType === 'wood') {
@@ -8424,6 +8471,8 @@
                 destroyTargetMountainInfo = null;
                 destroyTargetDigInfo = null; // Limpa a informação de escavação
                 destroyTargetCapimInfo = null;
+                destroyTargetMaterialType = null;
+                lastWoodCutSoundTime = 0;
                 destructionComplete = false;
                 destroyTargetPosition = null;
             }
@@ -9608,6 +9657,20 @@
                 }
                 // Se estiver na mira, continua o progresso
                 destroyProgress += delta;
+
+                // Reproduz sons constantes com intervalo enquanto o jogador segura o mouse para cortar madeira
+                if (destroyTargetMaterialType === 'wood') {
+                    const nowMs = Date.now();
+                    if (nowMs - lastWoodCutSoundTime >= 400) {
+                        lastWoodCutSoundTime = nowMs;
+                        const heldItem = beltItems[selectedSlotIndex];
+                        if (heldItem === null || heldItem.quantity <= 0) {
+                            playHandWoodImpactSound();
+                        } else {
+                            playToolWoodImpactSound();
+                        }
+                    }
+                }
 
                 // Mantém o timer de inatividade zerado e cancela a cura do terreno se houver interação ativa
                 if (currentMound) {
