@@ -133,3 +133,29 @@ test('Item pickup/split quantity defaults to 1 (minimum)', async ({ page }) => {
 
     expect(inputValue).toBe('1');
 });
+
+test('Tree trunk interaction hint does not show grab or save options', async ({ page }) => {
+    test.setTimeout(120000);
+    await page.goto('http://localhost:8080/index.htm');
+    await page.click('#startButton');
+
+    // Wait for world to be ready
+    await page.waitForFunction(() => window.isWorldReady === true);
+
+    // Place a tree trunk and test interaction hint text
+    const hintText = await page.evaluate(() => {
+        const pos = new window.THREE.Vector3(0, window.getSurfaceHeight(0, -2) + 0.5, -2);
+        const quat = new window.THREE.Quaternion();
+        const trunk = window.createPlaceableBlock(pos, quat, 'tronco_arvore');
+
+        let hint = "";
+        if (trunk && !window.isTrunkObstructed(trunk)) {
+            hint = "(E) Opções de corte";
+        }
+        return hint;
+    });
+
+    expect(hintText).toBe('(E) Opções de corte');
+    expect(hintText).not.toContain('Agarrar');
+    expect(hintText).not.toContain('Guardar');
+});
