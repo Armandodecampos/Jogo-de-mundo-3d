@@ -134,7 +134,7 @@ test('Item pickup/split quantity defaults to 1 (minimum)', async ({ page }) => {
     expect(inputValue).toBe('1');
 });
 
-test('Tree trunk interaction hint does not show grab or save options', async ({ page }) => {
+test('Tree trunk interaction hint does not show grab or save options and shows nothing when obstructed', async ({ page }) => {
     test.setTimeout(120000);
     await page.goto('http://localhost:8080/index.htm');
     await page.click('#startButton');
