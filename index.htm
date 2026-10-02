@@ -10631,6 +10631,8 @@
             // Agora percorre a lista master de mounds para garantir que todos curem, independente de distância
             for (let i = mounds.length - 1; i >= 0; i--) {
                 const mound = mounds[i];
+                // Não inicia a cura se o jogador estiver interagindo ativamente com o chão
+                if (isAttemptingToDestroy || isDestroying) continue;
                 // Cura apenas buracos reais abaixo do nível natural (isHole) após 30 segundos de inatividade
                 // Verifica se já não está fechando para não resetar o processo
                 if (mound !== currentMound && mound.isHole && (world.time - mound.lastDugAt > 30) && mound.closingStartTime === undefined) {
@@ -10644,6 +10646,15 @@
 
             for (let i = closingMounds.length - 1; i >= 0; i--) {
                 const mound = closingMounds[i];
+
+                // Se houver interação do jogador com o chão/terreno, cancela a cura e restaura o mound
+                if (isAttemptingToDestroy || isDestroying || mound === currentMound || (destroyTargetDigInfo && destroyTargetDigInfo.mound === mound)) {
+                    mound.closingStartTime = undefined;
+                    mound.lastDugAt = world.time;
+                    closingMounds.splice(i, 1);
+                    if (!visualMounds.includes(mound)) visualMounds.push(mound);
+                    continue;
+                }
 
                 // Inicializa o temporizador e a altura inicial de cura
                 if (mound.closingStartTime === undefined) {
