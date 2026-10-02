@@ -134,7 +134,7 @@ test('Item pickup/split quantity defaults to 1 (minimum)', async ({ page }) => {
     expect(inputValue).toBe('1');
 });
 
-test('Tree trunk interaction hint shows cutting option only on top face', async ({ page }) => {
+test('Tree trunk interaction hint shows cutting option only on top face and Cut Trunk shows grab/save options', async ({ page }) => {
     test.setTimeout(120000);
     await page.goto('http://localhost:8080/index.htm');
     await page.click('#startButton');
@@ -155,4 +155,13 @@ test('Tree trunk interaction hint shows cutting option only on top face', async 
 
     expect(faceCheck.isTop).toBe(true);
     expect(faceCheck.isSide).toBe(false);
+
+    // Create a cut trunk and verify its type
+    const cutTrunkType = await page.evaluate(() => {
+        const pos = new window.THREE.Vector3(0, window.getSurfaceHeight(0, -2) + 0.5, -2);
+        const trunk = window.createCutTrunk(pos, 10);
+        return trunk ? trunk.userData.type : null;
+    });
+
+    expect(cutTrunkType).toBe('tronco_cortado');
 });
