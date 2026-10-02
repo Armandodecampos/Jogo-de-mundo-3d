@@ -165,3 +165,24 @@ test('Tree trunk interaction hint shows cutting option only on top face and Cut 
 
     expect(cutTrunkType).toBe('tronco_cortado');
 });
+
+test('Glass Pot item exists, is craftable in Furnace with Sand, and Vegetable Oil supports Glass Pot in Pestle', async ({ page }) => {
+    test.setTimeout(120000);
+    await page.goto('http://localhost:8080/index.htm');
+    await page.click('#startButton');
+
+    // Wait for world to be ready
+    await page.waitForFunction(() => window.isWorldReady === true);
+
+    const recipeCheck = await page.evaluate(() => {
+        const glassPotInFurnace = window.recipes.furnace.some(r => r.result.name === 'pote_vidro' && r.ingredients.some(i => i.name === 'areia' && i.quantity === 1));
+        const vegetableOilWithClayPot = window.recipes.pestle.some(r => r.result.name === 'oleo_vegetal' && r.ingredients.some(i => i.name === 'pote_barro'));
+        const vegetableOilWithGlassPot = window.recipes.pestle.some(r => r.result.name === 'oleo_vegetal' && r.ingredients.some(i => i.name === 'pote_vidro'));
+
+        return { glassPotInFurnace, vegetableOilWithClayPot, vegetableOilWithGlassPot };
+    });
+
+    expect(recipeCheck.glassPotInFurnace).toBe(true);
+    expect(recipeCheck.vegetableOilWithClayPot).toBe(true);
+    expect(recipeCheck.vegetableOilWithGlassPot).toBe(true);
+});
