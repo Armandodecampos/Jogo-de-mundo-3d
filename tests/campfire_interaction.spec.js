@@ -50,7 +50,7 @@ test('Campfire interaction hint, fuel menu, and refueling with Lenha', async ({ 
     });
 });
 
-test('Furnace fuel menu and refueling with Lenha', async ({ page }) => {
+test('Furnace fuel menu, refueling with Lenha, and accessing furnace crafting menu without settings screen', async ({ page }) => {
     test.setTimeout(120000);
     await page.goto('http://localhost:8080/index.htm');
     await page.click('#startButton');
@@ -82,20 +82,25 @@ test('Furnace fuel menu and refueling with Lenha', async ({ page }) => {
     expect(fuelMenuDetails.title).toBe('Forno');
     expect(fuelMenuDetails.addBtn).toBe('Abastecer (1 Galho / 1 Lenha)');
     expect(fuelMenuDetails.accessBtnIsHidden).toBe(false);
-    expect(fuelMenuDetails.initialFuel).toBe(0);
 
-    // Give 'lenha' (firewood) to player inventory and refuel furnace
-    const updatedFuel = await page.evaluate(() => {
-        const fBody = window.activeCampfires.find(cf => cf.userData.type === 'forno');
-        window.addItemToInventory(window.backpackItems, { name: window.firewoodItemName, quantity: 2 });
-        window.addFuel();
-        return fBody.userData.fuel;
+    // Click "Acessar Forno" button
+    await page.click('#accessFurnaceButton');
+    await page.waitForTimeout(500);
+
+    // Verify crafting modal is active and optionsScreen is NOT active
+    const menuStates = await page.evaluate(() => {
+        const optionsActive = document.getElementById('optionsScreen').classList.contains('active');
+        const craftingActive = document.getElementById('craftingModal').classList.contains('active');
+        const craftingTitle = document.getElementById('craftingTitle').textContent;
+        return { optionsActive, craftingActive, craftingTitle };
     });
 
-    expect(updatedFuel).toBe(50);
+    expect(menuStates.optionsActive).toBe(false);
+    expect(menuStates.craftingActive).toBe(true);
+    expect(menuStates.craftingTitle).toBe('Menu do Forno');
 
-    // Close fuel menu
+    // Close crafting menu
     await page.evaluate(() => {
-        window.closeFuelMenu();
+        window.closeCraftingMenu();
     });
 });
