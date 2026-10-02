@@ -104,3 +104,32 @@ test('Furnace fuel menu, refueling with Lenha, and accessing furnace crafting me
         window.closeCraftingMenu();
     });
 });
+
+test('Item pickup/split quantity defaults to 1 (minimum)', async ({ page }) => {
+    test.setTimeout(120000);
+    await page.goto('http://localhost:8080/index.htm');
+    await page.click('#startButton');
+
+    // Wait for world to be ready
+    await page.waitForFunction(() => window.isWorldReady === true);
+
+    // Open a chest with a stack of items (e.g., 10 items) and click the slot
+    const inputValue = await page.evaluate(() => {
+        const pos = new window.THREE.Vector3(0, window.getSurfaceHeight(0, -2) + 0.5, -2);
+        const quat = new window.THREE.Quaternion();
+        const chest = window.createBox(pos, quat);
+        window.addItemToInventory(chest.userData.inventory, { name: 'pedra', quantity: 10 }, chest.userData.maxWeight, true);
+        window.openChest(chest);
+
+        // Click slot 0 in chest containing stack of 10
+        const slotDiv = document.querySelector('#chestSlotsContainer .slot');
+        if (slotDiv) {
+            slotDiv.click();
+        }
+
+        const input = document.getElementById('splitInput');
+        return input ? input.value : null;
+    });
+
+    expect(inputValue).toBe('1');
+});
