@@ -6493,24 +6493,31 @@
                             const distSq = dx * dx + dz * dz;
 
                             if (affectedMound.closingStartTime === undefined && affectedMound.growthStage >= moundGrowthStages.length) {
-                                if (distSq < (affectedMound.radius + 0.3) * (affectedMound.radius + 0.3)) {
-                                    if (affectedMound.itemType === dirtItemName) {
-                                        colors[vIdx * 3] = 0.0;
-                                        colors[vIdx * 3 + 1] = 1.0; // Garante que não seja tratado como buraco
-                                    } else if (affectedMound.itemType === sandItemName) {
-                                        colors[vIdx * 3] = 1.0; // Garante que não seja tratado como buraco
-                                        colors[vIdx * 3 + 1] = 0.0;
-                                    } else {
-                                        // Cavagem (ou item sem tipo): ambos os canais para sinalizar buraco
-                                        colors[vIdx * 3] = 0.0;
-                                        colors[vIdx * 3 + 1] = 0.0;
+                                const elapsedSec = (typeof world !== 'undefined' && world) ? (world.time - (affectedMound.lastDugAt !== undefined ? affectedMound.lastDugAt : (affectedMound.createdAt || 0))) : 0;
+                                if (elapsedSec < 30) {
+                                    if (distSq < (affectedMound.radius + 0.3) * (affectedMound.radius + 0.3)) {
+                                        const elapsedMs = Math.max(0, elapsedSec * 1000);
+                                        const progress = Math.min(1.0, elapsedSec / 30.0);
+                                        const initialTime = now - elapsedMs;
+
+                                        if (affectedMound.itemType === dirtItemName) {
+                                            colors[vIdx * 3] = progress;
+                                            colors[vIdx * 3 + 1] = 1.0; // Garante que não seja tratado como buraco
+                                        } else if (affectedMound.itemType === sandItemName) {
+                                            colors[vIdx * 3] = 1.0; // Garante que não seja tratado como buraco
+                                            colors[vIdx * 3 + 1] = progress;
+                                        } else {
+                                            // Cavagem (ou item sem tipo): ambos os canais para sinalizar buraco
+                                            colors[vIdx * 3] = progress;
+                                            colors[vIdx * 3 + 1] = progress;
+                                        }
+                                        const existingIdx = modifiedVertices.findIndex(mv => mv.index === vIdx);
+                                        if (existingIdx !== -1) {
+                                            modifiedVertices[existingIdx].time = initialTime;
+                                        } else {
+                                            modifiedVertices.push({ index: vIdx, time: initialTime });
+                                        }
                                     }
-                                }
-                                const existingIdx = modifiedVertices.findIndex(mv => mv.index === vIdx);
-                                if (existingIdx !== -1) {
-                                    modifiedVertices[existingIdx].time = now;
-                                } else {
-                                    modifiedVertices.push({ index: vIdx, time: now });
                                 }
                             }
                             geom.attributes.color.needsUpdate = true;
@@ -6541,6 +6548,17 @@
                     // Depois aplica cores apenas nos locais dos mounds ativos (O(M * R^2))
                     for (const mound of mounds) {
                         if (mound.flattened || mound.closingStartTime !== undefined || mound.growthStage < moundGrowthStages.length) continue;
+
+                        const elapsedSec = (typeof world !== 'undefined' && world) ? (world.time - (mound.lastDugAt !== undefined ? mound.lastDugAt : (mound.createdAt || 0))) : 0;
+                        if (elapsedSec >= 30) {
+                            // Se o monte foi criado/modificado há 30 segundos ou mais, ele já se tornou grama totalmente. Preserva a textura de grama!
+                            continue;
+                        }
+
+                        const elapsedMs = Math.max(0, elapsedSec * 1000);
+                        const progress = Math.min(1.0, elapsedSec / 30.0);
+                        const initialTime = now - elapsedMs;
+
                         const rInt = Math.ceil(mound.radius + 1.0);
                         for (let di = -rInt; di <= rInt; di++) {
                             for (let dj_cannon = -rInt; dj_cannon <= rInt; dj_cannon++) {
@@ -6556,20 +6574,20 @@
 
                                 if (distSq < (mound.radius + 0.3) * (mound.radius + 0.3)) {
                                     if (mound.itemType === dirtItemName) {
-                                        colors[vIdx * 3] = 0.0;
+                                        colors[vIdx * 3] = progress;
                                         colors[vIdx * 3 + 1] = 1.0;
                                     } else if (mound.itemType === sandItemName) {
                                         colors[vIdx * 3] = 1.0;
-                                        colors[vIdx * 3 + 1] = 0.0;
+                                        colors[vIdx * 3 + 1] = progress;
                                     } else {
-                                        colors[vIdx * 3] = 0.0;
-                                        colors[vIdx * 3 + 1] = 0.0;
+                                        colors[vIdx * 3] = progress;
+                                        colors[vIdx * 3 + 1] = progress;
                                     }
                                     const existingIdx = modifiedVertices.findIndex(mv => mv.index === vIdx);
                                     if (existingIdx !== -1) {
-                                        modifiedVertices[existingIdx].time = now;
+                                        modifiedVertices[existingIdx].time = initialTime;
                                     } else {
-                                        modifiedVertices.push({ index: vIdx, time: now });
+                                        modifiedVertices.push({ index: vIdx, time: initialTime });
                                     }
                                     geom.attributes.color.needsUpdate = true;
                                 }
@@ -12977,7 +12995,7 @@
                         materialType: mData.materialType || 'terra',
                         itemType: mData.materialType || 'terra',
                         growthStage: mData.growthStage || 0,
-                        lastDugAt: mData.lastDugAt || world.time
+                        lastDugAt: mData.lastDugAt !== undefined ? mData.lastDugAt : world.time
                     };
                     visualMounds.push(moundObj);
                     mounds.push(moundObj);
