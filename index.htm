@@ -10730,10 +10730,12 @@
                 const distSq = fDx*fDx + fDy*fDy + fDz*fDz;
 
                 if (distSq > renderDistSq) {
-                    mound.mesh.visible = false;
-                } else {
+                    if (mound.mesh) mound.mesh.visible = false;
+                } else if (mound.mesh) {
                     mound.mesh.position.set(wrappedX - visualOffsetX, mound.position.y, wrappedZ - visualOffsetZ);
-                    mound.mesh.quaternion.copy(mound.quaternion);
+                    if (mound.quaternion) {
+                        mound.mesh.quaternion.copy(mound.quaternion);
+                    }
                     mound.mesh.updateMatrixWorld();
                     // Adiciona frustum culling manual
                     mound.mesh.visible = mound.mesh.geometry ? frustum.intersectsObject(mound.mesh) : true;
@@ -10800,7 +10802,9 @@
                     if (mound.mesh) mound.mesh.visible = false;
                 } else if (mound.mesh) {
                     mound.mesh.position.set(wrappedX - visualOffsetX, mound.position.y, wrappedZ - visualOffsetZ);
-                    mound.mesh.quaternion.copy(mound.quaternion);
+                    if (mound.quaternion) {
+                        mound.mesh.quaternion.copy(mound.quaternion);
+                    }
                     mound.mesh.updateMatrixWorld();
                     mound.mesh.visible = mound.mesh.geometry ? frustum.intersectsObject(mound.mesh) : true;
                 }
@@ -12831,6 +12835,7 @@
             });
 
             const moundsData = mounds.map(mound => {
+                const q = mound.quaternion || (mound.mesh ? mound.mesh.quaternion : null);
                 return {
                     x: mound.x,
                     z: mound.z,
@@ -12843,6 +12848,7 @@
                     isHole: mound.isHole || false,
                     flattened: mound.flattened || false,
                     position: { x: mound.position.x, y: mound.position.y, z: mound.position.z },
+                    quaternion: q ? { x: q.x, y: q.y, z: q.z, w: q.w } : { x: 0, y: 0, z: 0, w: 1 },
                     materialType: mound.materialType || mound.itemType || 'terra',
                     growthStage: mound.growthStage || 0,
                     lastDugAt: mound.lastDugAt || 0
@@ -12992,6 +12998,9 @@
                     moundMesh.receiveShadow = true;
                     scene.add(moundMesh);
 
+                    const mQuat = mData.quaternion ? new THREE.Quaternion(mData.quaternion.x, mData.quaternion.y, mData.quaternion.z, mData.quaternion.w) : new THREE.Quaternion();
+                    moundMesh.quaternion.copy(mQuat);
+
                     const moundObj = {
                         x: mData.x !== undefined ? mData.x : 0,
                         z: mData.z !== undefined ? mData.z : 0,
@@ -13004,6 +13013,7 @@
                         isHole: mData.isHole !== undefined ? mData.isHole : true,
                         flattened: mData.flattened || false,
                         position: new THREE.Vector3(mData.position.x, mData.position.y, mData.position.z),
+                        quaternion: mQuat,
                         mesh: moundMesh,
                         materialType: mData.materialType || 'terra',
                         itemType: mData.materialType || 'terra',
