@@ -3725,11 +3725,6 @@
             visualMounds.push(newMound);
             mounds.push(newMound);
 
-            // Remove capim existente na área do novo monte/buraco
-            const worldStep = worldSize / hfGridSize;
-            const removalRadius = (newMound.radius + 1.0) * worldStep;
-            removeCapimNear(newMound.position, removalRadius);
-
             // updateIslandGeometry(newMound); // REMOVIDO: Não atualiza imediatamente ao cavar
             return newMound;
         }
@@ -9802,17 +9797,18 @@
                             } else {
                                 // Criando um monte (positivo)
                                 mound.growthStage++;
+
+                                // Remove capim próximo quando um estágio do monte é concluído
+                                const worldStep = worldSize / hfGridSize;
+                                const removalRadius = (mound.radius + 0.5) * worldStep;
+                                removeCapimNear(mound.position, removalRadius);
+
                                 if (mound.growthStage >= moundGrowthStages.length) {
                                     mound.height = (mound.maxHeightChange !== undefined ? mound.maxHeightChange : 1.0);
                                     destructionComplete = true;
                                     isDestroying = false;
                                     progressContainer.style.display = 'none';
                                     currentMound = null;
-
-                                    // NOVO: Remove capim próximo quando o monte finaliza
-                                    const worldStep = worldSize / hfGridSize;
-                                    const removalRadius = (mound.radius + 0.5) * worldStep;
-                                    removeCapimNear(mound.position, removalRadius);
                                 } else {
                                     mound.height = 1.0 * mound.growthStage / moundGrowthStages.length;
                                     destroyProgress = 0;
@@ -9892,6 +9888,11 @@
                                 createDustCloud(mound.position, destroyTargetColor);
                                 mound.growthStage++;
 
+                                // Remove capim próximo quando um estágio de escavação é concluído (barra de progresso)
+                                const worldStep = worldSize / hfGridSize;
+                                const removalRadius = (mound.radius + 0.5) * worldStep;
+                                removeCapimNear(mound.position, removalRadius);
+
                                 // Gain 1 terra/sand or 10 stones for each stage of digging
                                 const distFromCenter = Math.sqrt(mound.position.x ** 2 + mound.position.z ** 2);
                                 let itemToGive;
@@ -9918,11 +9919,6 @@
                                         const finalScale = mound.isPrecise ? 0.8 : 1.0;
                                         mound.mesh.scale.set(finalScale, finalScale, finalScale);
                                     }
-
-                                    // NOVO: Remove capim próximo quando o buraco finaliza
-                                    const worldStep = worldSize / hfGridSize;
-                                    const removalRadius = (mound.radius + 0.5) * worldStep;
-                                    removeCapimNear(mound.position, removalRadius);
 
                                     destructionComplete = true;
                                     isDestroying = false;
