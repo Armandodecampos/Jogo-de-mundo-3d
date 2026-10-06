@@ -853,10 +853,28 @@
     <div id="eyeBottom" style="position: fixed; bottom: 0; left: 0; width: 100%; height: 0; background-color: black; pointer-events: none; z-index: 9500; transition: height 0.1s ease-out;"></div>
     <div id="tooltip"></div>
     <div id="startScreen">
-        <h1>Small World</h1>
+        <h1>Pequeno Mundo</h1>
         <div class="flex flex-col gap-4">
-            <button id="startButton">Jogar</button>
+            <button id="startButton">Novo Jogo</button>
+            <button id="continueButton" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition-colors">Continuar</button>
             <button id="startSettingsButton" class="bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-lg transition-colors">Configurações</button>
+        </div>
+    </div>
+
+    <!-- Modal de Salvamentos / Continuar -->
+    <div id="loadGameModal" class="fixed inset-0 bg-black/80 flex items-center justify-center z-[10000] hidden">
+        <div class="bg-gray-900 border-2 border-amber-600 rounded-xl p-6 w-full max-w-md shadow-2xl flex flex-col gap-4 text-white">
+            <h2 class="text-2xl font-bold text-amber-500 border-b border-gray-700 pb-2">Escolher Salvamento</h2>
+            <div id="savesList" class="flex flex-col gap-2 max-h-60 overflow-y-auto">
+                <!-- Salvamentos locais serão inseridos aqui -->
+            </div>
+            <div class="flex flex-col gap-2 border-t border-gray-700 pt-3">
+                <label for="uploadSaveInput" class="cursor-pointer bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded text-center transition-colors">
+                    <i class="fas fa-folder-open mr-2"></i>Carregar Arquivo do Computador
+                </label>
+                <input type="file" id="uploadSaveInput" accept=".json" class="hidden">
+            </div>
+            <button id="closeLoadModalButton" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded mt-2">Fechar</button>
         </div>
     </div>
 
@@ -881,6 +899,7 @@
     <div id="optionsScreen">
         <h2>Menu</h2>
         <button id="resumeButton">Voltar ao Jogo</button>
+        <button id="saveGameButton" class="bg-green-600 hover:bg-green-700">Salvar Jogo</button>
         <button id="pauseSettingsButton">Configurações</button>
         <button id="exitGameButton">Sair do Jogo</button>
     </div>
@@ -9024,6 +9043,9 @@
 
             // Listeners de eventos para os novos botões do menu
             document.getElementById('resumeButton').addEventListener('click', hideOptionsScreen);
+            document.getElementById('saveGameButton').addEventListener('click', () => {
+                saveGameToFile();
+            });
             document.getElementById('exitGameButton').addEventListener('click', () => {
                 location.reload(); // Recarrega a página para sair do jogo
             });
@@ -10468,13 +10490,13 @@
             // Lógica para os cubos e blocos: sempre dinâmicos e com massa original, a menos que sejam segurados
             // Apenas os cubos são pickable agora
 
-            allPickableBodies.concat(placedConstructionBodies.filter(b => b.userData.isCollectible)).forEach(body => {
+            allPickableBodies.forEach(body => {
                 // Ignora o objeto que está sendo segurado
                 if (body === pickedObjectBody) {
                     return;
                 }
-                // Cubos devem ser dinâmicos quando não estão sendo pegos
-                body.mass = body.userData.originalMass;
+                // Cubos soltos no chão devem ser dinâmicos quando não estão sendo pegos
+                body.mass = body.userData.originalMass || 1;
                 body.type = CANNON.Body.DYNAMIC;
                 body.allowSleep = true; // Permite que cubos "durmam" para otimização
                 body.wakeUp(); // Garante que esteja ativo se houver movimento
@@ -12749,10 +12771,325 @@
             window.vegetableOilItemName = vegetableOilItemName;
         }
 
-        // Listener de evento para o botão "Jogar"
-        document.getElementById('startButton').addEventListener('click', startGame);
+        // Função para obter todos os dados de salvamento do estado do jogo
+        function getGameStateData() {
+            const placedConstructionsData = placedConstructionBodies.map(body => {
+                const ud = body.userData || {};
+                return {
+                    type: ud.type,
+                    growthStage: ud.growthStage || null,
+                    treeType: ud.treeType || null,
+                    position: { x: body.position.x, y: body.position.y, z: body.position.z },
+                    quaternion: { x: body.quaternion.x, y: body.quaternion.y, z: body.quaternion.z, w: body.quaternion.w },
+                    userData: {
+                        fuel: ud.fuel !== undefined ? ud.fuel : null,
+                        isOn: ud.isOn !== undefined ? ud.isOn : null,
+                        isOpen: ud.isOpen !== undefined ? ud.isOpen : null,
+                        baseQuaternion: ud.baseQuaternion ? { x: ud.baseQuaternion.x, y: ud.baseQuaternion.y, z: ud.baseQuaternion.z, w: ud.baseQuaternion.w } : null,
+                        chestItems: ud.chestItems ? JSON.parse(JSON.stringify(ud.chestItems)) : null,
+                        isCollectible: ud.isCollectible || false,
+                        isRaft: ud.isRaft || false,
+                        originalMass: ud.originalMass || 0
+                    }
+                };
+            });
 
-        // Não há necessidade de window.onload aqui, pois startGame será chamado pelo clique do botão
+            const groundItemsData = collectibleBoxes.map(box => {
+                const b = box.body;
+                const ud = b.userData || {};
+                return {
+                    type: ud.type,
+                    quantity: ud.quantity || 1,
+                    position: { x: b.position.x, y: b.position.y, z: b.position.z },
+                    quaternion: { x: b.quaternion.x, y: b.quaternion.y, z: b.quaternion.z, w: b.quaternion.w },
+                    userData: {
+                        fuel: ud.fuel !== undefined ? ud.fuel : null,
+                        isOn: ud.isOn !== undefined ? ud.isOn : null,
+                        chestItems: ud.chestItems ? JSON.parse(JSON.stringify(ud.chestItems)) : null
+                    }
+                };
+            });
+
+            const moundsData = visualMounds.map(mound => {
+                return {
+                    position: { x: mound.position.x, y: mound.position.y, z: mound.position.z },
+                    height: mound.height,
+                    depth: mound.depth,
+                    materialType: mound.materialType || 'terra',
+                    lastDugAt: mound.lastDugAt || 0
+                };
+            });
+
+            return {
+                version: 1,
+                timestamp: new Date().toISOString(),
+                player: {
+                    position: playerBody ? { x: playerBody.position.x, y: playerBody.position.y, z: playerBody.position.z } : { x: 0, y: 10, z: 0 },
+                    health: playerHealth,
+                    hunger: playerHunger,
+                    energy: playerEnergy,
+                    breath: playerBreath
+                },
+                inventory: {
+                    beltItems: JSON.parse(JSON.stringify(beltItems)),
+                    backpackItems: JSON.parse(JSON.stringify(backpackItems)),
+                    selectedSlotIndex: selectedSlotIndex
+                },
+                worldState: {
+                    time: world ? world.time : 0,
+                    targetRainIntensity: typeof targetRainIntensity !== 'undefined' ? targetRainIntensity : 0
+                },
+                placedConstructions: placedConstructionsData,
+                groundItems: groundItemsData,
+                mounds: moundsData
+            };
+        }
+
+        // Função para carregar os dados de salvamento e reconstruir o jogo
+        function loadGameState(saveData) {
+            if (!saveData || !saveData.player) return;
+
+            // Limpa construções colocadas
+            for (let i = placedConstructionBodies.length - 1; i >= 0; i--) {
+                const b = placedConstructionBodies[i];
+                const m = placedConstructionMeshes[i];
+                if (b) world.removeBody(b);
+                if (m) scene.remove(m);
+            }
+            placedConstructionBodies.length = 0;
+            placedConstructionMeshes.length = 0;
+
+            // Limpa itens no chão
+            for (let i = collectibleBoxes.length - 1; i >= 0; i--) {
+                const box = collectibleBoxes[i];
+                if (box.body) world.removeBody(box.body);
+                if (box.mesh) scene.remove(box.mesh);
+            }
+            collectibleBoxes.length = 0;
+
+            // Limpa montículos
+            visualMounds.forEach(mound => {
+                if (mound.mesh) scene.remove(mound.mesh);
+            });
+            visualMounds.length = 0;
+
+            // Restaura jogador
+            if (playerBody && saveData.player.position) {
+                playerBody.position.set(saveData.player.position.x, saveData.player.position.y, saveData.player.position.z);
+                playerBody.velocity.set(0, 0, 0);
+            }
+            if (saveData.player.health !== undefined) playerHealth = saveData.player.health;
+            if (saveData.player.hunger !== undefined) playerHunger = saveData.player.hunger;
+            if (saveData.player.energy !== undefined) playerEnergy = saveData.player.energy;
+            if (saveData.player.breath !== undefined) playerBreath = saveData.player.breath;
+
+            // Restaura inventário
+            if (saveData.inventory) {
+                if (saveData.inventory.beltItems) beltItems = saveData.inventory.beltItems;
+                if (saveData.inventory.backpackItems) backpackItems = saveData.inventory.backpackItems;
+                if (saveData.inventory.selectedSlotIndex !== undefined) selectedSlotIndex = saveData.inventory.selectedSlotIndex;
+                if (typeof updateUI === 'function') updateUI();
+            }
+
+            // Restaura mundo
+            if (saveData.worldState) {
+                if (saveData.worldState.time !== undefined && world) world.time = saveData.worldState.time;
+                if (saveData.worldState.targetRainIntensity !== undefined && typeof targetRainIntensity !== 'undefined') {
+                    targetRainIntensity = saveData.worldState.targetRainIntensity;
+                }
+            }
+
+            // Restaura construções
+            if (saveData.placedConstructions && Array.isArray(saveData.placedConstructions)) {
+                saveData.placedConstructions.forEach(c => {
+                    const pos = new THREE.Vector3(c.position.x, c.position.y, c.position.z);
+                    const quat = c.quaternion ? new THREE.Quaternion(c.quaternion.x, c.quaternion.y, c.quaternion.z, c.quaternion.w) : null;
+                    const stage = c.growthStage || null;
+                    const extraData = c.userData || null;
+
+                    if (c.type === stoneItemName) {
+                        createStone(pos, quat || new THREE.Quaternion());
+                    } else {
+                        createPlaceableBlock(pos, quat, c.type, stage, extraData);
+                    }
+
+                    // Se restaurou um bloco, recupera userData adicional como porta/baú/etc.
+                    const lastIdx = placedConstructionBodies.length - 1;
+                    if (lastIdx >= 0 && extraData) {
+                        const body = placedConstructionBodies[lastIdx];
+                        if (extraData.isOpen !== null && extraData.isOpen !== undefined) body.userData.isOpen = extraData.isOpen;
+                        if (extraData.baseQuaternion) {
+                            body.userData.baseQuaternion = new THREE.Quaternion(
+                                extraData.baseQuaternion.x,
+                                extraData.baseQuaternion.y,
+                                extraData.baseQuaternion.z,
+                                extraData.baseQuaternion.w
+                            );
+                        }
+                        if (extraData.chestItems) body.userData.chestItems = extraData.chestItems;
+                    }
+                });
+            }
+
+            // Restaura itens no chão
+            if (saveData.groundItems && Array.isArray(saveData.groundItems)) {
+                saveData.groundItems.forEach(item => {
+                    const pos = new THREE.Vector3(item.position.x, item.position.y, item.position.z);
+                    const quat = item.quaternion ? new THREE.Quaternion(item.quaternion.x, item.quaternion.y, item.quaternion.z, item.quaternion.w) : null;
+                    if (item.type === stoneItemName) {
+                        createStone(pos, quat || new THREE.Quaternion());
+                    } else {
+                        const boxBody = createBox(pos, quat);
+                        if (boxBody && item.userData && item.userData.chestItems) {
+                            boxBody.userData.chestItems = item.userData.chestItems;
+                        }
+                    }
+                });
+            }
+
+            // Restaura montículos de terra
+            if (saveData.mounds && Array.isArray(saveData.mounds)) {
+                saveData.mounds.forEach(mData => {
+                    const moundGeometry = new THREE.CylinderGeometry(1.5, 2.0, 0.5, 16);
+                    const mat = mData.materialType === 'areia' ? sandHoleMaterial : holeMaterial;
+                    const moundMesh = new THREE.Mesh(moundGeometry, mat);
+                    moundMesh.position.set(mData.position.x, mData.position.y, mData.position.z);
+                    moundMesh.castShadow = true;
+                    moundMesh.receiveShadow = true;
+                    scene.add(moundMesh);
+
+                    const moundObj = {
+                        position: new THREE.Vector3(mData.position.x, mData.position.y, mData.position.z),
+                        mesh: moundMesh,
+                        height: mData.height,
+                        depth: mData.depth,
+                        materialType: mData.materialType || 'terra',
+                        lastDugAt: mData.lastDugAt || world.time
+                    };
+                    visualMounds.push(moundObj);
+                });
+            }
+
+            raycastTargetsNeedUpdate = true;
+        }
+
+        // Função para salvar o jogo em arquivo JSON e localStorage
+        async function saveGameToFile() {
+            const data = getGameStateData();
+            const jsonStr = JSON.stringify(data, null, 2);
+
+            // Salva no localStorage com timestamp
+            const saveKey = 'pequeno_mundo_save_latest';
+            localStorage.setItem(saveKey, jsonStr);
+
+            // Lista de saves no localStorage
+            try {
+                let saveList = JSON.parse(localStorage.getItem('pequeno_mundo_saves_list') || '[]');
+                const saveEntry = { key: saveKey, date: new Date().toLocaleString() };
+                if (!saveList.some(s => s.key === saveKey)) saveList.unshift(saveEntry);
+                localStorage.setItem('pequeno_mundo_saves_list', JSON.stringify(saveList));
+            } catch (e) {}
+
+            // Salva ou baixa o arquivo no computador com sugestão de diretório "Pequeno Mundo"
+            const fileName = 'Pequeno_Mundo_Save.json';
+
+            if (window.showSaveFilePicker) {
+                try {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: fileName,
+                        types: [{
+                            description: 'Arquivo de Salvamento Pequeno Mundo',
+                            accept: { 'application/json': ['.json'] }
+                        }]
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(jsonStr);
+                    await writable.close();
+                    showNotification("Jogo salvo com sucesso em Documentos/Pequeno Mundo!");
+                    return;
+                } catch (err) {
+                    if (err.name === 'AbortError') return; // Usuário cancelou a janela de salvar
+                }
+            }
+
+            // Fallback para download via tag <a>
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            showNotification("Jogo salvo com sucesso!");
+        }
+
+        // Função para abrir o modal "Continuar" e listar salvamentos
+        function openContinueMenu() {
+            const modal = document.getElementById('loadGameModal');
+            const savesListDiv = document.getElementById('savesList');
+            savesListDiv.innerHTML = '';
+
+            const latestSave = localStorage.getItem('pequeno_mundo_save_latest');
+            if (latestSave) {
+                let parsed;
+                try { parsed = JSON.parse(latestSave); } catch (e) {}
+                const dateStr = parsed && parsed.timestamp ? new Date(parsed.timestamp).toLocaleString('pt-BR') : 'Salvamento Recente';
+
+                const btn = document.createElement('button');
+                btn.className = 'w-full text-left bg-amber-700 hover:bg-amber-600 text-white font-semibold py-3 px-4 rounded transition-colors flex justify-between items-center';
+                btn.innerHTML = `<span><i class="fas fa-save mr-2"></i>Último Salvamento Auto/Manual</span> <span class="text-xs opacity-80">${dateStr}</span>`;
+                btn.addEventListener('click', () => {
+                    modal.classList.add('hidden');
+                    startGame();
+                    loadGameState(parsed);
+                    showNotification("Salvamento carregado!");
+                });
+                savesListDiv.appendChild(btn);
+            } else {
+                savesListDiv.innerHTML = `<p class="text-gray-400 text-sm text-center py-4">Nenhum salvamento automático encontrado.<br>Escolha um arquivo de salvamento do seu computador abaixo.</p>`;
+            }
+
+            modal.classList.remove('hidden');
+        }
+
+        // Listeners para os botões da tela inicial ("Novo Jogo", "Continuar") e modal de carregamento
+        const newGameBtn = document.getElementById('newGameButton') || document.getElementById('startButton');
+        if (newGameBtn) newGameBtn.addEventListener('click', startGame);
+
+        document.getElementById('continueButton').addEventListener('click', () => {
+            openContinueMenu();
+        });
+
+        document.getElementById('closeLoadModalButton').addEventListener('click', () => {
+            document.getElementById('loadGameModal').classList.add('hidden');
+        });
+
+        document.getElementById('uploadSaveInput').addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const saveData = JSON.parse(e.target.result);
+                    document.getElementById('loadGameModal').classList.add('hidden');
+                    startGame();
+                    loadGameState(saveData);
+                    showNotification("Arquivo de salvamento carregado!");
+                } catch (err) {
+                    alert("Erro ao ler o arquivo de salvamento. O arquivo pode estar corrompido.");
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // Exporta para escopo global para acesso e testes
+        window.getGameStateData = getGameStateData;
+        window.loadGameState = loadGameState;
+        window.saveGameToFile = saveGameToFile;
     </script>
 </body>
 </html>
