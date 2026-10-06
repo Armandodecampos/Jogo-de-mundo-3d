@@ -12943,9 +12943,62 @@
                 }
             }
 
+            // Restaura montículos de terra e altera o terreno físico/visual PRIMEIRO para permitir verificações de área
+            if (saveData.mounds && Array.isArray(saveData.mounds)) {
+                saveData.mounds.forEach(mData => {
+                    const holeGroup = new THREE.Group();
+                    holeGroup.position.set(mData.position.x, mData.position.y, mData.position.z);
+                    scene.add(holeGroup);
+
+                    const mQuat = mData.quaternion ? new THREE.Quaternion(mData.quaternion.x, mData.quaternion.y, mData.quaternion.z, mData.quaternion.w) : new THREE.Quaternion();
+                    holeGroup.quaternion.copy(mQuat);
+
+                    const moundObj = {
+                        x: mData.x !== undefined ? mData.x : 0,
+                        z: mData.z !== undefined ? mData.z : 0,
+                        radius: mData.radius !== undefined ? mData.radius : 7.0 * (hfGridSize / worldSize),
+                        isPrecise: mData.isPrecise || false,
+                        originalHeight: mData.originalHeight !== undefined ? mData.originalHeight : mData.position.y,
+                        targetFloorHeight: mData.targetFloorHeight !== undefined ? mData.targetFloorHeight : mData.position.y,
+                        height: mData.height !== undefined ? mData.height : 0,
+                        maxHeightChange: mData.maxHeightChange !== undefined ? mData.maxHeightChange : -1.0,
+                        isHole: mData.isHole !== undefined ? mData.isHole : true,
+                        flattened: mData.flattened || false,
+                        position: new THREE.Vector3(mData.position.x, mData.position.y, mData.position.z),
+                        quaternion: mQuat,
+                        mesh: holeGroup,
+                        materialType: mData.materialType || 'terra',
+                        itemType: mData.materialType || 'terra',
+                        growthStage: mData.growthStage || 0,
+                        lastDugAt: mData.lastDugAt || world.time
+                    };
+                    visualMounds.push(moundObj);
+                    mounds.push(moundObj);
+
+                    // Remove qualquer capim gerado inicialmente na área de cada buraco
+                    if (moundObj.isHole || moundObj.height < 0) {
+                        const worldStep = worldSize / hfGridSize;
+                        const removalRadius = (moundObj.radius + 1.5) * worldStep;
+                        removeCapimNear(moundObj.position, removalRadius);
+                    }
+                });
+
+                // Atualiza a geometria e a física do terreno imediatamente
+                if (typeof updateIslandGeometry === 'function') {
+                    lastPhysicsTerrainUpdate = 0;
+                    updateIslandGeometry();
+                }
+            }
+
             // Restaura construções
             if (saveData.placedConstructions && Array.isArray(saveData.placedConstructions)) {
                 saveData.placedConstructions.forEach(c => {
+                    // Evita carregar árvores que estejam dentro de buracos
+                    const isTree = c.growthStage || c.type === treeSaplingItemName || c.type === appleSeedItemName || c.type === coconutSeedItemName;
+                    if (isTree && isAreaOccupiedByConstruction(c.position.x, c.position.z, 2.0)) {
+                        return;
+                    }
+
                     const pos = new THREE.Vector3(c.position.x, c.position.y, c.position.z);
                     const quat = c.quaternion ? new THREE.Quaternion(c.quaternion.x, c.quaternion.y, c.quaternion.z, c.quaternion.w) : null;
                     const stage = c.growthStage || null;
@@ -12989,46 +13042,6 @@
                         }
                     }
                 });
-            }
-
-            // Restaura montículos de terra e altera o terreno físico/visual
-            if (saveData.mounds && Array.isArray(saveData.mounds)) {
-                saveData.mounds.forEach(mData => {
-                    const holeGroup = new THREE.Group();
-                    holeGroup.position.set(mData.position.x, mData.position.y, mData.position.z);
-                    scene.add(holeGroup);
-
-                    const mQuat = mData.quaternion ? new THREE.Quaternion(mData.quaternion.x, mData.quaternion.y, mData.quaternion.z, mData.quaternion.w) : new THREE.Quaternion();
-                    holeGroup.quaternion.copy(mQuat);
-
-                    const moundObj = {
-                        x: mData.x !== undefined ? mData.x : 0,
-                        z: mData.z !== undefined ? mData.z : 0,
-                        radius: mData.radius !== undefined ? mData.radius : 7.0 * (hfGridSize / worldSize),
-                        isPrecise: mData.isPrecise || false,
-                        originalHeight: mData.originalHeight !== undefined ? mData.originalHeight : mData.position.y,
-                        targetFloorHeight: mData.targetFloorHeight !== undefined ? mData.targetFloorHeight : mData.position.y,
-                        height: mData.height !== undefined ? mData.height : 0,
-                        maxHeightChange: mData.maxHeightChange !== undefined ? mData.maxHeightChange : -1.0,
-                        isHole: mData.isHole !== undefined ? mData.isHole : true,
-                        flattened: mData.flattened || false,
-                        position: new THREE.Vector3(mData.position.x, mData.position.y, mData.position.z),
-                        quaternion: mQuat,
-                        mesh: holeGroup,
-                        materialType: mData.materialType || 'terra',
-                        itemType: mData.materialType || 'terra',
-                        growthStage: mData.growthStage || 0,
-                        lastDugAt: mData.lastDugAt || world.time
-                    };
-                    visualMounds.push(moundObj);
-                    mounds.push(moundObj);
-                });
-
-                // Atualiza a geometria e a física do terreno imediatamente
-                if (typeof updateIslandGeometry === 'function') {
-                    lastPhysicsTerrainUpdate = 0;
-                    updateIslandGeometry();
-                }
             }
 
             raycastTargetsNeedUpdate = true;
