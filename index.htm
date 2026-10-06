@@ -3725,6 +3725,10 @@
             visualMounds.push(newMound);
             mounds.push(newMound);
 
+            // Remove capim existente na área do novo monte/buraco
+            const worldStep = worldSize / hfGridSize;
+            const removalRadius = (newMound.radius + 1.0) * worldStep;
+            removeCapimNear(newMound.position, removalRadius);
 
             // updateIslandGeometry(newMound); // REMOVIDO: Não atualiza imediatamente ao cavar
             return newMound;
@@ -4521,12 +4525,12 @@
             // NOVO: Verifica se a área possui montes ou buracos
             for (const mound of mounds) {
                 if (mound.flattened) continue;
-                // Se permitirmos montes de terra (para crescimento de capim), ignoramos montes positivos de terra
-                if (allowDirtMounds && mound.itemType === dirtItemName && mound.maxHeightChange > 0) continue;
+                // Se permitirmos montes de terra (para crescimento de capim), ignoramos montes positivos de terra, MAS buracos (mound.isHole ou height < 0) NUNCA permitimos
+                if (allowDirtMounds && mound.itemType === dirtItemName && mound.maxHeightChange > 0 && !mound.isHole) continue;
 
                 const dist = calculateWrappedDistance(new THREE.Vector3(x, mound.position.y, z), mound.position);
                 const worldStep = worldSize / hfGridSize;
-                const moundWorldRadius = (mound.radius + 0.5) * worldStep;
+                const moundWorldRadius = (mound.radius + 1.0) * worldStep;
                 if (dist < moundWorldRadius) return true;
             }
 
@@ -12990,16 +12994,12 @@
             // Restaura montículos de terra e altera o terreno físico/visual
             if (saveData.mounds && Array.isArray(saveData.mounds)) {
                 saveData.mounds.forEach(mData => {
-                    const moundGeometry = new THREE.CylinderGeometry(1.5, 2.0, 0.5, 16);
-                    const mat = mData.materialType === 'areia' ? sandHoleMaterial : holeMaterial;
-                    const moundMesh = new THREE.Mesh(moundGeometry, mat);
-                    moundMesh.position.set(mData.position.x, mData.position.y, mData.position.z);
-                    moundMesh.castShadow = true;
-                    moundMesh.receiveShadow = true;
-                    scene.add(moundMesh);
+                    const holeGroup = new THREE.Group();
+                    holeGroup.position.set(mData.position.x, mData.position.y, mData.position.z);
+                    scene.add(holeGroup);
 
                     const mQuat = mData.quaternion ? new THREE.Quaternion(mData.quaternion.x, mData.quaternion.y, mData.quaternion.z, mData.quaternion.w) : new THREE.Quaternion();
-                    moundMesh.quaternion.copy(mQuat);
+                    holeGroup.quaternion.copy(mQuat);
 
                     const moundObj = {
                         x: mData.x !== undefined ? mData.x : 0,
@@ -13014,7 +13014,7 @@
                         flattened: mData.flattened || false,
                         position: new THREE.Vector3(mData.position.x, mData.position.y, mData.position.z),
                         quaternion: mQuat,
-                        mesh: moundMesh,
+                        mesh: holeGroup,
                         materialType: mData.materialType || 'terra',
                         itemType: mData.materialType || 'terra',
                         growthStage: mData.growthStage || 0,
