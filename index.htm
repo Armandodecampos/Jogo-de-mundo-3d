@@ -4498,6 +4498,27 @@
             return removedCount;
         }
 
+        const tempCapimCenter = new THREE.Vector3();
+        function getCapimUnderCrosshair(hitPoint, ray, threshold = 0.5) {
+            let bestCluster = null;
+            let minDist = Infinity;
+
+            for (let i = 0; i < capimClusters.length; i++) {
+                const cluster = capimClusters[i];
+                const distGround = hitPoint ? calculateWrappedDistance(cluster.position, hitPoint) : Infinity;
+                tempCapimCenter.copy(cluster.position);
+                tempCapimCenter.y += 0.5;
+                const distRay = ray ? ray.distanceToPoint(tempCapimCenter) : Infinity;
+                const dist = Math.min(distGround, distRay);
+
+                if (dist < threshold && dist < minDist) {
+                    minDist = dist;
+                    bestCluster = cluster;
+                }
+            }
+            return bestCluster;
+        }
+
         function isAreaOccupiedByConstruction(x, z, radius = 2.0, allowDirtMounds = false) {
             const pos = new THREE.Vector3(x, 0, z);
 
@@ -8212,14 +8233,8 @@
                     // Verifica se é o terreno
                     const isIslandMesh = islandMeshes.some(m => m && m.mesh === obj);
                     if (isIslandMesh) {
-                        // Verifica se há capim perto para priorizar
-                        let nearCapim = null;
-                        for (const cluster of capimClusters) {
-                             if (calculateWrappedDistance(cluster.position, hitPoint) < 1.2) {
-                                 nearCapim = cluster;
-                                 break;
-                             }
-                        }
+                        // Verifica se há capim exatamente na mira para priorizar
+                        const nearCapim = getCapimUnderCrosshair(hitPoint, raycaster.ray, 0.5);
                         if (nearCapim && !potentialCapim) {
                             potentialCapim = { body: null, mesh: null, isCapim: true, cluster: nearCapim };
                         }
@@ -11051,14 +11066,9 @@
                         // Verificação de terreno (Cavar / Colher Capim)
                         const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
                         if (isIslandMesh) {
-                            // Verifica se há capim perto
-                            let nearCapim = false;
-                            for (const cluster of capimClusters) {
-                                if (calculateWrappedDistance(cluster.position, intersect.point) < 1.2) {
-                                    nearCapim = true;
-                                    break;
-                                }
-                            }
+                            // Verifica se há capim exatamente na mira
+                            const nearCapimCluster = getCapimUnderCrosshair(intersect.point, raycaster.ray, 0.5);
+                            const nearCapim = !!nearCapimCluster;
                             const heldItem = beltItems[selectedSlotIndex];
                             const isHoldingSeed = heldItem && (
                                 heldItem.name === pineSeedItemName ||
@@ -12102,14 +12112,9 @@
                         const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
 
                         if (isIslandMesh) {
-                            // Verifica se há capim perto para a cor do crosshair
-                            let nearCapimAtHand = false;
-                            for (const cluster of capimClusters) {
-                                if (calculateWrappedDistance(cluster.position, intersects[i].point) < 1.2) {
-                                    nearCapimAtHand = true;
-                                    break;
-                                }
-                            }
+                            // Verifica se há capim na mira para a cor do crosshair
+                            const nearCapimAtHandCluster = getCapimUnderCrosshair(intersects[i].point, raycaster.ray, 0.5);
+                            const nearCapimAtHand = !!nearCapimAtHandCluster;
                             canDestroyWithHand = true;
                             isTerraHitWithHand = true; // Sempre lime ao mirar no chão ou capim com a mão
                             break;
@@ -12659,6 +12664,7 @@
             window.respawnCapim = respawnCapim;
             window.createMound = createMound;
             window.removeCapimNear = removeCapimNear;
+            window.getCapimUnderCrosshair = getCapimUnderCrosshair;
             window.createCapim = createCapim;
             window.isAreaOccupiedByConstruction = isAreaOccupiedByConstruction;
             window.mounds = mounds;
