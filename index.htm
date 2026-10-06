@@ -5612,17 +5612,26 @@
                 blockBody.userData.growthStage = stageToUse; // Define antes de configurar visuals
                 blockBody.userData.treeType = treeType;
 
-                const treeResult = getTreeDimensions(treeStages[stageToUse], treeType);
+                let treeResult;
+                if (extraData && extraData.randomizedDimensions && extraData.multipliers) {
+                    treeResult = { data: extraData.randomizedDimensions, multipliers: extraData.multipliers };
+                } else {
+                    treeResult = getTreeDimensions(treeStages[stageToUse], treeType);
+                }
+
                 randomizedTreeDimensions = treeResult.data;
                 blockBody.userData.multipliers = treeResult.multipliers;
+                blockBody.userData.randomizedDimensions = randomizedTreeDimensions;
                 const stageData = randomizedTreeDimensions;
 
-                if (stageToUse === 'semente') {
-                    // Posiciona o montinho sobre o chão
-                    blockBody.position.y = position.y + stageData.visual.mound.height / 2;
-                } else {
-                    // Garante que a árvore não fique enterrada (base no chão)
-                    blockBody.position.y = position.y + stageData.overallPhysicsHeight / 2;
+                if (!extraData) {
+                    if (stageToUse === 'semente') {
+                        // Posiciona o montinho sobre o chão
+                        blockBody.position.y = position.y + stageData.visual.mound.height / 2;
+                    } else {
+                        // Garante que a árvore não fique enterrada (base no chão)
+                        blockBody.position.y = position.y + stageData.overallPhysicsHeight / 2;
+                    }
                 }
 
                 mesh = setupTreeVisualsAndPhysics(blockBody, stageData);
@@ -12787,6 +12796,8 @@
                         isOpen: ud.isOpen !== undefined ? ud.isOpen : null,
                         baseQuaternion: ud.baseQuaternion ? { x: ud.baseQuaternion.x, y: ud.baseQuaternion.y, z: ud.baseQuaternion.z, w: ud.baseQuaternion.w } : null,
                         chestItems: ud.chestItems ? JSON.parse(JSON.stringify(ud.chestItems)) : null,
+                        randomizedDimensions: ud.randomizedDimensions || ud.dimensions || null,
+                        multipliers: ud.multipliers || null,
                         isCollectible: ud.isCollectible || false,
                         isRaft: ud.isRaft || false,
                         originalMass: ud.originalMass || 0
