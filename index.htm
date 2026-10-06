@@ -12830,12 +12830,21 @@
                 };
             });
 
-            const moundsData = visualMounds.map(mound => {
+            const moundsData = mounds.map(mound => {
                 return {
-                    position: { x: mound.position.x, y: mound.position.y, z: mound.position.z },
+                    x: mound.x,
+                    z: mound.z,
+                    radius: mound.radius,
+                    isPrecise: mound.isPrecise || false,
+                    originalHeight: mound.originalHeight,
+                    targetFloorHeight: mound.targetFloorHeight,
                     height: mound.height,
-                    depth: mound.depth,
-                    materialType: mound.materialType || 'terra',
+                    maxHeightChange: mound.maxHeightChange,
+                    isHole: mound.isHole || false,
+                    flattened: mound.flattened || false,
+                    position: { x: mound.position.x, y: mound.position.y, z: mound.position.z },
+                    materialType: mound.materialType || mound.itemType || 'terra',
+                    growthStage: mound.growthStage || 0,
                     lastDugAt: mound.lastDugAt || 0
                 };
             });
@@ -12887,7 +12896,8 @@
             }
             collectibleBoxes.length = 0;
 
-            // Limpa montículos
+            // Limpa montículos e terreno cavado
+            mounds.length = 0;
             visualMounds.forEach(mound => {
                 if (mound.mesh) scene.remove(mound.mesh);
             });
@@ -12971,7 +12981,7 @@
                 });
             }
 
-            // Restaura montículos de terra
+            // Restaura montículos de terra e altera o terreno físico/visual
             if (saveData.mounds && Array.isArray(saveData.mounds)) {
                 saveData.mounds.forEach(mData => {
                     const moundGeometry = new THREE.CylinderGeometry(1.5, 2.0, 0.5, 16);
@@ -12983,15 +12993,32 @@
                     scene.add(moundMesh);
 
                     const moundObj = {
+                        x: mData.x !== undefined ? mData.x : 0,
+                        z: mData.z !== undefined ? mData.z : 0,
+                        radius: mData.radius !== undefined ? mData.radius : 7.0 * (hfGridSize / worldSize),
+                        isPrecise: mData.isPrecise || false,
+                        originalHeight: mData.originalHeight !== undefined ? mData.originalHeight : mData.position.y,
+                        targetFloorHeight: mData.targetFloorHeight !== undefined ? mData.targetFloorHeight : mData.position.y,
+                        height: mData.height !== undefined ? mData.height : 0,
+                        maxHeightChange: mData.maxHeightChange !== undefined ? mData.maxHeightChange : -1.0,
+                        isHole: mData.isHole !== undefined ? mData.isHole : true,
+                        flattened: mData.flattened || false,
                         position: new THREE.Vector3(mData.position.x, mData.position.y, mData.position.z),
                         mesh: moundMesh,
-                        height: mData.height,
-                        depth: mData.depth,
                         materialType: mData.materialType || 'terra',
+                        itemType: mData.materialType || 'terra',
+                        growthStage: mData.growthStage || 0,
                         lastDugAt: mData.lastDugAt || world.time
                     };
                     visualMounds.push(moundObj);
+                    mounds.push(moundObj);
                 });
+
+                // Atualiza a geometria e a física do terreno imediatamente
+                if (typeof updateIslandGeometry === 'function') {
+                    lastPhysicsTerrainUpdate = 0;
+                    updateIslandGeometry();
+                }
             }
 
             raycastTargetsNeedUpdate = true;
