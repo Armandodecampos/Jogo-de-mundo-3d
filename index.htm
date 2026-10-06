@@ -10646,9 +10646,14 @@
 
             // Otimização: Wrapping de instância única para todos os objetos e culling estrito
             collectibleBoxes.forEach(box => {
+                if (!box) return;
                 const body = box.body;
                 const mesh = box.mesh;
-                if (!body || !mesh) return;
+                if (!body || !mesh || !body.position || !body.quaternion) return;
+
+                if (isNaN(body.quaternion.x) || isNaN(body.quaternion.y) || isNaN(body.quaternion.z) || isNaN(body.quaternion.w)) {
+                    body.quaternion.set(0, 0, 0, 1);
+                }
 
                 const dx = body.position.x - playerBody.position.x;
                 const dz = body.position.z - playerBody.position.z;
@@ -10676,7 +10681,11 @@
 
             placedConstructionBodies.forEach((body, index) => {
                 const mesh = placedConstructionMeshes[index];
-                if (!body || !mesh) return;
+                if (!body || !mesh || !body.position || !body.quaternion) return;
+
+                if (isNaN(body.quaternion.x) || isNaN(body.quaternion.y) || isNaN(body.quaternion.z) || isNaN(body.quaternion.w)) {
+                    body.quaternion.set(0, 0, 0, 1);
+                }
 
                 const dx = body.position.x - playerBody.position.x;
                 const dz = body.position.z - playerBody.position.z;
@@ -12884,9 +12893,13 @@
             });
             visualMounds.length = 0;
 
-            // Restaura jogador
-            if (playerBody && saveData.player.position) {
-                playerBody.position.set(saveData.player.position.x, saveData.player.position.y, saveData.player.position.z);
+            // Restaura jogador com proteções contra NaN e queda no bedrock
+            if (playerBody && saveData.player) {
+                const p = saveData.player.position || {};
+                const px = isNaN(p.x) ? 0 : p.x;
+                const py = (isNaN(p.y) || p.y < bedrockLevel) ? 10 : p.y;
+                const pz = isNaN(p.z) ? 0 : p.z;
+                playerBody.position.set(px, py, pz);
                 playerBody.velocity.set(0, 0, 0);
             }
             if (saveData.player.health !== undefined) playerHealth = saveData.player.health;
