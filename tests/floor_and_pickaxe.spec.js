@@ -68,7 +68,7 @@ test.describe('Floor Spawn Prevention and Pickaxe Destruction Tests', () => {
             if (isBuildingAction) {
               multiplier = 1.0;
             } else if (heldItemName === 'picareta' && isBlockOrFloorTarget) {
-              multiplier = 0.6;
+              multiplier = 3.0;
             } else if ((heldItemName === 'pá' && materialType === 'earth') ||
                 (isPickaxe && (materialType === 'stone' || isBlockOrFloorTarget)) ||
                 (heldItemName === 'pá_ferro' && materialType === 'earth') ||
@@ -96,7 +96,7 @@ test.describe('Floor Spawn Prevention and Pickaxe Destruction Tests', () => {
     });
 
     for (const bType of Object.keys(speeds)) {
-      expect(speeds[bType].stonePickaxe).toBe(0.6);
+      expect(speeds[bType].stonePickaxe).toBe(3.0);
       expect(speeds[bType].ironPickaxe).toBe(0.15); // Faster
       expect(speeds[bType].hand).toBe(10.0); // Slower
     }
