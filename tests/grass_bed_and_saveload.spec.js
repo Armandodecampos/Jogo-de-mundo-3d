@@ -113,23 +113,25 @@ test.describe('Grass Bed and Save/Load Ground Items Tests', () => {
         expect(tronco.childrenCount).toBeGreaterThan(1); // curved mesh + flat face
     });
 
-    test('Lenha and tronco_cortado are placeable and produce ghost preview with double sided material and inner faces', async ({ page }) => {
+    test('Lenha, tronco_cortado and cama_capim are placeable and produce ghost preview with double sided material', async ({ page }) => {
         const ghostDetails = await page.evaluate(() => {
             const lenhaAction = window.getActionType({ name: 'lenha' });
             const troncoAction = window.getActionType({ name: 'tronco_cortado' });
+            const grassBedAction = window.getActionType({ name: window.grassBedItemName });
 
-            // Simulate selecting lenha slot to build ghost
-            window.beltItems[0] = { name: 'lenha', quantity: 1 };
+            // Simulate selecting cama_capim slot
+            window.beltItems[0] = { name: window.grassBedItemName, quantity: 1 };
             window.selectedSlotIndex = 0;
 
             // Check ghost material double side property
             const isDoubleSided = window.ghostBlockMaterial.side === THREE.DoubleSide;
 
-            return { lenhaAction, troncoAction, isDoubleSided };
+            return { lenhaAction, troncoAction, grassBedAction, isDoubleSided };
         });
 
         expect(ghostDetails.lenhaAction).toBe('place');
         expect(ghostDetails.troncoAction).toBe('place');
+        expect(ghostDetails.grassBedAction).toBe('place');
         expect(ghostDetails.isDoubleSided).toBe(true);
     });
 });
