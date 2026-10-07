@@ -3836,7 +3836,7 @@
         }
 
 
-        function createCutTrunk(position, velocity) {
+        function createCutTrunk(position, velocity, quaternion) {
             const radius = 0.2;
             const height = 1.0;
             const mass = 10;
@@ -3854,7 +3854,11 @@
             });
             body.position.copy(position);
             if (velocity) body.velocity.copy(velocity);
-            body.quaternion.setFromEuler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+            if (quaternion) {
+                body.quaternion.copy(quaternion);
+            } else {
+                body.quaternion.setFromEuler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+            }
 
             body.addEventListener('collide', (event) => {
                 const impactVelocity = Math.abs(event.contact.getImpactVelocityAlongNormal());
@@ -3898,7 +3902,7 @@
         }
 
 
-        function createFirewood(position, velocity) {
+        function createFirewood(position, velocity, quaternion) {
             const radius = 0.15;
             const height = 1.0;
             const mass = 3;
@@ -3916,7 +3920,11 @@
             });
             body.position.copy(position);
             if (velocity) body.velocity.copy(velocity);
-            body.quaternion.setFromEuler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+            if (quaternion) {
+                body.quaternion.copy(quaternion);
+            } else {
+                body.quaternion.setFromEuler(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+            }
 
             body.addEventListener('collide', (event) => {
                 const impactVelocity = Math.abs(event.contact.getImpactVelocityAlongNormal());
@@ -8178,7 +8186,7 @@
                 // O martelo foi removido temporariamente das ferramentas de destruição
                 if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === ironAxeItemName || item.name === ironPickaxeItemName || item.name === ironShovelItemName || item.name === branchItemName || item.name === dirtItemName || item.name === sandItemName) return 'destroy';
                 // Itens de colocação
-                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === boxItemName || item.name === basketItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === woodenFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName || item.name === workbenchItemName || item.name === mesaItemName || item.name === bigornaItemName || item.name === furnaceItemName || item.name === pestleItemName || item.name === grassBedItemName || item.name === sleepingMatItemName || item.name === bedItemName || item.name === doorItemName || item.name === windowItemName) return 'place';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === cutTrunkItemName || item.name === firewoodItemName || item.name === boxItemName || item.name === basketItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === woodenFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName || item.name === workbenchItemName || item.name === mesaItemName || item.name === bigornaItemName || item.name === furnaceItemName || item.name === pestleItemName || item.name === grassBedItemName || item.name === sleepingMatItemName || item.name === bedItemName || item.name === doorItemName || item.name === windowItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
             }
 
@@ -8915,6 +8923,7 @@
                     else if (currentBlockType === campfireItemName) materialLoaded = true;
                     else if (currentBlockType === torchItemName) materialLoaded = true;
                     else if (currentBlockType === grassBedItemName || currentBlockType === sleepingMatItemName || currentBlockType === bedItemName) materialLoaded = true;
+                    else if (currentBlockType === cutTrunkItemName || currentBlockType === firewoodItemName) materialLoaded = true;
                     else if (currentBlockType === workbenchItemName || currentBlockType === mesaItemName || currentBlockType === bigornaItemName || currentBlockType === furnaceItemName || currentBlockType === pestleItemName || currentBlockType === doorItemName || currentBlockType === windowItemName) materialLoaded = true;
 
                     if (materialLoaded) {
@@ -8926,6 +8935,10 @@
                             createRaft(ghostBlockMesh.position, ghostBlockMesh.quaternion);
                         } else if (currentBlockType === stoneItemName) {
                             createStone(ghostBlockMesh.position, ghostBlockMesh.quaternion);
+                        } else if (currentBlockType === cutTrunkItemName) {
+                            createCutTrunk(ghostBlockMesh.position, null, ghostBlockMesh.quaternion);
+                        } else if (currentBlockType === firewoodItemName) {
+                            createFirewood(ghostBlockMesh.position, null, ghostBlockMesh.quaternion);
                         } else if (currentBlockType === campfireItemName) {
                             createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, campfireItemName, null, { fuel: item.fuel, isOn: item.isOn });
                         } else if (currentBlockType === torchItemName) {
@@ -8989,6 +9002,8 @@
                     primaryToolForVisuals.name === grassBedItemName ||
                     primaryToolForVisuals.name === sleepingMatItemName ||
                     primaryToolForVisuals.name === bedItemName ||
+                    primaryToolForVisuals.name === cutTrunkItemName ||
+                    primaryToolForVisuals.name === firewoodItemName ||
                     primaryToolForVisuals.name === stoneFloorItemName ||
                     primaryToolForVisuals.name === woodenFloorItemName ||
                     primaryToolForVisuals.name === raftItemName
@@ -11240,6 +11255,10 @@
                             ghostBlockMesh.geometry = new THREE.ConeGeometry(seedBaseData.visual.mound.radius, seedBaseData.visual.mound.height, 8);
                         } else if (currentBlockType === 'tronco_arvore') {
                             ghostBlockMesh.geometry = new THREE.CylinderGeometry(trunkRadius, trunkRadius, trunkHeight, trunkSegments);
+                        } else if (currentBlockType === cutTrunkItemName) {
+                            ghostBlockMesh.geometry = new THREE.CylinderGeometry(0.2, 0.2, 1.0, 12, 1, false, 0, Math.PI);
+                        } else if (currentBlockType === firewoodItemName) {
+                            ghostBlockMesh.geometry = new THREE.CylinderGeometry(0.15, 0.15, 1.0, 8, 1, false, 0, Math.PI / 2);
                         } else if (currentBlockType === boxItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(1, 1, 1);
                         } else if (currentBlockType === basketItemName) {
@@ -11397,6 +11416,7 @@
                     else if (currentBlockType === woodenFloorItemName) currentGhostHeight = woodenFloorHeight;
                     else if (currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === 'muda_arvore') currentGhostHeight = treeStages['semente'].visual.mound.height;
                     else if (currentBlockType === 'tronco_arvore') currentGhostHeight = trunkHeight;
+                    else if (currentBlockType === cutTrunkItemName || currentBlockType === firewoodItemName) currentGhostHeight = 1.0;
                     else if (currentBlockType === boxItemName) currentGhostHeight = 1;
                     else if (currentBlockType === basketItemName) currentGhostHeight = 0.5;
                     else if (currentBlockType === stoneItemName) currentGhostHeight = 0.5;
@@ -13066,6 +13086,10 @@
                             boxBody.userData.inventory = JSON.parse(JSON.stringify(containerItems));
                             boxBody.userData.chestItems = JSON.parse(JSON.stringify(containerItems));
                         }
+                    } else if (item.type === cutTrunkItemName) {
+                        createCutTrunk(pos, null, quat);
+                    } else if (item.type === firewoodItemName) {
+                        createFirewood(pos, null, quat);
                     } else if (item.type) {
                         createDroppableItem(pos, { name: item.type, quantity: item.quantity || 1 });
                     }
