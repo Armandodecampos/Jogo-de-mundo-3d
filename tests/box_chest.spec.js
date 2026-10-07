@@ -8,14 +8,12 @@ test.describe('Box Chest Functionality', () => {
         await page.waitForFunction(() => window.isWorldReady === true, { timeout: 60000 });
     });
 
-    test('No initial box exists at (0,-5) on new game start', async ({ page }) => {
-        const starterExists = await page.evaluate(() => {
-            return window.collectibleBoxes.some(b =>
-                Math.abs(b.body.position.x) < 1 && Math.abs(b.body.position.z + 5) < 1
-            );
+    test('No initial box chest exists in the world on new game start', async ({ page }) => {
+        const initialBoxChestCount = await page.evaluate(() => {
+            return window.collectibleBoxes.filter(b => b.body.userData && b.body.userData.type === 'caixote').length;
         });
 
-        expect(starterExists).toBe(false);
+        expect(initialBoxChestCount).toBe(0);
     });
 
     test('Non-empty box cannot be collected', async ({ page }) => {
