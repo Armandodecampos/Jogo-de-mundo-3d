@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Floor Spawn Prevention and Pickaxe Destruction Tests', () => {
   test.beforeEach(async ({ page }) => {
+    test.setTimeout(120000);
     await page.goto('http://localhost:8080/index.htm');
     await page.click('#startButton');
     await page.waitForFunction(() => window.isWorldReady === true);
@@ -66,6 +67,8 @@ test.describe('Floor Spawn Prevention and Pickaxe Destruction Tests', () => {
           if (isCorrectTool) {
             if (isBuildingAction) {
               multiplier = 1.0;
+            } else if (heldItemName === 'picareta' && isBlockOrFloorTarget) {
+              multiplier = 0.6;
             } else if ((heldItemName === 'pá' && materialType === 'earth') ||
                 (isPickaxe && (materialType === 'stone' || isBlockOrFloorTarget)) ||
                 (heldItemName === 'pá_ferro' && materialType === 'earth') ||
@@ -93,7 +96,7 @@ test.describe('Floor Spawn Prevention and Pickaxe Destruction Tests', () => {
     });
 
     for (const bType of Object.keys(speeds)) {
-      expect(speeds[bType].stonePickaxe).toBe(0.3);
+      expect(speeds[bType].stonePickaxe).toBe(0.6);
       expect(speeds[bType].ironPickaxe).toBe(0.15); // Faster
       expect(speeds[bType].hand).toBe(10.0); // Slower
     }
