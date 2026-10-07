@@ -29,4 +29,10 @@ test('Piso de barro recipe yield and item weight verification', async ({ page })
   // 3. Verify total weight of 500 piso items equals 2.4 kg
   const totalBatchWeight = pisoRecipe.result.quantity * pisoWeight;
   expect(totalBatchWeight).toBeCloseTo(2.4, 4);
+
+  // 4. Verify floor texture URL
+  const floorTextureURL = await page.evaluate(() => {
+    return window.getItemIconURL ? window.getItemIconURL('piso') : null;
+  });
+  expect(floorTextureURL).toContain('Cob-piso.png');
 });
