@@ -70,8 +70,8 @@ test.describe('Grass Bed and Save/Load Ground Items Tests', () => {
         expect(energyCaps.bedEnergy).toBe(90);
     });
 
-    test('Save and load restores ground items properly without converting them into caixotes', async ({ page }) => {
-        const restoredTypes = await page.evaluate(() => {
+    test('Save and load restores wood items (lenha and tronco_cortado) with proper 3D meshes', async ({ page }) => {
+        const woodItemDetails = await page.evaluate(() => {
             // Clear ground items first
             for (let i = window.collectibleBoxes.length - 1; i >= 0; i--) {
                 const box = window.collectibleBoxes[i];
@@ -80,22 +80,11 @@ test.describe('Grass Bed and Save/Load Ground Items Tests', () => {
             }
             window.collectibleBoxes.length = 0;
 
-            // Drop a galho (dropped item) and place a caixote
-            window.createBox(new CANNON.Vec3(0, 5, 0)); // boxItemName ('caixote')
-
-            // Create droppable item
-            const itemSize = 0.5;
-            const itemShape = new CANNON.Box(new CANNON.Vec3(itemSize/2, itemSize/2, itemSize/2));
-            const itemGeometry = new THREE.BoxGeometry(itemSize, itemSize, itemSize);
-            const itemMaterial = new THREE.MeshBasicMaterial();
-            const itemBody = new CANNON.Body({ mass: 10, shape: itemShape });
-            itemBody.position.set(2, 5, 0);
-            window.world.addBody(itemBody);
-            itemBody.userData = { isCollectible: true, type: 'galho', quantity: 1 };
-            const mesh = new THREE.Mesh(itemGeometry, itemMaterial);
-            mesh.userData.physicsBody = itemBody;
-            window.scene.add(mesh);
-            window.collectibleBoxes.push({ body: itemBody, mesh: mesh });
+            // Create lenha and tronco_cortado
+            const posLenha = new THREE.Vector3(0, 5, 0);
+            const posTronco = new THREE.Vector3(2, 5, 0);
+            window.createFirewood(posLenha);
+            window.createCutTrunk(posTronco);
 
             // Get game state
             const state = window.getGameStateData();
@@ -103,12 +92,35 @@ test.describe('Grass Bed and Save/Load Ground Items Tests', () => {
             // Load game state back
             window.loadGameState(state);
 
-            // Return types of ground items in collectibleBoxes
-            return window.collectibleBoxes.map(b => b.body.userData.type);
+            // Inspect collectibleBoxes
+            return window.collectibleBoxes.map(b => ({
+                type: b.body.userData.type,
+                isGroup: b.mesh.type === 'Group',
+                childrenCount: b.mesh.children ? b.mesh.children.length : 0
+            }));
         });
 
-        expect(restoredTypes).toContain('caixote');
-        expect(restoredTypes).toContain('galho');
-        expect(restoredTypes.filter(t => t === 'caixote').length).toBe(1);
+        expect(woodItemDetails.length).toBe(2);
+        const lenha = woodItemDetails.find(d => d.type === 'lenha');
+        const tronco = woodItemDetails.find(d => d.type === 'tronco_cortado');
+
+        expect(lenha).toBeDefined();
+        expect(lenha.isGroup).toBe(true);
+        expect(lenha.childrenCount).toBeGreaterThan(1); // curved mesh + flat faces
+
+        expect(tronco).toBeDefined();
+        expect(tronco.isGroup).toBe(true);
+        expect(tronco.childrenCount).toBeGreaterThan(1); // curved mesh + flat face
+    });
+
+    test('Lenha and tronco_cortado are placeable and produce ghost preview', async ({ page }) => {
+        const placeableActions = await page.evaluate(() => {
+            const lenhaAction = window.getActionType({ name: 'lenha' });
+            const troncoAction = window.getActionType({ name: 'tronco_cortado' });
+            return { lenhaAction, troncoAction };
+        });
+
+        expect(placeableActions.lenhaAction).toBe('place');
+        expect(placeableActions.troncoAction).toBe('place');
     });
 });
