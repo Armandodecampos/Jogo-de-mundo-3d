@@ -2310,8 +2310,8 @@
             [dirtItemName]: 'Terra',
             [sandItemName]: 'Areia',
             [glassItemName]: 'Vidro',
-            [shovelItemName]: 'Pá de Pedra\nEspecialidade: Terra',
-            [pickaxeItemName]: 'Picareta de Pedra\nEspecialidade: Pedra',
+            [ironPickaxeItemName]: 'Picareta de Ferro\nEspecialidade: Blocos, Pisos e Pedra',
+            [pickaxeItemName]: 'Picareta de Pedra\nEspecialidade: Blocos, Pisos e Pedra',
             [cobItemName]: 'Bloco de Barro',
             [floorItemName]: 'Piso de Barro',
             [treeSaplingItemName]: 'Muda de Árvore',
@@ -4575,6 +4575,17 @@
             return false;
         }
 
+        function isPositionOccupiedByFloor(x, z, radius = 2.5) {
+            const floorTypes = [floorItemName, stoneFloorItemName, woodenFloorItemName, woodenPlankItemName];
+            for (const body of placedConstructionBodies) {
+                if (body.userData && floorTypes.includes(body.userData.type)) {
+                    const dist = calculateWrappedDistance(new THREE.Vector3(x, body.position.y, z), body.position);
+                    if (dist < radius) return true;
+                }
+            }
+            return false;
+        }
+
         function respawnCapim(limit = 20) {
             let totalAttempts = 0;
             let spawnedCount = 0;
@@ -4602,8 +4613,8 @@
                 }
 
                 if (y > waterLevel + 0.5 && y < 25) {
-                    // Permitimos crescer em montes de terra (allowDirtMounds = true)
-                    if (!isAreaOccupiedByConstruction(x, z, 2.0, true) && !isPositionOccupied(x, z, 4.0)) {
+                    // Permitimos crescer em montes de terra (allowDirtMounds = true), mas nunca em cima de pisos
+                    if (!isAreaOccupiedByConstruction(x, z, 2.0, true) && !isPositionOccupied(x, z, 4.0) && !isPositionOccupiedByFloor(x, z, 3.0)) {
                         createCapim(new THREE.Vector3(x, y, z));
                         spawnedCount++;
                     }
@@ -4670,9 +4681,9 @@
                 z = Math.sin(angle) * dist;
                 y = window.getActualHeight(x, z);
 
-                // Coloca capim apenas se estiver acima do nível da água e na zona de terra
+                // Coloca capim apenas se estiver acima do nível da água e na zona de terra (sem pisos)
                 if (y > waterLevel + 0.5 && y < 25) {
-                    if (!isAreaOccupiedByConstruction(x, z, 2.0, true)) {
+                    if (!isAreaOccupiedByConstruction(x, z, 2.0, true) && !isPositionOccupiedByFloor(x, z, 3.0)) {
                         createCapim(new THREE.Vector3(x, y, z));
                     }
                 }
@@ -4713,7 +4724,7 @@
                         const y = window.getSurfaceHeight(x, z);
 
                         if (y > waterLevel + 1.0 && y < 25) {
-                            if (!isAreaOccupiedByConstruction(x, z, 5.0) && !isPositionOccupied(x, z, 2.0)) {
+                            if (!isAreaOccupiedByConstruction(x, z, 5.0) && !isPositionOccupied(x, z, 2.0) && !isPositionOccupiedByFloor(x, z, 4.0)) {
                                 createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), typeToSpawn, 'muda');
                                 spawned = true;
                                 raycastTargetsNeedUpdate = true;
@@ -4749,7 +4760,7 @@
                     const y = window.getSurfaceHeight(x, z);
 
                     if (y > waterLevel + 1.0 && y < 25) {
-                        if (!isAreaOccupiedByConstruction(x, z, 5.0) && !isPositionOccupied(x, z, 2.0)) {
+                        if (!isAreaOccupiedByConstruction(x, z, 5.0) && !isPositionOccupied(x, z, 2.0) && !isPositionOccupiedByFloor(x, z, 4.0)) {
                             createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), treeInfo.type, treeInfo.stage);
                             spawned = true;
                         }
@@ -6251,6 +6262,10 @@
                     blockBody.userData.inventory = JSON.parse(JSON.stringify(items));
                     blockBody.userData.chestItems = JSON.parse(JSON.stringify(items));
                 }
+            }
+
+            if ([floorItemName, stoneFloorItemName, woodenFloorItemName, woodenPlankItemName].includes(type)) {
+                removeCapimNear(position, 2.0);
             }
             // NOVO: Adiciona ao array de macieiras se for uma macieira adulta inicial
             if (blockBody.userData.treeType === 'apple' && blockBody.userData.growthStage === 'arvore_adulta') {
@@ -8437,20 +8452,28 @@
 
                     const isBuildingAction = (heldItemName === dirtItemName || heldItemName === sandItemName);
 
+                    // Define se o alvo é qualquer tipo de bloco ou piso
+                    const isBlockOrFloorTarget = target.body && target.body.userData && [
+                        cobItemName, floorItemName,
+                        stoneBlockItemName, stoneFloorItemName,
+                        woodenBlockItemName, woodenFloorItemName, woodenPlankItemName
+                    ].includes(target.body.userData.type);
+
+                    const isPickaxe = (heldItemName === pickaxeItemName || heldItemName === ironPickaxeItemName);
+
                     // Define a ferramenta correta para cada material
                     const isIronTool = (heldItemName === ironAxeItemName || heldItemName === ironPickaxeItemName || heldItemName === ironShovelItemName);
                     const isCorrectTool = isBuildingAction ||
                         ((heldItemName === axeItemName || heldItemName === ironAxeItemName) && (materialType === 'wood' || target.isCapim)) ||
-                        ((heldItemName === pickaxeItemName || heldItemName === ironPickaxeItemName) && materialType === 'stone') ||
+                        (isPickaxe && (materialType === 'stone' || isBlockOrFloorTarget)) ||
                         ((heldItemName === shovelItemName || heldItemName === ironShovelItemName) && materialType === 'earth');
 
                     if (isCorrectTool) {
                         if (isBuildingAction) {
                             multiplier = 1.0;
                         } else if ((heldItemName === shovelItemName && materialType === 'earth') ||
-                            (heldItemName === pickaxeItemName && materialType === 'stone') ||
+                            (isPickaxe && (materialType === 'stone' || isBlockOrFloorTarget)) ||
                             (heldItemName === ironShovelItemName && materialType === 'earth') ||
-                            (heldItemName === ironPickaxeItemName && materialType === 'stone') ||
                             ((heldItemName === axeItemName || heldItemName === ironAxeItemName) && target.isCapim)) {
                             multiplier = 0.3; // Mais rápido com a ferramenta correta
                         } else {
@@ -12721,6 +12744,7 @@
             window.getCapimUnderCrosshair = getCapimUnderCrosshair;
             window.createCapim = createCapim;
             window.isAreaOccupiedByConstruction = isAreaOccupiedByConstruction;
+            window.isPositionOccupiedByFloor = isPositionOccupiedByFloor;
             window.mounds = mounds;
             window.islandMeshes = islandMeshes;
             window.visualMounds = visualMounds;
