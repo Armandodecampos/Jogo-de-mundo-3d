@@ -6208,6 +6208,14 @@
                 treeType: blockBody.userData.treeType || 'normal',
                 multipliers: blockBody.userData.multipliers
             });
+
+            if (extraData) {
+                const items = extraData.inventory || extraData.chestItems;
+                if (items) {
+                    blockBody.userData.inventory = JSON.parse(JSON.stringify(items));
+                    blockBody.userData.chestItems = JSON.parse(JSON.stringify(items));
+                }
+            }
             // NOVO: Adiciona ao array de macieiras se for uma macieira adulta inicial
             if (blockBody.userData.treeType === 'apple' && blockBody.userData.growthStage === 'arvore_adulta') {
                 appleTrees.push(blockBody);
@@ -12779,7 +12787,8 @@
                         isOn: ud.isOn !== undefined ? ud.isOn : null,
                         isOpen: ud.isOpen !== undefined ? ud.isOpen : null,
                         baseQuaternion: ud.baseQuaternion ? { x: ud.baseQuaternion.x, y: ud.baseQuaternion.y, z: ud.baseQuaternion.z, w: ud.baseQuaternion.w } : null,
-                        chestItems: ud.chestItems ? JSON.parse(JSON.stringify(ud.chestItems)) : null,
+                        inventory: ud.inventory ? JSON.parse(JSON.stringify(ud.inventory)) : (ud.chestItems ? JSON.parse(JSON.stringify(ud.chestItems)) : null),
+                        chestItems: ud.chestItems ? JSON.parse(JSON.stringify(ud.chestItems)) : (ud.inventory ? JSON.parse(JSON.stringify(ud.inventory)) : null),
                         randomizedDimensions: ud.randomizedDimensions || ud.dimensions || null,
                         multipliers: ud.multipliers || null,
                         isCollectible: ud.isCollectible || false,
@@ -12800,7 +12809,8 @@
                     userData: {
                         fuel: ud.fuel !== undefined ? ud.fuel : null,
                         isOn: ud.isOn !== undefined ? ud.isOn : null,
-                        chestItems: ud.chestItems ? JSON.parse(JSON.stringify(ud.chestItems)) : null
+                        inventory: ud.inventory ? JSON.parse(JSON.stringify(ud.inventory)) : (ud.chestItems ? JSON.parse(JSON.stringify(ud.chestItems)) : null),
+                        chestItems: ud.chestItems ? JSON.parse(JSON.stringify(ud.chestItems)) : (ud.inventory ? JSON.parse(JSON.stringify(ud.inventory)) : null)
                     }
                 };
             });
@@ -12990,7 +13000,11 @@
                                 extraData.baseQuaternion.w
                             );
                         }
-                        if (extraData.chestItems) body.userData.chestItems = extraData.chestItems;
+                        const containerItems = extraData.inventory || extraData.chestItems;
+                        if (containerItems) {
+                            body.userData.inventory = JSON.parse(JSON.stringify(containerItems));
+                            body.userData.chestItems = JSON.parse(JSON.stringify(containerItems));
+                        }
                     }
                 });
             }
@@ -13002,10 +13016,19 @@
                     const quat = item.quaternion ? new THREE.Quaternion(item.quaternion.x, item.quaternion.y, item.quaternion.z, item.quaternion.w) : null;
                     if (item.type === stoneItemName) {
                         createStone(pos, quat || new THREE.Quaternion());
+                    } else if (item.type === basketItemName) {
+                        const basketBody = createBasket(pos, quat);
+                        const containerItems = item.userData ? (item.userData.inventory || item.userData.chestItems) : null;
+                        if (basketBody && containerItems) {
+                            basketBody.userData.inventory = JSON.parse(JSON.stringify(containerItems));
+                            basketBody.userData.chestItems = JSON.parse(JSON.stringify(containerItems));
+                        }
                     } else {
                         const boxBody = createBox(pos, quat);
-                        if (boxBody && item.userData && item.userData.chestItems) {
-                            boxBody.userData.chestItems = item.userData.chestItems;
+                        const containerItems = item.userData ? (item.userData.inventory || item.userData.chestItems) : null;
+                        if (boxBody && containerItems) {
+                            boxBody.userData.inventory = JSON.parse(JSON.stringify(containerItems));
+                            boxBody.userData.chestItems = JSON.parse(JSON.stringify(containerItems));
                         }
                     }
                 });
