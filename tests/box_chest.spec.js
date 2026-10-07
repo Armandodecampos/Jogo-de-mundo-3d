@@ -8,51 +8,43 @@ test.describe('Box Chest Functionality', () => {
         await page.waitForFunction(() => window.isWorldReady === true, { timeout: 60000 });
     });
 
-    test('Starting object at (0,-5) is a box and has inventory', async ({ page }) => {
-        const starterInventory = await page.evaluate(() => {
-            // Find the object at (0, -5)
-            // We know it's the first box created in this case, or we can look for it
-            const starter = window.collectibleBoxes.find(b =>
+    test('No initial box exists at (0,-5) on new game start', async ({ page }) => {
+        const starterExists = await page.evaluate(() => {
+            return window.collectibleBoxes.some(b =>
                 Math.abs(b.body.position.x) < 1 && Math.abs(b.body.position.z + 5) < 1
             );
-            if (!starter) return null;
-            return {
-                type: starter.body.userData.type,
-                isChest: starter.body.userData.isChest,
-                hasInventory: Array.isArray(starter.body.userData.inventory),
-                inventorySize: starter.body.userData.inventory ? starter.body.userData.inventory.length : 0,
-                contentCount: starter.body.userData.inventory ? starter.body.userData.inventory.filter(i => i !== null).length : 0
-            };
         });
 
-        expect(starterInventory).not.toBeNull();
-        expect(starterInventory.type).toBe('caixote');
-        expect(starterInventory.isChest).toBe(true);
-        expect(starterInventory.hasInventory).toBe(true);
-        // The inventory size in the code is dynamic, but init adds items.
-        // It seems the test expects a specific number of non-null slots.
-        expect(starterInventory.contentCount).toBeGreaterThan(0);
+        expect(starterExists).toBe(false);
     });
 
     test('Non-empty box cannot be collected', async ({ page }) => {
         const collectionResult = await page.evaluate(async () => {
-            // Find the starter box
-            const starter = window.collectibleBoxes.find(b =>
-                Math.abs(b.body.position.x) < 1 && Math.abs(b.body.position.z + 5) < 1
-            );
-            if (!starter) return "not found";
+            // Create a non-empty box
+            const pos = new window.CANNON.Vec3(0, 5, -5);
+            const boxBody = window.createBox(pos, null);
+            const box = window.collectibleBoxes.find(b => b.body === boxBody);
 
-            // Move player to starter box
-            window.playerBody.position.set(0, starter.body.position.y + 2, -3);
-            window.playerBody.quaternion.setFromEuler(0, Math.PI, 0); // Look at -Z
+            window.addItemToInventory(boxBody.userData.inventory, { name: 'pedra', quantity: 1 }, boxBody.userData.maxWeight, true);
+
+            // Move player near box
+            window.playerBody.position.set(0, 7, -3);
 
             const initialBackpackCount = window.backpackItems.filter(i => i !== null).length;
 
-            // Try to collect
+            // Mock raycaster hit for collectObject
+            const originalRaycast = window.raycaster.intersectObjects;
+            window.raycaster.intersectObjects = () => [{
+                distance: 1,
+                object: box.mesh
+            }];
+
             window.collectObject();
 
+            window.raycaster.intersectObjects = originalRaycast; // restore
+
             const finalBackpackCount = window.backpackItems.filter(i => i !== null).length;
-            const stillInWorld = window.collectibleBoxes.includes(starter);
+            const stillInWorld = window.collectibleBoxes.includes(box);
 
             return {
                 initialBackpackCount,
