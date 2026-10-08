@@ -7915,7 +7915,13 @@
 
                 if (event.key.toLowerCase() === 't') {
                     if (event.repeat) return;
-                    rotateLookedAtObject();
+                    if (isPrimaryToolPlacing || (ghostBlockMesh && ghostBlockMesh.visible)) {
+                        ghostBlockRotationY += Math.PI / 4;
+                        const snapAngle = Math.PI / 4;
+                        ghostBlockRotationY = Math.round(ghostBlockRotationY / snapAngle) * snapAngle;
+                    } else {
+                        rotateLookedAtObject();
+                    }
                 }
 
                 // NOVO: Toggle voo com 'V'
@@ -8202,7 +8208,7 @@
                 // O martelo foi removido temporariamente das ferramentas de destruição
                 if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === ironAxeItemName || item.name === ironPickaxeItemName || item.name === ironShovelItemName || item.name === branchItemName || item.name === dirtItemName || item.name === sandItemName) return 'destroy';
                 // Itens de colocação
-                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === cutTrunkItemName || item.name === firewoodItemName || item.name === boxItemName || item.name === basketItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === woodenFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName || item.name === workbenchItemName || item.name === mesaItemName || item.name === bigornaItemName || item.name === furnaceItemName || item.name === pestleItemName || item.name === grassBedItemName || item.name === sleepingMatItemName || item.name === bedItemName || item.name === doorItemName || item.name === windowItemName) return 'place';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === coconutSeedItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === cutTrunkItemName || item.name === firewoodItemName || item.name === boxItemName || item.name === basketItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === woodenFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName || item.name === workbenchItemName || item.name === mesaItemName || item.name === bigornaItemName || item.name === furnaceItemName || item.name === pestleItemName || item.name === grassBedItemName || item.name === sleepingMatItemName || item.name === bedItemName || item.name === doorItemName || item.name === windowItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
             }
 
@@ -8937,7 +8943,7 @@
                     if (currentBlockType === 'cob' && cobMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === 'piso' && floorMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === 'tábuas' && woodenPlankMaterialMesh) materialLoaded = true;
-                    else if ((currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName) && treeTrunkMaterialMesh && treeLeavesMaterialMesh) materialLoaded = true;
+                    else if ((currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName) && treeTrunkMaterialMesh && treeLeavesMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === 'tronco_arvore' && treeTrunkMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === stoneBlockItemName && stoneBlockMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === woodenBlockItemName && woodenBlockMaterialMesh) materialLoaded = true;
@@ -9094,11 +9100,6 @@
                             camera.rotation.x = Math.max(-Math.PI / 2, Math.min(Math.PI / 2, newRotX));
                         }
 
-                        // Se o botão direito não estiver pressionado, reseta as rotações do ghost block
-                        if (isPrimaryToolPlacing) {
-                            ghostBlockRotationY = 0;
-                            ghostBlockRotationX = 0;
-                        }
                     }
                 }
             });
@@ -11141,14 +11142,6 @@
                 }
             }
 
-            if (interactionHintElement) {
-                if (interactionHintText && useInteractionHints) {
-                    interactionHintElement.textContent = interactionHintText;
-                    interactionHintElement.style.display = 'block';
-                } else {
-                    interactionHintElement.style.display = 'none';
-                }
-            }
 
             // NOVO: Lógica do Modo Inspetor
             if (useInspector && !gamePaused) {
@@ -11252,6 +11245,8 @@
                     // Otimização: Só atualiza a geometria e filhos se o tipo de bloco mudou
                     if (lastGhostType !== currentBlockType) {
                         lastGhostType = currentBlockType;
+                        ghostBlockRotationY = 0;
+                        ghostBlockRotationX = 0;
                         ghostBlockMesh.scale.set(1, 1, 1); // Reset scale
 
                         // Limpa filhos anteriores do ghostBlockMesh (importante para modelos complexos como a jangada)
@@ -11279,7 +11274,7 @@
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(stoneFloorWidth, stoneFloorHeight, stoneFloorDepth);
                         } else if (currentBlockType === woodenFloorItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(woodenFloorWidth, woodenFloorHeight, woodenFloorDepth);
-                        } else if (currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === 'muda_arvore') {
+                        } else if (currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName || currentBlockType === 'muda_arvore') {
                             const seedBaseData = treeStages['semente'];
                             ghostBlockMesh.geometry = new THREE.ConeGeometry(seedBaseData.visual.mound.radius, seedBaseData.visual.mound.height, 8);
                         } else if (currentBlockType === 'tronco_arvore') {
@@ -11474,7 +11469,7 @@
                     else if (currentBlockType === woodenBlockItemName) currentGhostHeight = woodenBlockHeight;
                     else if (currentBlockType === stoneFloorItemName) currentGhostHeight = stoneFloorHeight;
                     else if (currentBlockType === woodenFloorItemName) currentGhostHeight = woodenFloorHeight;
-                    else if (currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === 'muda_arvore') currentGhostHeight = treeStages['semente'].visual.mound.height;
+                    else if (currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName || currentBlockType === 'muda_arvore') currentGhostHeight = treeStages['semente'].visual.mound.height;
                     else if (currentBlockType === 'tronco_arvore') currentGhostHeight = trunkHeight;
                     else if (currentBlockType === cutTrunkItemName || currentBlockType === firewoodItemName) currentGhostHeight = 1.0;
                     else if (currentBlockType === boxItemName) currentGhostHeight = 1;
@@ -11565,7 +11560,7 @@
                                 // NOVO: Alinha a posição Y na grade, considerando a altura da superfície da ilha como a base.
                                 // Isso garante que os blocos se encaixem verticalmente.
                                 // CORREÇÃO: As sementes não devem se encaixar na grade vertical, elas devem ser colocadas no chão.
-                                if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === dirtItemName || currentBlockType === sandItemName || currentBlockType === raftItemName || currentBlockType === torchItemName || currentBlockType === workbenchItemName || currentBlockType === mesaItemName || currentBlockType === bigornaItemName || currentBlockType === furnaceItemName || currentBlockType === pestleItemName || currentBlockType === doorItemName || currentBlockType === windowItemName) {
+                                if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName || currentBlockType === dirtItemName || currentBlockType === sandItemName || currentBlockType === raftItemName || currentBlockType === torchItemName || currentBlockType === workbenchItemName || currentBlockType === mesaItemName || currentBlockType === bigornaItemName || currentBlockType === furnaceItemName || currentBlockType === pestleItemName || currentBlockType === doorItemName || currentBlockType === windowItemName) {
                                     placementPosition.y = basePosition.y;
                                 } else if (currentBlockType === boxItemName) {
                                     placementPosition.y = basePosition.y;
@@ -11601,7 +11596,7 @@
                                     }
 
                                     // Se for uma muda de árvore, verifica a distância das outras árvores
-                                    if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName) {
+                                    if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName) {
                                         for (const existingBody of placedConstructionBodies) {
                                             // Verifica se o corpo existente é uma árvore em qualquer estágio de crescimento
                                             // (muda, media ou arvore_adulta)
@@ -11643,6 +11638,30 @@
                     }
                 } else {
                     ghostBlockMesh.visible = false; // Garante que o ghost block esteja oculto se não estiver no modo de colocação
+                }
+            }
+
+            if (isPrimaryToolPlacing && ghostBlockMesh && ghostBlockMesh.visible) {
+                const heldItem = beltItems[selectedSlotIndex];
+                const isHoldingSeed = heldItem && (
+                    heldItem.name === pineSeedItemName ||
+                    heldItem.name === appleSeedItemName ||
+                    heldItem.name === coconutItemName ||
+                    heldItem.name === coconutSeedItemName
+                );
+                if (isHoldingSeed) {
+                    interactionHintText = "(Botão Esq.) Plantar / (T) Girar";
+                } else {
+                    interactionHintText = "(Botão Esq.) Colocar / (T) Girar";
+                }
+            }
+
+            if (interactionHintElement) {
+                if (interactionHintText && useInteractionHints) {
+                    interactionHintElement.textContent = interactionHintText;
+                    interactionHintElement.style.display = 'block';
+                } else {
+                    interactionHintElement.style.display = 'none';
                 }
             }
 
@@ -12878,6 +12897,10 @@
             });
             window.rotatableItems = rotatableItems;
             window.rotateLookedAtObject = rotateLookedAtObject;
+            Object.defineProperty(window, 'ghostBlockRotationY', {
+                get: () => ghostBlockRotationY,
+                set: (v) => { ghostBlockRotationY = v; }
+            });
             window.toggleDoor = toggleDoor;
             window.getActionType = getActionType;
             window.ghostBlockMesh = ghostBlockMesh;
@@ -12887,6 +12910,9 @@
             window.torchItemName = torchItemName;
             window.fabricItemName = fabricItemName;
             window.vegetableOilItemName = vegetableOilItemName;
+            window.appleSeedItemName = appleSeedItemName;
+            window.pineSeedItemName = pineSeedItemName;
+            window.coconutSeedItemName = coconutSeedItemName;
         }
 
         // Função para obter todos os dados de salvamento do estado do jogo
