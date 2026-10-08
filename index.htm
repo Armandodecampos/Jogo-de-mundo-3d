@@ -2523,6 +2523,7 @@
         let windowGlassMaterialMesh; // Material for window glass
         let treeLeavesMaterialMesh; // Material for tree leaves (3D model)
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
+        let stoneMaterialMesh; // NOVO: Material para pedras coletáveis
         let stoneBlockMaterialMesh;
         let woodenBlockMaterialMesh;
         let stoneFloorMaterialMesh;
@@ -2694,6 +2695,7 @@
             if (cobMaterialMesh) cobMaterialMesh.map = useTextures ? (texturesRegistry.cob || null) : null;
             if (floorMaterialMesh) floorMaterialMesh.map = useTextures ? (texturesRegistry.floor || null) : null;
             if (woodenPlankMaterialMesh) woodenPlankMaterialMesh.map = useTextures ? (texturesRegistry.plank || null) : null;
+            if (stoneMaterialMesh) stoneMaterialMesh.map = useTextures ? (texturesRegistry.stone || texturesRegistry.stoneBlock || null) : null;
             if (stoneBlockMaterialMesh) stoneBlockMaterialMesh.map = useTextures ? (texturesRegistry.stoneBlock || null) : null;
             if (woodenBlockMaterialMesh) woodenBlockMaterialMesh.map = useTextures ? (texturesRegistry.woodenBlock || null) : null;
             if (stoneFloorMaterialMesh) stoneFloorMaterialMesh.map = useTextures ? (texturesRegistry.stoneFloor || null) : null;
@@ -2709,7 +2711,7 @@
 
             // Notify materials of changes
             [cubeMaterialMesh, basketMaterialMesh, cobMaterialMesh, floorMaterialMesh, woodenPlankMaterialMesh,
-             stoneBlockMaterialMesh, woodenBlockMaterialMesh, stoneFloorMaterialMesh,
+             stoneMaterialMesh, stoneBlockMaterialMesh, woodenBlockMaterialMesh, stoneFloorMaterialMesh,
              raftMaterialMesh, sailMaterialMesh, treeTrunkMaterialMesh, treeLeavesMaterialMesh,
              treeSaplingMaterialMesh, doorMaterialMesh, windowMaterialMesh, windowGlassMaterialMesh, holeMaterial, stoneHoleMaterial].forEach(m => {
                 if (m) m.needsUpdate = true;
@@ -4171,7 +4173,7 @@
         function createStone(position, quaternion) {
             const stoneSize = { width: 1.2, height: 0.6, depth: 1.4 };
             const stoneShape = new CANNON.Box(new CANNON.Vec3(stoneSize.width / 2, stoneSize.height / 2, stoneSize.depth / 2));
-            const stoneMaterial = new THREE.MeshLambertMaterial({ color: 0x808080 });
+            const stoneMaterial = stoneMaterialMesh || new THREE.MeshStandardMaterial({ color: 0x888888 });
 
             const stoneBody = new CANNON.Body({
                 mass: 5,
@@ -6680,6 +6682,7 @@
             cobMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff });
             floorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
             woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+            stoneMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x888888 });
             stoneBlockMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x888888 });
             woodenBlockMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff });
             stoneFloorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x888888 });
@@ -12847,6 +12850,7 @@
                 set: (v) => { stoneLayerLevel = v; }
             });
             window.cobMaterialMesh = cobMaterialMesh;
+            window.stoneMaterialMesh = stoneMaterialMesh;
             window.cubeMaterialMesh = cubeMaterialMesh;
             window.basketMaterialMesh = basketMaterialMesh;
             window.renderer = renderer;
