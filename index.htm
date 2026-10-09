@@ -10956,7 +10956,7 @@
                     mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
                     mesh.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
                     mesh.updateMatrixWorld();
-                    // Adiciona frustum culling manual
+                    // Adiciona frustum culling manual (para grupos sem geometria direta, verifica os filhos ou mantem visível se dentro da distância)
                     mesh.visible = mesh.geometry ? frustum.intersectsObject(mesh) : true;
                 }
             });
@@ -11722,7 +11722,15 @@
                     let targetHit = false;
                     for (let i = 0; i < intersects.length; i++) {
                         const intersectedObject = intersects[i].object;
-                        const intersectedBody = intersectedObject.userData.physicsBody;
+                        let intersectedBody = null;
+                        let currentObj = intersectedObject;
+                        while (currentObj) {
+                            if (currentObj.userData && currentObj.userData.physicsBody) {
+                                intersectedBody = currentObj.userData.physicsBody;
+                                break;
+                            }
+                            currentObj = currentObj.parent;
+                        }
                         const isWater = intersectedObject.userData.isWater;
                         const isRaft = (currentBlockType === raftItemName);
 
