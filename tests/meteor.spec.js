@@ -15,12 +15,17 @@ test('Stone and Meteor logic verification', async ({ page }) => {
   // Wait for world to be ready
   await page.waitForFunction(() => window.isWorldReady === true, { timeout: 120000 });
 
-  // 1. Check initial stone count
-  const stoneCountInitial = await page.evaluate(() => {
-    return window.collectibleBoxes.filter(box => box.body.userData && box.body.userData.type === 'pedra').length;
+  // 1. Check initial stone count and confirm all initial stones are STATIC and mass === 0
+  const initialStonesInfo = await page.evaluate(() => {
+    const stoneBoxes = window.collectibleBoxes.filter(box => box.body.userData && box.body.userData.type === 'pedra');
+    return {
+      count: stoneBoxes.length,
+      allStatic: stoneBoxes.every(box => box.body.type === 2 && box.body.mass === 0) // 2 is CANNON.Body.STATIC
+    };
   });
-  console.log('Initial stone count:', stoneCountInitial);
-  expect(stoneCountInitial).toBe(100);
+  console.log('Initial stone count:', initialStonesInfo.count, 'All static:', initialStonesInfo.allStatic);
+  expect(initialStonesInfo.count).toBe(100);
+  expect(initialStonesInfo.allStatic).toBe(true);
 
   // 2. Remove some stones to trigger meteor logic
   await page.evaluate(() => {
@@ -66,16 +71,20 @@ test('Stone and Meteor logic verification', async ({ page }) => {
 
   console.log('Meteor spawned successfully.');
 
-  // 5. Wait for meteor impact (meteor speed is 40, distance is roughly 100-140, takes ~3-4 seconds)
-  // In the sandbox, physics can be much slower, so we increase the timeout significantly.
+  // 5. Wait for meteor impact
   await page.waitForFunction(() => {
     return (window.activeMeteors || []).length === 0;
   }, { timeout: 60000 });
 
-  // 6. Check if stone count increased back
-  const finalStoneCount = await page.evaluate(() => {
-    return window.collectibleBoxes.filter(box => box.body.userData && box.body.userData.type === 'pedra').length;
+  // 6. Check if stone count increased back and meteor-spawned stone is also static
+  const finalStonesInfo = await page.evaluate(() => {
+    const stoneBoxes = window.collectibleBoxes.filter(box => box.body.userData && box.body.userData.type === 'pedra');
+    return {
+      count: stoneBoxes.length,
+      allStatic: stoneBoxes.every(box => box.body.type === 2 && box.body.mass === 0)
+    };
   });
-  console.log('Stone count after meteor impact:', finalStoneCount);
-  expect(finalStoneCount).toBe(96);
+  console.log('Stone count after meteor impact:', finalStonesInfo.count, 'All static:', finalStonesInfo.allStatic);
+  expect(finalStonesInfo.count).toBe(96);
+  expect(finalStonesInfo.allStatic).toBe(true);
 });

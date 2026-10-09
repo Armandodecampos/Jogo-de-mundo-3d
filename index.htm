@@ -4276,7 +4276,8 @@
             const stoneMaterial = stoneMaterialMesh || new THREE.MeshStandardMaterial({ color: 0x888888 });
 
             const stoneBody = new CANNON.Body({
-                mass: 5,
+                mass: 0,
+                type: CANNON.Body.STATIC,
                 shape: stoneShape,
                 material: cubeMaterial,
                 linearDamping: 0.1,
@@ -4302,7 +4303,7 @@
                 type: stoneItemName,
                 quantity: 1,
                 durability: 1.5,
-                originalMass: 5,
+                originalMass: 0,
                 initialPosition: new CANNON.Vec3().copy(stoneBody.position)
             };
 
@@ -4347,49 +4348,74 @@
             const direction = new THREE.Vector3().subVectors(target, meteorMesh.position).normalize();
             const speed = 60; // Mais rápido por vir de mais alto
 
-            // Audio: Som de queda realista (whistle + rumbling wind)
+            // Audio: Som de queda realista (rumble + atmospheric roar + sub-tone)
             let fallGain = null;
-            let fallOsc = null;
+            let fallSubOsc = null;
             let fallNoiseSource = null;
+            let fallWindSource = null;
             if (gameAudioContext) {
+                const duration = startY / speed;
+                const currentTime = gameAudioContext.currentTime;
+
                 fallGain = gameAudioContext.createGain();
                 fallGain.gain.value = 0;
                 fallGain.connect(gameAudioContext.destination);
 
-                // Whistle component
-                fallOsc = gameAudioContext.createOscillator();
-                fallOsc.type = 'sawtooth';
-                fallOsc.frequency.setValueAtTime(600, gameAudioContext.currentTime);
-                fallOsc.frequency.exponentialRampToValueAtTime(150, gameAudioContext.currentTime + (startY / speed));
+                // Sub-Bass tone component (75Hz -> 35Hz)
+                fallSubOsc = gameAudioContext.createOscillator();
+                fallSubOsc.type = 'sine';
+                fallSubOsc.frequency.setValueAtTime(75, currentTime);
+                fallSubOsc.frequency.exponentialRampToValueAtTime(35, currentTime + duration);
 
-                // Rumble component (Noise with LowPass)
+                // Shared noise buffer (2 seconds loop)
                 const noiseBuffer = gameAudioContext.createBuffer(1, gameAudioContext.sampleRate * 2.0, gameAudioContext.sampleRate);
                 const output = noiseBuffer.getChannelData(0);
                 for (let i = 0; i < noiseBuffer.length; i++) output[i] = Math.random() * 2 - 1;
 
+                // 1. Deep rumble filter (Lowpass 180Hz -> 70Hz, resonance 3)
                 fallNoiseSource = gameAudioContext.createBufferSource();
                 fallNoiseSource.buffer = noiseBuffer;
                 fallNoiseSource.loop = true;
 
-                const filter = gameAudioContext.createBiquadFilter();
-                filter.type = 'lowpass';
-                filter.frequency.setValueAtTime(1200, gameAudioContext.currentTime);
-                filter.frequency.exponentialRampToValueAtTime(300, gameAudioContext.currentTime + (startY / speed));
+                const rumbleFilter = gameAudioContext.createBiquadFilter();
+                rumbleFilter.type = 'lowpass';
+                rumbleFilter.Q.value = 3;
+                rumbleFilter.frequency.setValueAtTime(180, currentTime);
+                rumbleFilter.frequency.exponentialRampToValueAtTime(70, currentTime + duration);
 
-                const whistleGain = gameAudioContext.createGain();
-                whistleGain.gain.value = 0.4;
+                // 2. Fiery wind shear filter (Bandpass 350Hz)
+                fallWindSource = gameAudioContext.createBufferSource();
+                fallWindSource.buffer = noiseBuffer;
+                fallWindSource.loop = true;
+
+                const windFilter = gameAudioContext.createBiquadFilter();
+                windFilter.type = 'bandpass';
+                windFilter.Q.value = 1.5;
+                windFilter.frequency.setValueAtTime(450, currentTime);
+                windFilter.frequency.exponentialRampToValueAtTime(250, currentTime + duration);
+
+                const subGain = gameAudioContext.createGain();
+                subGain.gain.value = 0.5;
                 const rumbleGain = gameAudioContext.createGain();
-                rumbleGain.gain.value = 0.6;
+                rumbleGain.gain.value = 0.8;
+                const windGain = gameAudioContext.createGain();
+                windGain.gain.value = 0.4;
 
-                fallOsc.connect(whistleGain);
-                whistleGain.connect(fallGain);
-                fallNoiseSource.connect(filter);
-                filter.connect(rumbleGain);
+                fallSubOsc.connect(subGain);
+                subGain.connect(fallGain);
+
+                fallNoiseSource.connect(rumbleFilter);
+                rumbleFilter.connect(rumbleGain);
                 rumbleGain.connect(fallGain);
 
-                fallOsc.start();
+                fallWindSource.connect(windFilter);
+                windFilter.connect(windGain);
+                windGain.connect(fallGain);
+
+                fallSubOsc.start();
                 fallNoiseSource.start();
-                fallGain.gain.linearRampToValueAtTime(0.3, gameAudioContext.currentTime + 0.5);
+                fallWindSource.start();
+                fallGain.gain.linearRampToValueAtTime(0.5, currentTime + 0.5);
             }
 
             activeMeteors.push({
@@ -4398,8 +4424,9 @@
                 direction: direction,
                 speed: speed,
                 fallGain: fallGain,
-                fallOsc: fallOsc,
-                fallNoiseSource: fallNoiseSource
+                fallSubOsc: fallSubOsc,
+                fallNoiseSource: fallNoiseSource,
+                fallWindSource: fallWindSource
             });
         }
 
@@ -4442,45 +4469,85 @@
             const pos = meteor.target;
 
             // Parar e limpar áudio de queda
+            if (meteor.fallSubOsc) {
+                try { meteor.fallSubOsc.stop(); meteor.fallSubOsc.disconnect(); } catch (e) {}
+            }
             if (meteor.fallOsc) {
-                meteor.fallOsc.stop();
-                meteor.fallOsc.disconnect();
+                try { meteor.fallOsc.stop(); meteor.fallOsc.disconnect(); } catch (e) {}
             }
             if (meteor.fallNoiseSource) {
-                meteor.fallNoiseSource.stop();
-                meteor.fallNoiseSource.disconnect();
+                try { meteor.fallNoiseSource.stop(); meteor.fallNoiseSource.disconnect(); } catch (e) {}
+            }
+            if (meteor.fallWindSource) {
+                try { meteor.fallWindSource.stop(); meteor.fallWindSource.disconnect(); } catch (e) {}
             }
             if (meteor.fallGain) {
-                meteor.fallGain.disconnect();
+                try { meteor.fallGain.disconnect(); } catch (e) {}
             }
 
-            // Audio: Som de impacto (explosão sintetizada)
+            // Audio: Som de impacto (explosão e onda de choque realista)
             if (gameAudioContext) {
                 const distToPlayer = calculateWrappedDistance(pos, playerBody.position);
-                // Alcance de impacto aumentado para 300m
-                const impactVol = Math.max(0, 1.5 * (1.0 - distToPlayer / 300.0));
+                const impactVol = Math.max(0, 1.8 * (1.0 - distToPlayer / 400.0));
 
                 if (impactVol > 0.01) {
-                    const noiseBuffer = gameAudioContext.createBuffer(1, gameAudioContext.sampleRate * 0.5, gameAudioContext.sampleRate);
-                    const output = noiseBuffer.getChannelData(0);
-                    for (let i = 0; i < noiseBuffer.length; i++) output[i] = Math.random() * 2 - 1;
+                    const currentTime = gameAudioContext.currentTime;
 
-                    const noiseSource = gameAudioContext.createBufferSource();
-                    noiseSource.buffer = noiseBuffer;
+                    // Buffer de ruído para o impacto (2.5 segundos)
+                    const blastBuffer = gameAudioContext.createBuffer(1, Math.floor(gameAudioContext.sampleRate * 2.5), gameAudioContext.sampleRate);
+                    const bOutput = blastBuffer.getChannelData(0);
+                    for (let i = 0; i < blastBuffer.length; i++) bOutput[i] = Math.random() * 2 - 1;
 
-                    const filter = gameAudioContext.createBiquadFilter();
-                    filter.type = 'lowpass';
-                    filter.frequency.setValueAtTime(1000, gameAudioContext.currentTime);
-                    filter.frequency.exponentialRampToValueAtTime(10, gameAudioContext.currentTime + 0.5);
+                    // 1. Kinetic Shockwave Snap (Impacto inicial rápido)
+                    const snapSource = gameAudioContext.createBufferSource();
+                    snapSource.buffer = blastBuffer;
 
-                    const gain = gameAudioContext.createGain();
-                    gain.gain.setValueAtTime(impactVol, gameAudioContext.currentTime);
-                    gain.gain.exponentialRampToValueAtTime(0.01, gameAudioContext.currentTime + 0.5);
+                    const snapFilter = gameAudioContext.createBiquadFilter();
+                    snapFilter.type = 'bandpass';
+                    snapFilter.frequency.value = 600;
+                    snapFilter.Q.value = 1.0;
 
-                    noiseSource.connect(filter);
-                    filter.connect(gain);
-                    gain.connect(gameAudioContext.destination);
-                    noiseSource.start();
+                    const snapGain = gameAudioContext.createGain();
+                    snapGain.gain.setValueAtTime(impactVol * 1.2, currentTime);
+                    snapGain.gain.exponentialRampToValueAtTime(0.001, currentTime + 0.1);
+
+                    snapSource.connect(snapFilter);
+                    snapFilter.connect(snapGain);
+                    snapGain.connect(gameAudioContext.destination);
+                    snapSource.start();
+
+                    // 2. Deep Sub-Bass Punch (Drop de frequência 180Hz -> 25Hz)
+                    const subOsc = gameAudioContext.createOscillator();
+                    subOsc.type = 'sine';
+                    subOsc.frequency.setValueAtTime(180, currentTime);
+                    subOsc.frequency.exponentialRampToValueAtTime(25, currentTime + 0.8);
+
+                    const subGain = gameAudioContext.createGain();
+                    subGain.gain.setValueAtTime(impactVol * 1.5, currentTime);
+                    subGain.gain.exponentialRampToValueAtTime(0.001, currentTime + 1.2);
+
+                    subOsc.connect(subGain);
+                    subGain.connect(gameAudioContext.destination);
+                    subOsc.start();
+                    subOsc.stop(currentTime + 1.2);
+
+                    // 3. Thunderous Explosive Blast Tail (2.5s de ronco e reverberação)
+                    const blastSource = gameAudioContext.createBufferSource();
+                    blastSource.buffer = blastBuffer;
+
+                    const blastFilter = gameAudioContext.createBiquadFilter();
+                    blastFilter.type = 'lowpass';
+                    blastFilter.frequency.setValueAtTime(1200, currentTime);
+                    blastFilter.frequency.exponentialRampToValueAtTime(30, currentTime + 2.5);
+
+                    const blastGain = gameAudioContext.createGain();
+                    blastGain.gain.setValueAtTime(impactVol * 1.0, currentTime);
+                    blastGain.gain.exponentialRampToValueAtTime(0.001, currentTime + 2.5);
+
+                    blastSource.connect(blastFilter);
+                    blastFilter.connect(blastGain);
+                    blastGain.connect(gameAudioContext.destination);
+                    blastSource.start();
                 }
             }
 
@@ -8989,7 +9056,7 @@
                         current = current.parent;
                     }
 
-                    if (body && (allPickableBodies.includes(body) || (allConstructionBodies.includes(body) && body.userData.isCollectible)) && body.userData.type !== campfireItemName && body.userData.type !== workbenchItemName && body.userData.type !== mesaItemName && body.userData.type !== bigornaItemName && body.userData.type !== furnaceItemName && body.userData.type !== doorItemName && body.userData.type !== windowItemName) {
+                    if (body && (allPickableBodies.includes(body) || (allConstructionBodies.includes(body) && body.userData.isCollectible)) && body.userData.type !== campfireItemName && body.userData.type !== workbenchItemName && body.userData.type !== mesaItemName && body.userData.type !== bigornaItemName && body.userData.type !== furnaceItemName && body.userData.type !== doorItemName && body.userData.type !== windowItemName && body.userData.type !== stoneItemName) {
                         if (intersects[i].distance <= pickUpDistance) {
                             pickedObjectBody = body;
                             pickedObjectMesh = intersects[i].object;
@@ -10690,6 +10757,13 @@
                 if (body === pickedObjectBody) {
                     return;
                 }
+                if (body.userData && body.userData.type === stoneItemName) {
+                    body.mass = 0;
+                    body.type = CANNON.Body.STATIC;
+                    body.allowSleep = false;
+                    body.collisionResponse = true;
+                    return;
+                }
                 // Cubos soltos no chão devem ser dinâmicos quando não estão sendo pegos
                 body.mass = body.userData.originalMass || 1;
                 body.type = CANNON.Body.DYNAMIC;
@@ -11202,7 +11276,7 @@
                             } else if (body.userData.isCollectible) {
                                 if (body.userData.type === workbenchItemName || body.userData.type === bigornaItemName || body.userData.type === furnaceItemName || body.userData.type === pestleItemName) {
                                     interactionHintText = "(E) Acessar / (G) Guardar";
-                                } else if (body.userData.type === mesaItemName) {
+                                } else if (body.userData.type === mesaItemName || body.userData.type === stoneItemName) {
                                     interactionHintText = "(G) Guardar";
                                 } else {
                                     interactionHintText = "(F) Agarrar / (G) Guardar";
