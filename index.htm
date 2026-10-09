@@ -6368,7 +6368,7 @@
                 if (light) light.visible = blockBody.userData.isOn;
                 activeCampfires.push(blockBody);
             } else if (type === pestleItemName) {
-                width = 0.4; height = 0.5; depth = 0.4;
+                width = 0.4; height = 0.3; depth = 0.4;
                 blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
                 blockBody.addShape(blockShape);
 
@@ -9057,7 +9057,7 @@
                         current = current.parent;
                     }
 
-                    if (body && (allPickableBodies.includes(body) || (allConstructionBodies.includes(body) && body.userData.isCollectible)) && body.userData.type !== campfireItemName && body.userData.type !== workbenchItemName && body.userData.type !== mesaItemName && body.userData.type !== bigornaItemName && body.userData.type !== furnaceItemName && body.userData.type !== doorItemName && body.userData.type !== windowItemName && body.userData.type !== stoneItemName && body.userData.type !== boxItemName) {
+                    if (body && (allPickableBodies.includes(body) || (allConstructionBodies.includes(body) && body.userData.isCollectible)) && body.userData.type !== campfireItemName && body.userData.type !== workbenchItemName && body.userData.type !== mesaItemName && body.userData.type !== bigornaItemName && body.userData.type !== furnaceItemName && body.userData.type !== pestleItemName && body.userData.type !== doorItemName && body.userData.type !== windowItemName && body.userData.type !== stoneItemName && body.userData.type !== boxItemName) {
                         if (intersects[i].distance <= pickUpDistance) {
                             pickedObjectBody = body;
                             pickedObjectMesh = intersects[i].object;
@@ -11677,14 +11677,14 @@
                     else if (currentBlockType === stoneItemName) { currentGhostWidth = 0.6; currentGhostHeight = 0.3; currentGhostDepth = 0.7; }
                     else if (currentBlockType === campfireItemName) { currentGhostWidth = 0.8; currentGhostHeight = 0.5; currentGhostDepth = 0.8; }
                     else if (currentBlockType === torchItemName) { currentGhostWidth = 0.2; currentGhostHeight = 0.8; currentGhostDepth = 0.2; }
-                    else if (currentBlockType === pestleItemName) { currentGhostWidth = 0.4; currentGhostHeight = 0.5; currentGhostDepth = 0.4; }
+                    else if (currentBlockType === pestleItemName) { currentGhostWidth = 0.4; currentGhostHeight = 0.3; currentGhostDepth = 0.4; }
                     else if (currentBlockType === doorItemName) { currentGhostWidth = 1.2; currentGhostHeight = 2.4; currentGhostDepth = 0.1; }
                     else if (currentBlockType === windowItemName) { currentGhostWidth = 0.8; currentGhostHeight = 0.8; currentGhostDepth = 0.1; }
 
                     // Lista de todos os corpos que podem ser base para colocação
                     const islandBodies = islandMeshes.map(m => m.body);
-                    const staticCollectibleBodies = collectibleBoxes.map(b => b.body).filter(b => b && (b.type === CANNON.Body.STATIC || b.mass === 0));
-                    const allPlaceableSurfaces = [...islandBodies, ...placedConstructionBodies, ...staticCollectibleBodies];
+                    const allCollectibleBodies = collectibleBoxes.map(b => b.body).filter(b => b);
+                    const allPlaceableSurfaces = [...islandBodies, ...placedConstructionBodies, ...allCollectibleBodies];
 
                     let targetHit = false;
                     for (let i = 0; i < intersects.length; i++) {
@@ -11710,7 +11710,7 @@
                                     hitNormal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
                                 }
 
-                                const isIntersectedStatic = intersectedBody && (placedConstructionBodies.includes(intersectedBody) || staticCollectibleBodies.includes(intersectedBody));
+                                const isIntersectedStatic = intersectedBody && (placedConstructionBodies.includes(intersectedBody) || allCollectibleBodies.includes(intersectedBody));
 
                                 if (isIntersectedStatic) {
                                     // Ajuste automático/snapping ao lado de outro item estático
@@ -11804,7 +11804,7 @@
                                     }
 
                                     // Verifica se colide/sobrepõe com qualquer outro item estático no cenário
-                                    const allStaticBodies = [...placedConstructionBodies, ...staticCollectibleBodies];
+                                    const allStaticBodies = [...placedConstructionBodies, ...allCollectibleBodies];
                                     const currentHalfX = currentGhostWidth / 2;
                                     const currentHalfY = currentGhostHeight / 2;
                                     const currentHalfZ = currentGhostDepth / 2;
