@@ -10,6 +10,9 @@ test('Verify small table, wide table, and large table functionality', async ({ p
     const result = await page.evaluate(async () => {
         const THREE = window.THREE;
 
+        // Move player away so collision / raycasting tests aren't obstructed
+        window.world.bodies[0].position.set(50, 10, 50);
+
         // 1. Check recipes and weights
         const wbRecipes = window.recipes.workbench;
         const hasSmallTableRecipe = wbRecipes.some(r => r.result.name === 'mesa_pequena');
@@ -24,10 +27,10 @@ test('Verify small table, wide table, and large table functionality', async ({ p
             return { success: false, reason: 'Recipes missing for tables' };
         }
 
-        // 2. Create tables in the world
-        const posSmall = new THREE.Vector3(0, 0.425, 0);
-        const posWide = new THREE.Vector3(3, 0.425, 0);
-        const posLarge = new THREE.Vector3(6, 0.425, 0);
+        // 2. Create tables in the world at ground surface Y = 0.8
+        const posSmall = new THREE.Vector3(0, 0.8, 0);
+        const posWide = new THREE.Vector3(5, 0.8, 0);
+        const posLarge = new THREE.Vector3(10, 0.8, 0);
 
         const smallBody = window.createPlaceableBlock(posSmall, new THREE.Quaternion(), 'mesa_pequena');
         const wideBody = window.createPlaceableBlock(posWide, new THREE.Quaternion(), 'mesa');
@@ -36,6 +39,17 @@ test('Verify small table, wide table, and large table functionality', async ({ p
         if (!smallBody || !wideBody || !largeBody) {
             return { success: false, reason: 'Failed to create table bodies' };
         }
+
+        // Synchronize visual mesh positions
+        [smallBody, wideBody, largeBody].forEach(b => {
+            const idx = window.placedConstructionBodies.indexOf(b);
+            const mesh = window.placedConstructionMeshes[idx];
+            mesh.position.copy(b.position);
+            mesh.quaternion.copy(b.quaternion);
+            mesh.updateMatrixWorld();
+        });
+
+        window.updateRaycastTargets();
 
         // Check static physics and dimensions
         const smallShape = smallBody.shapes[0].halfExtents;
@@ -50,44 +64,54 @@ test('Verify small table, wide table, and large table functionality', async ({ p
             return { success: false, reason: 'Table dimensions incorrect' };
         }
 
-        // 3. Test placing pestle on top of small, wide, and large tables
-        // Small/Wide/Large table center Y = 0.425, height = 0.85, top Y = 0.85.
-        // Pestle height = 0.3 (halfExtent 0.15). Center Y should be 0.85 + 0.15 = 1.0.
-        const pestleSmallPos = new THREE.Vector3(0, 1.0, 0);
-        const pestleWidePos = new THREE.Vector3(3, 1.0, 0);
-        const pestleLargePos = new THREE.Vector3(6, 1.0, 0);
+        // 3. Test raycasting down and placing pestle ('pilão') on top of small, wide, and large tables
+        const testPlacement = (tableBody, rayX) => {
+            const ray = new THREE.Raycaster(new THREE.Vector3(rayX, 3.0, 0), new THREE.Vector3(0, -1, 0));
+            const intersects = ray.intersectObjects(window.raycastTargets, true);
 
-        const pestleSmallBody = window.createPlaceableBlock(pestleSmallPos, new THREE.Quaternion(), 'pilao');
-        const pestleWideBody = window.createPlaceableBlock(pestleWidePos, new THREE.Quaternion(), 'pilao');
-        const pestleLargeBody = window.createPlaceableBlock(pestleLargePos, new THREE.Quaternion(), 'pilao');
+            let intersectedBody = null;
+            let currentObj = intersects[0].object;
+            while (currentObj) {
+                if (currentObj.userData && currentObj.userData.physicsBody) {
+                    intersectedBody = currentObj.userData.physicsBody;
+                    break;
+                }
+                currentObj = currentObj.parent;
+            }
 
-        if (!pestleSmallBody || !pestleWideBody || !pestleLargeBody) {
-            return { success: false, reason: 'Failed to create pestle bodies on tables' };
-        }
+            const hitNormal = intersects[0].face.normal.clone().transformDirection(intersects[0].object.matrixWorld).normalize();
 
-        const smallTableTopY = smallBody.position.y + smallBody.shapes[0].halfExtents.y;
-        const pestleSmallBottomY = pestleSmallBody.position.y - pestleSmallBody.shapes[0].halfExtents.y;
-        const gapSmall = Math.abs(pestleSmallBottomY - smallTableTopY);
+            const targetHalfY = intersectedBody.shapes[0].halfExtents.y;
+            const currentHalfY = 0.3 / 2; // pestle height (0.3) / 2 = 0.15
 
-        const wideTableTopY = wideBody.position.y + wideBody.shapes[0].halfExtents.y;
-        const pestleWideBottomY = pestleWideBody.position.y - pestleWideBody.shapes[0].halfExtents.y;
-        const gapWide = Math.abs(pestleWideBottomY - wideTableTopY);
+            const placementY = intersectedBody.position.y + targetHalfY + currentHalfY;
+            const pestleBody = window.createPlaceableBlock(new THREE.Vector3(rayX, placementY, 0), new THREE.Quaternion(), 'pilao');
 
-        const largeTableTopY = largeBody.position.y + largeBody.shapes[0].halfExtents.y;
-        const pestleLargeBottomY = pestleLargeBody.position.y - pestleLargeBody.shapes[0].halfExtents.y;
-        const gapLarge = Math.abs(pestleLargeBottomY - largeTableTopY);
+            const tableTopY = tableBody.position.y + tableBody.shapes[0].halfExtents.y;
+            const pestleBottomY = pestleBody.position.y - pestleBody.shapes[0].halfExtents.y;
+
+            return {
+                intersectedBodyIsTable: intersectedBody === tableBody,
+                hitNormalY: hitNormal.y,
+                gap: Math.abs(pestleBottomY - tableTopY)
+            };
+        };
+
+        const smallRes = testPlacement(smallBody, 0);
+        const wideRes = testPlacement(wideBody, 5);
+        const largeRes = testPlacement(largeBody, 10);
 
         return {
             success: true,
             smallWeight,
             wideWeight,
             largeWeight,
-            smallStatic: smallBody.type === 2, // CANNON.Body.STATIC = 2
+            smallStatic: smallBody.type === 2,
             wideStatic: wideBody.type === 2,
             largeStatic: largeBody.type === 2,
-            gapSmall,
-            gapWide,
-            gapLarge
+            smallRes,
+            wideRes,
+            largeRes
         };
     });
 
@@ -98,7 +122,16 @@ test('Verify small table, wide table, and large table functionality', async ({ p
     expect(result.smallStatic).toBe(true);
     expect(result.wideStatic).toBe(true);
     expect(result.largeStatic).toBe(true);
-    expect(result.gapSmall).toBeLessThan(0.001);
-    expect(result.gapWide).toBeLessThan(0.001);
-    expect(result.gapLarge).toBeLessThan(0.001);
+
+    expect(result.smallRes.intersectedBodyIsTable).toBe(true);
+    expect(result.smallRes.hitNormalY).toBe(1);
+    expect(result.smallRes.gap).toBeLessThan(0.001);
+
+    expect(result.wideRes.intersectedBodyIsTable).toBe(true);
+    expect(result.wideRes.hitNormalY).toBe(1);
+    expect(result.wideRes.gap).toBeLessThan(0.001);
+
+    expect(result.largeRes.intersectedBodyIsTable).toBe(true);
+    expect(result.largeRes.hitNormalY).toBe(1);
+    expect(result.largeRes.gap).toBeLessThan(0.001);
 });
