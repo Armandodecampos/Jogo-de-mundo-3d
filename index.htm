@@ -6750,7 +6750,7 @@
             // Configuração do Mundo Cannon-es (física)
             world = new CANNON.World();
             window.world = world;
-            world.gravity.set(0, -30, 0); // Define a gravidade (para baixo), aumentada para -30
+            world.gravity.set(0, -50, 0); // Define a gravidade (para baixo), aumentada para -50
             world.solver.iterations = 10; // Reduzido para performance
 
             // Inicializa os materiais de física
@@ -8028,7 +8028,7 @@
                             jumpBoostTimer = 0;
 
                             // Impulso de salto inicial (mínimo)
-                            const jumpImpulse = 600;
+                            const jumpImpulse = 800;
                             playerBody.applyImpulse(new CANNON.Vec3(0, jumpImpulse, 0));
                             canJump = false; window.canJump = false; // Impede pulos múltiplos
                             playSyntheticJumpSound();
@@ -10162,13 +10162,13 @@
             // Low hunger speed penalty (below 10%)
             if (playerHunger < playerMaxHunger * 0.1) {
                 const hungerFactor = playerHunger / (playerMaxHunger * 0.1);
-                currentMoveSpeed *= (0.5 + 0.5 * hungerFactor); // Gradual reduction to 50% speed
+                currentMoveSpeed *= (0.85 + 0.15 * hungerFactor); // Mild reduction (at most 15% speed penalty)
             }
 
-            // Energy speed penalty (scales linearly from 100% to 50% speed, starting at 30% energy)
+            // Energy speed penalty (scales linearly starting at 30% energy, at most 15% speed penalty at 0%)
             if (playerEnergy < playerMaxEnergy * 0.3) {
                 const energyFactor30 = playerEnergy / (playerMaxEnergy * 0.3); // 1.0 at 30%, 0.0 at 0%
-                const energySpeedFactor = 0.5 + 0.5 * energyFactor30;
+                const energySpeedFactor = 0.85 + 0.15 * energyFactor30;
                 currentMoveSpeed *= energySpeedFactor;
             }
 
@@ -10185,8 +10185,8 @@
             if (isJumpBoosting) {
                 if (keysPressed[' '] && jumpBoostTimer < 0.4 && !isFlying && !isClimbing && !isDrivingRaft) {
                     // Aplica uma força ascendente constante durante o período de boost
-                    // 3500 é um valor que supera a gravidade (-30 * mass 80 = -2400) e fornece aceleração
-                    playerBody.applyForce(new CANNON.Vec3(0, 3500, 0));
+                    // 5500 é um valor que supera a gravidade (-50 * mass 80 = -4000) e fornece aceleração
+                    playerBody.applyForce(new CANNON.Vec3(0, 5500, 0));
                     jumpBoostTimer += delta;
                 } else {
                     isJumpBoosting = false;
