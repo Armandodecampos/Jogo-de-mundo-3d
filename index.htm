@@ -606,6 +606,56 @@
             transform-origin: 50% 38px;
         }
 
+        /* Custom Confirmation Modal for Exit / Reload */
+        #confirmExitModal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: none; /* Hidden by default */
+            justify-content: center;
+            align-items: center;
+            z-index: 12000;
+        }
+        #confirmExitContainer {
+            background-color: #2c3e50;
+            border: 3px solid #e74c3c;
+            border-radius: 12px;
+            padding: 30px;
+            max-width: 450px;
+            width: 90%;
+            text-align: center;
+            color: white;
+            box-shadow: 0 0 20px rgba(231, 76, 60, 0.4);
+        }
+        #confirmExitContainer h3 {
+            margin-top: 0;
+            color: #e74c3c;
+            font-size: 1.6em;
+            margin-bottom: 15px;
+        }
+        #confirmExitContainer p {
+            font-size: 1.1em;
+            margin-bottom: 25px;
+            line-height: 1.4;
+        }
+        #confirmExitButton {
+            background-color: #e74c3c;
+            color: white;
+        }
+        #confirmExitButton:hover {
+            background-color: #c0392b;
+        }
+        #cancelExitButton {
+            background-color: #7f8c8d;
+            color: white;
+        }
+        #cancelExitButton:hover {
+            background-color: #95a5a6;
+        }
+
         /* Custom Confirmation Modal Styles */
         #confirmDestructionModal {
             position: fixed;
@@ -1161,6 +1211,18 @@
                 <div id="chestBackpackSlotsContainer" class="flex flex-col gap-1 bg-black/30 p-2 rounded-md h-[calc(100%-2.5rem)] overflow-y-auto">
                     <!-- Slots da mochila (no modo contêiner) serão preenchidos dinamicamente -->
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirmation Modal for Exit / Reload -->
+    <div id="confirmExitModal">
+        <div id="confirmExitContainer">
+            <h3>Aviso</h3>
+            <p id="confirmExitText">Deseja fechar a página? Todo o progresso será perdido se não salvo.</p>
+            <div class="confirm-actions">
+                <button id="confirmExitButton">Sair</button>
+                <button id="cancelExitButton">Cancelar</button>
             </div>
         </div>
     </div>
@@ -2143,11 +2205,49 @@
         let backpackSlotsContainer;
         let trashSlot;
 
-        // Variáveis para o modal de confirmação de destruição
+        // Variáveis para o modal de confirmação de destruição e saída
         let confirmDestructionModal;
         let confirmDestructionText;
         let confirmDestructionButton;
         let cancelDestructionButton;
+
+        let confirmExitModal;
+        let confirmExitButton;
+        let cancelExitButton;
+        let isExitingWithoutPrompt = false;
+
+        function isGameSessionActive() {
+            const startScreenElem = document.getElementById('startScreen');
+            if (!startScreenElem) return false;
+            return window.isWorldReady === true && window.getComputedStyle(startScreenElem).display === 'none';
+        }
+
+        function showConfirmExitModal() {
+            if (!confirmExitModal) {
+                confirmExitModal = document.getElementById('confirmExitModal');
+            }
+            if (confirmExitModal) {
+                confirmExitModal.style.display = 'flex';
+                pointerLockExitForBackpack = true;
+                if (document.pointerLockElement) {
+                    document.exitPointerLock();
+                }
+                document.body.style.cursor = 'default';
+                if (renderer && renderer.domElement) {
+                    renderer.domElement.style.cursor = 'default';
+                }
+            }
+        }
+
+        function hideConfirmExitModal() {
+            if (!confirmExitModal) {
+                confirmExitModal = document.getElementById('confirmExitModal');
+            }
+            if (confirmExitModal) {
+                confirmExitModal.style.display = 'none';
+                pointerLockExitForBackpack = false;
+            }
+        }
 
         // NOVO: Variáveis para o sistema de contêiner
         let chestModal;
@@ -7754,6 +7854,24 @@
 
             // Configura os Listeners de Eventos para teclado e mouse
             window.addEventListener('keydown', (event) => {
+                // Confirm exit modal handling
+                if (confirmExitModal && confirmExitModal.style.display === 'flex') {
+                    if (event.key === 'Escape') {
+                        hideConfirmExitModal();
+                        return;
+                    }
+                }
+
+                // Intercept reload keys ONLY when in-game
+                if (isGameSessionActive()) {
+                    if (event.key === 'F5' || ((event.key.toLowerCase() === 'r' || event.keyCode === 82) && (event.ctrlKey || event.metaKey))) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        showConfirmExitModal();
+                        return;
+                    }
+                }
+
                 // Cutting modal handling
                 if (!document.getElementById('cuttingModal').classList.contains('hidden')) {
                     if (event.key === 'Escape') {
@@ -9111,12 +9229,14 @@
             // Listener de evento para redimensionamento da janela
             window.addEventListener('resize', onWindowResize);
 
-            // Listener de evento para confirmação ao atualizar ou fechar a página
+            // Listener de evento para confirmação ao atualizar ou fechar a página (apenas no jogo)
             window.addEventListener('beforeunload', (event) => {
-                event.preventDefault();
-                const confirmationMessage = 'Deseja fechar a página? Todo o progresso será perdido se não salvo.';
-                event.returnValue = confirmationMessage;
-                return confirmationMessage;
+                if (isGameSessionActive() && !isExitingWithoutPrompt) {
+                    event.preventDefault();
+                    const confirmationMessage = 'Deseja fechar a página? Todo o progresso será perdido se não salvo.';
+                    event.returnValue = confirmationMessage;
+                    return confirmationMessage;
+                }
             });
 
             // Listeners de eventos para os novos botões do menu
@@ -9125,18 +9245,12 @@
                 saveGameToFile();
             });
             document.getElementById('exitGameButton').addEventListener('click', () => {
-                location.reload(); // Recarrega a página para sair do jogo
+                showConfirmExitModal();
             });
 
             document.getElementById('startSettingsButton').addEventListener('click', showSettingsScreen);
             document.getElementById('pauseSettingsButton').addEventListener('click', showSettingsScreen);
             document.getElementById('backToMenuButton').addEventListener('click', hideSettingsScreen);
-
-            document.getElementById('exitGameButton').addEventListener('click', () => {
-                if (gameAudioContext) {
-                    gameAudioContext.close();
-                }
-            });
 
             // NOVO: Listener para o slider de distância de renderização
             const renderDistanceSlider = document.getElementById('renderDistanceSlider');
@@ -12489,6 +12603,27 @@
                 confirmDestructionModal.style.display = 'none';
             });
 
+            // Pega elementos do modal de confirmação de saída
+            confirmExitModal = document.getElementById('confirmExitModal');
+            confirmExitButton = document.getElementById('confirmExitButton');
+            cancelExitButton = document.getElementById('cancelExitButton');
+
+            if (confirmExitButton) {
+                confirmExitButton.addEventListener('click', () => {
+                    isExitingWithoutPrompt = true;
+                    if (gameAudioContext) {
+                        gameAudioContext.close();
+                    }
+                    location.reload();
+                });
+            }
+
+            if (cancelExitButton) {
+                cancelExitButton.addEventListener('click', () => {
+                    hideConfirmExitModal();
+                });
+            }
+
             // NOVO: Pega elementos do contêiner e adiciona listeners aqui, após o DOM estar pronto
             chestModal = document.getElementById('chestModal');
             closeChestButton = document.getElementById('closeChestButton');
@@ -12927,6 +13062,9 @@
             window.appleSeedItemName = appleSeedItemName;
             window.pineSeedItemName = pineSeedItemName;
             window.coconutSeedItemName = coconutSeedItemName;
+            window.showConfirmExitModal = showConfirmExitModal;
+            window.hideConfirmExitModal = hideConfirmExitModal;
+            window.isGameSessionActive = isGameSessionActive;
         }
 
         // Função para obter todos os dados de salvamento do estado do jogo
