@@ -2321,7 +2321,9 @@
         const glassPotItemName = 'pote_vidro';
         const pestleItemName = 'pilao';
         const workbenchItemName = 'bancada_trabalho';
+        const smallTableItemName = 'mesa_pequena';
         const mesaItemName = 'mesa';
+        const largeTableItemName = 'mesa_grande';
         const bigornaItemName = 'bigorna';
         const furnaceItemName = 'forno';
 
@@ -2373,7 +2375,10 @@
                 { result: { name: 'piso_pedra', quantity: 5 }, ingredients: [{ name: 'pedra', quantity: 1 }] },
                 { result: { name: bedItemName, quantity: 1 }, ingredients: [{ name: woodenBlockItemName, quantity: 10 }, { name: fabricItemName, quantity: 10 }, { name: capimItemName, quantity: 50 }, { name: ropeItemName, quantity: 2 }] },
                 { result: { name: doorItemName, quantity: 1 }, ingredients: [{ name: woodenBlockItemName, quantity: 4 }] },
-                { result: { name: windowItemName, quantity: 1 }, ingredients: [{ name: woodenBlockItemName, quantity: 2 }, { name: glassItemName, quantity: 1 }] }
+                { result: { name: windowItemName, quantity: 1 }, ingredients: [{ name: woodenBlockItemName, quantity: 2 }, { name: glassItemName, quantity: 1 }] },
+                { result: { name: smallTableItemName, quantity: 1 }, ingredients: [{ name: woodenBlockItemName, quantity: 3 }] },
+                { result: { name: mesaItemName, quantity: 1 }, ingredients: [{ name: woodenBlockItemName, quantity: 5 }] },
+                { result: { name: largeTableItemName, quantity: 1 }, ingredients: [{ name: woodenBlockItemName, quantity: 8 }] }
             ]
         };
 
@@ -2441,7 +2446,9 @@
             [glassPotItemName]: 'Pote de Vidro',
             [pestleItemName]: 'Pilão',
             [workbenchItemName]: 'Bancada de Trabalho',
-            [mesaItemName]: 'Mesa',
+            [smallTableItemName]: 'Mesa Pequena',
+            [mesaItemName]: 'Mesa Larga',
+            [largeTableItemName]: 'Mesa Grande',
             [windowItemName]: 'Janela',
             [bigornaItemName]: 'Bigorna',
             [furnaceItemName]: 'Forno\nUsado para processar materiais'
@@ -2498,7 +2505,9 @@
             [glassPotItemName]: 0.5,
             [pestleItemName]: 1.5,
             [workbenchItemName]: 15.0,
+            [smallTableItemName]: 6.0,
             [mesaItemName]: 10.0,
+            [largeTableItemName]: 16.0,
             [windowItemName]: 5.0,
             [bigornaItemName]: 20.0,
             [furnaceItemName]: 30.0
@@ -3305,7 +3314,9 @@
             if (itemName === glassPotItemName) return "https://placehold.co/100x100/E0FFFF/FFFFFF?text=Pote+Vidro";
             if (itemName === pestleItemName) return "https://placehold.co/100x100/D2B48C/FFFFFF?text=Pilao";
             if (itemName === workbenchItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Bancada";
-            if (itemName === mesaItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Mesa";
+            if (itemName === smallTableItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Mesa+P";
+            if (itemName === mesaItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Mesa+Larga";
+            if (itemName === largeTableItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Mesa+G";
             if (itemName === doorItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Porta";
             return handImageURL;
         }
@@ -6078,9 +6089,16 @@
                 fireGroup.visible = blockBody.userData.isOn;
                 if (light) light.visible = blockBody.userData.isOn;
                 activeCampfires.push(blockBody);
-            } else if (type === workbenchItemName || type === mesaItemName) {
-                width = type === workbenchItemName ? 2.0 : 1.2;
-                height = 0.85; depth = 0.7;
+            } else if (type === workbenchItemName || type === smallTableItemName || type === mesaItemName || type === largeTableItemName) {
+                if (type === workbenchItemName) {
+                    width = 2.0; height = 0.85; depth = 0.7;
+                } else if (type === smallTableItemName) {
+                    width = 0.8; height = 0.85; depth = 0.8;
+                } else if (type === mesaItemName) {
+                    width = 1.4; height = 0.85; depth = 0.8;
+                } else if (type === largeTableItemName) {
+                    width = 1.6; height = 0.85; depth = 1.6;
+                }
                 blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
                 blockBody.addShape(blockShape);
 
@@ -6089,7 +6107,7 @@
                 const metalMat = new THREE.MeshStandardMaterial({ color: 0x708090 }); // Slate Gray
 
                 // Table Top
-                const topGeom = new THREE.BoxGeometry(width, 0.1, 0.7);
+                const topGeom = new THREE.BoxGeometry(width, 0.1, depth);
                 const topMesh = new THREE.Mesh(topGeom, woodMat);
                 topMesh.position.y = 0.35;
                 topMesh.castShadow = true;
@@ -6098,12 +6116,13 @@
 
                 // Legs
                 const legGeom = new THREE.BoxGeometry(0.1, 0.75, 0.1);
-                const legX = width / 2 - 0.1;
+                const legX = width / 2 - 0.08;
+                const legZ = depth / 2 - 0.08;
                 const legPositions = [
-                    { x: legX, z: 0.25 },
-                    { x: -legX, z: 0.25 },
-                    { x: legX, z: -0.25 },
-                    { x: -legX, z: -0.25 }
+                    { x: legX, z: legZ },
+                    { x: -legX, z: legZ },
+                    { x: legX, z: -legZ },
+                    { x: -legX, z: -legZ }
                 ];
                 legPositions.forEach(pos => {
                     const leg = new THREE.Mesh(legGeom, woodMat);
@@ -6411,7 +6430,7 @@
 
             world.addBody(blockBody);
             Object.assign(blockBody.userData, {
-                isCollectible: (type === workbenchItemName || type === mesaItemName || type === bigornaItemName || type === furnaceItemName || type === pestleItemName || type === doorItemName || type === windowItemName),
+                isCollectible: (type === workbenchItemName || type === smallTableItemName || type === mesaItemName || type === largeTableItemName || type === bigornaItemName || type === furnaceItemName || type === pestleItemName || type === doorItemName || type === windowItemName),
                 isDestructible: true,
                 durability: durability,
                 originalMass: initialMass,
@@ -8398,7 +8417,7 @@
                 // O martelo foi removido temporariamente das ferramentas de destruição
                 if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === ironAxeItemName || item.name === ironPickaxeItemName || item.name === ironShovelItemName || item.name === branchItemName || item.name === dirtItemName || item.name === sandItemName) return 'destroy';
                 // Itens de colocação
-                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === coconutSeedItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === cutTrunkItemName || item.name === firewoodItemName || item.name === boxItemName || item.name === basketItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === woodenFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName || item.name === workbenchItemName || item.name === mesaItemName || item.name === bigornaItemName || item.name === furnaceItemName || item.name === pestleItemName || item.name === grassBedItemName || item.name === sleepingMatItemName || item.name === bedItemName || item.name === doorItemName || item.name === windowItemName) return 'place';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === coconutSeedItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === cutTrunkItemName || item.name === firewoodItemName || item.name === boxItemName || item.name === basketItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === woodenFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName || item.name === workbenchItemName || item.name === smallTableItemName || item.name === mesaItemName || item.name === largeTableItemName || item.name === bigornaItemName || item.name === furnaceItemName || item.name === pestleItemName || item.name === grassBedItemName || item.name === sleepingMatItemName || item.name === bedItemName || item.name === doorItemName || item.name === windowItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
             }
 
@@ -8989,7 +9008,7 @@
                             playSyntheticCollectSound();
                             break;
                         }
-                    } else if (clickedBody.userData.type === workbenchItemName || clickedBody.userData.type === mesaItemName || clickedBody.userData.type === bigornaItemName || clickedBody.userData.type === furnaceItemName || clickedBody.userData.type === pestleItemName || clickedBody.userData.type === torchItemName) {
+                    } else if (clickedBody.userData.type === workbenchItemName || clickedBody.userData.type === smallTableItemName || clickedBody.userData.type === mesaItemName || clickedBody.userData.type === largeTableItemName || clickedBody.userData.type === bigornaItemName || clickedBody.userData.type === furnaceItemName || clickedBody.userData.type === pestleItemName || clickedBody.userData.type === torchItemName) {
                         const constructionIndex = placedConstructionBodies.indexOf(clickedBody);
                         if (constructionIndex > -1) {
                             const type = clickedBody.userData.type;
@@ -9057,7 +9076,7 @@
                         current = current.parent;
                     }
 
-                    if (body && (allPickableBodies.includes(body) || (allConstructionBodies.includes(body) && body.userData.isCollectible)) && body.userData.type !== campfireItemName && body.userData.type !== workbenchItemName && body.userData.type !== mesaItemName && body.userData.type !== bigornaItemName && body.userData.type !== furnaceItemName && body.userData.type !== pestleItemName && body.userData.type !== doorItemName && body.userData.type !== windowItemName && body.userData.type !== stoneItemName && body.userData.type !== boxItemName) {
+                    if (body && (allPickableBodies.includes(body) || (allConstructionBodies.includes(body) && body.userData.isCollectible)) && body.userData.type !== campfireItemName && body.userData.type !== workbenchItemName && body.userData.type !== smallTableItemName && body.userData.type !== mesaItemName && body.userData.type !== largeTableItemName && body.userData.type !== bigornaItemName && body.userData.type !== furnaceItemName && body.userData.type !== pestleItemName && body.userData.type !== doorItemName && body.userData.type !== windowItemName && body.userData.type !== stoneItemName && body.userData.type !== boxItemName) {
                         if (intersects[i].distance <= pickUpDistance) {
                             pickedObjectBody = body;
                             pickedObjectMesh = intersects[i].object;
@@ -9146,7 +9165,7 @@
                     else if (currentBlockType === torchItemName) materialLoaded = true;
                     else if (currentBlockType === grassBedItemName || currentBlockType === sleepingMatItemName || currentBlockType === bedItemName) materialLoaded = true;
                     else if (currentBlockType === cutTrunkItemName || currentBlockType === firewoodItemName) materialLoaded = true;
-                    else if (currentBlockType === workbenchItemName || currentBlockType === mesaItemName || currentBlockType === bigornaItemName || currentBlockType === furnaceItemName || currentBlockType === pestleItemName || currentBlockType === doorItemName || currentBlockType === windowItemName) materialLoaded = true;
+                    else if (currentBlockType === workbenchItemName || currentBlockType === smallTableItemName || currentBlockType === mesaItemName || currentBlockType === largeTableItemName || currentBlockType === bigornaItemName || currentBlockType === furnaceItemName || currentBlockType === pestleItemName || currentBlockType === doorItemName || currentBlockType === windowItemName) materialLoaded = true;
 
                     if (materialLoaded) {
                         if (currentBlockType === boxItemName) {
@@ -9218,7 +9237,9 @@
                     primaryToolForVisuals.name === campfireItemName ||
                     primaryToolForVisuals.name === torchItemName ||
                     primaryToolForVisuals.name === workbenchItemName ||
+                    primaryToolForVisuals.name === smallTableItemName ||
                     primaryToolForVisuals.name === mesaItemName ||
+                    primaryToolForVisuals.name === largeTableItemName ||
                     primaryToolForVisuals.name === bigornaItemName ||
                     primaryToolForVisuals.name === furnaceItemName ||
                     primaryToolForVisuals.name === grassBedItemName ||
@@ -11277,7 +11298,7 @@
                             } else if (body.userData.isCollectible) {
                                 if (body.userData.type === workbenchItemName || body.userData.type === bigornaItemName || body.userData.type === furnaceItemName || body.userData.type === pestleItemName) {
                                     interactionHintText = "(E) Acessar / (G) Guardar";
-                                } else if (body.userData.type === mesaItemName || body.userData.type === stoneItemName) {
+                                } else if (body.userData.type === smallTableItemName || body.userData.type === mesaItemName || body.userData.type === largeTableItemName || body.userData.type === stoneItemName) {
                                     interactionHintText = "(G) Guardar";
                                 } else {
                                     interactionHintText = "(F) Agarrar / (G) Guardar";
@@ -11567,20 +11588,28 @@
                                 torchGroup.add(fire);
                             }
                             ghostBlockMesh.add(torchGroup);
-                        } else if (currentBlockType === workbenchItemName || currentBlockType === mesaItemName) {
+                        } else if (currentBlockType === workbenchItemName || currentBlockType === smallTableItemName || currentBlockType === mesaItemName || currentBlockType === largeTableItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(0, 0, 0);
                             const group = new THREE.Group();
                             const woodMat = ghostBlockMaterial;
                             const metalMat = ghostBlockMaterial;
 
+                            let width = 1.4, depth = 0.8;
+                            if (currentBlockType === workbenchItemName) { width = 2.0; depth = 0.7; }
+                            else if (currentBlockType === smallTableItemName) { width = 0.8; depth = 0.8; }
+                            else if (currentBlockType === mesaItemName) { width = 1.4; depth = 0.8; }
+                            else if (currentBlockType === largeTableItemName) { width = 1.6; depth = 1.6; }
+
                             // Table Top
-                            const topMesh = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.1, 0.7), woodMat);
+                            const topMesh = new THREE.Mesh(new THREE.BoxGeometry(width, 0.1, depth), woodMat);
                             topMesh.position.y = 0.35;
                             group.add(topMesh);
 
                             // Legs
                             const legGeom = new THREE.BoxGeometry(0.1, 0.75, 0.1);
-                            [{x: 0.5, z: 0.25}, {x: -0.5, z: 0.25}, {x: 0.5, z: -0.25}, {x: -0.5, z: -0.25}].forEach(pos => {
+                            const legX = width / 2 - 0.08;
+                            const legZ = depth / 2 - 0.08;
+                            [{x: legX, z: legZ}, {x: -legX, z: legZ}, {x: legX, z: -legZ}, {x: -legX, z: -legZ}].forEach(pos => {
                                 const leg = new THREE.Mesh(legGeom, woodMat);
                                 leg.position.set(pos.x, -0.05, pos.z);
                                 group.add(leg);
@@ -11663,7 +11692,11 @@
                     else if (currentBlockType === bedItemName) { currentGhostWidth = 1.0; currentGhostHeight = 0.6; currentGhostDepth = 2.0; }
                     else if (currentBlockType === grassBedItemName) { currentGhostWidth = 1.0; currentGhostHeight = 0.2; currentGhostDepth = 2.0; }
                     else if (currentBlockType === sleepingMatItemName) { currentGhostWidth = 1.0; currentGhostHeight = 0.1; currentGhostDepth = 2.0; }
-                    else if (currentBlockType === workbenchItemName || currentBlockType === mesaItemName || currentBlockType === bigornaItemName) { currentGhostWidth = 1.0; currentGhostHeight = 0.85; currentGhostDepth = 1.0; }
+                    else if (currentBlockType === workbenchItemName) { currentGhostWidth = 2.0; currentGhostHeight = 0.85; currentGhostDepth = 0.7; }
+                    else if (currentBlockType === smallTableItemName) { currentGhostWidth = 0.8; currentGhostHeight = 0.85; currentGhostDepth = 0.8; }
+                    else if (currentBlockType === mesaItemName) { currentGhostWidth = 1.4; currentGhostHeight = 0.85; currentGhostDepth = 0.8; }
+                    else if (currentBlockType === largeTableItemName) { currentGhostWidth = 1.6; currentGhostHeight = 0.85; currentGhostDepth = 1.6; }
+                    else if (currentBlockType === bigornaItemName) { currentGhostWidth = 0.8; currentGhostHeight = 0.6; currentGhostDepth = 0.4; }
                     else if (currentBlockType === 'cob') { currentGhostWidth = cobWidth; currentGhostHeight = cobHeight; currentGhostDepth = cobDepth; }
                     else if (currentBlockType === 'piso') { currentGhostWidth = floorWidth; currentGhostHeight = floorHeight; currentGhostDepth = floorDepth; }
                     else if (currentBlockType === 'tábuas') { currentGhostWidth = woodenPlankWidth; currentGhostHeight = woodenPlankHeight; currentGhostDepth = woodenPlankDepth; }
@@ -11773,7 +11806,7 @@
                                         placementPosition.z = snappedUnwrappedZ - visualOffsetZ;
                                     }
 
-                                    if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName || currentBlockType === dirtItemName || currentBlockType === sandItemName || currentBlockType === raftItemName || currentBlockType === torchItemName || currentBlockType === workbenchItemName || currentBlockType === mesaItemName || currentBlockType === bigornaItemName || currentBlockType === furnaceItemName || currentBlockType === pestleItemName || currentBlockType === doorItemName || currentBlockType === windowItemName || currentBlockType === boxItemName) {
+                                    if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName || currentBlockType === dirtItemName || currentBlockType === sandItemName || currentBlockType === raftItemName || currentBlockType === torchItemName || currentBlockType === workbenchItemName || currentBlockType === smallTableItemName || currentBlockType === mesaItemName || currentBlockType === largeTableItemName || currentBlockType === bigornaItemName || currentBlockType === furnaceItemName || currentBlockType === pestleItemName || currentBlockType === doorItemName || currentBlockType === windowItemName || currentBlockType === boxItemName) {
                                         placementPosition.y = basePosition.y;
                                     } else {
                                         const n_y = Math.round((basePosition.y - islandSurfaceHeight) / currentGhostHeight - 0.5);
@@ -12936,7 +12969,7 @@
             }
 
             rotatableItems = [
-                bedItemName, sleepingMatItemName, grassBedItemName, mesaItemName, workbenchItemName,
+                bedItemName, sleepingMatItemName, grassBedItemName, smallTableItemName, mesaItemName, largeTableItemName, workbenchItemName,
                 pestleItemName, furnaceItemName, bigornaItemName, doorItemName, windowItemName,
                 basketItemName, boxItemName, firewoodItemName, cutTrunkItemName, stoneItemName
             ];
