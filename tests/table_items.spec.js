@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('Verify small table, wide table, and large table functionality', async ({ page }) => {
+test('Verify small table, wide table, and large table functionality and off-center placement', async ({ page }) => {
     test.setTimeout(60000);
 
     await page.goto('http://localhost:8080/index.htm');
@@ -64,9 +64,10 @@ test('Verify small table, wide table, and large table functionality', async ({ p
             return { success: false, reason: 'Table dimensions incorrect' };
         }
 
-        // 3. Test raycasting down and placing pestle ('pilão') on top of small, wide, and large tables
-        const testPlacement = (tableBody, rayX) => {
-            const ray = new THREE.Raycaster(new THREE.Vector3(rayX, 3.0, 0), new THREE.Vector3(0, -1, 0));
+        // 3. Test raycasting down and placing pestle ('pilão') at specific off-center coordinates on wide table
+        // Wide table center at (5, 0.8, 0), top Y = 1.225.
+        const testOffCenter = (tableBody, rayX, rayZ) => {
+            const ray = new THREE.Raycaster(new THREE.Vector3(rayX, 3.0, rayZ), new THREE.Vector3(0, -1, 0));
             const intersects = ray.intersectObjects(window.raycastTargets, true);
 
             let intersectedBody = null;
@@ -79,13 +80,17 @@ test('Verify small table, wide table, and large table functionality', async ({ p
                 currentObj = currentObj.parent;
             }
 
+            const hitPoint = intersects[0].point;
             const hitNormal = intersects[0].face.normal.clone().transformDirection(intersects[0].object.matrixWorld).normalize();
 
             const targetHalfY = intersectedBody.shapes[0].halfExtents.y;
             const currentHalfY = 0.3 / 2; // pestle height (0.3) / 2 = 0.15
 
             const placementY = intersectedBody.position.y + targetHalfY + currentHalfY;
-            const pestleBody = window.createPlaceableBlock(new THREE.Vector3(rayX, placementY, 0), new THREE.Quaternion(), 'pilao');
+            const placementX = hitPoint.x;
+            const placementZ = hitPoint.z;
+
+            const pestleBody = window.createPlaceableBlock(new THREE.Vector3(placementX, placementY, placementZ), new THREE.Quaternion(), 'pilao');
 
             const tableTopY = tableBody.position.y + tableBody.shapes[0].halfExtents.y;
             const pestleBottomY = pestleBody.position.y - pestleBody.shapes[0].halfExtents.y;
@@ -93,13 +98,14 @@ test('Verify small table, wide table, and large table functionality', async ({ p
             return {
                 intersectedBodyIsTable: intersectedBody === tableBody,
                 hitNormalY: hitNormal.y,
+                pestleX: pestleBody.position.x,
+                pestleZ: pestleBody.position.z,
                 gap: Math.abs(pestleBottomY - tableTopY)
             };
         };
 
-        const smallRes = testPlacement(smallBody, 0);
-        const wideRes = testPlacement(wideBody, 5);
-        const largeRes = testPlacement(largeBody, 10);
+        const leftRes = testOffCenter(wideBody, 4.6, 0.2);
+        const rightRes = testOffCenter(wideBody, 5.4, -0.2);
 
         return {
             success: true,
@@ -109,9 +115,8 @@ test('Verify small table, wide table, and large table functionality', async ({ p
             smallStatic: smallBody.type === 2,
             wideStatic: wideBody.type === 2,
             largeStatic: largeBody.type === 2,
-            smallRes,
-            wideRes,
-            largeRes
+            leftRes,
+            rightRes
         };
     });
 
@@ -123,15 +128,15 @@ test('Verify small table, wide table, and large table functionality', async ({ p
     expect(result.wideStatic).toBe(true);
     expect(result.largeStatic).toBe(true);
 
-    expect(result.smallRes.intersectedBodyIsTable).toBe(true);
-    expect(result.smallRes.hitNormalY).toBe(1);
-    expect(result.smallRes.gap).toBeLessThan(0.001);
+    expect(result.leftRes.intersectedBodyIsTable).toBe(true);
+    expect(result.leftRes.hitNormalY).toBe(1);
+    expect(result.leftRes.pestleX).toBeCloseTo(4.6, 2);
+    expect(result.leftRes.pestleZ).toBeCloseTo(0.2, 2);
+    expect(result.leftRes.gap).toBeLessThan(0.001);
 
-    expect(result.wideRes.intersectedBodyIsTable).toBe(true);
-    expect(result.wideRes.hitNormalY).toBe(1);
-    expect(result.wideRes.gap).toBeLessThan(0.001);
-
-    expect(result.largeRes.intersectedBodyIsTable).toBe(true);
-    expect(result.largeRes.hitNormalY).toBe(1);
-    expect(result.largeRes.gap).toBeLessThan(0.001);
+    expect(result.rightRes.intersectedBodyIsTable).toBe(true);
+    expect(result.rightRes.hitNormalY).toBe(1);
+    expect(result.rightRes.pestleX).toBeCloseTo(5.4, 2);
+    expect(result.rightRes.pestleZ).toBeCloseTo(-0.2, 2);
+    expect(result.rightRes.gap).toBeLessThan(0.001);
 });
