@@ -50,15 +50,32 @@ test('Verify small table, wide table, and large table functionality', async ({ p
             return { success: false, reason: 'Table dimensions incorrect' };
         }
 
-        // 3. Test placing pestle on top of small table
-        // Small table center Y = 0.425, height = 0.85, top Y = 0.85.
+        // 3. Test placing pestle on top of small, wide, and large tables
+        // Small/Wide/Large table center Y = 0.425, height = 0.85, top Y = 0.85.
         // Pestle height = 0.3 (halfExtent 0.15). Center Y should be 0.85 + 0.15 = 1.0.
-        const pestlePos = new THREE.Vector3(0, 1.0, 0);
-        const pestleBody = window.createPlaceableBlock(pestlePos, new THREE.Quaternion(), 'pilao');
+        const pestleSmallPos = new THREE.Vector3(0, 1.0, 0);
+        const pestleWidePos = new THREE.Vector3(3, 1.0, 0);
+        const pestleLargePos = new THREE.Vector3(6, 1.0, 0);
 
-        const tableTopY = smallBody.position.y + smallBody.shapes[0].halfExtents.y;
-        const pestleBottomY = pestleBody.position.y - pestleBody.shapes[0].halfExtents.y;
-        const gap = Math.abs(pestleBottomY - tableTopY);
+        const pestleSmallBody = window.createPlaceableBlock(pestleSmallPos, new THREE.Quaternion(), 'pilao');
+        const pestleWideBody = window.createPlaceableBlock(pestleWidePos, new THREE.Quaternion(), 'pilao');
+        const pestleLargeBody = window.createPlaceableBlock(pestleLargePos, new THREE.Quaternion(), 'pilao');
+
+        if (!pestleSmallBody || !pestleWideBody || !pestleLargeBody) {
+            return { success: false, reason: 'Failed to create pestle bodies on tables' };
+        }
+
+        const smallTableTopY = smallBody.position.y + smallBody.shapes[0].halfExtents.y;
+        const pestleSmallBottomY = pestleSmallBody.position.y - pestleSmallBody.shapes[0].halfExtents.y;
+        const gapSmall = Math.abs(pestleSmallBottomY - smallTableTopY);
+
+        const wideTableTopY = wideBody.position.y + wideBody.shapes[0].halfExtents.y;
+        const pestleWideBottomY = pestleWideBody.position.y - pestleWideBody.shapes[0].halfExtents.y;
+        const gapWide = Math.abs(pestleWideBottomY - wideTableTopY);
+
+        const largeTableTopY = largeBody.position.y + largeBody.shapes[0].halfExtents.y;
+        const pestleLargeBottomY = pestleLargeBody.position.y - pestleLargeBody.shapes[0].halfExtents.y;
+        const gapLarge = Math.abs(pestleLargeBottomY - largeTableTopY);
 
         return {
             success: true,
@@ -68,7 +85,9 @@ test('Verify small table, wide table, and large table functionality', async ({ p
             smallStatic: smallBody.type === 2, // CANNON.Body.STATIC = 2
             wideStatic: wideBody.type === 2,
             largeStatic: largeBody.type === 2,
-            gap
+            gapSmall,
+            gapWide,
+            gapLarge
         };
     });
 
@@ -79,5 +98,7 @@ test('Verify small table, wide table, and large table functionality', async ({ p
     expect(result.smallStatic).toBe(true);
     expect(result.wideStatic).toBe(true);
     expect(result.largeStatic).toBe(true);
-    expect(result.gap).toBeLessThan(0.001);
+    expect(result.gapSmall).toBeLessThan(0.001);
+    expect(result.gapWide).toBeLessThan(0.001);
+    expect(result.gapLarge).toBeLessThan(0.001);
 });
