@@ -928,6 +928,45 @@
         </div>
     </div>
 
+    <!-- Modal / Tela de Carregamento de Recursos -->
+    <div id="loadingScreen" class="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-[11500] hidden text-white p-6">
+        <div class="bg-gray-900 border-2 border-amber-600 rounded-xl p-8 w-full max-w-lg shadow-2xl flex flex-col gap-6 text-center">
+            <h2 id="loadingTitle" class="text-3xl font-bold text-amber-500">Carregando Pequeno Mundo...</h2>
+
+            <!-- Barra de Progresso e Porcentagem -->
+            <div class="w-full flex flex-col gap-2">
+                <div class="w-full bg-gray-800 rounded-full h-6 p-1 border border-gray-700 relative overflow-hidden">
+                    <div id="loadingBarFill" class="bg-gradient-to-r from-amber-500 to-green-500 h-full rounded-full transition-all duration-150 ease-out" style="width: 0%;"></div>
+                </div>
+                <div class="flex justify-between items-center text-sm text-gray-300 font-semibold px-1">
+                    <span id="loadingStatus">Preparando recursos...</span>
+                    <span id="loadingPercentage" class="text-amber-400 font-bold text-lg">0%</span>
+                </div>
+            </div>
+
+            <!-- Alerta de Recursos Faltantes -->
+            <div id="missingAssetsContainer" class="hidden flex flex-col gap-4 text-left border-t border-gray-700 pt-4">
+                <div class="bg-red-900/40 border border-red-500 rounded-lg p-4">
+                    <h3 class="text-red-400 font-bold text-base flex items-center gap-2 mb-2">
+                        <i class="fas fa-exclamation-triangle"></i> Os seguintes recursos não foram encontrados:
+                    </h3>
+                    <div id="missingAssetsList" class="max-h-40 overflow-y-auto text-xs text-red-200 bg-black/40 p-2 rounded border border-red-900 flex flex-col gap-1 font-mono">
+                        <!-- Lista de áudios/texturas não encontradas -->
+                    </div>
+                </div>
+                <p class="text-sm text-gray-300 font-semibold text-center">Deseja iniciar o jogo mesmo assim?</p>
+                <div class="flex gap-4 justify-center">
+                    <button id="startAnywayButton" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow">
+                        Iniciar mesmo assim
+                    </button>
+                    <button id="cancelLoadingButton" class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded-lg transition-colors shadow">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Novo botão de menu no canto superior esquerdo -->
     <div id="hudButtons" class="fixed top-4 left-4 flex gap-2 z-[9800] hidden">
         <button id="menuIconButton" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-lg shadow-lg flex items-center space-x-2">
@@ -1483,6 +1522,9 @@
             if (audioBuffers[url]) return audioBuffers[url];
             try {
                 const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error("HTTP error " + response.status);
+                }
                 const arrayBuffer = await response.arrayBuffer();
                 const audioBuffer = await gameAudioContext.decodeAudioData(arrayBuffer);
                 audioBuffers[url] = audioBuffer;
@@ -1491,6 +1533,205 @@
                 console.error("Erro ao carregar áudio:", url, e);
                 return null;
             }
+        }
+
+        let pendingGameLaunch = null;
+
+        function getAllAssetsToPreload() {
+            const assets = [];
+            const addedUrls = new Set();
+
+            function addAsset(name, type, url) {
+                if (!url || typeof url !== 'string' || addedUrls.has(url)) return;
+                addedUrls.add(url);
+                assets.push({ name, type, url });
+            }
+
+            // Áudios de ambiente e ações
+            addAsset("Vento da Ilha", "Áudio", islandAmbientUrl);
+            addAsset("Pulo e Coleta", "Áudio", jumpCollectUrl);
+            addAsset("Pegar Item", "Áudio", grabSoundUrl);
+            addAsset("Vento da Praia", "Áudio", beachAmbientUrl);
+            addAsset("Sons Subaquáticos", "Áudio", underwaterAmbientUrl);
+            addAsset("Passos na Grama", "Áudio", grassStepUrl);
+            addAsset("Passos na Areia", "Áudio", sandStepUrl);
+            addAsset("Cavando Terra e Areia", "Áudio", diggingUrl);
+            addAsset("Minerando Pedra", "Áudio", miningUrl);
+            addAsset("Natação e Água", "Áudio", swimStepUrl);
+            addAsset("Porta Abrindo", "Áudio", doorOpenUrl);
+            addAsset("Porta Fechando", "Áudio", doorCloseUrl);
+            addAsset("Abrir Baú", "Áudio", chestOpenUrl);
+            addAsset("Abrir Cesta", "Áudio", basketOpenUrl);
+            addAsset("Abrir Forno", "Áudio", furnaceOpenUrl);
+            addAsset("Abrir Bigorna", "Áudio", anvilOpenUrl);
+            addAsset("Acessar Bancada", "Áudio", workbenchOpenUrl);
+            addAsset("Usando Pilão", "Áudio", pestleOpenUrl);
+            addAsset("Som da Tocha", "Áudio", torchSoundUrl);
+            addAsset("Som da Fogueira", "Áudio", campfireSoundUrl);
+            addAsset("Cortando Lenha", "Áudio", firewoodUrl);
+
+            birdSoundUrls.forEach((url, i) => addAsset(`Canto dos Pássaros ${i + 1}`, "Áudio", url));
+            seagullSoundUrls.forEach((url, i) => addAsset(`Canto das Gaivotas ${i + 1}`, "Áudio", url));
+
+            // Texturas e Imagens 3D / UI
+            addAsset("Textura do Caixote", "Textura", cubeTextureURL);
+            addAsset("Textura Pau-a-Pique", "Textura", cobTextureURL);
+            addAsset("Ícone Muda de Árvore", "Textura", treeSaplingTextureURL);
+            addAsset("Ícone do Capim", "Textura", capimImageURL);
+            addAsset("Ícone do Machado", "Textura", axeImageURL);
+            addAsset("Ícone do Martelo", "Textura", hammerImageURL);
+            addAsset("Textura de Pedra", "Textura", stoneImageURL);
+            addAsset("Ícone da Terra", "Textura", dirtImageURL);
+            addAsset("Ícone da Areia", "Textura", sandImageURL);
+            addAsset("Ícone da Pá", "Textura", shovelImageURL);
+            addAsset("Ícone da Picareta", "Textura", pickaxeImageURL);
+            addAsset("Textura de Madeira", "Textura", woodTextureURL);
+            addAsset("Textura Folhas da Árvore", "Textura", treeLeavesTextureURL);
+            addAsset("Imagem da Mão", "Textura", handImageURL);
+            addAsset("Ícone do Galho", "Textura", branchImageURL);
+            addAsset("Textura de Buraco", "Textura", holeTextureURL);
+            addAsset("Textura de Terra (Chão)", "Textura", groundTextureURL);
+            addAsset("Textura de Areia (Praia)", "Textura", sandTextureURL);
+            addAsset("Textura de Capim (Chão)", "Textura", capimTextureURL);
+
+            if (typeof itemDisplayNames !== 'undefined') {
+                for (const key in itemDisplayNames) {
+                    const iconUrl = getItemIconURL(key);
+                    if (iconUrl) {
+                        addAsset(`Ícone: ${itemDisplayNames[key]}`, "Textura", iconUrl);
+                    }
+                }
+            }
+
+            return assets;
+        }
+
+        async function preloadSingleAsset(asset) {
+            if (!asset || !asset.url) return true;
+
+            const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(false), 8000));
+
+            const loadPromise = (async () => {
+                if (asset.type === "Áudio") {
+                    try {
+                        const buf = await loadAudioBuffer(asset.url);
+                        return buf !== null;
+                    } catch (e) {
+                        return false;
+                    }
+                } else {
+                    return new Promise((resolve) => {
+                        const img = new Image();
+                        img.crossOrigin = "anonymous";
+                        img.onload = () => {
+                            if (typeof textureLoader !== 'undefined' && textureLoader) {
+                                try { textureLoader.load(asset.url, () => {}, undefined, () => {}); } catch (e) {}
+                            }
+                            resolve(true);
+                        };
+                        img.onerror = () => {
+                            resolve(false);
+                        };
+                        img.src = asset.url;
+                    });
+                }
+            })();
+
+            return Promise.race([loadPromise, timeoutPromise]);
+        }
+
+        async function initiateGameLaunch(isSave = false, saveData = null) {
+            pendingGameLaunch = { isSave, saveData };
+
+            const startScreenElem = document.getElementById('startScreen');
+            const loadGameModalElem = document.getElementById('loadGameModal');
+            const loadingScreenElem = document.getElementById('loadingScreen');
+            const loadingBarFillElem = document.getElementById('loadingBarFill');
+            const loadingPercentageElem = document.getElementById('loadingPercentage');
+            const loadingStatusElem = document.getElementById('loadingStatus');
+            const missingAssetsContainerElem = document.getElementById('missingAssetsContainer');
+            const missingAssetsListElem = document.getElementById('missingAssetsList');
+
+            if (startScreenElem) startScreenElem.style.display = 'none';
+            if (loadGameModalElem) loadGameModalElem.classList.add('hidden');
+            if (loadingScreenElem) loadingScreenElem.classList.remove('hidden');
+
+            if (missingAssetsContainerElem) missingAssetsContainerElem.classList.add('hidden');
+            if (missingAssetsListElem) missingAssetsListElem.innerHTML = '';
+            if (loadingBarFillElem) loadingBarFillElem.style.width = '0%';
+            if (loadingPercentageElem) loadingPercentageElem.textContent = '0%';
+            if (loadingStatusElem) loadingStatusElem.textContent = 'Iniciando carregamento...';
+
+            if (!gameAudioContext) {
+                gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (gameAudioContext && gameAudioContext.state === 'suspended') {
+                try { await gameAudioContext.resume(); } catch (e) {}
+            }
+
+            const assets = (window.getAllAssetsToPreload || getAllAssetsToPreload)();
+            const totalCount = assets.length;
+            let loadedCount = 0;
+            const failedAssets = [];
+
+            const batchSize = 10;
+            for (let i = 0; i < assets.length; i += batchSize) {
+                const batch = assets.slice(i, i + batchSize);
+                await Promise.all(batch.map(async (asset) => {
+                    const success = await preloadSingleAsset(asset);
+                    loadedCount++;
+                    if (!success) {
+                        failedAssets.push(asset);
+                    }
+                    const pct = Math.floor((loadedCount / totalCount) * 100);
+                    if (loadingBarFillElem) loadingBarFillElem.style.width = pct + '%';
+                    if (loadingPercentageElem) loadingPercentageElem.textContent = pct + '%';
+                    if (loadingStatusElem) {
+                        loadingStatusElem.textContent = `Carregando: ${asset.name} (${loadedCount}/${totalCount})`;
+                    }
+                }));
+            }
+
+            if (failedAssets.length > 0) {
+                if (loadingStatusElem) loadingStatusElem.textContent = 'Carregamento concluído com avisos.';
+                if (missingAssetsListElem) {
+                    missingAssetsListElem.innerHTML = failedAssets.map(a => {
+                        const filename = a.url.split('?')[0].split('/').pop();
+                        return `<div class="py-0.5 border-b border-red-900/50 last:border-0">• <span class="text-amber-400 font-bold">[${a.type}]</span> ${a.name} <span class="text-gray-400">(${filename})</span></div>`;
+                    }).join('');
+                }
+                if (missingAssetsContainerElem) missingAssetsContainerElem.classList.remove('hidden');
+            } else {
+                if (loadingBarFillElem) loadingBarFillElem.style.width = '100%';
+                if (loadingPercentageElem) loadingPercentageElem.textContent = '100%';
+                if (loadingStatusElem) loadingStatusElem.textContent = 'Carregamento concluído!';
+                setTimeout(() => {
+                    executeFinalGameLaunch();
+                }, 300);
+            }
+        }
+
+        function executeFinalGameLaunch() {
+            const loadingScreenElem = document.getElementById('loadingScreen');
+            if (loadingScreenElem) loadingScreenElem.classList.add('hidden');
+
+            if (pendingGameLaunch && pendingGameLaunch.isSave) {
+                startGame();
+                if (pendingGameLaunch.saveData) {
+                    loadGameState(pendingGameLaunch.saveData);
+                    showNotification("Salvamento carregado!");
+                }
+            } else {
+                startGame();
+            }
+        }
+
+        function cancelGameLaunch() {
+            const loadingScreenElem = document.getElementById('loadingScreen');
+            const startScreenElem = document.getElementById('startScreen');
+            if (loadingScreenElem) loadingScreenElem.classList.add('hidden');
+            if (startScreenElem) startScreenElem.style.display = 'flex';
+            pendingGameLaunch = null;
         }
 
         let cachedNoiseBuffer = null;
@@ -2598,7 +2839,7 @@
         const dirtImageURL = 'https://placehold.co/100x100/A0522D/FFFFFF?text=Terra'; // NOVO: Imagem para a terra
         const sandImageURL = 'https://placehold.co/100x100/c2b280/FFFFFF?text=Areia'; // NOVO: Imagem para a areia
         const shovelImageURL = 'https://placehold.co/100x100/808080/FFFFFF?text=Pá'; // NOVO: Imagem para a pá
-        const pickaxeImageURL = 'https://file.loading.io/resources/icon/whnsbw.svg'; // NOVO: Imagem para a picareta
+        const pickaxeImageURL = 'https://placehold.co/100x100/808080/FFFFFF?text=Picareta'; // NOVO: Imagem para a picareta
         const woodTextureURL = 'https://dl.dropbox.com/scl/fi/zmvg8gpsyxt2kfbfizf1u/madeira-teste-3.png?rlkey=cfveb1zhd5kulw9jqjv873gun&st=s4x0y6d9&dl=0';
         const treeBarkTextureURL = woodTextureURL;
         const treeLeavesTextureURL = 'https://dl.dropbox.com/scl/fi/u636vo3d674wnbku37w0f/ChatGPT-Image-6-de-fev.-de-2026-21_55_222.png?rlkey=ia0p0yck3kgec32olpezpov16&st=d5u2tnhg&dl=1';
@@ -2611,6 +2852,11 @@
         const stoneBlockTextureURL = 'https://dl.dropbox.com/scl/fi/e3f1eq2wa79ntw9m9mtqx/Textura-de-pedra-pequena.png?rlkey=mvi93aowzqog0u14918usj4ql&st=0qcy4ipz&dl=1';
         const woodenBlockTextureURL = woodTextureURL;
         const stoneFloorTextureURL = 'https://dl.dropbox.com/scl/fi/e3f1eq2wa79ntw9m9mtqx/Textura-de-pedra-pequena.png?rlkey=mvi93aowzqog0u14918usj4ql&st=0qcy4ipz&dl=1';
+        const groundTextureURL = "https://dl.dropbox.com/scl/fi/9vs85irmh6wxvcybemvc6/textura-de-terra.png?rlkey=oidjt8wp9dkf5vsxh1r3xaec9&st=wn7x7au3&dl=0";
+        const sandTextureURL = "https://dl.dropbox.com/scl/fi/glmbudn8mnv7b7hrc41zp/Textura-de-areia.png?rlkey=gag1m2x82xv99kejun0f6f86t&st=iff4jjst&dl=0";
+        const capimTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=0";
+        const inferiorDirtTextureURL = holeTextureURL;
+        const seabedTextureURL = sandTextureURL;
 
         // Geometrias e materiais compartilhados
         const capimSharedGeometry = new THREE.CylinderGeometry(0, 0.1, 1, 4);
@@ -7316,11 +7562,6 @@
                 elementSize: worldSize / (hfGridSize - 1)
             });
 
-            const groundTextureURL = "https://dl.dropbox.com/scl/fi/9vs85irmh6wxvcybemvc6/textura-de-terra.png?rlkey=oidjt8wp9dkf5vsxh1r3xaec9&st=wn7x7au3&dl=0";
-            const sandTextureURL = "https://dl.dropbox.com/scl/fi/glmbudn8mnv7b7hrc41zp/Textura-de-areia.png?rlkey=gag1m2x82xv99kejun0f6f86t&st=iff4jjst&dl=0";
-            const capimTextureURL = "https://dl.dropbox.com/scl/fi/gdiu7zb9234a8jm68z7f3/textura-de-terra.png?rlkey=li8ncb3e8px530q9kjuu6t7e2&st=31pn526c&dl=0"; // Textura de capim atualizada conforme solicitado
-            const inferiorDirtTextureURL = holeTextureURL; // Usar a textura de terra 2 solicitada
-            const seabedTextureURL = sandTextureURL;
 
             const islandMeshMaterial = new THREE.MeshStandardMaterial({
                 color: 0xffffff,
@@ -13564,9 +13805,7 @@
                 btn.innerHTML = `<span><i class="fas fa-save mr-2"></i>Último Salvamento Auto/Manual</span> <span class="text-xs opacity-80">${dateStr}</span>`;
                 btn.addEventListener('click', () => {
                     modal.classList.add('hidden');
-                    startGame();
-                    loadGameState(parsed);
-                    showNotification("Salvamento carregado!");
+                    initiateGameLaunch(true, parsed);
                 });
                 savesListDiv.appendChild(btn);
             } else {
@@ -13578,7 +13817,7 @@
 
         // Listeners para os botões da tela inicial ("Novo Jogo", "Continuar") e modal de carregamento
         const newGameBtn = document.getElementById('newGameButton') || document.getElementById('startButton');
-        if (newGameBtn) newGameBtn.addEventListener('click', startGame);
+        if (newGameBtn) newGameBtn.addEventListener('click', () => initiateGameLaunch(false));
 
         document.getElementById('continueButton').addEventListener('click', () => {
             openContinueMenu();
@@ -13587,6 +13826,12 @@
         document.getElementById('closeLoadModalButton').addEventListener('click', () => {
             document.getElementById('loadGameModal').classList.add('hidden');
         });
+
+        const startAnywayBtn = document.getElementById('startAnywayButton');
+        if (startAnywayBtn) startAnywayBtn.addEventListener('click', executeFinalGameLaunch);
+
+        const cancelLoadingBtn = document.getElementById('cancelLoadingButton');
+        if (cancelLoadingBtn) cancelLoadingBtn.addEventListener('click', cancelGameLaunch);
 
         document.getElementById('uploadSaveInput').addEventListener('change', (event) => {
             const file = event.target.files[0];
@@ -13597,9 +13842,7 @@
                 try {
                     const saveData = JSON.parse(e.target.result);
                     document.getElementById('loadGameModal').classList.add('hidden');
-                    startGame();
-                    loadGameState(saveData);
-                    showNotification("Arquivo de salvamento carregado!");
+                    initiateGameLaunch(true, saveData);
                 } catch (err) {
                     alert("Erro ao ler o arquivo de salvamento. O arquivo pode estar corrompido.");
                 }
