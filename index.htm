@@ -10600,6 +10600,7 @@
 
             // Lógica de movimento do jogador com base nas teclas pressionadas
             let currentMoveSpeed = walkSpeed;
+            window.currentMoveSpeed = currentMoveSpeed;
 
             // Aplica penalidade de peso
             const weightFactor = Math.max(0, 1 - (totalWeight / maxWeight));
@@ -10624,6 +10625,7 @@
                 const energySpeedFactor = 0.85 + 0.15 * energyFactor30;
                 currentMoveSpeed *= energySpeedFactor;
             }
+            window.currentMoveSpeed = currentMoveSpeed;
 
             const forward = new THREE.Vector3();
             const right = new THREE.Vector3();
@@ -10988,7 +10990,8 @@
                         torchGainNode.gain.setTargetAtTime(targetTorch, gameAudioContext.currentTime, 0.1);
                         campfireGainNode.gain.setTargetAtTime(targetCampfire, gameAudioContext.currentTime, 0.1);
 
-                        const playbackRate = (keysPressed['shift'] && !isCrouching) ? 1.4 : 1.0;
+                        const speedRatio = typeof currentMoveSpeed !== 'undefined' ? (currentMoveSpeed / walkSpeed) : 1.0;
+                        const playbackRate = Math.max(0.5, Math.min(2.5, speedRatio));
                         if (grassSourceNode) grassSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
                         if (sandSourceNode) sandSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
                         if (swimSourceNode) swimSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
