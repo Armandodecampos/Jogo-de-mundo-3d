@@ -7183,6 +7183,7 @@
             // Configuração do Mundo Cannon-es (física)
             world = new CANNON.World();
             window.world = world;
+            world.broadphase = new CANNON.SAPBroadphase(world); // Otimização de Broadphase (Sweep and Prune) para O(N log N)
             world.gravity.set(0, -50, 0); // Define a gravidade (para baixo), aumentada para -50
             world.solver.iterations = 10; // Reduzido para performance
 
@@ -11197,8 +11198,7 @@
                     mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
                     mesh.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
                     mesh.updateMatrixWorld();
-                    // Adiciona frustum culling manual (para grupos sem geometria direta, verifica os filhos ou mantem visível se dentro da distância)
-                    mesh.visible = mesh.geometry ? frustum.intersectsObject(mesh) : true;
+                    mesh.visible = true;
                 }
             });
 
@@ -11229,8 +11229,7 @@
                     mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
                     mesh.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
                     mesh.updateMatrixWorld();
-                    // Adiciona frustum culling manual
-                    mesh.visible = mesh.geometry ? frustum.intersectsObject(mesh) : true;
+                    mesh.visible = true;
                 }
             });
 
@@ -11260,8 +11259,7 @@
                         mound.mesh.quaternion.copy(mound.quaternion);
                     }
                     mound.mesh.updateMatrixWorld();
-                    // Adiciona frustum culling manual
-                    mound.mesh.visible = mound.mesh.geometry ? frustum.intersectsObject(mound.mesh) : true;
+                    mound.mesh.visible = true;
                 }
             });
 
@@ -11329,7 +11327,7 @@
                         mound.mesh.quaternion.copy(mound.quaternion);
                     }
                     mound.mesh.updateMatrixWorld();
-                    mound.mesh.visible = mound.mesh.geometry ? frustum.intersectsObject(mound.mesh) : true;
+                    mound.mesh.visible = true;
                 }
 
                 const duration = 5.0; // 5 segundos para curar suavemente
