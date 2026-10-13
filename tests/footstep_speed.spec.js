@@ -12,7 +12,7 @@ test('Footstep audio playback rate scales dynamically with character speed', asy
   // Expose test helper or evaluate currentMoveSpeed vs walkSpeed speedRatio calculation
   const defaultWalkSpeedRatio = await page.evaluate(() => {
     // Normal walk speed without shift or crouch
-    return window.currentMoveSpeed / 5.0; // walkSpeed = 5
+    return window.currentMoveSpeed / (window.walkSpeed || 8.0);
   });
 
   expect(defaultWalkSpeedRatio).toBeCloseTo(1.0, 1);
@@ -27,8 +27,9 @@ test('Footstep audio playback rate scales dynamically with character speed', asy
     // Simulate Shift pressed in keysPressed
     window.keysPressed = window.keysPressed || {};
     window.keysPressed['shift'] = true;
+    const baseWalkSpeed = window.walkSpeed || 8.0;
     // Walk speed ratio when running should be ~2.0
-    return (5.0 * 2.0) / 5.0; // runSpeedMultiplier = 2
+    return (baseWalkSpeed * 2.0) / baseWalkSpeed; // runSpeedMultiplier = 2
   });
 
   expect(runningSpeedRatio).toBeCloseTo(2.0, 1);
