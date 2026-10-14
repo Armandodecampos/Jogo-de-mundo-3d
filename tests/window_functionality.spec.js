@@ -21,17 +21,17 @@ test('Verify Janela (Window) functionality', async ({ page }) => {
     const isRotatable = await page.evaluate((name) => window.rotatableItems.includes(name), windowItemName);
     expect(isRotatable).toBe(true);
 
-    // Test snapped position for window (should be same as door)
+    // Test snapped position for window grid boundary
     const snappedPos = await page.evaluate(() => {
         const unwrappedX = 0.3;
         const unwrappedZ = 0.3;
         const cobSize = 0.4;
-        const snappedUnwrappedX = Math.round((unwrappedX - cobSize / 2) / cobSize) * cobSize + cobSize / 2;
-        const snappedUnwrappedZ = Math.round((unwrappedZ - cobSize / 2) / cobSize) * cobSize + cobSize / 2;
+        const snappedUnwrappedX = Math.round(unwrappedX / cobSize) * cobSize;
+        const snappedUnwrappedZ = Math.round(unwrappedZ / cobSize) * cobSize;
         return { x: snappedUnwrappedX, z: snappedUnwrappedZ };
     });
-    expect(snappedPos.x).toBeCloseTo(0.2);
-    expect(snappedPos.z).toBeCloseTo(0.2);
+    expect(snappedPos.x).toBeCloseTo(0.4);
+    expect(snappedPos.z).toBeCloseTo(0.4);
 
     // Test toggleDoor logic for window
     await page.evaluate(() => {
