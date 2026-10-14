@@ -5586,23 +5586,23 @@
         function updateRain(delta) {
             if (!rainParticles) return;
 
-            // Atualiza o volume e o filtro do áudio da chuva - agora usa localRainIntensity
+            // Atualiza o volume e o filtro do áudio da chuva - varia de acordo com a intensidade
             if (rainGainNode && rainFilterNode) {
                 // Se o jogo estiver pausado, silencia a chuva
-                const targetGain = gamePaused ? 0 : (localRainIntensity * 0.30);
+                const targetGain = gamePaused ? 0 : (localRainIntensity * 0.35);
                 rainGainNode.gain.setTargetAtTime(targetGain, gameAudioContext.currentTime, 0.1);
 
-                // Frequência do filtro aumenta com a intensidade (chuva mais forte é mais "aguda")
-                const targetFreq = 500 + (localRainIntensity * 1500);
+                // Frequência do filtro aumenta com a intensidade (chuva fraca é abafada/suave, chuva forte é aguda/forte)
+                const targetFreq = 300 + (localRainIntensity * 2200);
                 rainFilterNode.frequency.setTargetAtTime(targetFreq, gameAudioContext.currentTime, 0.1);
             }
 
             if (localRainIntensity > 0.05) {
                 rainParticles.visible = true;
                 const totalParticles = 5000;
-                const visibleCount = Math.floor(localRainIntensity * totalParticles);
+                const visibleCount = Math.max(300, Math.floor(localRainIntensity * totalParticles));
                 rainParticles.geometry.setDrawRange(0, visibleCount);
-                rainParticles.material.opacity = 0.3 + (localRainIntensity * 0.4);
+                rainParticles.material.opacity = 0.2 + (localRainIntensity * 0.6);
 
                 const positions = rainParticles.geometry.attributes.position.array;
                 const velocities = rainParticles.userData.velocities;
@@ -5621,6 +5621,7 @@
                 const gridRes = 2.66; // Adjusted for 80m / 30 cells
                 const gridSize = 30;
                 const halfGrid = gridSize / 2;
+                const lowestScenarioLimitRelY = (bedrockLevel - 1.0) - camPos.y;
 
                 // Update all particles to ensure they are distributed even when intensity is low
                 for (let i = 0; i < totalParticles; i++) {
@@ -5654,11 +5655,11 @@
                     const gx = Math.max(0, Math.min(gridSize - 1, Math.floor((relX + halfArea) / gridRes)));
                     const gz = Math.max(0, Math.min(gridSize - 1, Math.floor((relZ + halfArea) / gridRes)));
 
-                    let occY = (rainOcclusionHeightmap[gz * gridSize + gx] - camPos.y) || -100;
-                    if (isNaN(occY)) occY = -100;
+                    let occY = (rainOcclusionHeightmap[gz * gridSize + gx] - camPos.y);
+                    if (isNaN(occY)) occY = lowestScenarioLimitRelY;
 
-                    // 5. Reset se colidir ou cair demais
-                    if (positions[i * 3 + 1] < occY || positions[i * 3 + 1] < -50) {
+                    // 5. Reset se colidir ou cair abaixo do limite do cenário (bedrockLevel - 1.0)
+                    if (positions[i * 3 + 1] < occY || positions[i * 3 + 1] < lowestScenarioLimitRelY) {
                         // Se a oclusão for próxima ou acima do topo, esconde
                         if (occY > 70) {
                             positions[i * 3 + 1] = -100;
@@ -5688,13 +5689,16 @@
             const halfGrid = gridSize / 2;
             const gridHalfSize = 40; // Mantém sincronizado com updateRain halfArea
 
-            // 1. Altura base do terreno
+            // 1. Altura base do terreno (inclui buracos cavados até o limite inferior bedrockLevel - 1.0)
+            const actualHeightFn = (typeof getActualHeight === 'function') ? getActualHeight : getSurfaceHeight;
+            const lowestLimit = bedrockLevel - 1.0;
+
             for (let j = 0; j < gridSize; j++) {
                 for (let i = 0; i < gridSize; i++) {
                     const x = playerPos.x + (i - halfGrid) * 2.66;
                     const z = playerPos.z + (j - halfGrid) * 2.66;
-                    // A chuva para no nível do mar se o terreno estiver abaixo dele
-                    rainOcclusionHeightmap[j * gridSize + i] = Math.max(getSurfaceHeight(x, z), waterLevel);
+                    const terrainY = actualHeightFn(x, z);
+                    rainOcclusionHeightmap[j * gridSize + i] = Math.max(terrainY, lowestLimit);
                 }
             }
 
@@ -5792,8 +5796,18 @@
         function startRainCycle() {
             rainCloud.active = true;
 
-            // Intensidade alvo agora varia aleatoriamente para cada ciclo de chuva
-            rainCloud.targetIntensity = 0.3 + Math.random() * 0.7;
+            // Intensidade aleatória sorteada em 3 níveis: fraca, média ou forte
+            const tierRoll = Math.random();
+            if (tierRoll < 0.35) {
+                // Chuva fraca
+                rainCloud.targetIntensity = 0.12 + Math.random() * 0.18; // 0.12 - 0.30
+            } else if (tierRoll < 0.70) {
+                // Chuva média
+                rainCloud.targetIntensity = 0.40 + Math.random() * 0.25; // 0.40 - 0.65
+            } else {
+                // Chuva forte
+                rainCloud.targetIntensity = 0.75 + Math.random() * 0.25; // 0.75 - 1.00
+            }
 
             targetRainIntensity = rainCloud.targetIntensity;
 
@@ -10234,37 +10248,18 @@
             window.onWalkableGround = false;
 
             if (!gamePaused) {
-                // Determine true performance state for rain visibility
-                const fps = Math.round((fpsFrames * 1000) / (now - fpsLastTime)) || 30; // Fallback to 30
+                updateWeather(delta);
+                updateClouds(delta, despawnDist);
 
-                // Só esconde a chuva se o FPS estiver muito baixo por vários quadros seguidos
-                if (fps < 15) {
-                    veryLowFPSCounter++;
-                } else {
-                    veryLowFPSCounter = 0;
-                }
-                const isVeryLowPerformance = veryLowFPSCounter > 10;
-
-                if (!isVeryLowPerformance) {
-                    updateWeather(delta);
-                    updateClouds(delta, despawnDist);
-
-                    // Atualiza o mapa de oclusão periodicamente se estiver chovendo
-                    if (localRainIntensity > 0.05) {
-                        // Se performance boa: cada 5 frames. Se performance baixa: cada 60 frames.
-                        const interval = lowPerformance ? 60 : 5;
-                        if (frameCount % interval === 0) {
-                            updateOcclusionHeightmap();
-                        }
+                // Atualiza o mapa de oclusão e chuva de forma constante enquanto estiver chovendo
+                if (localRainIntensity > 0.05) {
+                    const interval = lowPerformance ? 30 : 5;
+                    if (frameCount % interval === 0) {
+                        updateOcclusionHeightmap();
                     }
-
-                    updateRain(delta);
-                } else {
-                    // Only hide if performance is critically low (< 15 FPS)
-                    if (rainParticles) rainParticles.visible = false;
-                    if (rainGainNode) rainGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                    lastRainCameraPos.copy(camera.position);
                 }
+
+                updateRain(delta);
             } else {
                 // Se pausado, silencia a chuva e esconde as partículas
                 if (rainParticles) rainParticles.visible = false;
@@ -13523,6 +13518,7 @@
             });
             Object.defineProperty(window, 'gamePaused', { get: () => gamePaused, set: (v) => { gamePaused = v; } });
             Object.defineProperty(window, 'rainGainNode', { get: () => rainGainNode });
+            Object.defineProperty(window, 'rainFilterNode', { get: () => rainFilterNode });
             Object.defineProperty(window, 'islandGainNode', { get: () => islandGainNode });
             Object.defineProperty(window, 'beachGainNode', { get: () => beachGainNode });
             Object.defineProperty(window, 'underwaterGainNode', { get: () => underwaterGainNode });

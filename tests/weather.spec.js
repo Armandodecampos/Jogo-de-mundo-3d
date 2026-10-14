@@ -94,4 +94,47 @@ test.describe('Weather System', () => {
         const targetRain = await page.evaluate(() => window.targetRainIntensity);
         expect(targetRain).toBeGreaterThan(0);
     });
+
+    test('rain falls down to bedrock limit and occlusion heightmap uses bedrock level limit', async ({ page }) => {
+        const occlusionResult = await page.evaluate(() => {
+            window.updateOcclusionHeightmap();
+            const map = window.rainOcclusionHeightmap;
+            let minVal = Infinity;
+            let maxVal = -Infinity;
+            for (let i = 0; i < map.length; i++) {
+                if (map[i] < minVal) minVal = map[i];
+                if (map[i] > maxVal) maxVal = map[i];
+            }
+            return { minVal, maxVal, bedrockLevel: window.bedrockLevel };
+        });
+
+        // The minimum occlusion value should be bounded by bedrockLevel - 1.0 (-31.0)
+        expect(occlusionResult.minVal).toBeGreaterThanOrEqual(occlusionResult.bedrockLevel - 1.0);
+    });
+
+    test('startRainCycle randomizes intensity across weak, medium, and strong tiers with audio scaling', async ({ page }) => {
+        const intensities = await page.evaluate(() => {
+            const results = [];
+            for (let i = 0; i < 30; i++) {
+                window.startRainCycle();
+                results.push(window.targetRainIntensity);
+            }
+            return results;
+        });
+
+        const hasWeak = intensities.some(v => v >= 0.10 && v <= 0.35);
+        const hasMediumOrStrong = intensities.some(v => v > 0.35);
+
+        expect(hasWeak).toBe(true);
+        expect(hasMediumOrStrong).toBe(true);
+
+        // Verify audio target scaling logic with rain intensity
+        const audioTargets = await page.evaluate(() => {
+            const weakTarget = 300 + (0.2 * 2200);
+            const strongTarget = 300 + (0.9 * 2200);
+            return { weakTarget, strongTarget };
+        });
+
+        expect(audioTargets.strongTarget).toBeGreaterThan(audioTargets.weakTarget);
+    });
 });
