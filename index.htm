@@ -12250,7 +12250,36 @@
                                         doorItemName, windowItemName
                                     ].includes(currentBlockType);
 
-                                    if (Math.abs(hitNormal.x) > 0.7) {
+                                    if (currentBlockType === doorItemName || currentBlockType === windowItemName) {
+                                        const cardinalSnap = Math.PI / 2;
+                                        const snappedAngle = Math.round(ghostBlockRotationY / cardinalSnap) * cardinalSnap;
+                                        const isRotated90 = Math.abs(Math.sin(snappedAngle)) > 0.5;
+
+                                        if (Math.abs(hitNormal.x) > 0.7) {
+                                            placementPosition.x = hitNormal.x > 0 ? (intersectedBody.position.x + targetHalfX) : (intersectedBody.position.x - targetHalfX - currentGhostWidth);
+                                            placementPosition.z = intersectedBody.position.z;
+                                            placementPosition.y = intersectedBody.position.y - targetHalfY + currentGhostHeight / 2;
+                                        } else if (Math.abs(hitNormal.z) > 0.7) {
+                                            placementPosition.z = hitNormal.z > 0 ? (intersectedBody.position.z + targetHalfZ + currentGhostDepth) : (intersectedBody.position.z - targetHalfZ);
+                                            placementPosition.x = intersectedBody.position.x - currentGhostWidth / 2;
+                                            placementPosition.y = intersectedBody.position.y - targetHalfY + currentGhostHeight / 2;
+                                        } else {
+                                            placementPosition.y = intersectedBody.position.y + targetHalfY;
+                                            const unwrappedX = hitPoint.x + visualOffsetX;
+                                            const unwrappedZ = hitPoint.z + visualOffsetZ;
+                                            if (!isRotated90) {
+                                                const centerX = Math.round(unwrappedX / (cobSize / 2)) * (cobSize / 2);
+                                                const centerZ = Math.round(unwrappedZ / cobSize) * cobSize;
+                                                placementPosition.x = centerX - currentGhostWidth / 2 - visualOffsetX;
+                                                placementPosition.z = centerZ + currentGhostDepth / 2 - visualOffsetZ;
+                                            } else {
+                                                const centerX = Math.round(unwrappedX / cobSize) * cobSize;
+                                                const centerZ = Math.round(unwrappedZ / (cobSize / 2)) * (cobSize / 2);
+                                                placementPosition.x = centerX - currentGhostDepth / 2 - visualOffsetX;
+                                                placementPosition.z = centerZ + currentGhostWidth / 2 - visualOffsetZ;
+                                            }
+                                        }
+                                    } else if (Math.abs(hitNormal.x) > 0.7) {
                                         placementPosition.x = intersectedBody.position.x + Math.sign(hitNormal.x) * (targetHalfX + currentHalfX);
                                         placementPosition.z = intersectedBody.position.z;
                                         placementPosition.y = intersectedBody.position.y - targetHalfY + currentHalfY;
@@ -12260,12 +12289,7 @@
                                         placementPosition.y = intersectedBody.position.y - targetHalfY + currentHalfY;
                                     } else if (hitNormal.y > 0.7) {
                                         placementPosition.y = intersectedBody.position.y + targetHalfY + currentHalfY;
-                                        if (currentBlockType === doorItemName || currentBlockType === windowItemName) {
-                                            const unwrappedX = hitPoint.x + visualOffsetX;
-                                            const unwrappedZ = hitPoint.z + visualOffsetZ;
-                                            placementPosition.x = Math.round(unwrappedX / cobSize) * cobSize - visualOffsetX;
-                                            placementPosition.z = Math.round(unwrappedZ / cobSize) * cobSize - visualOffsetZ;
-                                        } else if (isConstructionBlock) {
+                                        if (isConstructionBlock) {
                                             placementPosition.x = intersectedBody.position.x;
                                             placementPosition.z = intersectedBody.position.z;
                                         } else {
@@ -12294,6 +12318,24 @@
                                         const vz = (0.5 - mz / (hfGridSize - 1)) * worldSize;
                                         placementPosition.x = vx - visualOffsetX;
                                         placementPosition.z = vz - visualOffsetZ;
+                                    } else if (currentBlockType === doorItemName || currentBlockType === windowItemName) {
+                                        const cardinalSnap = Math.PI / 2;
+                                        const snappedAngle = Math.round(ghostBlockRotationY / cardinalSnap) * cardinalSnap;
+                                        const isRotated90 = Math.abs(Math.sin(snappedAngle)) > 0.5;
+                                        const unwrappedX = basePosition.x + visualOffsetX;
+                                        const unwrappedZ = basePosition.z + visualOffsetZ;
+
+                                        if (!isRotated90) {
+                                            const centerX = Math.round(unwrappedX / (cobSize / 2)) * (cobSize / 2);
+                                            const centerZ = Math.round(unwrappedZ / cobSize) * cobSize;
+                                            placementPosition.x = centerX - currentGhostWidth / 2 - visualOffsetX;
+                                            placementPosition.z = centerZ + currentGhostDepth / 2 - visualOffsetZ;
+                                        } else {
+                                            const centerX = Math.round(unwrappedX / cobSize) * cobSize;
+                                            const centerZ = Math.round(unwrappedZ / (cobSize / 2)) * (cobSize / 2);
+                                            placementPosition.x = centerX - currentGhostDepth / 2 - visualOffsetX;
+                                            placementPosition.z = centerZ + currentGhostWidth / 2 - visualOffsetZ;
+                                        }
                                     } else {
                                         const unwrappedX = basePosition.x + visualOffsetX;
                                         const unwrappedZ = basePosition.z + visualOffsetZ;
