@@ -1316,6 +1316,9 @@
     <div id="craftingModal">
         <button class="close-button" id="closeCraftingButton">X</button>
         <h2 id="craftingTitle">Criação</h2>
+        <div id="furnaceWarning" style="display: none; color: #ff4444; text-align: center; padding: 10px; font-weight: bold; margin-bottom: 10px; background: rgba(0,0,0,0.5); border-radius: 5px; width: 100%;">
+            Forno Apagado - Abasteça e ligue para usar
+        </div>
         <div id="recipesContainer">
             <!-- Recipes will be dynamically filled by JavaScript -->
         </div>
@@ -3503,17 +3506,11 @@
         function updateCraftingDisplay(type) {
             recipesContainer.innerHTML = '';
 
+            const furnaceWarning = document.getElementById('furnaceWarning');
             if (type === 'furnace' && openedFurnace && !openedFurnace.userData.isOn) {
-                const warning = document.createElement('div');
-                warning.style.color = '#ff4444';
-                warning.style.textAlign = 'center';
-                warning.style.padding = '10px';
-                warning.style.fontWeight = 'bold';
-                warning.style.marginBottom = '10px';
-                warning.style.background = 'rgba(0,0,0,0.5)';
-                warning.style.borderRadius = '5px';
-                warning.textContent = 'Forno Apagado - Abasteça e ligue para usar';
-                recipesContainer.appendChild(warning);
+                if (furnaceWarning) furnaceWarning.style.display = 'block';
+            } else {
+                if (furnaceWarning) furnaceWarning.style.display = 'none';
             }
 
             const menuRecipes = recipes[type] || [];
@@ -3535,7 +3532,7 @@
                 const nameSpan = document.createElement('span');
                 nameSpan.className = 'recipe-name';
                 const displayName = (itemDisplayNames[item.name] || item.name).split('\n')[0];
-                nameSpan.textContent = `${displayName} x${item.quantity}`;
+                nameSpan.textContent = `${item.quantity} ${displayName}`;
                 infoDiv.appendChild(nameSpan);
 
                 const ingredientsSpan = document.createElement('span');
@@ -13482,8 +13479,8 @@
             window.playHandWoodImpactSound = playHandWoodImpactSound;
             window.playToolWoodImpactSound = playToolWoodImpactSound;
             window.activeCampfires = activeCampfires;
-            Object.defineProperty(window, 'currentFuelBody', { get: () => currentFuelBody });
-            window.openedFurnace = openedFurnace;
+            Object.defineProperty(window, 'currentFuelBody', { get: () => currentFuelBody, set: (v) => { currentFuelBody = v; } });
+            Object.defineProperty(window, 'openedFurnace', { get: () => openedFurnace, set: (v) => { openedFurnace = v; } });
             window.addFuel = addFuel;
             window.toggleFire = toggleFire;
             window.takeToBelt = takeToBelt;
