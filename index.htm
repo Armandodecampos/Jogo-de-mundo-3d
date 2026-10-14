@@ -12243,6 +12243,13 @@
                                     const currentHalfY = currentGhostHeight / 2;
                                     const currentHalfZ = currentGhostDepth / 2;
 
+                                    const isConstructionBlock = [
+                                        'cob', 'piso', 'tábuas',
+                                        stoneBlockItemName, woodenBlockItemName,
+                                        stoneFloorItemName, woodenFloorItemName,
+                                        doorItemName, windowItemName
+                                    ].includes(currentBlockType);
+
                                     if (Math.abs(hitNormal.x) > 0.7) {
                                         placementPosition.x = intersectedBody.position.x + Math.sign(hitNormal.x) * (targetHalfX + currentHalfX);
                                         placementPosition.z = intersectedBody.position.z;
@@ -12253,8 +12260,13 @@
                                         placementPosition.y = intersectedBody.position.y - targetHalfY + currentHalfY;
                                     } else if (hitNormal.y > 0.7) {
                                         placementPosition.y = intersectedBody.position.y + targetHalfY + currentHalfY;
-                                        placementPosition.x = hitPoint.x;
-                                        placementPosition.z = hitPoint.z;
+                                        if (isConstructionBlock) {
+                                            placementPosition.x = intersectedBody.position.x;
+                                            placementPosition.z = intersectedBody.position.z;
+                                        } else {
+                                            placementPosition.x = hitPoint.x;
+                                            placementPosition.z = hitPoint.z;
+                                        }
                                     } else {
                                         let basePosition = new THREE.Vector3().copy(hitPoint);
                                         if (currentBlockType !== torchItemName) basePosition.add(hitNormal.clone().multiplyScalar(currentGhostHeight / 2));
