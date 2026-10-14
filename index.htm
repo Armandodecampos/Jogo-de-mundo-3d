@@ -413,9 +413,10 @@
             position: absolute;
             bottom: 2px;
             right: 4px;
-            font-size: 0.7em;
-            color: white;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+            font-size: 0.95em;
+            font-weight: bold;
+            color: #000000;
+            text-shadow: 0 0 2px #ffffff, 0 0 2px #ffffff;
         }
         .slot-icon {
             width: 100%;
@@ -999,6 +1000,23 @@
             border-color: #6a4019;
             background: #fffdf7;
             background-image: linear-gradient(180deg, #ffffff 0%, #f9efe0 100%);
+        }
+        .recipe-item.can-craft {
+            background: #e8f5e9;
+            background-image: linear-gradient(180deg, #f1f8e9 0%, #c8e6c9 100%);
+            border-color: #388e3c;
+            color: #000000;
+        }
+        .recipe-item.can-craft:hover {
+            border-color: #2e7d32;
+            background: #f1f8e9;
+            background-image: linear-gradient(180deg, #ffffff 0%, #d4edda 100%);
+        }
+        .recipe-item.can-craft .recipe-name {
+            color: #000000;
+        }
+        .recipe-item.can-craft .recipe-ingredients {
+            color: #1b5e20;
         }
         .recipe-icon {
             width: 52px;
@@ -3503,7 +3521,8 @@
             menuRecipes.forEach(recipe => {
                 const item = recipe.result;
                 const recipeDiv = document.createElement('div');
-                recipeDiv.className = 'recipe-item';
+                const isCraftable = canCraft(recipe);
+                recipeDiv.className = isCraftable ? 'recipe-item can-craft' : 'recipe-item';
 
                 const img = document.createElement('img');
                 img.src = getItemIconURL(item.name);
@@ -3532,7 +3551,7 @@
                 const craftBtn = document.createElement('button');
                 craftBtn.className = 'craft-button parchment-btn';
                 craftBtn.textContent = 'Criar';
-                craftBtn.disabled = !canCraft(recipe);
+                craftBtn.disabled = !isCraftable;
                 craftBtn.onclick = () => craftItem(recipe);
                 recipeDiv.appendChild(craftBtn);
 
