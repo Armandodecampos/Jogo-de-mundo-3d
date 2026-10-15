@@ -3046,14 +3046,14 @@
 
         // Dimensões do piso
         const floorWidth = cobWidth; // Largura do piso (now equal to cob)
-        const floorHeight = 0.01; // Altura reduzida do piso
+        const floorHeight = cobHeight / 5; // Altura reduzida do piso (quinta parte de um bloco = 0.08)
         const floorDepth = cobSize; // Profundidade do piso (now equal to cob)
         const initialFloorMass = 100; // Massa para os pisos
         const floorDurability = 1.0; // Durabilidade do piso em segundos
 
         // Dimensões da tábua de madeira
         const woodenPlankWidth = cobWidth;
-        const woodenPlankHeight = 0.01;
+        const woodenPlankHeight = cobHeight / 5;
         const woodenPlankDepth = cobSize;
         const initialWoodenPlankMass = 50;
         const woodenPlankDurability = 0.5; // Durabilidade da tábua em segundos
@@ -12313,7 +12313,7 @@
                     else if (currentBlockType === 'piso') { currentGhostWidth = floorWidth; currentGhostHeight = floorHeight; currentGhostDepth = floorDepth; }
                     else if (currentBlockType === 'tábuas') { currentGhostWidth = woodenPlankWidth; currentGhostHeight = woodenPlankHeight; currentGhostDepth = woodenPlankDepth; }
                     else if (currentBlockType === stoneBlockItemName || currentBlockType === woodenBlockItemName) { currentGhostWidth = 0.4; currentGhostHeight = 0.4; currentGhostDepth = 0.4; }
-                    else if (currentBlockType === stoneFloorItemName || currentBlockType === woodenFloorItemName) { currentGhostWidth = 0.4; currentGhostHeight = 0.05; currentGhostDepth = 0.4; }
+                    else if (currentBlockType === stoneFloorItemName || currentBlockType === woodenFloorItemName) { currentGhostWidth = stoneFloorWidth; currentGhostHeight = stoneFloorHeight; currentGhostDepth = stoneFloorDepth; }
                     else if (currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName || currentBlockType === 'muda_arvore') { currentGhostWidth = 0.4; currentGhostHeight = treeStages['semente'].visual.mound.height; currentGhostDepth = 0.4; }
                     else if (currentBlockType === 'tronco_arvore') { currentGhostWidth = 0.4; currentGhostHeight = trunkHeight; currentGhostDepth = 0.4; }
                     else if (currentBlockType === cutTrunkItemName || currentBlockType === firewoodItemName) { currentGhostWidth = 0.4; currentGhostHeight = 1.0; currentGhostDepth = 0.4; }
@@ -12416,11 +12416,41 @@
                                     } else if (Math.abs(hitNormal.x) > 0.7) {
                                         placementPosition.x = intersectedBody.position.x + Math.sign(hitNormal.x) * (targetHalfX + currentHalfX);
                                         placementPosition.z = intersectedBody.position.z;
-                                        placementPosition.y = intersectedBody.position.y - targetHalfY + currentHalfY;
+                                        const isFloorType = ['piso', stoneFloorItemName, woodenFloorItemName, 'tábuas'].includes(currentBlockType);
+                                        const isTargetFloor = intersectedBody.userData && ['piso', stoneFloorItemName, woodenFloorItemName, 'tábuas'].includes(intersectedBody.userData.type);
+                                        if (isFloorType) {
+                                            if (isTargetFloor) {
+                                                placementPosition.y = intersectedBody.position.y;
+                                            } else {
+                                                const sliceHeight = cobHeight / 5;
+                                                const targetBottomY = intersectedBody.position.y - targetHalfY;
+                                                const numSlices = Math.max(1, Math.round((targetHalfY * 2) / sliceHeight));
+                                                let sliceIndex = Math.floor((hitPoint.y - targetBottomY) / sliceHeight);
+                                                sliceIndex = Math.max(0, Math.min(numSlices - 1, sliceIndex));
+                                                placementPosition.y = targetBottomY + (sliceIndex + 0.5) * sliceHeight;
+                                            }
+                                        } else {
+                                            placementPosition.y = intersectedBody.position.y - targetHalfY + currentHalfY;
+                                        }
                                     } else if (Math.abs(hitNormal.z) > 0.7) {
                                         placementPosition.z = intersectedBody.position.z + Math.sign(hitNormal.z) * (targetHalfZ + currentHalfZ);
                                         placementPosition.x = intersectedBody.position.x;
-                                        placementPosition.y = intersectedBody.position.y - targetHalfY + currentHalfY;
+                                        const isFloorType = ['piso', stoneFloorItemName, woodenFloorItemName, 'tábuas'].includes(currentBlockType);
+                                        const isTargetFloor = intersectedBody.userData && ['piso', stoneFloorItemName, woodenFloorItemName, 'tábuas'].includes(intersectedBody.userData.type);
+                                        if (isFloorType) {
+                                            if (isTargetFloor) {
+                                                placementPosition.y = intersectedBody.position.y;
+                                            } else {
+                                                const sliceHeight = cobHeight / 5;
+                                                const targetBottomY = intersectedBody.position.y - targetHalfY;
+                                                const numSlices = Math.max(1, Math.round((targetHalfY * 2) / sliceHeight));
+                                                let sliceIndex = Math.floor((hitPoint.y - targetBottomY) / sliceHeight);
+                                                sliceIndex = Math.max(0, Math.min(numSlices - 1, sliceIndex));
+                                                placementPosition.y = targetBottomY + (sliceIndex + 0.5) * sliceHeight;
+                                            }
+                                        } else {
+                                            placementPosition.y = intersectedBody.position.y - targetHalfY + currentHalfY;
+                                        }
                                     } else if (hitNormal.y > 0.7) {
                                         placementPosition.y = intersectedBody.position.y + targetHalfY + currentHalfY;
                                         if (isConstructionBlock) {
