@@ -8916,6 +8916,21 @@
         }
             // --- Funções Auxiliares para Ações do Jogador ---
 
+            function hasGhostPreview(itemName) {
+                if (!itemName) return false;
+                const ghostItems = [
+                    raftItemName, cobItemName, floorItemName, woodenPlankItemName,
+                    stoneBlockItemName, woodenBlockItemName, stoneFloorItemName, woodenFloorItemName,
+                    treeSaplingItemName, appleSeedItemName, pineSeedItemName, coconutSeedItemName,
+                    treeTrunkItemName, cutTrunkItemName, firewoodItemName, boxItemName, basketItemName,
+                    stoneItemName, campfireItemName, torchItemName, workbenchItemName, smallTableItemName,
+                    mesaItemName, largeTableItemName, bigornaItemName, furnaceItemName, pestleItemName,
+                    grassBedItemName, sleepingMatItemName, bedItemName, doorItemName, windowItemName
+                ];
+                return ghostItems.includes(itemName);
+            }
+            window.hasGhostPreview = hasGhostPreview;
+
             function getActionType(item) {
                 if (item === null) return 'grab';
                 // Ferramentas de destruição e modificação de terreno
@@ -11701,13 +11716,11 @@
                 isPrimaryToolGrabbing = true;
             } else if (actionType === 'destroy') {
                 isPrimaryToolDestroying = true;
-                // NOVO: Se for uma ferramenta que cava terra ou o próprio item Terra, preparamos o ghost de terra
-                if (primaryTool === null || primaryTool.name === shovelItemName || primaryTool.name === pickaxeItemName || primaryTool.name === axeItemName || primaryTool.name === ironShovelItemName || primaryTool.name === ironPickaxeItemName || primaryTool.name === ironAxeItemName || primaryTool.name === dirtItemName) {
-                    currentBlockType = dirtItemName;
-                }
             } else if (actionType === 'place') {
-                isPrimaryToolPlacing = true;
-                currentBlockType = primaryTool.name; // Define o tipo de bloco para o ghost mesh
+                if (primaryTool && hasGhostPreview(primaryTool.name)) {
+                    isPrimaryToolPlacing = true;
+                    currentBlockType = primaryTool.name; // Define o tipo de bloco para o ghost mesh
+                }
             }
 
 
@@ -11921,11 +11934,9 @@
 
             // Lógica do ghost block para colocação e snapping
             if (ghostBlockMesh) {
-                // NOVO: Mostra o ghost para construção OU para destruição de terra/areia (cavagem)
-                // O "fantasma verde" da terra foi removido a pedido do usuário
-                const isShowingTerraGhost = (isPrimaryToolDestroying && (currentBlockType === dirtItemName || currentBlockType === sandItemName));
+                const isShowingTerraGhost = false;
                 const isTerra = currentBlockType === dirtItemName || currentBlockType === sandItemName;
-                if ((isPrimaryToolPlacing || isShowingTerraGhost) && !gamePaused && document.pointerLockElement === renderer.domElement) {
+                if (isPrimaryToolPlacing && !gamePaused && document.pointerLockElement === renderer.domElement) {
                     ghostBlockMesh.visible = true; // Garante que o ghost block esteja visível
 
                     const intersects = mainIntersects;
@@ -12134,6 +12145,8 @@
                         } else if (currentBlockType === windowItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(0.8, 0.8, 0.1);
                             ghostBlockMesh.geometry.translate(0.4, 0, -0.05);
+                        } else if (currentBlockType === furnaceItemName) {
+                            ghostBlockMesh.geometry = new THREE.BoxGeometry(1.05, 1.2, 1.05);
                         } else if (currentBlockType === pestleItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(0, 0, 0);
                             const group = new THREE.Group();
@@ -12511,6 +12524,14 @@
                     }
                 } else {
                     ghostBlockMesh.visible = false; // Garante que o ghost block esteja oculto se não estiver no modo de colocação
+                    if (lastGhostType !== null) {
+                        lastGhostType = null;
+                        ghostBlockRotationY = 0;
+                        ghostBlockRotationX = 0;
+                        while (ghostBlockMesh.children.length > 0) {
+                            ghostBlockMesh.remove(ghostBlockMesh.children[0]);
+                        }
+                    }
                 }
             }
 
@@ -13000,8 +13021,10 @@
             } else if (crosshairActionType === 'destroy') {
                 isPrimaryToolDestroying = true;
             } else if (crosshairActionType === 'place') {
-                isPrimaryToolPlacing = true;
-                currentBlockType = primaryToolForCrosshair.name; // Define o tipo de bloco para o ghost mesh
+                if (primaryToolForCrosshair && hasGhostPreview(primaryToolForCrosshair.name)) {
+                    isPrimaryToolPlacing = true;
+                    currentBlockType = primaryToolForCrosshair.name; // Define o tipo de bloco para o ghost mesh
+                }
             }
 
             // NOVO: Define se o bloco fantasma é válido para determinar a cor da mira
