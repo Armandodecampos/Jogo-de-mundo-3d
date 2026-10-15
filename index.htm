@@ -1369,7 +1369,7 @@
     <div id="sleepModal" class="parchment-window" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 25px; border-radius: 14px; z-index: 11300; flex-direction: column; align-items: center; gap: 15px; min-width: 320px;">
         <button id="closeSleepButton" type="button" class="close-button">X</button>
         <h2 id="sleepTitle" style="margin: 0; font-size: 22px; font-weight: bold; color: #2d1a0a;">Dormir / Descansar</h2>
-        <p id="sleepTargetText" style="margin: 0; font-size: 14px; color: #6b533e;">Local: Chão (Máx: 30% Energia)</p>
+        <p id="sleepTargetText" style="margin: 0; font-size: 14px; color: #6b533e;">Local: Cama ou Colchonete</p>
 
         <div style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin: 5px 0;">
             <button id="sleepMinBtn" type="button" class="split-control-btn split-text-btn" title="Mínimo">1h</button>
@@ -2235,7 +2235,7 @@
                 modal.style.display = 'flex';
             }
             const targetText = document.getElementById('sleepTargetText');
-            let targetName = "Chão (Máx: 30% Energia)";
+            let targetName = "Cama de Madeira (Máx: 100% Energia)";
             if (target === grassBedItemName) targetName = "Cama de Capim (Máx: 50% Energia)";
             else if (target === sleepingMatItemName) targetName = "Colchonete (Máx: 75% Energia)";
             else if (target === bedItemName) targetName = "Cama de Madeira (Máx: 100% Energia)";
@@ -2273,7 +2273,7 @@
                 const hudButtons = document.getElementById('hudButtons');
                 if (hudButtons) hudButtons.style.display = 'flex';
             }
-            pointerLockExitForBackpack = false;
+            pointerLockExitForBackpack = true;
             if (renderer && renderer.domElement) {
                 renderer.domElement.requestPointerLock().catch(() => {});
             }
@@ -8676,11 +8676,6 @@
                     let canSleep = false;
                     for (const intersect of intersects) {
                         if (intersect.distance > 5) continue;
-                        if (islandMeshes.some(m => m.mesh === intersect.object)) {
-                            canSleep = true;
-                            sleepTarget = 'ground';
-                            break;
-                        }
                         let body = null;
                         let current = intersect.object;
                         while (current) {
@@ -8700,7 +8695,7 @@
                     if (canSleep) {
                         openSleepModal(sleepTarget);
                     } else {
-                        showNotification("Você precisa olhar para o chão, colchonete ou cama para dormir");
+                        showNotification("Você precisa olhar para um colchonete ou cama para dormir");
                     }
                 }
 
@@ -9578,21 +9573,6 @@
                             openCuttingMenu();
                             return true;
                         }
-                    }
-
-                    if (islandMeshes.some(m => m.mesh === obj)) {
-                        if (isSleeping) {
-                            isSleeping = false;
-                            return true;
-                        }
-                        const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
-                        const isInWater = playerBottomY < waterLevel && hasWaterAt(playerBody.position.x, playerBody.position.z);
-                        if (isInWater) {
-                            showNotification("Você não pode dormir na água");
-                            return true;
-                        }
-                        openSleepModal('ground');
-                        return true;
                     }
                 }
                 return false;
@@ -11975,7 +11955,7 @@
                             if (isHoldingSeed && ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
                                 interactionHintText = "(L) Plantar";
                             } else if (nearCapim) {
-                                interactionHintText = "(Botão Esq.) Colher Capim / (E) Dormir";
+                                interactionHintText = "(Botão Esq.) Colher Capim";
                             } else {
                                 const hitPoint = intersect.point;
                                 const distFromCenter = Math.sqrt(hitPoint.x ** 2 + hitPoint.z ** 2);
@@ -11985,7 +11965,7 @@
                                 } else if (distFromCenter > capimRadius) {
                                     material = "Areia";
                                 }
-                                interactionHintText = `(Botão Esq.) Cavar ${material} / (E) Dormir`;
+                                interactionHintText = `(Botão Esq.) Cavar ${material}`;
                             }
                             break;
                         }
