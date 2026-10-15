@@ -1365,6 +1365,26 @@
         </div>
     </div>
 
+    <!-- Modal de Sono / Descanso -->
+    <div id="sleepModal" class="parchment-window" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 25px; border-radius: 14px; z-index: 11300; flex-direction: column; align-items: center; gap: 15px; min-width: 320px;">
+        <button id="closeSleepButton" type="button" class="close-button">X</button>
+        <h2 id="sleepTitle" style="margin: 0; font-size: 22px; font-weight: bold; color: #2d1a0a;">Dormir / Descansar</h2>
+        <p id="sleepTargetText" style="margin: 0; font-size: 14px; color: #6b533e;">Local: Chão (Máx: 30% Energia)</p>
+
+        <div style="display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; margin: 5px 0;">
+            <button id="sleepMinBtn" type="button" class="split-control-btn split-text-btn" title="Mínimo">1h</button>
+            <button id="sleepDecreaseBtn" type="button" class="split-control-btn split-step-btn" title="Diminuir"><i class="fas fa-minus"></i></button>
+            <input type="number" id="sleepHoursInput" min="1" max="24" value="8" class="split-quantity-input">
+            <button id="sleepIncreaseBtn" type="button" class="split-control-btn split-step-btn" title="Aumentar"><i class="fas fa-plus"></i></button>
+            <button id="sleepMaxBtn" type="button" class="split-control-btn split-text-btn" title="Máximo">24h</button>
+        </div>
+
+        <div style="display: flex; gap: 15px; width: 100%; margin-top: 5px;">
+            <button id="confirmSleepButton" type="button" class="parchment-btn" style="flex: 1; padding: 12px; font-size: 16px;">Dormir</button>
+            <button id="cancelSleepButton" type="button" class="parchment-btn" style="flex: 1; padding: 12px; font-size: 16px;">Cancelar</button>
+        </div>
+    </div>
+
     <div id="fuelModal" class="parchment-window hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 p-6 z-[11300] w-80 flex flex-col text-[#2d1a0a]">
         <button id="closeFuelButton" class="close-button">X</button>
         <h2 id="fuelTitle" class="text-2xl font-bold mb-4 text-center text-[#2d1a0a]">Tocha</h2>
@@ -1482,6 +1502,10 @@
         let isFainted = false;
         let isSleeping = false;
         let sleepTimer = 0;
+        try {
+            Object.defineProperty(window, 'isSleeping', { get: () => isSleeping, set: (v) => { isSleeping = v; }, configurable: true });
+            Object.defineProperty(window, 'sleepTimer', { get: () => sleepTimer, set: (v) => { sleepTimer = v; }, configurable: true });
+        } catch (e) {}
         let blinkTimer = 0;
         let healthBarFill, breathBarFill, breathStatRow, hungerBarFill, energyBarFill, hungerOverlay, hungerWarning, sleepOverlay, eyeTop, eyeBottom, exhaustedWarning, faintedOverlay, statBars;
 
@@ -2199,6 +2223,92 @@
                 renderer.domElement.requestPointerLock().catch(() => {});
             }
         }
+
+        let pendingSleepTarget = null;
+
+        function openSleepModal(target) {
+            pendingSleepTarget = target;
+            gamePaused = true;
+
+            const modal = document.getElementById('sleepModal');
+            if (modal) {
+                modal.style.display = 'flex';
+            }
+            const targetText = document.getElementById('sleepTargetText');
+            let targetName = "Chão (Máx: 30% Energia)";
+            if (target === grassBedItemName) targetName = "Cama de Capim (Máx: 50% Energia)";
+            else if (target === sleepingMatItemName) targetName = "Colchonete (Máx: 75% Energia)";
+            else if (target === bedItemName) targetName = "Cama de Madeira (Máx: 100% Energia)";
+
+            if (targetText) targetText.textContent = `Local: ${targetName}`;
+
+            const hoursInput = document.getElementById('sleepHoursInput');
+            if (hoursInput) hoursInput.value = 8;
+
+            const crosshair = document.getElementById('crosshair');
+            if (crosshair) crosshair.style.display = 'none';
+            document.body.style.cursor = 'default';
+            if (renderer && renderer.domElement) {
+                renderer.domElement.style.cursor = 'default';
+            }
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) hudButtons.style.display = 'none';
+            if (ghostBlockMesh) ghostBlockMesh.visible = false;
+
+            pointerLockExitForBackpack = true;
+            document.exitPointerLock();
+        }
+
+        function closeSleepModal() {
+            const modal = document.getElementById('sleepModal');
+            if (modal) {
+                modal.style.display = 'none';
+            }
+            gamePaused = false;
+            pendingSleepTarget = null;
+
+            if (!isSleeping) {
+                const crosshair = document.getElementById('crosshair');
+                if (crosshair) crosshair.style.display = 'flex';
+                const hudButtons = document.getElementById('hudButtons');
+                if (hudButtons) hudButtons.style.display = 'flex';
+            }
+            pointerLockExitForBackpack = false;
+            if (renderer && renderer.domElement) {
+                renderer.domElement.requestPointerLock().catch(() => {});
+            }
+        }
+
+        function confirmSleep() {
+            const hoursInput = document.getElementById('sleepHoursInput');
+            const hours = Math.max(1, Math.min(24, parseInt(hoursInput ? hoursInput.value : '8') || 8));
+            const target = pendingSleepTarget || 'ground';
+            closeSleepModal();
+            startSleep(target, hours);
+        }
+
+        function startSleep(target, hours) {
+            isSleeping = true;
+            sleepTimer = 0;
+            if (typeof keysPressed !== 'undefined') {
+                keysPressed['w'] = false;
+                keysPressed['s'] = false;
+                keysPressed['a'] = false;
+                keysPressed['d'] = false;
+                keysPressed[' '] = false;
+            }
+            if (playerBody) {
+                playerBody.userData.sleepTarget = target;
+                playerBody.userData.sleepStartWorldTime = (typeof world !== 'undefined' && world) ? world.time : 0;
+                playerBody.userData.sleepTargetWorldTime = ((typeof world !== 'undefined' && world) ? world.time : 0) + hours * (dayDuration / 24);
+            }
+        }
+
+        window.openSleepModal = openSleepModal;
+        window.closeSleepModal = closeSleepModal;
+        window.confirmSleep = confirmSleep;
+        window.startSleep = startSleep;
+        window.startGame = startGame;
 
         function handleCutTrunk() {
             const hasAxe = findItemInInventory(axeItemName) || findItemInInventory(ironAxeItemName);
@@ -8448,6 +8558,19 @@
                     return;
                 }
 
+                const sleepModalEl = document.getElementById('sleepModal');
+                if (sleepModalEl && !sleepModalEl.classList.contains('hidden')) {
+                    if (event.key === 'Escape') {
+                        closeSleepModal();
+                        return;
+                    }
+                    if (event.key === 'Enter') {
+                        confirmSleep();
+                        return;
+                    }
+                    return;
+                }
+
                 // Confirm exit modal handling
                 if (confirmExitModal && confirmExitModal.style.display === 'flex') {
                     if (event.key === 'Escape') {
@@ -8575,9 +8698,7 @@
                     }
 
                     if (canSleep) {
-                        isSleeping = true;
-                        sleepTimer = 0;
-                        playerBody.userData.sleepTarget = sleepTarget;
+                        openSleepModal(sleepTarget);
                     } else {
                         showNotification("Você precisa olhar para o chão, colchonete ou cama para dormir");
                     }
@@ -9442,9 +9563,7 @@
                                 isSleeping = false;
                                 return true;
                             }
-                            isSleeping = true;
-                            sleepTimer = 0;
-                            playerBody.userData.sleepTarget = body.userData.type;
+                            openSleepModal(body.userData.type);
                             return true;
                         }
 
@@ -9459,6 +9578,21 @@
                             openCuttingMenu();
                             return true;
                         }
+                    }
+
+                    if (islandMeshes.some(m => m.mesh === obj)) {
+                        if (isSleeping) {
+                            isSleeping = false;
+                            return true;
+                        }
+                        const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
+                        const isInWater = playerBottomY < waterLevel && hasWaterAt(playerBody.position.x, playerBody.position.z);
+                        if (isInWater) {
+                            showNotification("Você não pode dormir na água");
+                            return true;
+                        }
+                        openSleepModal('ground');
+                        return true;
                     }
                 }
                 return false;
@@ -9483,7 +9617,7 @@
                     if (!clickedBody || !clickedBody.userData) continue;
 
                     if (!clickedBody.userData.isCollectible && !clickedBody.userData.isRaft) continue;
-                    if (clickedBody.userData.type === campfireItemName) continue;
+                    if (clickedBody.userData.type === campfireItemName || clickedBody.userData.type === doorItemName || clickedBody.userData.type === windowItemName) continue;
 
                     // NOVO: Se for um contêiner (contêiner/caixote), só permite guardar se estiver vazio
                     if (clickedBody.userData.isChest) {
@@ -10917,8 +11051,7 @@
                 if (eyeBottom) eyeBottom.style.height = '50%';
 
                 // Recover energy based on accelerated physics time
-                // 100% in 8 hours (100 game seconds) = 1.0 per game second
-                let maxRecovery = playerMaxEnergy * 0.5;
+                let maxRecovery = playerMaxEnergy * 0.3; // Chão recupera até 30%
                 if (playerBody.userData.sleepTarget === grassBedItemName) maxRecovery = playerMaxEnergy * 0.5;
                 else if (playerBody.userData.sleepTarget === sleepingMatItemName) maxRecovery = playerMaxEnergy * 0.75;
                 else if (playerBody.userData.sleepTarget === bedItemName) maxRecovery = playerMaxEnergy * 1.0;
@@ -10928,10 +11061,13 @@
                     if (playerEnergy > maxRecovery) playerEnergy = maxRecovery;
                 }
 
-                if (playerEnergy >= maxRecovery) {
+                const targetTime = playerBody.userData.sleepTargetWorldTime;
+                const timeExpired = targetTime !== undefined && world.time >= targetTime;
+
+                if (timeExpired) {
                     isSleeping = false;
                     sleepTimer = 0;
-                    if (maxRecovery < playerMaxEnergy) {
+                    if (playerEnergy < playerMaxEnergy && maxRecovery < playerMaxEnergy) {
                         showNotification("Você não consegue descansar mais aqui");
                     }
                 }
@@ -11783,7 +11919,7 @@
                                 interactionHintText = "(E) Navegar / (F) Agarrar / (G) Guardar";
                                 identified = true;
                             } else if (body.userData.type === doorItemName || body.userData.type === windowItemName) {
-                                interactionHintText = `(E) ${body.userData.isOpen ? 'Fechar' : 'Abrir'} / (G) Guardar`;
+                                interactionHintText = `(E) ${body.userData.isOpen ? 'Fechar' : 'Abrir'}`;
                                 identified = true;
                             } else if (body.userData.type === grassBedItemName || body.userData.type === sleepingMatItemName || body.userData.type === bedItemName) {
                                 interactionHintText = "(E) Dormir / (G) Guardar";
@@ -11839,7 +11975,7 @@
                             if (isHoldingSeed && ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
                                 interactionHintText = "(L) Plantar";
                             } else if (nearCapim) {
-                                interactionHintText = "(Botão Esq.) Colher Capim";
+                                interactionHintText = "(Botão Esq.) Colher Capim / (E) Dormir";
                             } else {
                                 const hitPoint = intersect.point;
                                 const distFromCenter = Math.sqrt(hitPoint.x ** 2 + hitPoint.z ** 2);
@@ -11849,7 +11985,7 @@
                                 } else if (distFromCenter > capimRadius) {
                                     material = "Areia";
                                 }
-                                interactionHintText = `(Botão Esq.) Cavar ${material}`;
+                                interactionHintText = `(Botão Esq.) Cavar ${material} / (E) Dormir`;
                             }
                             break;
                         }
@@ -13285,9 +13421,7 @@
                     if (isInWater) {
                         faintPlayer();
                     } else {
-                        isSleeping = true;
-                        sleepTimer = 0;
-                        playerBody.userData.sleepTarget = 'ground';
+                        startSleep('ground', 8);
                     }
                 }
 
@@ -13342,6 +13476,7 @@
 
         // Função para iniciar o jogo
         function startGame() {
+            window.startGame = startGame;
             document.getElementById('startScreen').style.display = 'none'; // Oculta a tela inicial
             document.getElementById('clockContainer').style.display = 'block'; // Mostra o relógio
             document.getElementById('statBars').style.display = 'flex'; // Mostra as barras
@@ -13413,6 +13548,24 @@
             document.getElementById('closeCuttingButton').addEventListener('click', closeCuttingMenu);
             document.getElementById('cutTrunkButton').addEventListener('click', handleCutTrunk);
             document.getElementById('createFirewoodButton').addEventListener('click', handleCreateFirewood);
+
+            document.getElementById('closeSleepButton').addEventListener('click', closeSleepModal);
+            document.getElementById('cancelSleepButton').addEventListener('click', closeSleepModal);
+            document.getElementById('confirmSleepButton').addEventListener('click', confirmSleep);
+            document.getElementById('sleepMinBtn').addEventListener('click', () => {
+                document.getElementById('sleepHoursInput').value = 1;
+            });
+            document.getElementById('sleepDecreaseBtn').addEventListener('click', () => {
+                const input = document.getElementById('sleepHoursInput');
+                input.value = Math.max(1, (parseInt(input.value) || 8) - 1);
+            });
+            document.getElementById('sleepIncreaseBtn').addEventListener('click', () => {
+                const input = document.getElementById('sleepHoursInput');
+                input.value = Math.min(24, (parseInt(input.value) || 8) + 1);
+            });
+            document.getElementById('sleepMaxBtn').addEventListener('click', () => {
+                document.getElementById('sleepHoursInput').value = 24;
+            });
 
             document.getElementById('closeFuelButton').addEventListener('click', closeFuelMenu);
             document.getElementById('addFuelButton').addEventListener('click', addFuel);
@@ -13631,6 +13784,11 @@
             window.closeCuttingMenu = closeCuttingMenu;
             window.handleCutTrunk = handleCutTrunk;
             window.handleCreateFirewood = handleCreateFirewood;
+            window.openSleepModal = openSleepModal;
+            window.closeSleepModal = closeSleepModal;
+            window.confirmSleep = confirmSleep;
+            window.startSleep = startSleep;
+            window.startGame = startGame;
             Object.defineProperty(window, 'isSleeping', { get: () => isSleeping, set: (v) => { isSleeping = v; } });
             Object.defineProperty(window, 'sleepTimer', { get: () => sleepTimer, set: (v) => { sleepTimer = v; } });
             Object.defineProperty(window, 'playerHealth', { get: () => playerHealth, set: (v) => { playerHealth = v; } });
