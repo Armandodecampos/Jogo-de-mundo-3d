@@ -12382,33 +12382,80 @@
 
                                     // Verifica se colide/sobrepõe com qualquer outro item estático no cenário
                                     const allStaticBodies = [...placedConstructionBodies, ...allCollectibleBodies];
-                                    const currentHalfX = currentGhostWidth / 2;
-                                    const currentHalfY = currentGhostHeight / 2;
-                                    const currentHalfZ = currentGhostDepth / 2;
 
-                                    const pMinX = placementPosition.x - currentHalfX + 0.05;
-                                    const pMaxX = placementPosition.x + currentHalfX - 0.05;
-                                    const pMinY = placementPosition.y - currentHalfY + 0.05;
-                                    const pMaxY = placementPosition.y + currentHalfY - 0.05;
-                                    const pMinZ = placementPosition.z - currentHalfZ + 0.05;
-                                    const pMaxZ = placementPosition.z + currentHalfZ - 0.05;
+                                    // Calcula o centro real do ghost considerando rotação e offsets locais para porta/janela
+                                    let ghostCenterX = placementPosition.x;
+                                    let ghostCenterY = placementPosition.y;
+                                    let ghostCenterZ = placementPosition.z;
+                                    let wHalfX = currentGhostWidth / 2;
+                                    let wHalfY = currentGhostHeight / 2;
+                                    let wHalfZ = currentGhostDepth / 2;
+
+                                    if (currentBlockType === doorItemName || currentBlockType === windowItemName) {
+                                        const localOffset = new THREE.Vector3(currentGhostWidth / 2, 0, -currentGhostDepth / 2);
+                                        localOffset.applyQuaternion(tempPlacementQuaternion);
+                                        ghostCenterX += localOffset.x;
+                                        ghostCenterY += localOffset.y;
+                                        ghostCenterZ += localOffset.z;
+
+                                        const euler = new THREE.Euler().setFromQuaternion(tempPlacementQuaternion, 'YXZ');
+                                        const isRotated90 = Math.abs(Math.sin(euler.y)) > 0.5;
+                                        if (isRotated90) {
+                                            const tmp = wHalfX;
+                                            wHalfX = wHalfZ;
+                                            wHalfZ = tmp;
+                                        }
+                                    }
+
+                                    const inset = 0.02; // Tolerância para encaixe exato entre blocos
+                                    const pMinX = ghostCenterX - wHalfX + inset;
+                                    const pMaxX = ghostCenterX + wHalfX - inset;
+                                    const pMinY = ghostCenterY - wHalfY + inset;
+                                    const pMaxY = ghostCenterY + wHalfY - inset;
+                                    const pMinZ = ghostCenterZ - wHalfZ + inset;
+                                    const pMaxZ = ghostCenterZ + wHalfZ - inset;
 
                                     for (const staticBody of allStaticBodies) {
                                         if (staticBody === intersectedBody && (Math.abs(hitNormal.x) > 0.7 || Math.abs(hitNormal.z) > 0.7 || hitNormal.y > 0.7)) {
                                             continue; // Não considera sobreposição no corpo onde estamos ajustando lateralmente
                                         }
-                                        let sHalfX = 0.5, sHalfY = 0.5, sHalfZ = 0.5;
-                                        if (staticBody.shapes && staticBody.shapes[0] && staticBody.shapes[0].halfExtents) {
+
+                                        let sCenterX = staticBody.position.x;
+                                        let sCenterY = staticBody.position.y;
+                                        let sCenterZ = staticBody.position.z;
+                                        let sHalfX = 0.2, sHalfY = 0.2, sHalfZ = 0.2;
+
+                                        if (staticBody.userData && (staticBody.userData.type === doorItemName || staticBody.userData.type === windowItemName)) {
+                                            const dims = staticBody.userData.dimensions || { width: 1.2, height: 2.4, depth: 0.1 };
+                                            sHalfX = dims.width / 2;
+                                            sHalfY = dims.height / 2;
+                                            sHalfZ = dims.depth / 2;
+
+                                            const bodyQuat = new THREE.Quaternion(staticBody.quaternion.x, staticBody.quaternion.y, staticBody.quaternion.z, staticBody.quaternion.w);
+                                            const localOffset = new THREE.Vector3(dims.width / 2, 0, -dims.depth / 2);
+                                            localOffset.applyQuaternion(bodyQuat);
+                                            sCenterX += localOffset.x;
+                                            sCenterY += localOffset.y;
+                                            sCenterZ += localOffset.z;
+
+                                            const euler = new THREE.Euler().setFromQuaternion(bodyQuat, 'YXZ');
+                                            if (Math.abs(Math.sin(euler.y)) > 0.5) {
+                                                const tmp = sHalfX;
+                                                sHalfX = sHalfZ;
+                                                sHalfZ = tmp;
+                                            }
+                                        } else if (staticBody.shapes && staticBody.shapes[0] && staticBody.shapes[0].halfExtents) {
                                             sHalfX = staticBody.shapes[0].halfExtents.x;
                                             sHalfY = staticBody.shapes[0].halfExtents.y;
                                             sHalfZ = staticBody.shapes[0].halfExtents.z;
                                         }
-                                        const sMinX = staticBody.position.x - sHalfX;
-                                        const sMaxX = staticBody.position.x + sHalfX;
-                                        const sMinY = staticBody.position.y - sHalfY;
-                                        const sMaxY = staticBody.position.y + sHalfY;
-                                        const sMinZ = staticBody.position.z - sHalfZ;
-                                        const sMaxZ = staticBody.position.z + sHalfZ;
+
+                                        const sMinX = sCenterX - sHalfX;
+                                        const sMaxX = sCenterX + sHalfX;
+                                        const sMinY = sCenterY - sHalfY;
+                                        const sMaxY = sCenterY + sHalfY;
+                                        const sMinZ = sCenterZ - sHalfZ;
+                                        const sMaxZ = sCenterZ + sHalfZ;
 
                                         if (pMaxX > sMinX && pMinX < sMaxX && pMaxY > sMinY && pMinY < sMaxY && pMaxZ > sMinZ && pMinZ < sMaxZ) {
                                             canPlace = false;
