@@ -9146,13 +9146,13 @@
                 if (heldItemName === shovelItemName || heldItemName === ironShovelItemName) {
                     // Prioriza capim se estiver mirando nele, para facilitar a limpeza antes de cavar
                     target = potentialCapim || potentialGround || potentialObject;
-                } else if (heldItemName === axeItemName || heldItemName === pickaxeItemName || heldItemName === ironAxeItemName || heldItemName === ironPickaxeItemName) {
-                    target = potentialObject || potentialCapim || potentialGround;
                 } else if (heldItemName === dirtItemName || heldItemName === sandItemName) {
                     target = potentialGround || potentialObject || potentialCapim;
+                } else if (heldItemName === axeItemName || heldItemName === pickaxeItemName || heldItemName === ironAxeItemName || heldItemName === ironPickaxeItemName) {
+                    target = potentialObject || potentialCapim;
                 } else {
-                    // Mão ou outros: prioriza capim, depois objetos, depois terreno
-                    target = potentialCapim || potentialObject || potentialGround;
+                    // Mão ou outros: prioriza capim, depois objetos (terreno requer pá)
+                    target = potentialCapim || potentialObject;
                 }
 
                 if (target) {
@@ -11976,15 +11976,21 @@
                                 heldItem.name === coconutSeedItemName
                             );
 
+                            const heldItemName = heldItem ? heldItem.name : null;
+
                             if (isHoldingSeed && ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
                                 if (heldItem.name === coconutItemName) {
                                     interactionHintText = `(E) Comer ${itemDisplayNames[heldItem.name] || heldItem.name} / (Botão Esq.) Plantar`;
                                 } else {
                                     interactionHintText = "(Botão Esq.) Plantar";
                                 }
+                            } else if (heldItemName === dirtItemName) {
+                                interactionHintText = "(Botão Esq.) Colocar Terra";
+                            } else if (heldItemName === sandItemName) {
+                                interactionHintText = "(Botão Esq.) Colocar Areia";
                             } else if (nearCapim) {
                                 interactionHintText = "(Botão Esq.) Colher Capim";
-                            } else {
+                            } else if (heldItemName === shovelItemName || heldItemName === ironShovelItemName) {
                                 const hitPoint = intersect.point;
                                 const distFromCenter = Math.sqrt(hitPoint.x ** 2 + hitPoint.z ** 2);
                                 let material = "Terra";
@@ -13242,9 +13248,16 @@
                             const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
 
                             if (isIslandMesh) {
-                                canDestroy = true;
-                                isTerraHit = true;
-                                break;
+                                const heldItem = beltItems[selectedSlotIndex];
+                                const heldItemName = heldItem ? heldItem.name : null;
+                                const isShovel = (heldItemName === shovelItemName || heldItemName === ironShovelItemName);
+                                const isTerra = (heldItemName === dirtItemName || heldItemName === sandItemName);
+                                const nearCapim = !!getCapimUnderCrosshair(intersects[i].point, raycaster.ray, 0.5);
+                                if (isShovel || isTerra || nearCapim) {
+                                    canDestroy = true;
+                                    isTerraHit = true;
+                                    break;
+                                }
                             }
 
                             // Check for patches
@@ -13308,9 +13321,11 @@
                             // Verifica se há capim na mira para a cor do crosshair
                             const nearCapimAtHandCluster = getCapimUnderCrosshair(intersects[i].point, raycaster.ray, 0.5);
                             const nearCapimAtHand = !!nearCapimAtHandCluster;
-                            canDestroyWithHand = true;
-                            isTerraHitWithHand = true; // Sempre lime ao mirar no chão ou capim com a mão
-                            break;
+                            if (nearCapimAtHand) {
+                                canDestroyWithHand = true;
+                                isTerraHitWithHand = true;
+                                break;
+                            }
                         }
 
                         // NOVO: Permite destruir árvores e blocos com a mão
