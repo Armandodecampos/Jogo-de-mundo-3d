@@ -8990,14 +8990,8 @@
                     const heldItem = beltItems[selectedSlotIndex];
                     const primaryActionType = getActionType(heldItem);
                     if (primaryActionType === 'place') {
-                        // Se for comida, prioriza comer a menos que esteja agachado (para plantar)
-                        if (heldItem && (heldItem.name === appleItemName || heldItem.name === coconutItemName) && !isCrouching) {
-                            eatItem(heldItem, selectedSlotIndex);
-                            blockPlacedThisClick = true;
-                        } else {
-                            placeBlock(heldItem, selectedSlotIndex);
-                            blockPlacedThisClick = true; // Marca que colocamos algo
-                        }
+                        placeBlock(heldItem, selectedSlotIndex);
+                        blockPlacedThisClick = true; // Marca que colocamos algo
                     } else {
                         isAttemptingToDestroy = true; // NOVO: Define a intenção
                         startDestruction();
@@ -9041,7 +9035,7 @@
                 const ghostItems = [
                     raftItemName, cobItemName, floorItemName, woodenPlankItemName,
                     stoneBlockItemName, woodenBlockItemName, stoneFloorItemName, woodenFloorItemName,
-                    treeSaplingItemName, appleSeedItemName, pineSeedItemName, coconutSeedItemName,
+                    treeSaplingItemName, appleItemName, appleSeedItemName, pineSeedItemName, coconutItemName, coconutSeedItemName,
                     treeTrunkItemName, cutTrunkItemName, firewoodItemName, boxItemName, basketItemName,
                     stoneItemName, campfireItemName, torchItemName, workbenchItemName, smallTableItemName,
                     mesaItemName, largeTableItemName, bigornaItemName, furnaceItemName, pestleItemName,
@@ -9576,6 +9570,11 @@
                             return true;
                         }
                     }
+                }
+                const heldItem = beltItems[selectedSlotIndex];
+                if (heldItem && (heldItem.name === appleItemName || heldItem.name === coconutItemName)) {
+                    eatItem(heldItem, selectedSlotIndex);
+                    return true;
                 }
                 return false;
             }
@@ -11952,11 +11951,16 @@
                                 heldItem.name === pineSeedItemName ||
                                 heldItem.name === appleSeedItemName ||
                                 heldItem.name === coconutItemName ||
-                                heldItem.name === coconutSeedItemName
+                                heldItem.name === coconutSeedItemName ||
+                                heldItem.name === appleItemName
                             );
 
                             if (isHoldingSeed && ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
-                                interactionHintText = "(L) Plantar";
+                                if (heldItem.name === appleItemName || heldItem.name === coconutItemName) {
+                                    interactionHintText = `(E) Comer ${itemDisplayNames[heldItem.name] || heldItem.name} / (Botão Esq.) Plantar`;
+                                } else {
+                                    interactionHintText = "(Botão Esq.) Plantar";
+                                }
                             } else if (nearCapim) {
                                 interactionHintText = "(Botão Esq.) Colher Capim";
                             } else {
@@ -12106,7 +12110,7 @@
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(stoneFloorWidth, stoneFloorHeight, stoneFloorDepth);
                         } else if (currentBlockType === woodenFloorItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(woodenFloorWidth, woodenFloorHeight, woodenFloorDepth);
-                        } else if (currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName || currentBlockType === 'muda_arvore') {
+                        } else if (currentBlockType === appleItemName || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName || currentBlockType === 'muda_arvore') {
                             const seedBaseData = treeStages['semente'];
                             ghostBlockMesh.geometry = new THREE.ConeGeometry(seedBaseData.visual.mound.radius, seedBaseData.visual.mound.height, 8);
                         } else if (currentBlockType === 'tronco_arvore') {
@@ -12314,7 +12318,7 @@
                     else if (currentBlockType === 'tábuas') { currentGhostWidth = woodenPlankWidth; currentGhostHeight = woodenPlankHeight; currentGhostDepth = woodenPlankDepth; }
                     else if (currentBlockType === stoneBlockItemName || currentBlockType === woodenBlockItemName) { currentGhostWidth = 0.4; currentGhostHeight = 0.4; currentGhostDepth = 0.4; }
                     else if (currentBlockType === stoneFloorItemName || currentBlockType === woodenFloorItemName) { currentGhostWidth = stoneFloorWidth; currentGhostHeight = stoneFloorHeight; currentGhostDepth = stoneFloorDepth; }
-                    else if (currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName || currentBlockType === 'muda_arvore') { currentGhostWidth = 0.4; currentGhostHeight = treeStages['semente'].visual.mound.height; currentGhostDepth = 0.4; }
+                    else if (currentBlockType === appleItemName || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName || currentBlockType === 'muda_arvore') { currentGhostWidth = 0.4; currentGhostHeight = treeStages['semente'].visual.mound.height; currentGhostDepth = 0.4; }
                     else if (currentBlockType === 'tronco_arvore') { currentGhostWidth = 0.4; currentGhostHeight = trunkHeight; currentGhostDepth = 0.4; }
                     else if (currentBlockType === cutTrunkItemName || currentBlockType === firewoodItemName) { currentGhostWidth = 0.4; currentGhostHeight = 1.0; currentGhostDepth = 0.4; }
                     else if (currentBlockType === boxItemName) { currentGhostWidth = 1.0; currentGhostHeight = 1.0; currentGhostDepth = 1.0; }
@@ -12519,7 +12523,7 @@
                                         placementPosition.z = snappedUnwrappedZ - visualOffsetZ;
                                     }
 
-                                    if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName || currentBlockType === dirtItemName || currentBlockType === sandItemName || currentBlockType === raftItemName || currentBlockType === torchItemName || currentBlockType === workbenchItemName || currentBlockType === smallTableItemName || currentBlockType === mesaItemName || currentBlockType === largeTableItemName || currentBlockType === bigornaItemName || currentBlockType === furnaceItemName || currentBlockType === pestleItemName || currentBlockType === doorItemName || currentBlockType === windowItemName || currentBlockType === boxItemName) {
+                                    if (currentBlockType === 'muda_arvore' || currentBlockType === appleItemName || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName || currentBlockType === dirtItemName || currentBlockType === sandItemName || currentBlockType === raftItemName || currentBlockType === torchItemName || currentBlockType === workbenchItemName || currentBlockType === smallTableItemName || currentBlockType === mesaItemName || currentBlockType === largeTableItemName || currentBlockType === bigornaItemName || currentBlockType === furnaceItemName || currentBlockType === pestleItemName || currentBlockType === doorItemName || currentBlockType === windowItemName || currentBlockType === boxItemName) {
                                         placementPosition.y = basePosition.y;
                                     } else {
                                         const n_y = Math.round((basePosition.y - islandSurfaceHeight) / currentGhostHeight - 0.5);
@@ -12636,7 +12640,7 @@
                                         }
                                     }
 
-                                    if (currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName) {
+                                    if (currentBlockType === 'muda_arvore' || currentBlockType === appleItemName || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName) {
                                         for (const existingBody of placedConstructionBodies) {
                                             if (existingBody.userData.type === 'muda_arvore' || existingBody.userData.growthStage) {
                                                 const existingTreePos = new THREE.Vector3().copy(existingBody.position);
@@ -12687,17 +12691,28 @@
             }
 
             if (isPrimaryToolPlacing && ghostBlockMesh && ghostBlockMesh.visible) {
-                const heldItem = beltItems[selectedSlotIndex];
                 const isHoldingSeed = heldItem && (
                     heldItem.name === pineSeedItemName ||
                     heldItem.name === appleSeedItemName ||
                     heldItem.name === coconutItemName ||
-                    heldItem.name === coconutSeedItemName
+                    heldItem.name === coconutSeedItemName ||
+                    heldItem.name === appleItemName
                 );
                 if (isHoldingSeed) {
-                    interactionHintText = "(Botão Esq.) Plantar / (T) Girar";
+                    if (heldItem && (heldItem.name === appleItemName || heldItem.name === coconutItemName)) {
+                        interactionHintText = `(E) Comer ${itemDisplayNames[heldItem.name] || heldItem.name} / (Botão Esq.) Plantar / (T) Girar`;
+                    } else {
+                        interactionHintText = "(Botão Esq.) Plantar / (T) Girar";
+                    }
                 } else {
                     interactionHintText = "(Botão Esq.) Colocar / (T) Girar";
+                }
+            } else if (heldItem && (heldItem.name === appleItemName || heldItem.name === coconutItemName)) {
+                const foodName = itemDisplayNames[heldItem.name] || heldItem.name;
+                if (!interactionHintText) {
+                    interactionHintText = `(E) Comer ${foodName}`;
+                } else if (!interactionHintText.includes("(E) Comer")) {
+                    interactionHintText = `(E) Comer ${foodName} / ` + interactionHintText;
                 }
             }
 
@@ -13082,6 +13097,7 @@
 
                 const isPlantableSeed = [
                     'muda_arvore',
+                    appleItemName,
                     appleSeedItemName,
                     pineSeedItemName,
                     coconutItemName,
@@ -14409,6 +14425,8 @@
         window.getGameStateData = getGameStateData;
         window.loadGameState = loadGameState;
         window.saveGameToFile = saveGameToFile;
+        window.executeFinalGameLaunch = executeFinalGameLaunch;
+        window.startGame = startGame;
     </script>
 </body>
 </html>
