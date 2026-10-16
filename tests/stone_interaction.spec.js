@@ -43,11 +43,22 @@ test('Stone interaction hint and actions verification', async ({ page }) => {
         const hintElem = document.getElementById('interactionHint');
         const hintText = hintElem ? hintElem.innerText : '';
 
+        // 2. Test left click collection: collectObject(true) should NOT collect the stone
+        const initialBackpackCount = window.backpackItems.filter(i => i && i.name === 'pedra').reduce((acc, i) => acc + i.quantity, 0);
+        window.collectObject(true); // Simulate left click release
+        const countAfterLeftClick = window.backpackItems.filter(i => i && i.name === 'pedra').reduce((acc, i) => acc + i.quantity, 0);
+
+        // 3. Test 'G' key collection: collectObject(false) SHOULD collect the stone
+        window.collectObject(false); // Simulate pressing 'G'
+        const countAfterGKey = window.backpackItems.filter(i => i && i.name === 'pedra').reduce((acc, i) => acc + i.quantity, 0);
+
         return {
             isDestructible,
             hasStoneInBoxes: !!stoneBox,
             currentLookedAtType: currentLookedAt ? currentLookedAt.userData.type : null,
-            hintText
+            hintText,
+            collectedOnLeftClick: countAfterLeftClick > initialBackpackCount,
+            collectedOnGKey: countAfterGKey > countAfterLeftClick
         };
     });
 
@@ -60,4 +71,6 @@ test('Stone interaction hint and actions verification', async ({ page }) => {
     expect(result.hintText).not.toContain('(F) Agarrar');
     expect(result.hintText).not.toContain('(E)');
     expect(result.hintText).not.toContain('Destruir');
+    expect(result.collectedOnLeftClick).toBe(false);
+    expect(result.collectedOnGKey).toBe(true);
 });
