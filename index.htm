@@ -6212,6 +6212,55 @@
                         treeGroup.add(coneMesh);
                     }
                 }
+
+                // Adiciona 3 galhos visíveis que o jogador pode quebrar e coletar individualmente
+                if (!blockBody.userData.branches) {
+                    blockBody.userData.branches = [
+                        { broken: false, heightFactor: 0.35, angle: 0.5, length: stageData.visual.trunk.radius * 2.5 },
+                        { broken: false, heightFactor: 0.55, angle: 2.6, length: stageData.visual.trunk.radius * 2.8 },
+                        { broken: false, heightFactor: 0.75, angle: 4.8, length: stageData.visual.trunk.radius * 2.3 }
+                    ];
+                }
+
+                const trunkHeight = stageData.visual.trunk.height;
+                const trunkRadius = stageData.visual.trunk.radius;
+                const baseY = (treeType === 'coconut')
+                    ? (stageData.visual.trunk.yOffsetInGroup - trunkHeight / 2)
+                    : (stageData.visual.trunk.yOffsetInGroup - trunkHeight / 2);
+
+                const branchMat = treeTrunkMaterialMesh || new THREE.MeshStandardMaterial({ color: 0x5c4033 });
+
+                blockBody.userData.branches.forEach((bData, idx) => {
+                    const bRadius = trunkRadius * 0.35;
+                    const bLength = bData.length || (trunkRadius * 2.5);
+                    const bGeom = new THREE.CylinderGeometry(bRadius * 0.7, bRadius, bLength, 6);
+                    const bMesh = new THREE.Mesh(bGeom, branchMat);
+
+                    const branchY = baseY + trunkHeight * (bData.heightFactor || (0.3 + idx * 0.25));
+                    const angle = bData.angle || (idx * 2.1);
+
+                    const bGroup = new THREE.Group();
+                    bGroup.position.set(0, branchY, 0);
+                    bGroup.rotation.y = angle;
+
+                    bMesh.position.set(bLength / 2, 0, 0);
+                    bMesh.rotation.z = -0.5; // Inclinação do galho saindo do tronco
+                    bMesh.castShadow = true;
+                    bMesh.receiveShadow = true;
+
+                    bGroup.add(bMesh);
+
+                    bMesh.userData.isBranch = true;
+                    bMesh.userData.branchIndex = idx;
+                    bMesh.userData.treeBody = blockBody;
+
+                    if (bData.broken) {
+                        bMesh.visible = false;
+                    }
+
+                    treeGroup.add(bGroup);
+                });
+
                 mesh = treeGroup;
             }
             const trunkPhysics = stageData.physics.trunk;
@@ -9076,6 +9125,34 @@
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 // Usa raycastTargets para evitar colidir com partículas ou o bloco fantasma
                 const intersects = raycaster.intersectObjects(raycastTargets, true);
+
+                // NOVO: Coleta instantânea de galho de árvore com clique esquerdo
+                for (const intersect of intersects) {
+                    if (intersect.distance > destroyDistance) continue;
+                    const obj = intersect.object;
+                    if (obj.userData && obj.userData.isBranch && obj.visible) {
+                        const body = obj.userData.treeBody;
+                        const branchIndex = obj.userData.branchIndex;
+                        if (body && body.userData.branches && body.userData.branches[branchIndex]) {
+                            body.userData.branches[branchIndex].broken = true;
+                            obj.visible = false;
+                            isAttemptingToDestroy = false;
+                            isDestroying = false;
+
+                            const added = addItemToInventory(backpackItems, { name: branchItemName, quantity: 1 });
+                            if (!added) {
+                                const dropPos = intersect.point.clone();
+                                dropPos.y += 0.2;
+                                createDroppableItem(dropPos, { name: branchItemName, quantity: 1 });
+                            }
+                            updateBackpackDisplay();
+                            playSyntheticCollectSound();
+                            showNotification("Galho coletado!");
+                            return;
+                        }
+                    }
+                }
+
                 let target = null;
 
                 const heldItem = beltItems[selectedSlotIndex];
@@ -9156,6 +9233,17 @@
                 }
 
                 if (target) {
+                    // Exige machado para cortar árvores
+                    if (target.body && target.body.userData && target.body.userData.growthStage) {
+                        const isHoldingAxe = (heldItemName === axeItemName || heldItemName === ironAxeItemName);
+                        if (!isHoldingAxe) {
+                            showNotification("Você precisa de um machado para cortar a árvore!");
+                            isDestroying = false;
+                            isAttemptingToDestroy = false;
+                            return;
+                        }
+                    }
+
                     isDestroying = true;
                     if (target.isDigging) {
                         destroyTargetPosition = target.intersect.point.clone();
@@ -11875,6 +11963,11 @@
                         if (intersect.distance > destroyDistance) continue;
 
                         const obj = intersect.object;
+                        if (obj.userData.isBranch && obj.visible) {
+                            interactionHintText = "(Botão Esq.) Quebrar Galho";
+                            break;
+                        }
+
                         if ((obj.userData.isApple || obj.userData.isCoconut) && obj.visible) {
                             if (intersect.distance <= pickUpDistance) {
                                 interactionHintText = "(E) Colher";
@@ -12045,6 +12138,8 @@
                             const displayName = itemDisplayNames[type] || type;
                             inspectorText = `${displayName.split('\n')[0]} (${type})`;
                             if (body.userData.growthStage) inspectorText = `Árvore (${body.userData.growthStage})`;
+                        } else if (obj.userData.isBranch) {
+                            inspectorText = "Galho (galho)";
                         } else if ((obj.userData.isApple || obj.userData.isCoconut)) {
                             const type = obj.userData.isApple ? "maca" : "coco";
                             inspectorText = `${obj.userData.isApple ? "Maçã" : "Coco"} (${type})`;
@@ -14097,6 +14192,9 @@
                         chestItems: ud.chestItems ? JSON.parse(JSON.stringify(ud.chestItems)) : (ud.inventory ? JSON.parse(JSON.stringify(ud.inventory)) : null),
                         randomizedDimensions: ud.randomizedDimensions || ud.dimensions || null,
                         multipliers: ud.multipliers || null,
+                        branches: ud.branches ? JSON.parse(JSON.stringify(ud.branches)) : null,
+                        apples: ud.apples ? JSON.parse(JSON.stringify(ud.apples)) : null,
+                        coconuts: ud.coconuts ? JSON.parse(JSON.stringify(ud.coconuts)) : null,
                         isCollectible: ud.isCollectible || false,
                         isRaft: ud.isRaft || false,
                         originalMass: ud.originalMass || 0
@@ -14310,6 +14408,15 @@
                         if (containerItems) {
                             body.userData.inventory = JSON.parse(JSON.stringify(containerItems));
                             body.userData.chestItems = JSON.parse(JSON.stringify(containerItems));
+                        }
+                        if (extraData.branches) {
+                            body.userData.branches = JSON.parse(JSON.stringify(extraData.branches));
+                        }
+                        if (extraData.apples) {
+                            body.userData.apples = JSON.parse(JSON.stringify(extraData.apples));
+                        }
+                        if (extraData.coconuts) {
+                            body.userData.coconuts = JSON.parse(JSON.stringify(extraData.coconuts));
                         }
                     }
                 });
