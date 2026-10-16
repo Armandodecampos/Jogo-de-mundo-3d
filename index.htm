@@ -11871,12 +11871,14 @@
                     mainIntersects = raycaster.intersectObjects(raycastTargets, true);
 
                     for (const intersect of mainIntersects) {
-                        if (intersect.distance > pickUpDistance) continue;
+                        if (intersect.distance > destroyDistance) continue;
 
                         const obj = intersect.object;
                         if ((obj.userData.isApple || obj.userData.isCoconut) && obj.visible) {
-                            interactionHintText = "(E) Colher";
-                            break;
+                            if (intersect.distance <= pickUpDistance) {
+                                interactionHintText = "(E) Colher";
+                                break;
+                            }
                         }
 
                         let body = null;
@@ -11892,44 +11894,8 @@
                         if (body && body.userData) {
                             currentLookedAtBody = body; // Salva para uso em rotateLookedAtObject
                             let identified = false;
-                            if (body.userData.type === treeTrunkItemName) {
-                                if (isTopFaceIntersect(intersect) && !isTrunkObstructed(body)) {
-                                    interactionHintText = "(E) Opções de corte";
-                                } else {
-                                    interactionHintText = "";
-                                }
-                                identified = true;
-                            } else if (body.userData.type === cutTrunkItemName) {
-                                interactionHintText = "(F) Agarrar / (G) Guardar";
-                                identified = true;
-                            } else if (body.userData.type === torchItemName) {
-                                interactionHintText = "(E) Interagir / (G) Guardar";
-                                identified = true;
-                            } else if (body.userData.type === campfireItemName) {
-                                interactionHintText = "(E) Interagir";
-                                identified = true;
-                            } else if (body.userData.isChest) {
-                                interactionHintText = "(E) Abrir / (G) Guardar";
-                                identified = true;
-                            } else if (body.userData.isRaft) {
-                                interactionHintText = "(E) Navegar / (F) Agarrar / (G) Guardar";
-                                identified = true;
-                            } else if (body.userData.type === doorItemName || body.userData.type === windowItemName) {
-                                interactionHintText = `(E) ${body.userData.isOpen ? 'Fechar' : 'Abrir'}`;
-                                identified = true;
-                            } else if (body.userData.type === grassBedItemName || body.userData.type === sleepingMatItemName || body.userData.type === bedItemName) {
-                                interactionHintText = "(E) Dormir / (G) Guardar";
-                                identified = true;
-                            } else if (body.userData.isCollectible) {
-                                if (body.userData.type === workbenchItemName || body.userData.type === bigornaItemName || body.userData.type === furnaceItemName || body.userData.type === pestleItemName) {
-                                    interactionHintText = "(E) Acessar / (G) Guardar";
-                                } else if (body.userData.type === smallTableItemName || body.userData.type === mesaItemName || body.userData.type === largeTableItemName || body.userData.type === stoneItemName) {
-                                    interactionHintText = "(G) Guardar";
-                                } else {
-                                    interactionHintText = "(F) Agarrar / (G) Guardar";
-                                }
-                                identified = true;
-                            } else if (body.userData.isDestructible) {
+
+                            if (body.userData.isDestructible) {
                                 if (body.userData.growthStage) {
                                     interactionHintText = "(Botão Esq.) Cortar Árvore\n(P) Escalar";
                                     identified = true;
@@ -11940,10 +11906,49 @@
                                     interactionHintText = "(Botão Esq.) Destruir";
                                     identified = true;
                                 }
+                            } else if (intersect.distance <= pickUpDistance) {
+                                if (body.userData.type === treeTrunkItemName) {
+                                    if (isTopFaceIntersect(intersect) && !isTrunkObstructed(body)) {
+                                        interactionHintText = "(E) Opções de corte";
+                                    } else {
+                                        interactionHintText = "";
+                                    }
+                                    identified = true;
+                                } else if (body.userData.type === cutTrunkItemName) {
+                                    interactionHintText = "(F) Agarrar / (G) Guardar";
+                                    identified = true;
+                                } else if (body.userData.type === torchItemName) {
+                                    interactionHintText = "(E) Interagir / (G) Guardar";
+                                    identified = true;
+                                } else if (body.userData.type === campfireItemName) {
+                                    interactionHintText = "(E) Interagir";
+                                    identified = true;
+                                } else if (body.userData.isChest) {
+                                    interactionHintText = "(E) Abrir / (G) Guardar";
+                                    identified = true;
+                                } else if (body.userData.isRaft) {
+                                    interactionHintText = "(E) Navegar / (F) Agarrar / (G) Guardar";
+                                    identified = true;
+                                } else if (body.userData.type === doorItemName || body.userData.type === windowItemName) {
+                                    interactionHintText = `(E) ${body.userData.isOpen ? 'Fechar' : 'Abrir'}`;
+                                    identified = true;
+                                } else if (body.userData.type === grassBedItemName || body.userData.type === sleepingMatItemName || body.userData.type === bedItemName) {
+                                    interactionHintText = "(E) Dormir / (G) Guardar";
+                                    identified = true;
+                                } else if (body.userData.isCollectible) {
+                                    if (body.userData.type === workbenchItemName || body.userData.type === bigornaItemName || body.userData.type === furnaceItemName || body.userData.type === pestleItemName) {
+                                        interactionHintText = "(E) Acessar / (G) Guardar";
+                                    } else if (body.userData.type === smallTableItemName || body.userData.type === mesaItemName || body.userData.type === largeTableItemName || body.userData.type === stoneItemName) {
+                                        interactionHintText = "(G) Guardar";
+                                    } else {
+                                        interactionHintText = "(F) Agarrar / (G) Guardar";
+                                    }
+                                    identified = true;
+                                }
                             }
 
                             // Se o objeto for rotacionável, garantimos que ele seja identificado e mostre o hint
-                            if (rotatableItems.includes(body.userData.type)) {
+                            if (intersect.distance <= pickUpDistance && rotatableItems.includes(body.userData.type)) {
                                 if (!identified) {
                                     interactionHintText = "(G) Guardar"; // Fallback para móveis que não se encaixam em outras categorias
                                     identified = true;
