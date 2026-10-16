@@ -1365,15 +1365,6 @@
         </div>
     </div>
 
-    <!-- Modal de Opções de Interação (Tecla E) -->
-    <div id="interactionModal" class="parchment-window hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 p-6 z-[11300] w-80 flex flex-col text-[#2d1a0a]">
-        <button id="closeInteractionButton" class="close-button">X</button>
-        <h2 id="interactionModalTitle" class="text-2xl font-bold mb-4 text-center text-[#2d1a0a]">Opções de Interação</h2>
-        <div id="interactionModalOptions" class="flex flex-col gap-3">
-            <!-- Botões dinamicos -->
-        </div>
-    </div>
-
     <!-- Modal de Sono / Descanso -->
     <div id="sleepModal" class="parchment-window" style="display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 25px; border-radius: 14px; z-index: 11300; flex-direction: column; align-items: center; gap: 15px; min-width: 320px;">
         <button id="closeSleepButton" type="button" class="close-button">X</button>
@@ -2317,8 +2308,6 @@
 
         window.openSleepModal = openSleepModal;
         window.closeSleepModal = closeSleepModal;
-        window.openInteractionModal = function(targetObj, typeName) { if (typeof openInteractionModal === 'function') openInteractionModal(targetObj, typeName); };
-        window.closeInteractionModal = function() { if (typeof closeInteractionModal === 'function') closeInteractionModal(); };
         window.confirmSleep = confirmSleep;
         window.startSleep = startSleep;
         window.startGame = startGame;
@@ -8659,15 +8648,6 @@
                     }
                 }
 
-                // Interaction modal handling
-                const interactionModalEl = document.getElementById('interactionModal');
-                if (interactionModalEl && !interactionModalEl.classList.contains('hidden')) {
-                    if (event.key === 'Escape') {
-                        closeInteractionModal();
-                        return;
-                    }
-                }
-
                 // Cutting modal handling
                 if (!document.getElementById('cuttingModal').classList.contains('hidden')) {
                     if (event.key === 'Escape') {
@@ -9066,76 +9046,19 @@
             renderer.domElement.addEventListener('mousedown', (event) => {
                 if (!isWorldReady || gamePaused || !document.pointerLockElement) return;
 
-                // Impede ações de clique se o modal do contêiner estiver aberto
+                // NOVO: Impede ações de clique se o modal do contêiner estiver aberto
                 if (!chestModal.classList.contains('hidden')) return;
 
                 if (event.button === 0) { // Botão esquerdo
-                    blockPlacedThisClick = false;
-
-                    // Raycast para verificar ação instantânea de clique esquerdo em objetos
-                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                    const intersects = raycaster.intersectObjects(raycastTargets, true);
-                    let targetInteractive = null;
-
-                    for (const intersect of intersects) {
-                        if (intersect.distance > pickUpDistance) continue;
-                        let current = intersect.object;
-                        let body = null;
-                        while (current) {
-                            if (current.userData && current.userData.physicsBody) {
-                                body = current.userData.physicsBody;
-                                break;
-                            }
-                            current = current.parent;
-                        }
-                        if (body && body.userData) {
-                            const type = body.userData.type;
-                            if (type === doorItemName || type === windowItemName ||
-                                type === workbenchItemName || type === furnaceItemName || type === bigornaItemName || type === pestleItemName ||
-                                type === boxItemName || type === basketItemName ||
-                                type === campfireItemName || type === torchItemName ||
-                                type === raftItemName || type === cutTrunkItemName || type === firewoodItemName) {
-                                targetInteractive = { body, type };
-                                break;
-                            }
-                        }
-                    }
-
-                    if (targetInteractive) {
-                        const { body, type } = targetInteractive;
-                        if (type === doorItemName || type === windowItemName) {
-                            toggleDoor(body);
-                            return;
-                        } else if (type === workbenchItemName || type === furnaceItemName || type === bigornaItemName || type === pestleItemName) {
-                            openWorkstationMenu(type, body);
-                            return;
-                        } else if (type === boxItemName || type === basketItemName) {
-                            openChest(body);
-                            return;
-                        } else if (type === campfireItemName || type === torchItemName) {
-                            openFuelMenu(body);
-                            return;
-                        } else if (type === raftItemName) {
-                            boardRaft(body);
-                            return;
-                        } else if (type === cutTrunkItemName || type === firewoodItemName) {
-                            grabObject();
-                            return;
-                        }
-                    }
+                    blockPlacedThisClick = false; // Reseta a flag
 
                     const heldItem = beltItems[selectedSlotIndex];
-                    if (heldItem && (heldItem.name === appleItemName || heldItem.name === coconutItemName)) {
-                        eatFoodItem(heldItem);
-                        return;
-                    }
-
                     const primaryActionType = getActionType(heldItem);
                     if (primaryActionType === 'place') {
                         placeBlock(heldItem, selectedSlotIndex);
-                        blockPlacedThisClick = true;
+                        blockPlacedThisClick = true; // Marca que colocamos algo
                     } else {
-                        isAttemptingToDestroy = true;
+                        isAttemptingToDestroy = true; // NOVO: Define a intenção
                         startDestruction();
                     }
                 } else if (event.button === 2) { // Botão direito
@@ -9653,378 +9576,6 @@
                 return false;
             }
 
-            let currentInteractionTarget = null;
-
-            function openInteractionModal(targetObj, typeName) {
-                currentInteractionTarget = targetObj;
-                gamePaused = true;
-
-                const modal = document.getElementById('interactionModal');
-                const optionsContainer = document.getElementById('interactionModalOptions');
-                const title = document.getElementById('interactionModalTitle');
-
-                if (!modal || !optionsContainer) return;
-
-                optionsContainer.innerHTML = '';
-
-                const displayName = (window.itemDisplayNames[typeName] || typeName || 'Objeto').split('\n')[0];
-                if (title) title.textContent = `Interagir: ${displayName}`;
-
-                const options = [];
-
-                if (targetObj && targetObj.userData && targetObj.userData.isBranch) {
-                    options.push({
-                        label: 'Arrancar',
-                        action: () => {
-                            collectBranchObj(targetObj);
-                            closeInteractionModal();
-                        }
-                    });
-                } else if (typeName === treeTrunkItemName) {
-                    options.push({
-                        label: 'Cortar tronco',
-                        action: () => {
-                            closeInteractionModal();
-                            handleCutTrunk();
-                        }
-                    });
-                    options.push({
-                        label: 'Cortar lenha',
-                        action: () => {
-                            closeInteractionModal();
-                            handleCreateFirewood();
-                        }
-                    });
-                    options.push({
-                        label: 'Guardar',
-                        action: () => {
-                            closeInteractionModal();
-                            collectObjectDirect(targetObj);
-                        }
-                    });
-                } else if (typeName === cutTrunkItemName || typeName === firewoodItemName) {
-                    options.push({
-                        label: 'Guardar',
-                        action: () => {
-                            closeInteractionModal();
-                            collectObjectDirect(targetObj);
-                        }
-                    });
-                    options.push({
-                        label: 'Girar',
-                        action: () => {
-                            closeInteractionModal();
-                            rotateSpecificObject(targetObj);
-                        }
-                    });
-                } else if (typeName === doorItemName || typeName === windowItemName) {
-                    options.push({
-                        label: 'Abrir / Fechar',
-                        action: () => {
-                            closeInteractionModal();
-                            toggleDoor(targetObj);
-                        }
-                    });
-                    options.push({
-                        label: 'Guardar',
-                        action: () => {
-                            closeInteractionModal();
-                            collectObjectDirect(targetObj);
-                        }
-                    });
-                    options.push({
-                        label: 'Girar',
-                        action: () => {
-                            closeInteractionModal();
-                            rotateSpecificObject(targetObj);
-                        }
-                    });
-                } else if (typeName === grassBedItemName || typeName === sleepingMatItemName || typeName === bedItemName) {
-                    options.push({
-                        label: 'Dormir / Cancelar',
-                        action: () => {
-                            closeInteractionModal();
-                            openSleepModal(typeName);
-                        }
-                    });
-                } else if (typeName === workbenchItemName || typeName === furnaceItemName || typeName === bigornaItemName || typeName === pestleItemName) {
-                    options.push({
-                        label: 'Abrir Criação / Uso',
-                        action: () => {
-                            closeInteractionModal();
-                            openWorkstationMenu(typeName, targetObj);
-                        }
-                    });
-                    options.push({
-                        label: 'Guardar',
-                        action: () => {
-                            closeInteractionModal();
-                            collectObjectDirect(targetObj);
-                        }
-                    });
-                    options.push({
-                        label: 'Girar',
-                        action: () => {
-                            closeInteractionModal();
-                            rotateSpecificObject(targetObj);
-                        }
-                    });
-                } else if (typeName === boxItemName || typeName === basketItemName) {
-                    options.push({
-                        label: 'Abrir Contêiner',
-                        action: () => {
-                            closeInteractionModal();
-                            openChest(targetObj);
-                        }
-                    });
-                    options.push({
-                        label: 'Guardar',
-                        action: () => {
-                            closeInteractionModal();
-                            collectObjectDirect(targetObj);
-                        }
-                    });
-                    options.push({
-                        label: 'Girar',
-                        action: () => {
-                            closeInteractionModal();
-                            rotateSpecificObject(targetObj);
-                        }
-                    });
-                } else if (typeName === campfireItemName || typeName === torchItemName) {
-                    options.push({
-                        label: 'Acessar Menu',
-                        action: () => {
-                            closeInteractionModal();
-                            openFuelMenu(targetObj);
-                        }
-                    });
-                    options.push({
-                        label: 'Guardar',
-                        action: () => {
-                            closeInteractionModal();
-                            collectObjectDirect(targetObj);
-                        }
-                    });
-                    options.push({
-                        label: 'Girar',
-                        action: () => {
-                            closeInteractionModal();
-                            rotateSpecificObject(targetObj);
-                        }
-                    });
-                } else if (typeName === raftItemName) {
-                    options.push({
-                        label: 'Pilotar',
-                        action: () => {
-                            closeInteractionModal();
-                            boardRaft(targetObj);
-                        }
-                    });
-                    options.push({
-                        label: 'Guardar',
-                        action: () => {
-                            closeInteractionModal();
-                            collectObjectDirect(targetObj);
-                        }
-                    });
-                } else {
-                    options.push({
-                        label: 'Guardar',
-                        action: () => {
-                            closeInteractionModal();
-                            collectObjectDirect(targetObj);
-                        }
-                    });
-                    if (rotatableItems.includes(typeName)) {
-                        options.push({
-                            label: 'Girar',
-                            action: () => {
-                                closeInteractionModal();
-                                rotateSpecificObject(targetObj);
-                            }
-                        });
-                    }
-                }
-
-                options.forEach(opt => {
-                    const btn = document.createElement('button');
-                    btn.className = 'parchment-btn py-3 font-bold text-base w-full';
-                    btn.textContent = opt.label;
-                    btn.onclick = opt.action;
-                    optionsContainer.appendChild(btn);
-                });
-
-                modal.classList.remove('hidden');
-                modal.style.display = 'flex';
-
-                const crosshair = document.getElementById('crosshair');
-                if (crosshair) crosshair.style.display = 'none';
-                document.body.style.cursor = 'default';
-                if (renderer && renderer.domElement) {
-                    renderer.domElement.style.cursor = 'default';
-                }
-                const hudButtons = document.getElementById('hudButtons');
-                if (hudButtons) hudButtons.style.display = 'none';
-                if (ghostBlockMesh) ghostBlockMesh.visible = false;
-
-                pointerLockExitForBackpack = true;
-                document.exitPointerLock();
-            }
-
-            function closeInteractionModal() {
-                const modal = document.getElementById('interactionModal');
-                if (modal) {
-                    modal.classList.add('hidden');
-                    modal.style.display = 'none';
-                }
-                gamePaused = false;
-                currentInteractionTarget = null;
-
-                const crosshair = document.getElementById('crosshair');
-                if (crosshair) crosshair.style.display = 'flex';
-                const hudButtons = document.getElementById('hudButtons');
-                if (hudButtons) hudButtons.style.display = 'flex';
-
-                pointerLockExitForBackpack = true;
-                if (renderer && renderer.domElement) {
-                    renderer.domElement.requestPointerLock();
-                }
-            }
-
-            function collectBranchObj(obj) {
-                if (obj && obj.userData && obj.userData.isBranch && obj.visible) {
-                    const body = obj.userData.treeBody;
-                    const branchIndex = obj.userData.branchIndex;
-                    if (body && body.userData.branches && body.userData.branches[branchIndex]) {
-                        body.userData.branches[branchIndex].broken = true;
-                        body.userData.branches[branchIndex].lastBrokenTime = world.time;
-                        obj.visible = false;
-                        const added = addItemToInventory(backpackItems, { name: branchItemName, quantity: 1 });
-                        if (!added) {
-                            const dropPos = obj.position ? obj.position.clone() : playerBody.position.clone();
-                            dropPos.y += 0.2;
-                            createDroppableItem(dropPos, { name: branchItemName, quantity: 1 });
-                        }
-                        updateBackpackDisplay();
-                        playSyntheticCollectSound();
-                        showNotification("Galho arrancado!");
-                    }
-                }
-            }
-
-            function collectObjectDirect(clickedBody) {
-                if (!clickedBody || !clickedBody.userData) return;
-                if (!clickedBody.userData.isCollectible && !clickedBody.userData.isRaft) return;
-
-                if (clickedBody.userData.isChest) {
-                    const inventory = clickedBody.userData.inventory;
-                    if (inventory && inventory.some(item => item !== null)) {
-                        showNotification("Esvazie o caixote antes de guardá-lo!");
-                        return;
-                    }
-                }
-
-                const itemType = clickedBody.userData.type;
-                const itemQuantity = clickedBody.userData.quantity || 1;
-
-                const collectibleIndex = collectibleBoxes.findIndex(box => box.body === clickedBody);
-                if (collectibleIndex > -1) {
-                    const collectibleToRemove = collectibleBoxes[collectibleIndex];
-                    world.removeBody(collectibleToRemove.body);
-                    scene.remove(collectibleToRemove.mesh);
-                    collectibleBoxes.splice(collectibleIndex, 1);
-                    raycastTargetsNeedUpdate = true;
-
-                    const added = addItemToInventory(backpackItems, { name: itemType, quantity: itemQuantity });
-                    if (!added) {
-                        const dropPos = collectibleToRemove.body.position.clone();
-                        dropPos.y += 0.5;
-                        createDroppableItem(dropPos, { name: itemType, quantity: itemQuantity });
-                        showNotification(`Mochila cheia! ${itemDisplayNames[itemType] || itemType} caiu no chão.`);
-                    } else {
-                        showNotification(`Guardou: ${itemDisplayNames[itemType] || itemType}`);
-                    }
-                    updateBackpackDisplay();
-                    playSyntheticCollectSound();
-                }
-            }
-
-            function rotateSpecificObject(body) {
-                if (!body || !body.userData || !rotatableItems.includes(body.userData.type)) return;
-
-                const rotStep = (body.userData.type === doorItemName || body.userData.type === windowItemName) ? Math.PI / 2 : Math.PI / 4;
-
-                if (body.userData.type === doorItemName || body.userData.type === windowItemName) {
-                    if (!body.userData.baseQuaternion) {
-                        body.userData.baseQuaternion = body.quaternion.clone();
-                    }
-                    const deltaQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotStep);
-                    body.userData.baseQuaternion.multiply(deltaQ);
-                    if (!body.userData.isOpen) {
-                        body.quaternion.copy(body.userData.baseQuaternion);
-                    } else {
-                        const openQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 2);
-                        body.quaternion.copy(body.userData.baseQuaternion.clone().multiply(openQ));
-                    }
-                } else {
-                    const deltaQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), rotStep);
-                    body.quaternion.copy(body.quaternion.clone().multiply(deltaQ));
-                }
-                body.updateAABB();
-
-                const boxIndex = collectibleBoxes.findIndex(box => box.body === body);
-                if (boxIndex > -1) {
-                    collectibleBoxes[boxIndex].mesh.quaternion.copy(body.quaternion);
-                }
-                showNotification("Objeto girado!");
-            }
-
-            function openWorkstationMenu(type, body) {
-                if (type === workbenchItemName) {
-                    openCraftingMenu('workbench');
-                } else if (type === furnaceItemName) {
-                    openFuelMenu(body);
-                } else if (type === bigornaItemName) {
-                    openCraftingMenu('anvil');
-                } else if (type === pestleItemName) {
-                    openCraftingMenu('pestle');
-                }
-            }
-
-            function boardRaft(body) {
-                if (!isDrivingRaft && body) {
-                    isDrivingRaft = true;
-                    currentRaftBody = body;
-                    playerBody.type = CANNON.Body.KINEMATIC;
-                    playerBody.collisionResponse = false;
-                    playerBody.collisionFilterGroup = 0;
-                    playerBody.collisionFilterMask = 0;
-                    showNotification("Você subiu na jangada!");
-                }
-            }
-
-            function eatFoodItem(heldItem) {
-                if (!heldItem) return;
-                if (heldItem.name === appleItemName) {
-                    playerHunger = Math.min(100, playerHunger + 20);
-                    playerEnergy = Math.min(100, playerEnergy + 10);
-                    addItemToInventory(backpackItems, { name: appleSeedItemName, quantity: 1 });
-                    heldItem.quantity--;
-                    if (heldItem.quantity <= 0) beltItems[selectedSlotIndex] = null;
-                    updateBeltDisplay();
-                    updateBackpackDisplay();
-                    showNotification("Você comeu uma maçã (+20 Fome, +10 Energia, +1 Semente)");
-                } else if (heldItem.name === coconutItemName) {
-                    playerHunger = Math.min(100, playerHunger + 25);
-                    playerEnergy = Math.min(100, playerEnergy + 15);
-                    heldItem.quantity--;
-                    if (heldItem.quantity <= 0) beltItems[selectedSlotIndex] = null;
-                    updateBeltDisplay();
-                    showNotification("Você comeu um coco (+25 Fome, +15 Energia)");
-                }
-            }
-
             function interact() {
                 if (!isWorldReady || gamePaused || !document.pointerLockElement) return false;
 
@@ -10034,27 +9585,32 @@
                     if (intersect.distance > pickUpDistance) continue;
 
                     const obj = intersect.object;
-                    if (obj.userData.isBranch && obj.visible) {
-                        openInteractionModal(obj, branchItemName);
-                        return true;
-                    }
-
-                    if ((obj.userData.isApple || obj.userData.isCoconut) && obj.visible) {
-                        const isApple = obj.userData.isApple;
+                    if (obj.userData.isApple && obj.visible) {
                         const body = obj.userData.treeBody;
-                        const fruitIndex = isApple ? obj.userData.appleIndex : obj.userData.coconutIndex;
-                        const arrayName = isApple ? 'apples' : 'coconuts';
-                        if (body && body.userData[arrayName] && body.userData[arrayName][fruitIndex]) {
-                            body.userData[arrayName][fruitIndex].picked = true;
-                            body.userData[arrayName][fruitIndex].lastPickedTime = world.time;
+                        const appleIndex = obj.userData.appleIndex;
+                        if (body && body.userData.apples && body.userData.apples[appleIndex]) {
+                            body.userData.apples[appleIndex].picked = true;
+                            body.userData.apples[appleIndex].lastPickedTime = world.time;
                             obj.visible = false;
-                            addItemToInventory(backpackItems, { name: isApple ? appleItemName : coconutItemName, quantity: 1 });
+                            addItemToInventory(backpackItems, { name: appleItemName, quantity: 1 });
                             updateBackpackDisplay();
                             playSyntheticCollectSound();
                             return true;
                         }
                     }
-
+                    if (obj.userData.isCoconut && obj.visible) {
+                        const body = obj.userData.treeBody;
+                        const coconutIndex = obj.userData.coconutIndex;
+                        if (body && body.userData.coconuts && body.userData.coconuts[coconutIndex]) {
+                            body.userData.coconuts[coconutIndex].picked = true;
+                            body.userData.coconuts[coconutIndex].lastPickedTime = world.time;
+                            obj.visible = false;
+                            addItemToInventory(backpackItems, { name: coconutItemName, quantity: 1 });
+                            updateBackpackDisplay();
+                            playSyntheticCollectSound();
+                            return true;
+                        }
+                    }
                     let body = null;
                     let current = obj;
                     while (current) {
@@ -10066,12 +9622,65 @@
                     }
 
                     if (body && body.userData) {
-                        const type = body.userData.type;
-                        openInteractionModal(body, type);
-                        return true;
+                        if (body.userData.type === furnaceItemName || body.userData.type === campfireItemName || body.userData.type === torchItemName) {
+                            openFuelMenu(body);
+                            return true;
+                        } else if (body.userData.type === bigornaItemName) {
+                            openCraftingMenu('anvil');
+                            return true;
+                        } else if (body.userData.type === pestleItemName) {
+                            openCraftingMenu('pestle');
+                            return true;
+                        } else if (body.userData.type === workbenchItemName) {
+                            openCraftingMenu('workbench');
+                            return true;
+                        }
+
+                        if (body.userData.isChest) {
+                            openChest(body);
+                            return true;
+                        }
+                        if (body.userData.type === doorItemName || body.userData.type === windowItemName) {
+                            toggleDoor(body);
+                            return true;
+                        }
+                        if (body.userData.isRaft && !isDrivingRaft) {
+                            isDrivingRaft = true;
+                            currentRaftBody = body;
+                            // Desativa colisão e dinâmica do jogador para não empurrar a jangada para baixo
+                            playerBody.type = CANNON.Body.KINEMATIC;
+                            playerBody.collisionResponse = false;
+                            playerBody.collisionFilterGroup = 0;
+                            playerBody.collisionFilterMask = 0;
+                            return true;
+                        }
+                        if (body.userData.type === grassBedItemName || body.userData.type === sleepingMatItemName || body.userData.type === bedItemName) {
+                            if (isSleeping) {
+                                isSleeping = false;
+                                return true;
+                            }
+                            openSleepModal(body.userData.type);
+                            return true;
+                        }
+
+                        if (body.userData.type === treeTrunkItemName) {
+                            if (!isTopFaceIntersect(intersect)) {
+                                continue;
+                            }
+                            if (isTrunkObstructed(body)) {
+                                showNotification("Remova os objetos de cima do tronco para cortar!");
+                                return true;
+                            }
+                            openCuttingMenu();
+                            return true;
+                        }
                     }
                 }
-
+                const heldItem = beltItems[selectedSlotIndex];
+                if (heldItem && (heldItem.name === appleItemName || heldItem.name === coconutItemName)) {
+                    eatItem(heldItem, selectedSlotIndex);
+                    return true;
+                }
                 return false;
             }
 
@@ -12375,7 +11984,7 @@
 
                         const obj = intersect.object;
                         if (obj.userData.isBranch && obj.visible) {
-                            interactionHintText = "(E) Interagir";
+                            interactionHintText = "(Botão Esq.) Quebrar Galho";
                             break;
                         }
 
@@ -12413,31 +12022,40 @@
                                 }
                             } else if (intersect.distance <= pickUpDistance) {
                                 if (body.userData.type === treeTrunkItemName) {
+                                    if (isTopFaceIntersect(intersect) && !isTrunkObstructed(body)) {
+                                        interactionHintText = "(E) Opções de corte";
+                                    } else {
+                                        interactionHintText = "";
+                                    }
+                                    identified = true;
+                                } else if (body.userData.type === cutTrunkItemName) {
+                                    interactionHintText = "(F) Agarrar / (G) Guardar";
+                                    identified = true;
+                                } else if (body.userData.type === torchItemName) {
+                                    interactionHintText = "(E) Interagir / (G) Guardar";
+                                    identified = true;
+                                } else if (body.userData.type === campfireItemName) {
                                     interactionHintText = "(E) Interagir";
-                                    identified = true;
-                                } else if (body.userData.type === cutTrunkItemName || body.userData.type === firewoodItemName) {
-                                    interactionHintText = "(Botão Esq.) Agarrar / (E) Opções";
-                                    identified = true;
-                                } else if (body.userData.type === torchItemName || body.userData.type === campfireItemName) {
-                                    interactionHintText = "(Botão Esq.) Interagir / (E) Opções";
                                     identified = true;
                                 } else if (body.userData.isChest) {
-                                    interactionHintText = "(Botão Esq.) Abrir / (E) Opções";
+                                    interactionHintText = "(E) Abrir / (G) Guardar";
                                     identified = true;
                                 } else if (body.userData.isRaft) {
-                                    interactionHintText = "(Botão Esq.) Pilotar / (E) Opções";
+                                    interactionHintText = "(E) Navegar / (F) Agarrar / (G) Guardar";
                                     identified = true;
                                 } else if (body.userData.type === doorItemName || body.userData.type === windowItemName) {
-                                    interactionHintText = `(Botão Esq.) ${body.userData.isOpen ? 'Fechar' : 'Abrir'} / (E) Opções`;
+                                    interactionHintText = `(E) ${body.userData.isOpen ? 'Fechar' : 'Abrir'}`;
                                     identified = true;
                                 } else if (body.userData.type === grassBedItemName || body.userData.type === sleepingMatItemName || body.userData.type === bedItemName) {
-                                    interactionHintText = "(E) Interagir";
+                                    interactionHintText = "(E) Dormir / (G) Guardar";
                                     identified = true;
                                 } else if (body.userData.isCollectible) {
                                     if (body.userData.type === workbenchItemName || body.userData.type === bigornaItemName || body.userData.type === furnaceItemName || body.userData.type === pestleItemName) {
-                                        interactionHintText = "(Botão Esq.) Acessar / (E) Opções";
+                                        interactionHintText = "(E) Acessar / (G) Guardar";
+                                    } else if (body.userData.type === smallTableItemName || body.userData.type === mesaItemName || body.userData.type === largeTableItemName || body.userData.type === stoneItemName) {
+                                        interactionHintText = "(G) Guardar";
                                     } else {
-                                        interactionHintText = "(E) Opções";
+                                        interactionHintText = "(F) Agarrar / (G) Guardar";
                                     }
                                     identified = true;
                                 }
@@ -14118,11 +13736,6 @@
             document.getElementById('cutTrunkButton').addEventListener('click', handleCutTrunk);
             document.getElementById('createFirewoodButton').addEventListener('click', handleCreateFirewood);
 
-            const closeInteractionBtn = document.getElementById('closeInteractionButton');
-            if (closeInteractionBtn) {
-                closeInteractionBtn.addEventListener('click', closeInteractionModal);
-            }
-
             document.getElementById('closeSleepButton').addEventListener('click', closeSleepModal);
             document.getElementById('cancelSleepButton').addEventListener('click', closeSleepModal);
             document.getElementById('confirmSleepButton').addEventListener('click', confirmSleep);
@@ -14360,8 +13973,6 @@
             window.handleCreateFirewood = handleCreateFirewood;
             window.openSleepModal = openSleepModal;
             window.closeSleepModal = closeSleepModal;
-            window.openInteractionModal = openInteractionModal;
-            window.closeInteractionModal = closeInteractionModal;
             window.confirmSleep = confirmSleep;
             window.startSleep = startSleep;
             window.startGame = startGame;
