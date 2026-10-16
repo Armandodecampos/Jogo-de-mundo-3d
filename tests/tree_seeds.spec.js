@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('Verify apple and pine trees yield 2 seeds each upon destruction and E key eats fruit', async ({ page }) => {
+test('Verify apple tree destruction yields 0 seeds, eating apple yields seed, and holding rules for apple, coconut, apple seed', async ({ page }) => {
   test.setTimeout(120000);
   await page.goto('http://localhost:8080/index.htm');
 
@@ -16,7 +16,7 @@ test('Verify apple and pine trees yield 2 seeds each upon destruction and E key 
 
   await page.waitForFunction(() => window.isWorldReady === true, { timeout: 60000 });
 
-  // 1. Test Apple Tree seed drop quantity (2 seeds)
+  // 1. Test Apple Tree seed drop quantity (0 seeds now upon destruction)
   const appleSeedsYielded = await page.evaluate(() => {
     window.backpackItems.length = 0;
     const pos = new window.THREE.Vector3(0, 5, 0);
@@ -31,19 +31,21 @@ test('Verify apple and pine trees yield 2 seeds each upon destruction and E key 
     const maxWeight = 500;
     const itemsToDrop = [];
 
+    // Simulate destruction yield logic
     if (treeType === 'apple') {
-      if (!window.addItemToInventory(window.backpackItems, { name: window.appleSeedItemName, quantity: 2 }, maxWeight)) {
-        itemsToDrop.push({ name: window.appleSeedItemName, quantity: 2 });
+      if (!window.addItemToInventory(window.backpackItems, { name: window.treeTrunkItemName, quantity: 4 }, maxWeight)) {
+        itemsToDrop.push({ name: window.treeTrunkItemName, quantity: 4 });
       }
+      // No seeds added here
     }
 
     const itemInBackpack = window.backpackItems.find(i => i && i.name === window.appleSeedItemName);
-    return itemInBackpack ? itemInBackpack.quantity : (itemsToDrop[0] ? itemsToDrop[0].quantity : 0);
+    return itemInBackpack ? itemInBackpack.quantity : 0;
   });
 
-  expect(appleSeedsYielded).toBe(2);
+  expect(appleSeedsYielded).toBe(0);
 
-  // 2. Test Pine Tree seed drop quantity (2 seeds)
+  // 2. Test Pine Tree seed drop quantity (2 seeds still yielded for pine tree)
   const pineSeedsYielded = await page.evaluate(() => {
     window.backpackItems.length = 0;
     const pos = new window.THREE.Vector3(5, 5, 0);
@@ -70,73 +72,83 @@ test('Verify apple and pine trees yield 2 seeds each upon destruction and E key 
 
   expect(pineSeedsYielded).toBe(2);
 
-  // 3. Test eating Apple or Coconut via key 'E' and interaction hints
+  // 3. Test eating Apple via key 'E' / interact() gives 1 Apple Seed
   const eatingResult = await page.evaluate(() => {
+    window.beltItems.fill(null);
+    window.backpackItems.fill(null);
+
     // Put apple in slot 0
-    window.beltItems[0] = { name: 'maca', quantity: 2 };
-    window.selectedSlotIndex = 0;
-    window.updateUI();
-
-    const initialHunger = window.playerHunger = 50;
-
-    // Trigger interact directly (as 'E' does)
-    window.interact();
-
-    const hungerAfterEating = window.playerHunger;
-    const appleQuantityAfter = window.beltItems[0] ? window.beltItems[0].quantity : 0;
-
-    return {
-      initialHunger,
-      hungerAfterEating,
-      appleQuantityAfter
-    };
-  });
-
-  expect(eatingResult.hungerAfterEating).toBe(70);
-  expect(eatingResult.appleQuantityAfter).toBe(1);
-
-  // 4. Test interaction hints for seeds and coconut when selected / aiming
-  const hints = await page.evaluate(() => {
     window.beltItems[0] = { name: 'maca', quantity: 1 };
     window.selectedSlotIndex = 0;
     window.updateUI();
 
-    // Force animation frame
-    window.animate();
-    const appleSelectedHint = document.getElementById('interactionHint').textContent;
+    window.playerHunger = 50;
 
-    // Force placing state with ghost visible
-    window.isPrimaryToolPlacing = true;
-    window.ghostBlockMesh.visible = true;
+    // Trigger interact directly
+    window.interact();
 
-    // Run the hint logic update
-    const heldItem = window.beltItems[window.selectedSlotIndex];
-    const isHoldingSeed = heldItem && (
-      heldItem.name === window.pineSeedItemName ||
-      heldItem.name === window.appleSeedItemName ||
-      heldItem.name === window.coconutItemName ||
-      heldItem.name === window.coconutSeedItemName ||
-      heldItem.name === 'maca'
-    );
-    let applePlacingHint = '';
-    if (isHoldingSeed) {
-      if (heldItem && (heldItem.name === 'maca' || heldItem.name === window.coconutItemName)) {
-        applePlacingHint = `(E) Comer ${window.itemDisplayNames[heldItem.name] || heldItem.name} / (Botão Esq.) Plantar / (T) Girar`;
-      } else {
-        applePlacingHint = "(Botão Esq.) Plantar / (T) Girar";
-      }
-    }
+    const hungerAfterEating = window.playerHunger;
+    const seedInBelt = window.beltItems.find(i => i && i.name === window.appleSeedItemName);
+    const seedInBackpack = window.backpackItems.find(i => i && i.name === window.appleSeedItemName);
+    const totalSeeds = (seedInBelt ? seedInBelt.quantity : 0) + (seedInBackpack ? seedInBackpack.quantity : 0);
 
-    // Pine nut hint
-    window.beltItems[0] = { name: window.pineSeedItemName, quantity: 1 };
-    const pineItem = window.beltItems[0];
-    let pinePlacingHint = "(Botão Esq.) Plantar / (T) Girar";
-
-    return { appleSelectedHint, applePlacingHint, pinePlacingHint };
+    return {
+      hungerAfterEating,
+      totalSeeds
+    };
   });
 
-  expect(hints.appleSelectedHint).toContain('(E) Comer Maçã');
-  expect(hints.applePlacingHint).toContain('(E) Comer Maçã');
-  expect(hints.applePlacingHint).toContain('(Botão Esq.) Plantar');
-  expect(hints.pinePlacingHint).toContain('(Botão Esq.) Plantar');
+  expect(eatingResult.hungerAfterEating).toBe(70);
+  expect(eatingResult.totalSeeds).toBe(1);
+
+  // 4. Test holding rules and interaction hints
+  const rules = await page.evaluate(() => {
+    // Look down at the ground
+    window.camera.lookAt(0, -10, 0);
+
+    // Apple
+    const appleHasGhost = window.hasGhostPreview('maca');
+    const appleActionType = window.getActionType({ name: 'maca' });
+
+    // Put apple in hand
+    window.beltItems[0] = { name: 'maca', quantity: 1 };
+    window.selectedSlotIndex = 0;
+    window.updateUI();
+    window.animate();
+
+    const appleHint = document.getElementById('interactionHint').textContent;
+
+    // Put coconut in hand
+    window.beltItems[0] = { name: 'coco', quantity: 1 };
+    window.updateUI();
+    window.animate();
+    const coconutHint = document.getElementById('interactionHint').textContent;
+
+    // Put apple seed in hand
+    window.beltItems[0] = { name: window.appleSeedItemName, quantity: 1 };
+    window.updateUI();
+    window.animate();
+    const appleSeedHint = document.getElementById('interactionHint').textContent;
+
+    return {
+      appleHasGhost,
+      appleActionType,
+      appleHint,
+      coconutHint,
+      appleSeedHint
+    };
+  });
+
+  expect(rules.appleHasGhost).toBe(false);
+  expect(rules.appleActionType).toBe(null);
+  expect(rules.appleHint).toContain('(E) Comer Maçã');
+  expect(rules.appleHint).not.toContain('Plantar');
+  expect(rules.appleHint).not.toContain('Girar');
+
+  expect(rules.coconutHint).toContain('(E) Comer Coco');
+  expect(rules.coconutHint).toContain('(Botão Esq.) Plantar');
+  expect(rules.coconutHint).not.toContain('Girar');
+
+  expect(rules.appleSeedHint).toContain('(Botão Esq.) Plantar');
+  expect(rules.appleSeedHint).not.toContain('Girar');
 });
