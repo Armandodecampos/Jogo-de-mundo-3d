@@ -72,7 +72,7 @@ test('Verify apple tree destruction yields 0 seeds, eating apple yields seed, an
 
   expect(pineSeedsYielded).toBe(2);
 
-  // 3. Test eating Apple via key 'E' / interact() gives 1 Apple Seed
+  // 3. Test eating Apple via key 'E' / interact() gives 6 Apple Seeds
   const eatingResult = await page.evaluate(() => {
     window.beltItems.fill(null);
     window.backpackItems.fill(null);
@@ -99,7 +99,7 @@ test('Verify apple tree destruction yields 0 seeds, eating apple yields seed, an
   });
 
   expect(eatingResult.hungerAfterEating).toBe(70);
-  expect(eatingResult.totalSeeds).toBe(1);
+  expect(eatingResult.totalSeeds).toBe(6);
 
   // 4. Test holding rules and interaction hints
   const rules = await page.evaluate(() => {
