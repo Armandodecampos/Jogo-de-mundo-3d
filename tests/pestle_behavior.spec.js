@@ -20,16 +20,16 @@ test('Pestle cannot be grabbed and places flush on top of tree trunk', async ({ 
         if (!trunkBody) return { success: false, reason: 'Failed to create tree trunk' };
 
         // Create pestle on top of tree trunk
-        // Trunk height is 1.0 (from y=4.5 to y=5.5). Trunk top surface is at y = 5.5.
-        // Pestle height is 0.3 (halfExtent 0.15). Pestle center should be at y = 5.5 + 0.15 = 5.65.
-        // Pestle visual bottom (center - 0.15) should be at y = 5.5 (0 gap!).
-        const pestlePos = new THREE.Vector3(0, 5.65, 0);
+        // Trunk top surface is at trunkBody.position.y + trunkBody.shapes[0].halfExtents.y.
+        // Pestle height is 0.3 (halfExtent 0.15). Pestle center should be at trunkTopY + 0.15.
+        // Pestle visual bottom (center - 0.15) should be at trunkTopY (0 gap!).
+        const trunkTopY = trunkBody.position.y + trunkBody.shapes[0].halfExtents.y;
+        const pestlePos = new THREE.Vector3(0, trunkTopY + 0.15, 0);
         window.createPlaceableBlock(pestlePos, new THREE.Quaternion(), pestleName);
 
         const pestleBody = window.placedConstructionBodies.find(b => b.userData && b.userData.type === pestleName);
         if (!pestleBody) return { success: false, reason: 'Failed to create pestle' };
 
-        const trunkTopY = trunkBody.position.y + trunkBody.shapes[0].halfExtents.y;
         const pestleBottomY = pestleBody.position.y - pestleBody.shapes[0].halfExtents.y;
         const gap = Math.abs(pestleBottomY - trunkTopY);
 
