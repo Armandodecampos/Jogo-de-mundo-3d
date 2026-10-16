@@ -9031,7 +9031,7 @@
 
                 if (event.button === 0) { // Botão esquerdo do mouse para cima
                     if (primaryActionType === 'grab' && !blockPlacedThisClick) {
-                        collectObject();
+                        collectObject(true);
                     }
                     blockPlacedThisClick = false; // Limpa a flag
                 }
@@ -9594,7 +9594,7 @@
                 return false;
             }
 
-            function collectObject() {
+            function collectObject(fromLeftClick = false) {
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(raycastTargets, true);
                 for (const intersect of intersects) {
@@ -9614,6 +9614,7 @@
 
                     if (!clickedBody.userData.isCollectible && !clickedBody.userData.isRaft) continue;
                     if (clickedBody.userData.type === campfireItemName || clickedBody.userData.type === doorItemName || clickedBody.userData.type === windowItemName) continue;
+                    if (fromLeftClick && clickedBody.userData.type === stoneItemName) continue;
 
                     // NOVO: Se for um contêiner (contêiner/caixote), só permite guardar se estiver vazio
                     if (clickedBody.userData.isChest) {
