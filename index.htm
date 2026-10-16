@@ -6230,7 +6230,7 @@
                     const branchMat = treeTrunkMaterialMesh || new THREE.MeshStandardMaterial({ color: 0x5c4033 });
 
                     blockBody.userData.branches.forEach((bData, idx) => {
-                        const bRadius = (trunkRadius * 1.4) / 3; // Triplo mais fino
+                        const bRadius = trunkRadius * 1.4 * 0.7; // 30% mais fino
                         const bLength = bData.length || (trunkRadius * 10.0);
                         const bGeom = new THREE.CylinderGeometry(bRadius * 0.7, bRadius, bLength, 6);
                         bGeom.translate(0, bLength / 2, 0);
@@ -11548,6 +11548,24 @@
                                 if (mesh && mesh.children) {
                                     const appleMesh = mesh.children.find(child => child.userData.isApple && child.userData.appleIndex === index);
                                     if (appleMesh) appleMesh.visible = true;
+                                }
+                            }
+                        });
+                    }
+                });
+                // NOVO: Respawn de galhos nas árvores
+                placedConstructionBodies.forEach(body => {
+                    if (body && body.userData && body.userData.branches) {
+                        body.userData.branches.forEach((bData, index) => {
+                            if (bData.broken && world.time - bData.lastBrokenTime > 30) {
+                                bData.broken = false;
+                                const mesh = placedConstructionMeshes[placedConstructionBodies.indexOf(body)];
+                                if (mesh && mesh.children) {
+                                    mesh.traverse(child => {
+                                        if (child.userData && child.userData.isBranch && child.userData.branchIndex === index) {
+                                            child.visible = true;
+                                        }
+                                    });
                                 }
                             }
                         });
