@@ -5,19 +5,22 @@ test.describe('Ghost Block Rotation and Interaction Hint', () => {
         test.setTimeout(60000);
 
         await page.goto('http://localhost:8080/index.htm');
-        await page.click('#startButton');
-        await page.waitForFunction(() => window.isWorldReady === true);
+        await page.evaluate(() => localStorage.clear());
+
+        await page.waitForFunction(() => typeof window.executeFinalGameLaunch === 'function', { timeout: 60000 });
+        await page.evaluate(() => window.executeFinalGameLaunch());
+        await page.waitForFunction(() => window.isWorldReady === true, { timeout: 60000 });
 
         // Focus game canvas and simulate looking down
         await page.evaluate(() => {
-            window.camera.rotation.x = -Math.PI / 3; // Look down
-            window.camera.rotation.y = 0;
-            // Place a placeable item in belt slot 0
+            window.camera.lookAt(0, -10, 0);
             window.beltItems[0] = { name: 'cob', quantity: 10 };
-            window.updateBeltDisplay();
+            window.selectedSlotIndex = 0;
+            window.updateUI();
+            window.animate();
         });
 
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(200);
 
         const cobHintText = await page.evaluate(() => {
             const el = document.getElementById('interactionHint');
@@ -51,16 +54,19 @@ test.describe('Ghost Block Rotation and Interaction Hint', () => {
         // Now place apple seed ('semente_macieira') in slot 0
         await page.evaluate(() => {
             window.beltItems[0] = { name: window.appleSeedItemName, quantity: 5 };
-            window.updateBeltDisplay();
+            window.selectedSlotIndex = 0;
+            window.updateUI();
+            window.animate();
         });
 
-        await page.waitForTimeout(500);
+        await page.waitForTimeout(200);
 
         const seedHintText = await page.evaluate(() => {
             const el = document.getElementById('interactionHint');
             return el ? el.textContent : '';
         });
 
-        expect(seedHintText).toBe('(Botão Esq.) Plantar / (T) Girar');
+        // Apple seed should NOT have (T) Girar option
+        expect(seedHintText).toBe('(Botão Esq.) Plantar');
     });
 });
