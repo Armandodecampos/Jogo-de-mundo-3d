@@ -6213,53 +6213,53 @@
                     }
                 }
 
-                // Adiciona 3 galhos visíveis que o jogador pode quebrar e coletar individualmente
-                if (!blockBody.userData.branches) {
-                    blockBody.userData.branches = [
-                        { broken: false, heightFactor: 0.35, angle: 0.5, length: stageData.visual.trunk.radius * 2.5 },
-                        { broken: false, heightFactor: 0.55, angle: 2.6, length: stageData.visual.trunk.radius * 2.8 },
-                        { broken: false, heightFactor: 0.75, angle: 4.8, length: stageData.visual.trunk.radius * 2.3 }
-                    ];
-                }
-
-                const trunkHeight = stageData.visual.trunk.height;
-                const trunkRadius = stageData.visual.trunk.radius;
-                const baseY = (treeType === 'coconut')
-                    ? (stageData.visual.trunk.yOffsetInGroup - trunkHeight / 2)
-                    : (stageData.visual.trunk.yOffsetInGroup - trunkHeight / 2);
-
-                const branchMat = treeTrunkMaterialMesh || new THREE.MeshStandardMaterial({ color: 0x5c4033 });
-
-                blockBody.userData.branches.forEach((bData, idx) => {
-                    const bRadius = trunkRadius * 0.35;
-                    const bLength = bData.length || (trunkRadius * 2.5);
-                    const bGeom = new THREE.CylinderGeometry(bRadius * 0.7, bRadius, bLength, 6);
-                    const bMesh = new THREE.Mesh(bGeom, branchMat);
-
-                    const branchY = baseY + trunkHeight * (bData.heightFactor || (0.3 + idx * 0.25));
-                    const angle = bData.angle || (idx * 2.1);
-
-                    const bGroup = new THREE.Group();
-                    bGroup.position.set(0, branchY, 0);
-                    bGroup.rotation.y = angle;
-
-                    bMesh.position.set(bLength / 2, 0, 0);
-                    bMesh.rotation.z = -0.5; // Inclinação do galho saindo do tronco
-                    bMesh.castShadow = true;
-                    bMesh.receiveShadow = true;
-
-                    bGroup.add(bMesh);
-
-                    bMesh.userData.isBranch = true;
-                    bMesh.userData.branchIndex = idx;
-                    bMesh.userData.treeBody = blockBody;
-
-                    if (bData.broken) {
-                        bMesh.visible = false;
+                // Adiciona 3 galhos visíveis (exceto coqueiros) que se localizam na parte superior do tronco e são o dobro do tamanho
+                if (treeType !== 'coconut') {
+                    if (!blockBody.userData.branches) {
+                        blockBody.userData.branches = [
+                            { broken: false, lastBrokenTime: 0, heightFactor: 0.65, angle: 0.5, length: stageData.visual.trunk.radius * 5.0 },
+                            { broken: false, lastBrokenTime: 0, heightFactor: 0.78, angle: 2.6, length: stageData.visual.trunk.radius * 5.5 },
+                            { broken: false, lastBrokenTime: 0, heightFactor: 0.88, angle: 4.8, length: stageData.visual.trunk.radius * 4.8 }
+                        ];
                     }
 
-                    treeGroup.add(bGroup);
-                });
+                    const trunkHeight = stageData.visual.trunk.height;
+                    const trunkRadius = stageData.visual.trunk.radius;
+                    const baseY = stageData.visual.trunk.yOffsetInGroup - trunkHeight / 2;
+
+                    const branchMat = treeTrunkMaterialMesh || new THREE.MeshStandardMaterial({ color: 0x5c4033 });
+
+                    blockBody.userData.branches.forEach((bData, idx) => {
+                        const bRadius = trunkRadius * 0.7; // Dobro do diâmetro anterior
+                        const bLength = bData.length || (trunkRadius * 5.0);
+                        const bGeom = new THREE.CylinderGeometry(bRadius * 0.7, bRadius, bLength, 6);
+                        const bMesh = new THREE.Mesh(bGeom, branchMat);
+
+                        const branchY = baseY + trunkHeight * (bData.heightFactor || (0.65 + idx * 0.11));
+                        const angle = bData.angle || (idx * 2.1);
+
+                        const bGroup = new THREE.Group();
+                        bGroup.position.set(0, branchY, 0);
+                        bGroup.rotation.y = angle;
+
+                        bMesh.position.set(bLength / 2, 0, 0);
+                        bMesh.rotation.z = -0.5; // Inclinação do galho saindo do tronco
+                        bMesh.castShadow = true;
+                        bMesh.receiveShadow = true;
+
+                        bGroup.add(bMesh);
+
+                        bMesh.userData.isBranch = true;
+                        bMesh.userData.branchIndex = idx;
+                        bMesh.userData.treeBody = blockBody;
+
+                        if (bData.broken) {
+                            bMesh.visible = false;
+                        }
+
+                        treeGroup.add(bGroup);
+                    });
+                }
 
                 mesh = treeGroup;
             }
@@ -9135,6 +9135,7 @@
                         const branchIndex = obj.userData.branchIndex;
                         if (body && body.userData.branches && body.userData.branches[branchIndex]) {
                             body.userData.branches[branchIndex].broken = true;
+                            body.userData.branches[branchIndex].lastBrokenTime = world.time;
                             obj.visible = false;
                             isAttemptingToDestroy = false;
                             isDestroying = false;
@@ -11561,6 +11562,24 @@
                                 if (mesh && mesh.children) {
                                     const cocoMesh = mesh.children.find(child => child.userData.isCoconut && child.userData.coconutIndex === index);
                                     if (cocoMesh) cocoMesh.visible = true;
+                                }
+                            }
+                        });
+                    }
+                });
+                // NOVO: Respawn de galhos nas árvores
+                placedConstructionBodies.forEach(body => {
+                    if (body && body.userData && body.userData.branches) {
+                        body.userData.branches.forEach((bData, index) => {
+                            if (bData.broken && world.time - bData.lastBrokenTime > 30) {
+                                bData.broken = false;
+                                const mesh = placedConstructionMeshes[placedConstructionBodies.indexOf(body)];
+                                if (mesh && mesh.children) {
+                                    mesh.traverse(child => {
+                                        if (child.userData && child.userData.isBranch && child.userData.branchIndex === index) {
+                                            child.visible = true;
+                                        }
+                                    });
                                 }
                             }
                         });
