@@ -9127,11 +9127,10 @@
                 // Usa raycastTargets para evitar colidir com partículas ou o bloco fantasma
                 const intersects = raycaster.intersectObjects(raycastTargets, true);
 
-                // NOVO: Coleta instantânea de galho de árvore com clique esquerdo
+                // NOVO: Coleta instantânea de galho de árvore com clique esquerdo ou abrir/fechar porta/janela
                 for (const intersect of intersects) {
-                    if (intersect.distance > destroyDistance) continue;
                     const obj = intersect.object;
-                    if (obj.userData && obj.userData.isBranch && obj.visible) {
+                    if (intersect.distance <= destroyDistance && obj.userData && obj.userData.isBranch && obj.visible) {
                         const body = obj.userData.treeBody;
                         const branchIndex = obj.userData.branchIndex;
                         if (body && body.userData.branches && body.userData.branches[branchIndex]) {
@@ -9150,6 +9149,24 @@
                             updateBackpackDisplay();
                             playSyntheticCollectSound();
                             showNotification("Galho coletado!");
+                            return;
+                        }
+                    }
+
+                    if (intersect.distance <= pickUpDistance) {
+                        let body = null;
+                        let current = obj;
+                        while (current) {
+                            if (current.userData && current.userData.physicsBody) {
+                                body = current.userData.physicsBody;
+                                break;
+                            }
+                            current = current.parent;
+                        }
+                        if (body && body.userData && (body.userData.type === doorItemName || body.userData.type === windowItemName)) {
+                            isAttemptingToDestroy = false;
+                            isDestroying = false;
+                            toggleDoor(body);
                             return;
                         }
                     }
@@ -9638,10 +9655,6 @@
 
                         if (body.userData.isChest) {
                             openChest(body);
-                            return true;
-                        }
-                        if (body.userData.type === doorItemName || body.userData.type === windowItemName) {
-                            toggleDoor(body);
                             return true;
                         }
                         if (body.userData.isRaft && !isDrivingRaft) {
@@ -12044,7 +12057,7 @@
                                     interactionHintText = "(E) Navegar / (F) Agarrar / (G) Guardar";
                                     identified = true;
                                 } else if (body.userData.type === doorItemName || body.userData.type === windowItemName) {
-                                    interactionHintText = `(E) ${body.userData.isOpen ? 'Fechar' : 'Abrir'}`;
+                                    interactionHintText = `(Botão Esq.) ${body.userData.isOpen ? 'Fechar' : 'Abrir'}`;
                                     identified = true;
                                 } else if (body.userData.type === grassBedItemName || body.userData.type === sleepingMatItemName || body.userData.type === bedItemName) {
                                     interactionHintText = "(E) Dormir / (G) Guardar";
