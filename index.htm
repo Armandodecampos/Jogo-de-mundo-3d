@@ -5243,6 +5243,19 @@
             return removedCount;
         }
 
+        function getFirstValidIntersect(intersects) {
+            if (!intersects || intersects.length === 0) return null;
+            for (let i = 0; i < intersects.length; i++) {
+                const obj = intersects[i].object;
+                if (obj && obj.userData && obj.userData.isWater) {
+                    continue;
+                }
+                return intersects[i];
+            }
+            return null;
+        }
+        window.getFirstValidIntersect = getFirstValidIntersect;
+
         const tempCapimCenter = new THREE.Vector3();
         function getCapimUnderCrosshair(hitPoint, ray, threshold = 0.5) {
             let bestCluster = null;
@@ -9556,19 +9569,6 @@
                 destroyTargetPosition = null;
             }
 
-            function getFirstValidIntersect(intersects) {
-                if (!intersects || intersects.length === 0) return null;
-                for (let i = 0; i < intersects.length; i++) {
-                    const obj = intersects[i].object;
-                    if (obj && obj.userData && obj.userData.isWater) {
-                        continue;
-                    }
-                    return intersects[i];
-                }
-                return null;
-            }
-            window.getFirstValidIntersect = getFirstValidIntersect;
-
             function isTopFaceIntersect(intersect) {
                 if (!intersect || !intersect.face) return false;
                 const worldNormal = intersect.face.normal.clone();
@@ -9883,18 +9883,16 @@
                         pickedObjectMesh = firstIntersect.object;
                         distanceToPickedObject = firstIntersect.distance; // Store initial distance
 
-                            // Make the object kinematic and disable collisions
-                            pickedObjectBody.type = CANNON.Body.KINEMATIC;
-                            pickedObjectBody.collisionResponse = false;
-                            pickedObjectBody.collisionFilterGroup = 0;
-                            pickedObjectBody.collisionFilterMask = 0;
+                        // Make the object kinematic and disable collisions
+                        pickedObjectBody.type = CANNON.Body.KINEMATIC;
+                        pickedObjectBody.collisionResponse = false;
+                        pickedObjectBody.collisionFilterGroup = 0;
+                        pickedObjectBody.collisionFilterMask = 0;
 
-                            // Remove any existing constraints if they exist
-                            if (grabberConstraint) {
-                                world.removeConstraint(grabberConstraint);
-                                grabberConstraint = null;
-                            }
-                            break; // Object grabbed, exit loop
+                        // Remove any existing constraints if they exist
+                        if (grabberConstraint) {
+                            world.removeConstraint(grabberConstraint);
+                            grabberConstraint = null;
                         }
                     }
                 }
