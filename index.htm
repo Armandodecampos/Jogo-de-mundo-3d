@@ -4265,6 +4265,21 @@
                             return;
                         }
                     }
+
+                    // Exige picareta para destruir blocos e pisos de barro e pedra
+                    if (target.body && target.body.userData) {
+                        const targetType = target.body.userData.type;
+                        const isCobOrStoneBlock = [cobItemName, floorItemName, stoneBlockItemName, stoneFloorItemName].includes(targetType);
+                        if (isCobOrStoneBlock) {
+                            const isPickaxe = (heldItemName === pickaxeItemName || heldItemName === ironPickaxeItemName);
+                            if (!isPickaxe) {
+                                showNotification("Você precisa de uma picareta para destruir este bloco!");
+                                isDestroying = false;
+                                isAttemptingToDestroy = false;
+                                return;
+                            }
+                        }
+                    }
                     targetInventory[index] = selectedItem.item;
                     if (targetInventory === backpackItems) maintainBackpack();
                     selectedItem = null;
@@ -9263,6 +9278,21 @@
                         }
                     }
 
+                    // Exige picareta para destruir blocos e pisos de barro e pedra
+                    if (target.body && target.body.userData) {
+                        const targetType = target.body.userData.type;
+                        const isCobOrStoneBlock = [cobItemName, floorItemName, stoneBlockItemName, stoneFloorItemName].includes(targetType);
+                        if (isCobOrStoneBlock) {
+                            const isPickaxe = (heldItemName === pickaxeItemName || heldItemName === ironPickaxeItemName);
+                            if (!isPickaxe) {
+                                showNotification("Você precisa de uma picareta para destruir este bloco!");
+                                isDestroying = false;
+                                isAttemptingToDestroy = false;
+                                return;
+                            }
+                        }
+                    }
+
                     isDestroying = true;
                     if (target.isDigging) {
                         destroyTargetPosition = target.intersect.point.clone();
@@ -9442,8 +9472,10 @@
                     if (isCorrectTool) {
                         if (isBuildingAction) {
                             multiplier = 1.0;
+                        } else if (heldItemName === pickaxeItemName && [cobItemName, floorItemName].includes(target.body?.userData?.type)) {
+                            multiplier = 2.0; // Picareta de pedra destrói bloco e piso de barro em 1.5s (mais fácil, mas não muito rápido)
                         } else if (heldItemName === pickaxeItemName && isBlockOrFloorTarget) {
-                            multiplier = 3.0; // Picareta de pedra leva 5 vezes mais tempo (3.0 vs 0.6) para blocos e pisos
+                            multiplier = 3.0; // Picareta de pedra demorará mais tempo (6.0s) para bloco e piso de pedra
                         } else if ((heldItemName === shovelItemName && materialType === 'earth') ||
                             (isPickaxe && (materialType === 'stone' || isBlockOrFloorTarget)) ||
                             (heldItemName === ironShovelItemName && materialType === 'earth') ||
