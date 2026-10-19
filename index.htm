@@ -8759,12 +8759,12 @@
                     // Check if looking at ground, mat or bed
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                     const intersects = raycaster.intersectObjects(raycastTargets, true);
+                    const firstIntersect = getFirstValidIntersect(intersects);
                     let sleepTarget = 'ground';
                     let canSleep = false;
-                    for (const intersect of intersects) {
-                        if (intersect.distance > 5) continue;
+                    if (firstIntersect && firstIntersect.distance <= 5) {
                         let body = null;
-                        let current = intersect.object;
+                        let current = firstIntersect.object;
                         while (current) {
                             if (current.userData && current.userData.physicsBody) {
                                 body = current.userData.physicsBody;
@@ -8775,7 +8775,6 @@
                         if (body && (body.userData.type === grassBedItemName || body.userData.type === sleepingMatItemName || body.userData.type === bedItemName)) {
                             canSleep = true;
                             sleepTarget = body.userData.type;
-                            break;
                         }
                     }
 
@@ -8890,10 +8889,10 @@
                         // Tenta encontrar uma árvore para escalar
                         raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                         const intersects = raycaster.intersectObjects(raycastTargets, true);
-                        for (const intersect of intersects) {
-                            if (intersect.distance > pickUpDistance) continue;
+                        const firstIntersect = getFirstValidIntersect(intersects);
+                        if (firstIntersect && firstIntersect.distance <= pickUpDistance) {
                             let body = null;
-                            let current = intersect.object;
+                            let current = firstIntersect.object;
                             while (current) {
                                 if (current.userData && current.userData.physicsBody) {
                                     body = current.userData.physicsBody;
@@ -9643,10 +9642,10 @@
 
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(raycastTargets, true);
-                for (const intersect of intersects) {
-                    if (intersect.distance > pickUpDistance) continue;
+                const firstIntersect = getFirstValidIntersect(intersects);
 
-                    const obj = intersect.object;
+                if (firstIntersect && firstIntersect.distance <= pickUpDistance) {
+                    const obj = firstIntersect.object;
                     if (obj.userData.isApple && obj.visible) {
                         const body = obj.userData.treeBody;
                         const appleIndex = obj.userData.appleIndex;
@@ -9722,15 +9721,14 @@
                         }
 
                         if (body.userData.type === treeTrunkItemName) {
-                            if (!isTopFaceIntersect(intersect)) {
-                                continue;
-                            }
-                            if (isTrunkObstructed(body)) {
-                                showNotification("Remova os objetos de cima do tronco para cortar!");
+                            if (isTopFaceIntersect(firstIntersect)) {
+                                if (isTrunkObstructed(body)) {
+                                    showNotification("Remova os objetos de cima do tronco para cortar!");
+                                    return true;
+                                }
+                                openCuttingMenu();
                                 return true;
                             }
-                            openCuttingMenu();
-                            return true;
                         }
                     }
                 }
@@ -9745,24 +9743,25 @@
             function collectObject(fromLeftClick = false) {
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(raycastTargets, true);
-                for (const intersect of intersects) {
-                    if (intersect.distance > pickUpDistance) continue;
+                const firstIntersect = getFirstValidIntersect(intersects);
 
-                    let clickedBody = null;
-                    let current = intersect.object;
-                    while (current) {
-                        if (current.userData && current.userData.physicsBody) {
-                            clickedBody = current.userData.physicsBody;
-                            break;
-                        }
-                        current = current.parent;
+                if (!firstIntersect || firstIntersect.distance > pickUpDistance) return false;
+
+                let clickedBody = null;
+                let current = firstIntersect.object;
+                while (current) {
+                    if (current.userData && current.userData.physicsBody) {
+                        clickedBody = current.userData.physicsBody;
+                        break;
                     }
+                    current = current.parent;
+                }
 
-                    if (!clickedBody || !clickedBody.userData) continue;
+                if (!clickedBody || !clickedBody.userData) return false;
 
-                    if (!clickedBody.userData.isCollectible && !clickedBody.userData.isRaft) continue;
-                    if (clickedBody.userData.type === campfireItemName || clickedBody.userData.type === doorItemName || clickedBody.userData.type === windowItemName) continue;
-                    if (fromLeftClick && clickedBody.userData.type === stoneItemName) continue;
+                if (!clickedBody.userData.isCollectible && !clickedBody.userData.isRaft) return false;
+                if (clickedBody.userData.type === campfireItemName || clickedBody.userData.type === doorItemName || clickedBody.userData.type === windowItemName) return false;
+                if (fromLeftClick && clickedBody.userData.type === stoneItemName) return false;
 
                     // NOVO: Se for um contêiner (contêiner/caixote), só permite guardar se estiver vazio
                     if (clickedBody.userData.isChest) {
@@ -12034,160 +12033,152 @@
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                     // Use a pré-calculada raycastTargets para evitar percorrer milhares de objetos (como partículas e capim instanciada sem hitbox)
                     mainIntersects = raycaster.intersectObjects(raycastTargets, true);
+                    const firstIntersect = getFirstValidIntersect(mainIntersects);
 
-                    for (const intersect of mainIntersects) {
-                        if (intersect.distance > destroyDistance) continue;
-
-                        const obj = intersect.object;
+                    if (firstIntersect && firstIntersect.distance <= destroyDistance) {
+                        const obj = firstIntersect.object;
                         if (obj.userData.isBranch && obj.visible) {
                             interactionHintText = "(Botão Esq.) Quebrar Galho";
-                            break;
-                        }
-
-                        if ((obj.userData.isApple || obj.userData.isCoconut) && obj.visible) {
-                            if (intersect.distance <= pickUpDistance) {
+                        } else if ((obj.userData.isApple || obj.userData.isCoconut) && obj.visible) {
+                            if (firstIntersect.distance <= pickUpDistance) {
                                 interactionHintText = "(E) Colher";
-                                break;
                             }
-                        }
-
-                        let body = null;
-                        let current = obj;
-                        while (current) {
-                            if (current.userData && current.userData.physicsBody) {
-                                body = current.userData.physicsBody;
-                                break;
+                        } else {
+                            let body = null;
+                            let current = obj;
+                            while (current) {
+                                if (current.userData && current.userData.physicsBody) {
+                                    body = current.userData.physicsBody;
+                                    break;
+                                }
+                                current = current.parent;
                             }
-                            current = current.parent;
-                        }
 
-                        if (body && body.userData) {
-                            currentLookedAtBody = body; // Salva para uso em rotateLookedAtObject
-                            let identified = false;
+                            if (body && body.userData) {
+                                currentLookedAtBody = body; // Salva para uso em rotateLookedAtObject
+                                let identified = false;
 
-                            if (intersect.distance <= pickUpDistance && (body.userData.type === doorItemName || body.userData.type === windowItemName)) {
-                                interactionHintText = `(Botão Esq.) ${body.userData.isOpen ? 'Fechar' : 'Abrir'}`;
-                                identified = true;
-                            } else if (body.userData.isDestructible) {
-                                const targetType = body.userData.type;
-                                const isCobOrStoneBlock = [cobItemName, floorItemName, stoneBlockItemName, stoneFloorItemName].includes(targetType);
-                                const heldItemForHint = beltItems[selectedSlotIndex];
-                                const isHoldingPickaxe = heldItemForHint && (heldItemForHint.name === pickaxeItemName || heldItemForHint.name === ironPickaxeItemName);
-
-                                if (body.userData.growthStage) {
-                                    interactionHintText = "(Botão Esq.) Cortar Árvore\n(P) Escalar";
+                                if (firstIntersect.distance <= pickUpDistance && (body.userData.type === doorItemName || body.userData.type === windowItemName)) {
+                                    interactionHintText = `(Botão Esq.) ${body.userData.isOpen ? 'Fechar' : 'Abrir'}`;
                                     identified = true;
-                                } else if (isCobOrStoneBlock) {
-                                    if (isHoldingPickaxe) {
-                                        if (targetType === stoneBlockItemName || targetType === stoneFloorItemName) {
-                                            interactionHintText = "(Botão Esq.) Minerar Pedra";
+                                } else if (body.userData.isDestructible) {
+                                    const targetType = body.userData.type;
+                                    const isCobOrStoneBlock = [cobItemName, floorItemName, stoneBlockItemName, stoneFloorItemName].includes(targetType);
+                                    const heldItemForHint = beltItems[selectedSlotIndex];
+                                    const isHoldingPickaxe = heldItemForHint && (heldItemForHint.name === pickaxeItemName || heldItemForHint.name === ironPickaxeItemName);
+
+                                    if (body.userData.growthStage) {
+                                        interactionHintText = "(Botão Esq.) Cortar Árvore\n(P) Escalar";
+                                        identified = true;
+                                    } else if (isCobOrStoneBlock) {
+                                        if (isHoldingPickaxe) {
+                                            if (targetType === stoneBlockItemName || targetType === stoneFloorItemName) {
+                                                interactionHintText = "(Botão Esq.) Minerar Pedra";
+                                            } else {
+                                                interactionHintText = "(Botão Esq.) Destruir";
+                                            }
+                                            identified = true;
+                                        }
+                                    } else {
+                                        interactionHintText = "(Botão Esq.) Destruir";
+                                        identified = true;
+                                    }
+                                } else if (firstIntersect.distance <= pickUpDistance) {
+                                    if (body.userData.type === treeTrunkItemName) {
+                                        if (isTopFaceIntersect(firstIntersect) && !isTrunkObstructed(body)) {
+                                            interactionHintText = "(E) Opções de corte";
                                         } else {
-                                            interactionHintText = "(Botão Esq.) Destruir";
+                                            interactionHintText = "";
+                                        }
+                                        identified = true;
+                                    } else if (body.userData.type === cutTrunkItemName) {
+                                        interactionHintText = "(F) Agarrar / (G) Guardar";
+                                        identified = true;
+                                    } else if (body.userData.type === torchItemName) {
+                                        interactionHintText = "(E) Interagir / (G) Guardar";
+                                        identified = true;
+                                    } else if (body.userData.type === campfireItemName) {
+                                        interactionHintText = "(E) Interagir";
+                                        identified = true;
+                                    } else if (body.userData.isChest) {
+                                        interactionHintText = "(E) Abrir / (G) Guardar";
+                                        identified = true;
+                                    } else if (body.userData.isRaft) {
+                                        interactionHintText = "(E) Navegar / (F) Agarrar / (G) Guardar";
+                                        identified = true;
+                                    } else if (body.userData.type === grassBedItemName || body.userData.type === sleepingMatItemName || body.userData.type === bedItemName) {
+                                        interactionHintText = "(E) Dormir / (G) Guardar";
+                                        identified = true;
+                                    } else if (body.userData.isCollectible) {
+                                        if (body.userData.type === workbenchItemName || body.userData.type === bigornaItemName || body.userData.type === furnaceItemName || body.userData.type === pestleItemName) {
+                                            interactionHintText = "(E) Acessar / (G) Guardar";
+                                        } else if (body.userData.type === smallTableItemName || body.userData.type === mesaItemName || body.userData.type === largeTableItemName || body.userData.type === stoneItemName) {
+                                            interactionHintText = "(G) Guardar";
+                                        } else {
+                                            interactionHintText = "(F) Agarrar / (G) Guardar";
                                         }
                                         identified = true;
                                     }
-                                } else {
-                                    interactionHintText = "(Botão Esq.) Destruir";
-                                    identified = true;
                                 }
-                            } else if (intersect.distance <= pickUpDistance) {
-                                if (body.userData.type === treeTrunkItemName) {
-                                    if (isTopFaceIntersect(intersect) && !isTrunkObstructed(body)) {
-                                        interactionHintText = "(E) Opções de corte";
-                                    } else {
-                                        interactionHintText = "";
+
+                                // Se o objeto for rotacionável, garantimos que ele seja identificado e mostre o hint
+                                if (firstIntersect.distance <= pickUpDistance && rotatableItems.includes(body.userData.type)) {
+                                    if (!identified) {
+                                        interactionHintText = "(G) Guardar"; // Fallback para móveis que não se encaixam em outras categorias
+                                        identified = true;
                                     }
-                                    identified = true;
-                                } else if (body.userData.type === cutTrunkItemName) {
-                                    interactionHintText = "(F) Agarrar / (G) Guardar";
-                                    identified = true;
-                                } else if (body.userData.type === torchItemName) {
-                                    interactionHintText = "(E) Interagir / (G) Guardar";
-                                    identified = true;
-                                } else if (body.userData.type === campfireItemName) {
-                                    interactionHintText = "(E) Interagir";
-                                    identified = true;
-                                } else if (body.userData.isChest) {
-                                    interactionHintText = "(E) Abrir / (G) Guardar";
-                                    identified = true;
-                                } else if (body.userData.isRaft) {
-                                    interactionHintText = "(E) Navegar / (F) Agarrar / (G) Guardar";
-                                    identified = true;
-                                } else if (body.userData.type === grassBedItemName || body.userData.type === sleepingMatItemName || body.userData.type === bedItemName) {
-                                    interactionHintText = "(E) Dormir / (G) Guardar";
-                                    identified = true;
-                                } else if (body.userData.isCollectible) {
-                                    if (body.userData.type === workbenchItemName || body.userData.type === bigornaItemName || body.userData.type === furnaceItemName || body.userData.type === pestleItemName) {
-                                        interactionHintText = "(E) Acessar / (G) Guardar";
-                                    } else if (body.userData.type === smallTableItemName || body.userData.type === mesaItemName || body.userData.type === largeTableItemName || body.userData.type === stoneItemName) {
-                                        interactionHintText = "(G) Guardar";
-                                    } else {
-                                        interactionHintText = "(F) Agarrar / (G) Guardar";
+                                    const heldItemForRotateCheck = beltItems[selectedSlotIndex];
+                                    const isHoldingNonRotatable = heldItemForRotateCheck && (
+                                        heldItemForRotateCheck.name === appleItemName ||
+                                        heldItemForRotateCheck.name === coconutItemName ||
+                                        heldItemForRotateCheck.name === appleSeedItemName
+                                    );
+                                    if (!isHoldingNonRotatable) {
+                                        interactionHintText += " / (T) Girar";
                                     }
-                                    identified = true;
                                 }
                             }
 
-                            // Se o objeto for rotacionável, garantimos que ele seja identificado e mostre o hint
-                            if (intersect.distance <= pickUpDistance && rotatableItems.includes(body.userData.type)) {
-                                if (!identified) {
-                                    interactionHintText = "(G) Guardar"; // Fallback para móveis que não se encaixam em outras categorias
-                                    identified = true;
-                                }
-                                const heldItemForRotateCheck = beltItems[selectedSlotIndex];
-                                const isHoldingNonRotatable = heldItemForRotateCheck && (
-                                    heldItemForRotateCheck.name === appleItemName ||
-                                    heldItemForRotateCheck.name === coconutItemName ||
-                                    heldItemForRotateCheck.name === appleSeedItemName
+                            // Verificação de terreno (Cavar / Colher Capim)
+                            const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
+                            if (isIslandMesh) {
+                                // Verifica se há capim exatamente na mira
+                                const nearCapimCluster = getCapimUnderCrosshair(firstIntersect.point, raycaster.ray, 0.5);
+                                const nearCapim = !!nearCapimCluster;
+                                const heldItem = beltItems[selectedSlotIndex];
+                                const isHoldingSeed = heldItem && (
+                                    heldItem.name === pineSeedItemName ||
+                                    heldItem.name === appleSeedItemName ||
+                                    heldItem.name === coconutItemName ||
+                                    heldItem.name === coconutSeedItemName
                                 );
-                                if (!isHoldingNonRotatable) {
-                                    interactionHintText += " / (T) Girar";
+
+                                const heldItemName = heldItem ? heldItem.name : null;
+
+                                if (isHoldingSeed && ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
+                                    if (heldItem.name === coconutItemName) {
+                                        interactionHintText = `(E) Comer ${itemDisplayNames[heldItem.name] || heldItem.name} / (Botão Esq.) Plantar`;
+                                    } else {
+                                        interactionHintText = "(Botão Esq.) Plantar";
+                                    }
+                                } else if (heldItemName === dirtItemName) {
+                                    interactionHintText = "(Botão Esq.) Colocar Terra";
+                                } else if (heldItemName === sandItemName) {
+                                    interactionHintText = "(Botão Esq.) Colocar Areia";
+                                } else if (nearCapim) {
+                                    interactionHintText = "(Botão Esq.) Colher Capim";
+                                } else if (heldItemName === shovelItemName || heldItemName === ironShovelItemName) {
+                                    const hitPoint = firstIntersect.point;
+                                    const distFromCenter = Math.sqrt(hitPoint.x ** 2 + hitPoint.z ** 2);
+                                    let material = "Terra";
+                                    if (hitPoint.y < getSurfaceHeight(hitPoint.x, hitPoint.z) - 5.0) {
+                                        material = "Pedra";
+                                    } else if (distFromCenter > capimRadius) {
+                                        material = "Areia";
+                                    }
+                                    interactionHintText = `(Botão Esq.) Cavar ${material}`;
                                 }
                             }
-
-                            if (identified) break;
-                        }
-
-                        // Verificação de terreno (Cavar / Colher Capim)
-                        const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
-                        if (isIslandMesh) {
-                            // Verifica se há capim exatamente na mira
-                            const nearCapimCluster = getCapimUnderCrosshair(intersect.point, raycaster.ray, 0.5);
-                            const nearCapim = !!nearCapimCluster;
-                            const heldItem = beltItems[selectedSlotIndex];
-                            const isHoldingSeed = heldItem && (
-                                heldItem.name === pineSeedItemName ||
-                                heldItem.name === appleSeedItemName ||
-                                heldItem.name === coconutItemName ||
-                                heldItem.name === coconutSeedItemName
-                            );
-
-                            const heldItemName = heldItem ? heldItem.name : null;
-
-                            if (isHoldingSeed && ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
-                                if (heldItem.name === coconutItemName) {
-                                    interactionHintText = `(E) Comer ${itemDisplayNames[heldItem.name] || heldItem.name} / (Botão Esq.) Plantar`;
-                                } else {
-                                    interactionHintText = "(Botão Esq.) Plantar";
-                                }
-                            } else if (heldItemName === dirtItemName) {
-                                interactionHintText = "(Botão Esq.) Colocar Terra";
-                            } else if (heldItemName === sandItemName) {
-                                interactionHintText = "(Botão Esq.) Colocar Areia";
-                            } else if (nearCapim) {
-                                interactionHintText = "(Botão Esq.) Colher Capim";
-                            } else if (heldItemName === shovelItemName || heldItemName === ironShovelItemName) {
-                                const hitPoint = intersect.point;
-                                const distFromCenter = Math.sqrt(hitPoint.x ** 2 + hitPoint.z ** 2);
-                                let material = "Terra";
-                                if (hitPoint.y < getSurfaceHeight(hitPoint.x, hitPoint.z) - 5.0) {
-                                    material = "Pedra";
-                                } else if (distFromCenter > capimRadius) {
-                                    material = "Areia";
-                                }
-                                interactionHintText = `(Botão Esq.) Cavar ${material}`;
-                            }
-                            break;
                         }
                     }
                 }
@@ -13425,12 +13416,11 @@
                     crosshairColor = isPlacementValid ? 'lime' : 'red';
                 } else if (isPrimaryToolDestroying) {
                     if (!isDestroying) {
-                        const intersects = mainIntersects;
+                        const firstIntersect = getFirstValidIntersect(mainIntersects);
                         let canDestroy = false;
                         let isTerraHit = false;
-                        for (let i = 0; i < intersects.length; i++) {
-                            if (intersects[i].distance > destroyDistance) continue;
-                            let obj = intersects[i].object;
+                        if (firstIntersect && firstIntersect.distance <= destroyDistance) {
+                            let obj = firstIntersect.object;
 
                             // Check for mountain/ground
                             const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
@@ -13440,33 +13430,28 @@
                                 const heldItemName = heldItem ? heldItem.name : null;
                                 const isShovel = (heldItemName === shovelItemName || heldItemName === ironShovelItemName);
                                 const isTerra = (heldItemName === dirtItemName || heldItemName === sandItemName);
-                                const nearCapim = !!getCapimUnderCrosshair(intersects[i].point, raycaster.ray, 0.5);
+                                const nearCapim = !!getCapimUnderCrosshair(firstIntersect.point, raycaster.ray, 0.5);
                                 if (isShovel || isTerra || nearCapim) {
                                     canDestroy = true;
                                     isTerraHit = true;
-                                    break;
                                 }
-                            }
-
-                            // Check for patches
-                            if (obj.userData && obj.userData.isDestructible && obj.userData.type === 'patch') {
+                            } else if (obj.userData && obj.userData.isDestructible && obj.userData.type === 'patch') {
                                 canDestroy = true;
-                                break;
-                            }
-                            // Check for blocks with physics bodies
-                            let intersectedBody = null;
-                            let currentObject = obj;
-                            while (currentObject) {
-                                if (currentObject.userData && currentObject.userData.physicsBody) {
-                                    intersectedBody = currentObject.userData.physicsBody;
-                                    if (intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible) {
-                                        canDestroy = true;
+                            } else {
+                                // Check for blocks with physics bodies
+                                let intersectedBody = null;
+                                let currentObject = obj;
+                                while (currentObject) {
+                                    if (currentObject.userData && currentObject.userData.physicsBody) {
+                                        intersectedBody = currentObject.userData.physicsBody;
+                                        if (intersectedBody && intersectedBody.userData && intersectedBody.userData.isDestructible) {
+                                            canDestroy = true;
+                                        }
+                                        break;
                                     }
-                                    break;
+                                    currentObject = currentObject.parent;
                                 }
-                                currentObject = currentObject.parent;
                             }
-                            if (canDestroy) break;
                         }
                         crosshairColor = canDestroy ? (isTerraHit ? 'lime' : 'red') : 'white';
                     } else {
@@ -13475,17 +13460,15 @@
                         crosshairColor = isTerraCurrently ? 'lime' : 'red';
                     }
                 } else if (isPrimaryToolGrabbing) {
-                    const intersects = mainIntersects;
+                    const firstIntersect = getFirstValidIntersect(mainIntersects);
                     let objectInRange = false;
                     let canDestroyWithHand = false;
                     let isTerraHitWithHand = false;
                     const aimablePickableBodies = collectibleBoxes.map(b => b.body);
                     const aimableConstructionBodies = placedConstructionBodies;
 
-                    for (let i = 0; i < intersects.length; i++) {
-                        if (intersects[i].distance > destroyDistance) continue;
-
-                        const obj = intersects[i].object;
+                    if (firstIntersect && firstIntersect.distance <= destroyDistance) {
+                        const obj = firstIntersect.object;
                         let body = null;
                         let current = obj;
                         while (current) {
@@ -13497,39 +13480,36 @@
                         }
 
                         // Check for collectible
-                        if (body && (aimablePickableBodies.includes(body) || (aimableConstructionBodies.includes(body) && body.userData.isCollectible)) && intersects[i].distance <= pickUpDistance) {
+                        if (body && (aimablePickableBodies.includes(body) || (aimableConstructionBodies.includes(body) && body.userData.isCollectible)) && firstIntersect.distance <= pickUpDistance) {
                             objectInRange = true;
-                            break;
-                        }
+                        } else {
+                            // Check for mining/digging with hand
+                            const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
 
-                        // Check for mining/digging with hand
-                        const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
-
-                        if (isIslandMesh) {
-                            // Verifica se há capim na mira para a cor do crosshair
-                            const nearCapimAtHandCluster = getCapimUnderCrosshair(intersects[i].point, raycaster.ray, 0.5);
-                            const nearCapimAtHand = !!nearCapimAtHandCluster;
-                            if (nearCapimAtHand) {
-                                canDestroyWithHand = true;
-                                isTerraHitWithHand = true;
-                                break;
-                            }
-                        }
-
-                        // NOVO: Permite destruir árvores e blocos com a mão
-                        let intersectedBodyWithHand = null;
-                        let currentObjHand = obj;
-                        while (currentObjHand) {
-                            if (currentObjHand.userData && currentObjHand.userData.physicsBody) {
-                                intersectedBodyWithHand = currentObjHand.userData.physicsBody;
-                                if (intersectedBodyWithHand && intersectedBodyWithHand.userData && intersectedBodyWithHand.userData.isDestructible) {
+                            if (isIslandMesh) {
+                                // Verifica se há capim na mira para a cor do crosshair
+                                const nearCapimAtHandCluster = getCapimUnderCrosshair(firstIntersect.point, raycaster.ray, 0.5);
+                                const nearCapimAtHand = !!nearCapimAtHandCluster;
+                                if (nearCapimAtHand) {
                                     canDestroyWithHand = true;
+                                    isTerraHitWithHand = true;
                                 }
-                                break;
+                            } else {
+                                // NOVO: Permite destruir árvores e blocos com a mão
+                                let intersectedBodyWithHand = null;
+                                let currentObjHand = obj;
+                                while (currentObjHand) {
+                                    if (currentObjHand.userData && currentObjHand.userData.physicsBody) {
+                                        intersectedBodyWithHand = currentObjHand.userData.physicsBody;
+                                        if (intersectedBodyWithHand && intersectedBodyWithHand.userData && intersectedBodyWithHand.userData.isDestructible) {
+                                            canDestroyWithHand = true;
+                                        }
+                                        break;
+                                    }
+                                    currentObjHand = currentObjHand.parent;
+                                }
                             }
-                            currentObjHand = currentObjHand.parent;
                         }
-                        if (canDestroyWithHand) break;
                     }
                     if (objectInRange) crosshairColor = 'gold';
                     else if (canDestroyWithHand) crosshairColor = isTerraHitWithHand ? 'lime' : 'red';
