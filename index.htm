@@ -8924,7 +8924,6 @@
                                 const climbDist = trunkRad + (isCrouching ? crouchRadius : playerRadius) * 1.2;
 
                                 climbingOffset.copy(dir.multiplyScalar(climbDist));
-                                break;
                             }
                         }
                     }
@@ -9763,90 +9762,89 @@
                 if (clickedBody.userData.type === campfireItemName || clickedBody.userData.type === doorItemName || clickedBody.userData.type === windowItemName) return false;
                 if (fromLeftClick && clickedBody.userData.type === stoneItemName) return false;
 
-                    // NOVO: Se for um contêiner (contêiner/caixote), só permite guardar se estiver vazio
-                    if (clickedBody.userData.isChest) {
-                        const inventory = clickedBody.userData.inventory;
-                        if (inventory && inventory.some(item => item !== null)) {
-                            // O contêiner não está vazio, não podemos guardá-lo
-                            showNotification("Esvazie o caixote antes de guardá-lo!");
-                            continue;
-                        }
-                    }
-
-                    const itemType = clickedBody.userData.type;
-                    const itemQuantity = clickedBody.userData.quantity || 1; // Padrão para 1 se não especificado
-
-                    const collectibleIndex = collectibleBoxes.findIndex(box => box.body === clickedBody);
-                    if (collectibleIndex > -1) {
-                        const collectibleToRemove = collectibleBoxes[collectibleIndex];
-
-                        world.removeBody(collectibleToRemove.body);
-                        scene.remove(collectibleToRemove.mesh);
-                        collectibleBoxes.splice(collectibleIndex, 1);
-                        raycastTargetsNeedUpdate = true;
-
-                        addItemToInventory(backpackItems, { name: itemType, quantity: itemQuantity });
-                        updateBackpackDisplay();
-                        playSyntheticCollectSound();
-
-                        break;
-                    } else if (clickedBody.userData.isRaft) {
-                        const raftIndex = raftBodies.indexOf(clickedBody);
-                        if (raftIndex > -1) {
-                            const constructionIndex = placedConstructionBodies.indexOf(clickedBody);
-                            if (constructionIndex > -1) {
-                                scene.remove(placedConstructionMeshes[constructionIndex]);
-                                placedConstructionBodies.splice(constructionIndex, 1);
-                                placedConstructionMeshes.splice(constructionIndex, 1);
-                            }
-                            world.removeBody(clickedBody);
-                            raftBodies.splice(raftIndex, 1);
-                            raycastTargetsNeedUpdate = true;
-
-                            addItemToInventory(backpackItems, { name: raftItemName, quantity: 1 });
-                            updateBackpackDisplay();
-                            playSyntheticCollectSound();
-                            break;
-                        }
-                    } else if (clickedBody.userData.type === workbenchItemName || clickedBody.userData.type === smallTableItemName || clickedBody.userData.type === mesaItemName || clickedBody.userData.type === largeTableItemName || clickedBody.userData.type === bigornaItemName || clickedBody.userData.type === furnaceItemName || clickedBody.userData.type === pestleItemName || clickedBody.userData.type === torchItemName) {
-                        const constructionIndex = placedConstructionBodies.indexOf(clickedBody);
-                        if (constructionIndex > -1) {
-                            const type = clickedBody.userData.type;
-                            const fuel = clickedBody.userData.fuel;
-                            const isOn = clickedBody.userData.isOn;
-
-                            const mesh = placedConstructionMeshes[constructionIndex];
-                            if (mesh) {
-                                if (mesh.userData.fireGroup) scene.remove(mesh.userData.fireGroup);
-                                if (mesh.userData.fireLight) scene.remove(mesh.userData.fireLight);
-                                scene.remove(mesh);
-                            }
-
-                            placedConstructionBodies.splice(constructionIndex, 1);
-                            placedConstructionMeshes.splice(constructionIndex, 1);
-                            world.removeBody(clickedBody);
-
-                            if (type === torchItemName || type === furnaceItemName) {
-                                const campfireIndex = activeCampfires.indexOf(clickedBody);
-                                if (campfireIndex !== -1) activeCampfires.splice(campfireIndex, 1);
-                            }
-
-                            raycastTargetsNeedUpdate = true;
-
-                            const item = {
-                                name: type,
-                                quantity: 1
-                            };
-                            if (fuel !== undefined) item.fuel = fuel;
-                            if (isOn !== undefined) item.isOn = isOn;
-
-                            addItemToInventory(backpackItems, item);
-                            updateBackpackDisplay();
-                            playSyntheticCollectSound();
-                            break;
-                        }
+                // NOVO: Se for um contêiner (contêiner/caixote), só permite guardar se estiver vazio
+                if (clickedBody.userData.isChest) {
+                    const inventory = clickedBody.userData.inventory;
+                    if (inventory && inventory.some(item => item !== null)) {
+                        // O contêiner não está vazio, não podemos guardá-lo
+                        showNotification("Esvazie o caixote antes de guardá-lo!");
+                        return false;
                     }
                 }
+
+                const itemType = clickedBody.userData.type;
+                const itemQuantity = clickedBody.userData.quantity || 1; // Padrão para 1 se não especificado
+
+                const collectibleIndex = collectibleBoxes.findIndex(box => box.body === clickedBody);
+                if (collectibleIndex > -1) {
+                    const collectibleToRemove = collectibleBoxes[collectibleIndex];
+
+                    world.removeBody(collectibleToRemove.body);
+                    scene.remove(collectibleToRemove.mesh);
+                    collectibleBoxes.splice(collectibleIndex, 1);
+                    raycastTargetsNeedUpdate = true;
+
+                    addItemToInventory(backpackItems, { name: itemType, quantity: itemQuantity });
+                    updateBackpackDisplay();
+                    playSyntheticCollectSound();
+                    return true;
+                } else if (clickedBody.userData.isRaft) {
+                    const raftIndex = raftBodies.indexOf(clickedBody);
+                    if (raftIndex > -1) {
+                        const constructionIndex = placedConstructionBodies.indexOf(clickedBody);
+                        if (constructionIndex > -1) {
+                            scene.remove(placedConstructionMeshes[constructionIndex]);
+                            placedConstructionBodies.splice(constructionIndex, 1);
+                            placedConstructionMeshes.splice(constructionIndex, 1);
+                        }
+                        world.removeBody(clickedBody);
+                        raftBodies.splice(raftIndex, 1);
+                        raycastTargetsNeedUpdate = true;
+
+                        addItemToInventory(backpackItems, { name: raftItemName, quantity: 1 });
+                        updateBackpackDisplay();
+                        playSyntheticCollectSound();
+                        return true;
+                    }
+                } else if (clickedBody.userData.type === workbenchItemName || clickedBody.userData.type === smallTableItemName || clickedBody.userData.type === mesaItemName || clickedBody.userData.type === largeTableItemName || clickedBody.userData.type === bigornaItemName || clickedBody.userData.type === furnaceItemName || clickedBody.userData.type === pestleItemName || clickedBody.userData.type === torchItemName) {
+                    const constructionIndex = placedConstructionBodies.indexOf(clickedBody);
+                    if (constructionIndex > -1) {
+                        const type = clickedBody.userData.type;
+                        const fuel = clickedBody.userData.fuel;
+                        const isOn = clickedBody.userData.isOn;
+
+                        const mesh = placedConstructionMeshes[constructionIndex];
+                        if (mesh) {
+                            if (mesh.userData.fireGroup) scene.remove(mesh.userData.fireGroup);
+                            if (mesh.userData.fireLight) scene.remove(mesh.userData.fireLight);
+                            scene.remove(mesh);
+                        }
+
+                        placedConstructionBodies.splice(constructionIndex, 1);
+                        placedConstructionMeshes.splice(constructionIndex, 1);
+                        world.removeBody(clickedBody);
+
+                        if (type === torchItemName || type === furnaceItemName) {
+                            const campfireIndex = activeCampfires.indexOf(clickedBody);
+                            if (campfireIndex !== -1) activeCampfires.splice(campfireIndex, 1);
+                        }
+
+                        raycastTargetsNeedUpdate = true;
+
+                        const item = {
+                            name: type,
+                            quantity: 1
+                        };
+                        if (fuel !== undefined) item.fuel = fuel;
+                        if (isOn !== undefined) item.isOn = isOn;
+
+                        addItemToInventory(backpackItems, item);
+                        updateBackpackDisplay();
+                        playSyntheticCollectSound();
+                        return true;
+                    }
+                }
+                return false;
             }
 
             function grabObject() {
