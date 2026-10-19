@@ -9141,49 +9141,50 @@
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 // Usa raycastTargets para evitar colidir com partículas ou o bloco fantasma
                 const intersects = raycaster.intersectObjects(raycastTargets, true);
+                const firstIntersect = getFirstValidIntersect(intersects);
+
+                if (!firstIntersect) return;
 
                 // NOVO: Coleta instantânea de galho de árvore com clique esquerdo ou abrir/fechar porta/janela
-                for (const intersect of intersects) {
-                    const obj = intersect.object;
-                    if (intersect.distance <= destroyDistance && obj.userData && obj.userData.isBranch && obj.visible) {
-                        const body = obj.userData.treeBody;
-                        const branchIndex = obj.userData.branchIndex;
-                        if (body && body.userData.branches && body.userData.branches[branchIndex]) {
-                            body.userData.branches[branchIndex].broken = true;
-                            body.userData.branches[branchIndex].lastBrokenTime = world.time;
-                            obj.visible = false;
-                            isAttemptingToDestroy = false;
-                            isDestroying = false;
+                const obj = firstIntersect.object;
+                if (firstIntersect.distance <= destroyDistance && obj.userData && obj.userData.isBranch && obj.visible) {
+                    const body = obj.userData.treeBody;
+                    const branchIndex = obj.userData.branchIndex;
+                    if (body && body.userData.branches && body.userData.branches[branchIndex]) {
+                        body.userData.branches[branchIndex].broken = true;
+                        body.userData.branches[branchIndex].lastBrokenTime = world.time;
+                        obj.visible = false;
+                        isAttemptingToDestroy = false;
+                        isDestroying = false;
 
-                            const added = addItemToInventory(backpackItems, { name: branchItemName, quantity: 1 });
-                            if (!added) {
-                                const dropPos = intersect.point.clone();
-                                dropPos.y += 0.2;
-                                createDroppableItem(dropPos, { name: branchItemName, quantity: 1 });
-                            }
-                            updateBackpackDisplay();
-                            playSyntheticCollectSound();
-                            showNotification("Galho coletado!");
-                            return;
+                        const added = addItemToInventory(backpackItems, { name: branchItemName, quantity: 1 });
+                        if (!added) {
+                            const dropPos = firstIntersect.point.clone();
+                            dropPos.y += 0.2;
+                            createDroppableItem(dropPos, { name: branchItemName, quantity: 1 });
                         }
+                        updateBackpackDisplay();
+                        playSyntheticCollectSound();
+                        showNotification("Galho coletado!");
+                        return;
                     }
+                }
 
-                    if (intersect.distance <= pickUpDistance) {
-                        let body = null;
-                        let current = obj;
-                        while (current) {
-                            if (current.userData && current.userData.physicsBody) {
-                                body = current.userData.physicsBody;
-                                break;
-                            }
-                            current = current.parent;
+                if (firstIntersect.distance <= pickUpDistance) {
+                    let body = null;
+                    let current = obj;
+                    while (current) {
+                        if (current.userData && current.userData.physicsBody) {
+                            body = current.userData.physicsBody;
+                            break;
                         }
-                        if (body && body.userData && (body.userData.type === doorItemName || body.userData.type === windowItemName)) {
-                            isAttemptingToDestroy = false;
-                            isDestroying = false;
-                            toggleDoor(body);
-                            return;
-                        }
+                        current = current.parent;
+                    }
+                    if (body && body.userData && (body.userData.type === doorItemName || body.userData.type === windowItemName)) {
+                        isAttemptingToDestroy = false;
+                        isDestroying = false;
+                        toggleDoor(body);
+                        return;
                     }
                 }
 
@@ -9219,10 +9220,9 @@
                 let potentialObject = null;
                 let potentialCapim = null;
 
-                for (let i = 0; i < intersects.length; i++) {
-                    if (intersects[i].distance > destroyDistance) continue;
-                    let obj = intersects[i].object;
-                    const hitPoint = intersects[i].point;
+                if (firstIntersect && firstIntersect.distance <= destroyDistance) {
+                    let obj = firstIntersect.object;
+                    const hitPoint = firstIntersect.point;
 
                     // Verifica se é o terreno
                     const isIslandMesh = islandMeshes.some(m => m && m.mesh === obj);
@@ -9233,7 +9233,7 @@
                             potentialCapim = { body: null, mesh: null, isCapim: true, cluster: nearCapim };
                         }
                         if (!potentialGround) {
-                            potentialGround = { body: null, mesh: obj, isDigging: true, intersect: intersects[i] };
+                            potentialGround = { body: null, mesh: obj, isDigging: true, intersect: firstIntersect };
                         }
                     } else {
                         // Verifica se é um objeto destrutível (árvore, contêiner, etc)
@@ -9556,6 +9556,19 @@
                 destroyTargetPosition = null;
             }
 
+            function getFirstValidIntersect(intersects) {
+                if (!intersects || intersects.length === 0) return null;
+                for (let i = 0; i < intersects.length; i++) {
+                    const obj = intersects[i].object;
+                    if (obj && obj.userData && obj.userData.isWater) {
+                        continue;
+                    }
+                    return intersects[i];
+                }
+                return null;
+            }
+            window.getFirstValidIntersect = getFirstValidIntersect;
+
             function isTopFaceIntersect(intersect) {
                 if (!intersect || !intersect.face) return false;
                 const worldNormal = intersect.face.normal.clone();
@@ -9850,12 +9863,13 @@
                 }
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(raycastTargets, true); // Search recursively
+                const firstIntersect = getFirstValidIntersect(intersects);
                 const allPickableBodies = collectibleBoxes.map(b => b.body);
                 const allConstructionBodies = placedConstructionBodies;
 
-                for (let i = 0; i < intersects.length; i++) {
+                if (firstIntersect && firstIntersect.distance <= pickUpDistance) {
                     let body = null;
-                    let current = intersects[i].object;
+                    let current = firstIntersect.object;
                     while (current) {
                         if (current.userData && current.userData.physicsBody) {
                             body = current.userData.physicsBody;
@@ -9865,10 +9879,9 @@
                     }
 
                     if (body && (allPickableBodies.includes(body) || (allConstructionBodies.includes(body) && body.userData.isCollectible)) && body.userData.type !== campfireItemName && body.userData.type !== workbenchItemName && body.userData.type !== smallTableItemName && body.userData.type !== mesaItemName && body.userData.type !== largeTableItemName && body.userData.type !== bigornaItemName && body.userData.type !== furnaceItemName && body.userData.type !== pestleItemName && body.userData.type !== doorItemName && body.userData.type !== windowItemName && body.userData.type !== stoneItemName && body.userData.type !== boxItemName) {
-                        if (intersects[i].distance <= pickUpDistance) {
-                            pickedObjectBody = body;
-                            pickedObjectMesh = intersects[i].object;
-                            distanceToPickedObject = intersects[i].distance; // Store initial distance
+                        pickedObjectBody = body;
+                        pickedObjectMesh = firstIntersect.object;
+                        distanceToPickedObject = firstIntersect.distance; // Store initial distance
 
                             // Make the object kinematic and disable collisions
                             pickedObjectBody.type = CANNON.Body.KINEMATIC;
