@@ -12058,12 +12058,23 @@
                                 interactionHintText = `(Botão Esq.) ${body.userData.isOpen ? 'Fechar' : 'Abrir'}`;
                                 identified = true;
                             } else if (body.userData.isDestructible) {
+                                const targetType = body.userData.type;
+                                const isCobOrStoneBlock = [cobItemName, floorItemName, stoneBlockItemName, stoneFloorItemName].includes(targetType);
+                                const heldItemForHint = beltItems[selectedSlotIndex];
+                                const isHoldingPickaxe = heldItemForHint && (heldItemForHint.name === pickaxeItemName || heldItemForHint.name === ironPickaxeItemName);
+
                                 if (body.userData.growthStage) {
                                     interactionHintText = "(Botão Esq.) Cortar Árvore\n(P) Escalar";
                                     identified = true;
-                                } else if (body.userData.type === stoneBlockItemName || body.userData.type === stoneFloorItemName) {
-                                    interactionHintText = "(Botão Esq.) Minerar Pedra";
-                                    identified = true;
+                                } else if (isCobOrStoneBlock) {
+                                    if (isHoldingPickaxe) {
+                                        if (targetType === stoneBlockItemName || targetType === stoneFloorItemName) {
+                                            interactionHintText = "(Botão Esq.) Minerar Pedra";
+                                        } else {
+                                            interactionHintText = "(Botão Esq.) Destruir";
+                                        }
+                                        identified = true;
+                                    }
                                 } else {
                                     interactionHintText = "(Botão Esq.) Destruir";
                                     identified = true;
