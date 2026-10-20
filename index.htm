@@ -1132,6 +1132,10 @@
             <i class="fas fa-search"></i>
             <span id="hudInspectorText">Inspetor: OFF</span>
         </button>
+        <button id="hudGiveAllItems" class="parchment-btn py-2 px-4 flex items-center space-x-2">
+            <i class="fas fa-box-open"></i>
+            <span>Todos Itens</span>
+        </button>
     </div>
 
     <div id="inspectorDisplay"></div>
@@ -1306,6 +1310,10 @@
             <i class="fas fa-trash"></i>
             <span>Excluir</span>
         </div>
+        <button id="backpackGiveAllItems" class="parchment-btn py-1 px-3 text-xs absolute top-3 left-32 flex items-center gap-1 z-[11301]">
+            <i class="fas fa-box-open"></i>
+            <span>+ Todos Itens</span>
+        </button>
         <h2 id="backpackTitleHeader" class="text-xl font-bold text-[#2d1a0a] mb-4 text-center">MOCHILA (0.0 / 500kg)</h2>
         <div id="backpackSlotsContainer">
             <!-- Backpack slots will be dynamically filled by JavaScript -->
@@ -2931,7 +2939,7 @@
             [dirtItemName]: 'Terra',
             [sandItemName]: 'Areia',
             [glassItemName]: 'Vidro',
-            [ironPickaxeItemName]: 'Picareta de Ferro\nEspecialidade: Blocos, Pisos e Pedra',
+            [shovelItemName]: 'Pá de Pedra\nEspecialidade: Terra',
             [pickaxeItemName]: 'Picareta de Pedra\nEspecialidade: Blocos, Pisos e Pedra',
             [cobItemName]: 'Bloco de Barro',
             [floorItemName]: 'Piso de Barro',
@@ -4055,7 +4063,7 @@
         }
 
         // Helper function to add item to inventory (belt or backpack)
-        function addItemToInventory(inventoryArray, itemToAdd, maxWeight = Infinity, force = false) {
+        function addItemToInventory(inventoryArray, itemToAdd, maxWeight = Infinity, force = false, suppressNotification = false) {
             if (!force && maxWeight !== Infinity && !canAddWeight(inventoryArray, maxWeight, itemToAdd)) {
                 console.warn("Container weight limit exceeded, could not add item:", itemToAdd.name);
                 return false;
@@ -4098,7 +4106,7 @@
             }
 
             if (added) {
-                if (inventoryArray === backpackItems || inventoryArray === beltItems) {
+                if (!suppressNotification && (inventoryArray === backpackItems || inventoryArray === beltItems)) {
                     addAcquisitionNotification(itemToAdd.name);
                 }
                 return true;
@@ -4108,8 +4116,34 @@
             return false;
         }
 
+        function giveAllItemsToPlayer() {
+            const allGameItems = [
+                capimItemName, appleSeedItemName, appleItemName, pineSeedItemName, coconutSeedItemName,
+                coconutItemName, axeItemName, hammerItemName, ironAxeItemName, ironHammerItemName,
+                ironShovelItemName, ironPickaxeItemName, stoneItemName, ironOreItemName, ironBarItemName,
+                dirtItemName, sandItemName, glassItemName, shovelItemName, pickaxeItemName, cobItemName,
+                floorItemName, treeSaplingItemName, treeTrunkItemName, cutTrunkItemName, firewoodItemName,
+                woodenPlankItemName, boxItemName, raftItemName, branchItemName, stoneBlockItemName,
+                woodenBlockItemName, stoneFloorItemName, woodenFloorItemName, ropeItemName, fabricItemName,
+                campfireItemName, torchItemName, grassBedItemName, sleepingMatItemName, bedItemName,
+                doorItemName, basketItemName, vegetableOilItemName, workbenchToolkitItemName,
+                clayPotItemName, glassPotItemName, pestleItemName, workbenchItemName, smallTableItemName,
+                mesaItemName, largeTableItemName, windowItemName, bigornaItemName, furnaceItemName
+            ];
+
+            allGameItems.forEach(itemName => {
+                addItemToInventory(backpackItems, { name: itemName, quantity: 1 }, Infinity, false, true);
+            });
+
+            updateUI();
+            showNotification("1x de todos os itens foram adicionados à sua mochila!");
+        }
+        window.giveAllItemsToPlayer = giveAllItemsToPlayer;
+
         // Função para atualizar a exibição do cinto de inventário
         function updateBeltDisplay() {
+            if (!inventoryBeltElement) inventoryBeltElement = document.getElementById('inventoryBelt');
+            if (!inventoryBeltElement) return;
             weightNeedsUpdate = true;
             inventoryBeltElement.innerHTML = ''; // Limpa os slots existentes
 
@@ -4134,6 +4168,8 @@
 
         // Função para atualizar a exibição da mochila
         function updateBackpackDisplay() {
+            if (!backpackSlotsContainer) backpackSlotsContainer = document.getElementById('backpackSlotsContainer');
+            if (!backpackSlotsContainer) return;
             weightNeedsUpdate = true;
             maintainBackpack();
             const backpackTitleHeader = document.getElementById('backpackTitleHeader');
@@ -10379,6 +10415,22 @@
                 menuIconButton.addEventListener('click', (e) => {
                     e.stopPropagation();
                     showOptionsScreen();
+                });
+            }
+
+            const hudGiveAllItems = document.getElementById('hudGiveAllItems');
+            if (hudGiveAllItems) {
+                hudGiveAllItems.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    giveAllItemsToPlayer();
+                });
+            }
+
+            const backpackGiveAllItems = document.getElementById('backpackGiveAllItems');
+            if (backpackGiveAllItems) {
+                backpackGiveAllItems.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    giveAllItemsToPlayer();
                 });
             }
 
