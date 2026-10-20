@@ -1423,6 +1423,20 @@
         </div>
     </div>
 
+    <!-- Modal de Opções do Contêiner (Caixote e Cesto de Capim) -->
+    <div id="chestOptionsMenu" class="parchment-window hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 p-6 z-[11300] w-80 flex flex-col text-[#2d1a0a]">
+        <button id="closeChestOptionsButton" class="close-button">X</button>
+        <h2 id="chestOptionsTitle" class="text-2xl font-bold mb-6 text-center text-[#2d1a0a]">Opções</h2>
+        <div class="flex flex-col gap-4">
+            <button id="chestOptionsStoreButton" class="parchment-btn py-3 font-bold">
+                Guardar
+            </button>
+            <button id="chestOptionsRotateButton" class="parchment-btn py-3 font-bold">
+                Girar
+            </button>
+        </div>
+    </div>
+
     <div id="chestModal" class="parchment-window hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 p-6 pt-14 z-[11300] w-4/5 max-w-4xl max-h-[80%] flex flex-col text-[#2d1a0a]">
         <button id="closeChestButton" class="close-button">X</button>
         <div class="flex-grow grid grid-cols-2 gap-6 min-h-0 overflow-hidden">
@@ -2229,6 +2243,117 @@
             document.getElementById('fuelModal').classList.add('hidden');
             if (renderer && renderer.domElement) {
                 renderer.domElement.requestPointerLock().catch(() => {});
+            }
+        }
+
+        let currentOptionsChest = null;
+
+        function openChestOptionsMenu(chestBody) {
+            if (!chestBody) return;
+            currentOptionsChest = chestBody;
+            gamePaused = true;
+
+            const modal = document.getElementById('chestOptionsMenu');
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.style.display = 'flex';
+            }
+
+            const title = document.getElementById('chestOptionsTitle');
+            if (title) {
+                title.textContent = "Opções";
+            }
+
+            const crosshair = document.getElementById('crosshair');
+            if (crosshair) crosshair.style.display = 'none';
+            document.body.style.cursor = 'default';
+            if (renderer && renderer.domElement) {
+                renderer.domElement.style.cursor = 'default';
+            }
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) hudButtons.style.display = 'none';
+            if (ghostBlockMesh) ghostBlockMesh.visible = false;
+
+            pointerLockExitForBackpack = true;
+            document.exitPointerLock();
+        }
+
+        function closeChestOptionsMenu() {
+            currentOptionsChest = null;
+            gamePaused = false;
+            const modal = document.getElementById('chestOptionsMenu');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.style.display = 'none';
+            }
+
+            const crosshair = document.getElementById('crosshair');
+            if (crosshair) crosshair.style.display = 'flex';
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) hudButtons.style.display = 'flex';
+
+            pointerLockExitForBackpack = false;
+            if (renderer && renderer.domElement) {
+                renderer.domElement.requestPointerLock().catch(() => {});
+            }
+        }
+
+        function handleChestOptionsStore() {
+            if (!currentOptionsChest) return;
+
+            if (currentOptionsChest.userData && currentOptionsChest.userData.isChest) {
+                const inventory = currentOptionsChest.userData.inventory;
+                if (inventory && inventory.some(item => item !== null)) {
+                    const itemType = currentOptionsChest.userData.type;
+                    const displayName = (typeof itemDisplayNames !== 'undefined' && itemDisplayNames[itemType]) ? itemDisplayNames[itemType].toLowerCase() : 'caixote';
+                    showNotification(`Esvazie o ${displayName} antes de guardá-lo!`);
+                    return;
+                }
+            }
+
+            const itemType = currentOptionsChest.userData ? currentOptionsChest.userData.type : boxItemName;
+            const itemQuantity = (currentOptionsChest.userData && currentOptionsChest.userData.quantity) || 1;
+
+            const collectibleIndex = collectibleBoxes.findIndex(box => box.body === currentOptionsChest);
+            if (collectibleIndex > -1) {
+                const collectibleToRemove = collectibleBoxes[collectibleIndex];
+                world.removeBody(collectibleToRemove.body);
+                scene.remove(collectibleToRemove.mesh);
+                collectibleBoxes.splice(collectibleIndex, 1);
+                raycastTargetsNeedUpdate = true;
+
+                addItemToInventory(backpackItems, { name: itemType, quantity: itemQuantity });
+                updateBackpackDisplay();
+                playSyntheticCollectSound();
+            }
+
+            closeChestOptionsMenu();
+        }
+
+        function handleChestOptionsRotate() {
+            if (!currentOptionsChest) return;
+
+            const body = currentOptionsChest;
+            const currentQuat = new THREE.Quaternion(
+                body.quaternion.x !== undefined ? body.quaternion.x : 0,
+                body.quaternion.y !== undefined ? body.quaternion.y : 0,
+                body.quaternion.z !== undefined ? body.quaternion.z : 0,
+                body.quaternion.w !== undefined ? body.quaternion.w : 1
+            );
+            const rotationIncrement = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.PI / 4);
+            currentQuat.multiply(rotationIncrement);
+            currentQuat.normalize();
+
+            body.quaternion.set(currentQuat.x, currentQuat.y, currentQuat.z, currentQuat.w);
+            if (body.updateAABB) body.updateAABB();
+
+            const boxIndex = collectibleBoxes.findIndex(b => b.body === body);
+            if (boxIndex !== -1) {
+                const mesh = collectibleBoxes[boxIndex].mesh;
+                if (mesh) {
+                    mesh.quaternion.set(currentQuat.x, currentQuat.y, currentQuat.z, currentQuat.w);
+                    mesh.updateMatrixWorld();
+                }
             }
         }
 
@@ -8698,6 +8823,15 @@
                     }
                 }
 
+                const chestOptionsMenuEl = document.getElementById('chestOptionsMenu');
+                if (chestOptionsMenuEl && chestOptionsMenuEl.style.display !== 'none' && !chestOptionsMenuEl.classList.contains('hidden')) {
+                    if (event.key === 'Escape' || event.key.toLowerCase() === 'e') {
+                        closeChestOptionsMenu();
+                        return;
+                    }
+                    return;
+                }
+
                 // Cutting modal handling
                 if (!document.getElementById('cuttingModal').classList.contains('hidden')) {
                     if (event.key === 'Escape') {
@@ -8722,7 +8856,9 @@
                 if (event.key === 'Escape') {
                     event.preventDefault(); // IMPEDE O COMPORTAMENTO PADRÃO DO NAVEGADOR (sair do pointer lock)
 
-                    if (!document.getElementById('cuttingModal').classList.contains('hidden')) {
+                    if (!document.getElementById('chestOptionsMenu').classList.contains('hidden')) {
+                        closeChestOptionsMenu();
+                    } else if (!document.getElementById('cuttingModal').classList.contains('hidden')) {
                         closeCuttingMenu();
                     } else if (document.getElementById('settingsScreen').classList.contains('active')) {
                         hideSettingsScreen();
@@ -8820,7 +8956,30 @@
                         playerBody.wakeUp();
                         return;
                     }
-                    interact();
+
+                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                    const intersects = raycaster.intersectObjects(raycastTargets, true);
+                    const firstIntersect = getFirstValidIntersect(intersects);
+                    let chestBodyToOpenOptions = null;
+                    if (firstIntersect && firstIntersect.distance <= pickUpDistance) {
+                        let current = firstIntersect.object;
+                        while (current) {
+                            if (current.userData && current.userData.physicsBody) {
+                                const b = current.userData.physicsBody;
+                                if (b && b.userData && b.userData.isChest) {
+                                    chestBodyToOpenOptions = b;
+                                }
+                                break;
+                            }
+                            current = current.parent;
+                        }
+                    }
+
+                    if (chestBodyToOpenOptions) {
+                        openChestOptionsMenu(chestBodyToOpenOptions);
+                    } else {
+                        interact();
+                    }
                 }
 
                 if (event.key.toLowerCase() === 'f') {
@@ -12160,7 +12319,7 @@
                                         interactionHintText = "(Botão Esq.) Usar";
                                         identified = true;
                                     } else if (body.userData.isChest) {
-                                        interactionHintText = "(Botão Esq.) Abrir / (G) Guardar";
+                                        interactionHintText = "(Botão Esq.) Abrir / (E) Opções";
                                         identified = true;
                                     } else if (body.userData.isRaft) {
                                         interactionHintText = "(Botão Esq.) Navegar / (F) Agarrar / (G) Guardar";
@@ -12183,7 +12342,7 @@
                                 }
 
                                 // Se o objeto for rotacionável, garantimos que ele seja identificado e mostre o hint
-                                if (firstIntersect.distance <= pickUpDistance && rotatableItems.includes(body.userData.type)) {
+                                if (firstIntersect.distance <= pickUpDistance && rotatableItems.includes(body.userData.type) && !body.userData.isChest) {
                                     if (!identified) {
                                         interactionHintText = "(G) Guardar"; // Fallback para móveis que não se encaixam em outras categorias
                                         identified = true;
@@ -13862,6 +14021,10 @@
                 document.getElementById('sleepHoursInput').value = 24;
             });
 
+            document.getElementById('closeChestOptionsButton').addEventListener('click', closeChestOptionsMenu);
+            document.getElementById('chestOptionsStoreButton').addEventListener('click', handleChestOptionsStore);
+            document.getElementById('chestOptionsRotateButton').addEventListener('click', handleChestOptionsRotate);
+
             document.getElementById('closeFuelButton').addEventListener('click', closeFuelMenu);
             document.getElementById('addFuelButton').addEventListener('click', addFuel);
             document.getElementById('toggleFireButton').addEventListener('click', toggleFire);
@@ -14079,6 +14242,10 @@
             window.closeCuttingMenu = closeCuttingMenu;
             window.handleCutTrunk = handleCutTrunk;
             window.handleCreateFirewood = handleCreateFirewood;
+            window.openChestOptionsMenu = openChestOptionsMenu;
+            window.closeChestOptionsMenu = closeChestOptionsMenu;
+            window.handleChestOptionsStore = handleChestOptionsStore;
+            window.handleChestOptionsRotate = handleChestOptionsRotate;
             window.openSleepModal = openSleepModal;
             window.closeSleepModal = closeSleepModal;
             window.confirmSleep = confirmSleep;
