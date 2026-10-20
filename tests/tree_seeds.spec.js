@@ -141,11 +141,11 @@ test('Verify apple tree destruction yields 0 seeds, eating apple yields seed, an
 
   expect(rules.appleHasGhost).toBe(false);
   expect(rules.appleActionType).toBe(null);
-  expect(rules.appleHint).toContain('(E) Comer Maçã');
+  expect(rules.appleHint).toContain('(Botão Esq.) Comer Maçã');
   expect(rules.appleHint).not.toContain('Plantar');
   expect(rules.appleHint).not.toContain('Girar');
 
-  expect(rules.coconutHint).toContain('(E) Comer Coco');
+  expect(rules.coconutHint).toContain('(Botão Esq.) Comer Coco');
   expect(rules.coconutHint).toContain('(Botão Esq.) Plantar');
   expect(rules.coconutHint).not.toContain('Girar');
 

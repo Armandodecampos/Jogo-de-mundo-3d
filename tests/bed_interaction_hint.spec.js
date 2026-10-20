@@ -8,7 +8,7 @@ test.describe('Bed Interaction Hint and Stone Pickaxe Speed Verification', () =>
     await page.waitForFunction(() => window.isWorldReady === true);
   });
 
-  test('Looking at placed bed, grass bed, or sleeping mat displays (E) Dormir hint', async ({ page }) => {
+  test('Looking at placed bed, grass bed, or sleeping mat displays (Botão Esq.) Dormir hint', async ({ page }) => {
     const hintResults = await page.evaluate(() => {
       const bedTypes = [window.grassBedItemName, window.sleepingMatItemName, window.bedItemName];
       const hints = {};
@@ -24,7 +24,7 @@ test.describe('Bed Interaction Hint and Stone Pickaxe Speed Verification', () =>
 
         if (body && body.userData) {
           if (body.userData.type === window.grassBedItemName || body.userData.type === window.sleepingMatItemName || body.userData.type === window.bedItemName) {
-            interactionHintText = "(E) Dormir / (G) Guardar";
+            interactionHintText = "(Botão Esq.) Dormir / (G) Guardar";
             identified = true;
           }
 
@@ -43,8 +43,8 @@ test.describe('Bed Interaction Hint and Stone Pickaxe Speed Verification', () =>
       return hints;
     });
 
-    expect(hintResults['cama_capim']).toContain('(E) Dormir');
-    expect(hintResults['colchonete']).toContain('(E) Dormir');
-    expect(hintResults['cama']).toContain('(E) Dormir');
+    expect(hintResults['cama_capim']).toContain('(Botão Esq.) Dormir');
+    expect(hintResults['colchonete']).toContain('(Botão Esq.) Dormir');
+    expect(hintResults['cama']).toContain('(Botão Esq.) Dormir');
   });
 });

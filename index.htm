@@ -1404,7 +1404,7 @@
                 Abastecer (1 Galho)
             </button>
             <button id="toggleFireButton" class="parchment-btn py-3 font-bold">
-                (E) Ligar / Desligar
+                Ligar / Desligar
             </button>
             <button id="accessFurnaceButton" class="hidden parchment-btn py-3 font-bold">
                 Acessar Forno
@@ -9078,6 +9078,11 @@
                 if (event.button === 0) { // Botão esquerdo
                     blockPlacedThisClick = false; // Reseta a flag
 
+                    if (interact()) {
+                        blockPlacedThisClick = true;
+                        return;
+                    }
+
                     const heldItem = beltItems[selectedSlotIndex];
                     const primaryActionType = getActionType(heldItem);
                     if (primaryActionType === 'place') {
@@ -9639,6 +9644,18 @@
             function interact() {
                 if (!isWorldReady || gamePaused || !document.pointerLockElement) return false;
 
+                if (isDrivingRaft) {
+                    isDrivingRaft = false;
+                    currentRaftBody = null;
+                    // Restaura colisão e dinâmica do jogador
+                    playerBody.type = CANNON.Body.DYNAMIC;
+                    playerBody.collisionResponse = true;
+                    playerBody.collisionFilterGroup = 1;
+                    playerBody.collisionFilterMask = 1;
+                    playerBody.wakeUp();
+                    return true;
+                }
+
                 raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                 const intersects = raycaster.intersectObjects(raycastTargets, true);
                 const firstIntersect = getFirstValidIntersect(intersects);
@@ -9682,7 +9699,10 @@
                     }
 
                     if (body && body.userData) {
-                        if (body.userData.type === furnaceItemName || body.userData.type === campfireItemName || body.userData.type === torchItemName) {
+                        if (body.userData.type === doorItemName || body.userData.type === windowItemName) {
+                            toggleDoor(body);
+                            return true;
+                        } else if (body.userData.type === furnaceItemName || body.userData.type === campfireItemName || body.userData.type === torchItemName) {
                             openFuelMenu(body);
                             return true;
                         } else if (body.userData.type === bigornaItemName) {
@@ -9733,6 +9753,9 @@
                 }
                 const heldItem = beltItems[selectedSlotIndex];
                 if (heldItem && (heldItem.name === appleItemName || heldItem.name === coconutItemName)) {
+                    if (ghostBlockMesh && ghostBlockMesh.visible) {
+                        return false;
+                    }
                     eatItem(heldItem, selectedSlotIndex);
                     return true;
                 }
@@ -12039,7 +12062,7 @@
                             interactionHintText = "(Botão Esq.) Quebrar Galho";
                         } else if ((obj.userData.isApple || obj.userData.isCoconut) && obj.visible) {
                             if (firstIntersect.distance <= pickUpDistance) {
-                                interactionHintText = "(E) Colher";
+                                interactionHintText = "(Botão Esq.) Colher";
                             }
                         } else {
                             let body = null;
@@ -12084,7 +12107,7 @@
                                 } else if (firstIntersect.distance <= pickUpDistance) {
                                     if (body.userData.type === treeTrunkItemName) {
                                         if (isTopFaceIntersect(firstIntersect) && !isTrunkObstructed(body)) {
-                                            interactionHintText = "(E) Opções de corte";
+                                            interactionHintText = "(Botão Esq.) Opções de corte";
                                         } else {
                                             interactionHintText = "";
                                         }
@@ -12093,23 +12116,25 @@
                                         interactionHintText = "(F) Agarrar / (G) Guardar";
                                         identified = true;
                                     } else if (body.userData.type === torchItemName) {
-                                        interactionHintText = "(E) Interagir / (G) Guardar";
+                                        interactionHintText = "(Botão Esq.) Usar / (G) Guardar";
                                         identified = true;
                                     } else if (body.userData.type === campfireItemName) {
-                                        interactionHintText = "(E) Interagir";
+                                        interactionHintText = "(Botão Esq.) Usar";
                                         identified = true;
                                     } else if (body.userData.isChest) {
-                                        interactionHintText = "(E) Abrir / (G) Guardar";
+                                        interactionHintText = "(Botão Esq.) Abrir / (G) Guardar";
                                         identified = true;
                                     } else if (body.userData.isRaft) {
-                                        interactionHintText = "(E) Navegar / (F) Agarrar / (G) Guardar";
+                                        interactionHintText = "(Botão Esq.) Navegar / (F) Agarrar / (G) Guardar";
                                         identified = true;
                                     } else if (body.userData.type === grassBedItemName || body.userData.type === sleepingMatItemName || body.userData.type === bedItemName) {
-                                        interactionHintText = "(E) Dormir / (G) Guardar";
+                                        interactionHintText = "(Botão Esq.) Dormir / (G) Guardar";
                                         identified = true;
                                     } else if (body.userData.isCollectible) {
-                                        if (body.userData.type === workbenchItemName || body.userData.type === bigornaItemName || body.userData.type === furnaceItemName || body.userData.type === pestleItemName) {
-                                            interactionHintText = "(E) Acessar / (G) Guardar";
+                                        if (body.userData.type === workbenchItemName || body.userData.type === bigornaItemName || body.userData.type === pestleItemName) {
+                                            interactionHintText = "(Botão Esq.) Usar / (G) Guardar";
+                                        } else if (body.userData.type === furnaceItemName) {
+                                            interactionHintText = "(Botão Esq.) Abrir / (G) Guardar";
                                         } else if (body.userData.type === smallTableItemName || body.userData.type === mesaItemName || body.userData.type === largeTableItemName || body.userData.type === stoneItemName) {
                                             interactionHintText = "(G) Guardar";
                                         } else {
@@ -12155,7 +12180,7 @@
 
                                 if (isHoldingSeed && ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
                                     if (heldItem.name === coconutItemName) {
-                                        interactionHintText = `(E) Comer ${itemDisplayNames[heldItem.name] || heldItem.name} / (Botão Esq.) Plantar`;
+                                        interactionHintText = `(Botão Esq.) Comer ${itemDisplayNames[heldItem.name] || heldItem.name} / (Botão Esq.) Plantar`;
                                     } else {
                                         interactionHintText = "(Botão Esq.) Plantar";
                                     }
@@ -12903,7 +12928,7 @@
                 );
                 if (isHoldingSeed) {
                     if (heldItem && heldItem.name === coconutItemName) {
-                        interactionHintText = `(E) Comer ${itemDisplayNames[heldItem.name] || heldItem.name} / (Botão Esq.) Plantar`;
+                        interactionHintText = `(Botão Esq.) Comer ${itemDisplayNames[heldItem.name] || heldItem.name} / (Botão Esq.) Plantar`;
                     } else if (heldItem && heldItem.name === appleSeedItemName) {
                         interactionHintText = "(Botão Esq.) Plantar";
                     } else {
@@ -12915,9 +12940,9 @@
             } else if (heldItem && (heldItem.name === appleItemName || heldItem.name === coconutItemName)) {
                 const foodName = itemDisplayNames[heldItem.name] || heldItem.name;
                 if (!interactionHintText) {
-                    interactionHintText = `(E) Comer ${foodName}`;
-                } else if (!interactionHintText.includes("(E) Comer")) {
-                    interactionHintText = `(E) Comer ${foodName} / ` + interactionHintText;
+                    interactionHintText = `(Botão Esq.) Comer ${foodName}`;
+                } else if (!interactionHintText.includes("(Botão Esq.) Comer")) {
+                    interactionHintText = `(Botão Esq.) Comer ${foodName} / ` + interactionHintText;
                 }
             }
 
