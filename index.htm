@@ -2314,6 +2314,11 @@
             const itemType = currentOptionsChest.userData ? currentOptionsChest.userData.type : boxItemName;
             const itemQuantity = (currentOptionsChest.userData && currentOptionsChest.userData.quantity) || 1;
 
+            if (pickedObjectBody === currentOptionsChest) {
+                pickedObjectBody = null;
+                pickedObjectMesh = null;
+            }
+
             const collectibleIndex = collectibleBoxes.findIndex(box => box.body === currentOptionsChest);
             if (collectibleIndex > -1) {
                 const collectibleToRemove = collectibleBoxes[collectibleIndex];
@@ -8960,14 +8965,14 @@
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                     const intersects = raycaster.intersectObjects(raycastTargets, true);
                     const firstIntersect = getFirstValidIntersect(intersects);
-                    let chestBodyToOpenOptions = null;
+                    let bodyToOpenOptions = null;
                     if (firstIntersect && firstIntersect.distance <= pickUpDistance) {
                         let current = firstIntersect.object;
                         while (current) {
                             if (current.userData && current.userData.physicsBody) {
                                 const b = current.userData.physicsBody;
-                                if (b && b.userData && b.userData.isChest) {
-                                    chestBodyToOpenOptions = b;
+                                if (b && b.userData && (b.userData.isChest || b.userData.type === cutTrunkItemName || b.userData.type === firewoodItemName)) {
+                                    bodyToOpenOptions = b;
                                 }
                                 break;
                             }
@@ -8975,8 +8980,8 @@
                         }
                     }
 
-                    if (chestBodyToOpenOptions) {
-                        openChestOptionsMenu(chestBodyToOpenOptions);
+                    if (bodyToOpenOptions) {
+                        openChestOptionsMenu(bodyToOpenOptions);
                     } else {
                         interact();
                     }
@@ -9917,6 +9922,15 @@
                                 return true;
                             }
                             openSleepModal(body.userData.type);
+                            return true;
+                        }
+
+                        if (body.userData.type === cutTrunkItemName || body.userData.type === firewoodItemName) {
+                            if (pickedObjectBody) {
+                                dropObject();
+                            } else {
+                                grabObject();
+                            }
                             return true;
                         }
 
@@ -12309,8 +12323,8 @@
                                             interactionHintText = "";
                                         }
                                         identified = true;
-                                    } else if (body.userData.type === cutTrunkItemName) {
-                                        interactionHintText = "(F) Agarrar / (G) Guardar";
+                                    } else if (body.userData.type === cutTrunkItemName || body.userData.type === firewoodItemName) {
+                                        interactionHintText = "(Botão Esq.) Agarrar / (E) Opções";
                                         identified = true;
                                     } else if (body.userData.type === torchItemName) {
                                         interactionHintText = "(Botão Esq.) Usar / (G) Guardar";
@@ -12342,7 +12356,7 @@
                                 }
 
                                 // Se o objeto for rotacionável, garantimos que ele seja identificado e mostre o hint
-                                if (firstIntersect.distance <= pickUpDistance && rotatableItems.includes(body.userData.type) && !body.userData.isChest) {
+                                if (firstIntersect.distance <= pickUpDistance && rotatableItems.includes(body.userData.type) && !body.userData.isChest && body.userData.type !== cutTrunkItemName && body.userData.type !== firewoodItemName) {
                                     if (!identified) {
                                         interactionHintText = "(G) Guardar"; // Fallback para móveis que não se encaixam em outras categorias
                                         identified = true;
@@ -14352,6 +14366,10 @@
             Object.defineProperty(window, 'isPrimaryToolPlacing', { get: () => isPrimaryToolPlacing });
             Object.defineProperty(window, 'isPrimaryToolDestroying', { get: () => isPrimaryToolDestroying });
             Object.defineProperty(window, 'isPrimaryToolGrabbing', { get: () => isPrimaryToolGrabbing });
+            Object.defineProperty(window, 'pickedObjectBody', {
+                get: () => pickedObjectBody,
+                set: (v) => { pickedObjectBody = v; }
+            });
             Object.defineProperty(window, 'selectedSlotIndex', {
                 get: () => selectedSlotIndex,
                 set: (v) => { selectedSlotIndex = v; }
