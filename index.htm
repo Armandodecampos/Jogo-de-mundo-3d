@@ -9194,16 +9194,7 @@
                     isDragging = false;
                     // Lida com a libertação de objetos, se houver
                     if (pickedObjectBody) {
-                        if (grabberConstraint) {
-                            world.removeConstraint(grabberConstraint);
-                            grabberConstraint = null; // Limpa a referência da restrição
-                        }
-                        // O objeto já é dinâmico, então não precisamos restaurar massa/tipo
-                        pickedObjectBody.wakeUp();
-                        pickedObjectBody.allowSleep = true;
-
-                        pickedObjectBody = null;
-                        pickedObjectMesh = null;
+                        dropObject();
 
                         // Ao soltar o objeto, zera a velocidade do jogador para evitar arrasto residual
                         playerBody.velocity.set(0,0,0);
@@ -9293,7 +9284,9 @@
                 const secondaryActionType = getActionType(beltItems[1]);
 
                 if (event.button === 0) { // Botão esquerdo do mouse para cima
-                    if (primaryActionType === 'grab' && !blockPlacedThisClick) {
+                    if (pickedObjectBody) {
+                        dropObject();
+                    } else if (primaryActionType === 'grab' && !blockPlacedThisClick) {
                         collectObject(true);
                     }
                     blockPlacedThisClick = false; // Limpa a flag
