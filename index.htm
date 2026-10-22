@@ -8996,15 +8996,6 @@
                     }
                 }
 
-                if (event.key.toLowerCase() === 'f') {
-                    if (event.repeat) return;
-                    if (pickedObjectBody) {
-                        dropObject();
-                    } else {
-                        grabObject();
-                    }
-                }
-
                 if (event.key.toLowerCase() === 'g') {
                     if (event.repeat) return;
                     collectObject();
@@ -9158,10 +9149,6 @@
 
                 if (event.key.toLowerCase() === ' ') {
                     isJumpBoosting = false;
-                }
-
-                if (event.key.toLowerCase() === 'f') {
-                    dropObject();
                 }
             });
 
@@ -9938,7 +9925,7 @@
                             if (pickedObjectBody) {
                                 dropObject();
                             } else {
-                                grabObject();
+                                grabObject(body, obj, firstIntersect.distance);
                             }
                             return true;
                         }
@@ -10075,50 +10062,31 @@
                 return false;
             }
 
-            function grabObject() {
-                if (gameAudioContext && audioBuffers[grabSoundUrl]) {
-                    const now = gameAudioContext.currentTime;
-                    const source = gameAudioContext.createBufferSource();
-                    source.buffer = audioBuffers[grabSoundUrl];
-                    const gainNode = gameAudioContext.createGain();
-                    gainNode.gain.setValueAtTime(0.5, now);
-                    source.connect(gainNode);
-                    gainNode.connect(gameAudioContext.destination);
-                    source.start(now);
-                }
-                raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                const intersects = raycaster.intersectObjects(raycastTargets, true); // Search recursively
-                const firstIntersect = getFirstValidIntersect(intersects);
-                const allPickableBodies = collectibleBoxes.map(b => b.body);
-                const allConstructionBodies = placedConstructionBodies;
+            function grabObject(targetBody = null, targetMesh = null, distance = pickUpDistance) {
+                if (targetBody) {
+                    pickedObjectBody = targetBody;
+                    pickedObjectMesh = targetMesh;
+                    distanceToPickedObject = distance;
 
-                if (firstIntersect && firstIntersect.distance <= pickUpDistance) {
-                    let body = null;
-                    let current = firstIntersect.object;
-                    while (current) {
-                        if (current.userData && current.userData.physicsBody) {
-                            body = current.userData.physicsBody;
-                            break;
-                        }
-                        current = current.parent;
+                    pickedObjectBody.type = CANNON.Body.KINEMATIC;
+                    pickedObjectBody.collisionResponse = false;
+                    pickedObjectBody.collisionFilterGroup = 0;
+                    pickedObjectBody.collisionFilterMask = 0;
+
+                    if (grabberConstraint) {
+                        world.removeConstraint(grabberConstraint);
+                        grabberConstraint = null;
                     }
 
-                    if (body && (allPickableBodies.includes(body) || (allConstructionBodies.includes(body) && body.userData.isCollectible)) && body.userData.type !== campfireItemName && body.userData.type !== workbenchItemName && body.userData.type !== smallTableItemName && body.userData.type !== mesaItemName && body.userData.type !== largeTableItemName && body.userData.type !== bigornaItemName && body.userData.type !== furnaceItemName && body.userData.type !== pestleItemName && body.userData.type !== doorItemName && body.userData.type !== windowItemName && body.userData.type !== stoneItemName && body.userData.type !== boxItemName) {
-                        pickedObjectBody = body;
-                        pickedObjectMesh = firstIntersect.object;
-                        distanceToPickedObject = firstIntersect.distance; // Store initial distance
-
-                        // Make the object kinematic and disable collisions
-                        pickedObjectBody.type = CANNON.Body.KINEMATIC;
-                        pickedObjectBody.collisionResponse = false;
-                        pickedObjectBody.collisionFilterGroup = 0;
-                        pickedObjectBody.collisionFilterMask = 0;
-
-                        // Remove any existing constraints if they exist
-                        if (grabberConstraint) {
-                            world.removeConstraint(grabberConstraint);
-                            grabberConstraint = null;
-                        }
+                    if (gameAudioContext && audioBuffers[grabSoundUrl]) {
+                        const now = gameAudioContext.currentTime;
+                        const source = gameAudioContext.createBufferSource();
+                        source.buffer = audioBuffers[grabSoundUrl];
+                        const gainNode = gameAudioContext.createGain();
+                        gainNode.gain.setValueAtTime(0.5, now);
+                        source.connect(gainNode);
+                        gainNode.connect(gameAudioContext.destination);
+                        source.start(now);
                     }
                 }
             }
@@ -12270,11 +12238,7 @@
             currentLookedAtBody = null; // Reset a cada frame
             if (document.pointerLockElement === renderer.domElement && !gamePaused) {
                 if (pickedObjectBody) {
-                    if (pickedObjectBody.userData && (pickedObjectBody.userData.type === cutTrunkItemName || pickedObjectBody.userData.type === firewoodItemName)) {
-                        interactionHintText = "(Botão Esq.) Soltar";
-                    } else {
-                        interactionHintText = "(F) Soltar";
-                    }
+                    interactionHintText = "(Botão Esq.) Soltar";
                 } else {
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                     // Use a pré-calculada raycastTargets para evitar percorrer milhares de objetos (como partículas e capim instanciada sem hitbox)
@@ -12350,7 +12314,7 @@
                                         interactionHintText = "(Botão Esq.) Abrir / (E) Opções";
                                         identified = true;
                                     } else if (body.userData.isRaft) {
-                                        interactionHintText = "(Botão Esq.) Navegar / (F) Agarrar / (G) Guardar";
+                                        interactionHintText = "(Botão Esq.) Navegar / (G) Guardar";
                                         identified = true;
                                     } else if (body.userData.type === grassBedItemName || body.userData.type === sleepingMatItemName || body.userData.type === bedItemName) {
                                         interactionHintText = "(Botão Esq.) Dormir / (G) Guardar";
@@ -12360,10 +12324,8 @@
                                             interactionHintText = "(Botão Esq.) Usar / (G) Guardar";
                                         } else if (body.userData.type === furnaceItemName) {
                                             interactionHintText = "(Botão Esq.) Abrir / (G) Guardar";
-                                        } else if (body.userData.type === smallTableItemName || body.userData.type === mesaItemName || body.userData.type === largeTableItemName || body.userData.type === stoneItemName) {
-                                            interactionHintText = "(G) Guardar";
                                         } else {
-                                            interactionHintText = "(F) Agarrar / (G) Guardar";
+                                            interactionHintText = "(G) Guardar";
                                         }
                                         identified = true;
                                     }
