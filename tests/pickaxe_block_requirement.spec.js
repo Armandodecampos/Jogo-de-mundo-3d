@@ -65,8 +65,10 @@ test.describe('Pickaxe Requirement for Clay and Stone Blocks', () => {
         window.selectedSlotIndex = 0;
 
         const isCobOrStoneBlock = ['cob', 'piso', 'bloco_pedra', 'piso_pedra'].includes(bodyType);
+        const isWoodenBlockOrFloor = ['bloco_madeira', 'piso_madeira', 'tábuas'].includes(bodyType);
         const heldItemForHint = window.beltItems[0];
         const isHoldingPickaxe = heldItemForHint && (heldItemForHint.name === 'picareta' || heldItemForHint.name === 'picareta_ferro');
+        const isHoldingAxe = heldItemForHint && (heldItemForHint.name === 'machado' || heldItemForHint.name === 'machado_ferro');
 
         let hint = "";
         if (isCobOrStoneBlock) {
@@ -76,6 +78,10 @@ test.describe('Pickaxe Requirement for Clay and Stone Blocks', () => {
             } else {
               hint = "(Botão Esq.) Destruir";
             }
+          }
+        } else if (isWoodenBlockOrFloor) {
+          if (isHoldingAxe) {
+            hint = "(Botão Esq.) Destruir";
           }
         } else {
           hint = "(Botão Esq.) Destruir";
@@ -89,7 +95,8 @@ test.describe('Pickaxe Requirement for Clay and Stone Blocks', () => {
         cobWithPickaxe: getHintForBody('cob', { name: 'picareta', quantity: 1 }),
         stoneWithHand: getHintForBody('bloco_pedra', null),
         stoneWithIronPickaxe: getHintForBody('bloco_pedra', { name: 'picareta_ferro', quantity: 1 }),
-        woodWithHand: getHintForBody('bloco_madeira', null)
+        woodWithHand: getHintForBody('bloco_madeira', null),
+        woodWithAxe: getHintForBody('bloco_madeira', { name: 'machado', quantity: 1 })
       };
     });
 
@@ -98,6 +105,7 @@ test.describe('Pickaxe Requirement for Clay and Stone Blocks', () => {
     expect(hintResult.cobWithPickaxe).toBe("(Botão Esq.) Destruir");
     expect(hintResult.stoneWithHand).toBe("");
     expect(hintResult.stoneWithIronPickaxe).toBe("(Botão Esq.) Minerar Pedra");
-    expect(hintResult.woodWithHand).toBe("(Botão Esq.) Destruir");
+    expect(hintResult.woodWithHand).toBe("");
+    expect(hintResult.woodWithAxe).toBe("(Botão Esq.) Destruir");
   });
 });
