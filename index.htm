@@ -7223,7 +7223,7 @@
 
             world.addBody(blockBody);
             Object.assign(blockBody.userData, {
-                isCollectible: (type === workbenchItemName || type === smallTableItemName || type === mesaItemName || type === largeTableItemName || type === bigornaItemName || type === furnaceItemName || type === pestleItemName || type === doorItemName || type === windowItemName || type === treeTrunkItemName),
+                isCollectible: true,
                 isDestructible: (type !== treeTrunkItemName),
                 durability: durability,
                 originalMass: initialMass,
@@ -7257,6 +7257,8 @@
             placedConstructionBodies.push(blockBody);
 
             mesh.userData.physicsBody = blockBody;
+            mesh.position.copy(blockBody.position);
+            mesh.quaternion.copy(blockBody.quaternion);
             scene.add(mesh);
             placedConstructionMeshes.push(mesh);
             raycastTargetsNeedUpdate = true;
@@ -9980,9 +9982,8 @@
                 if (!clickedBody || !clickedBody.userData) return false;
 
                 if (!clickedBody.userData.isCollectible && !clickedBody.userData.isRaft) return false;
-                if (clickedBody.userData.type === campfireItemName || clickedBody.userData.type === doorItemName || clickedBody.userData.type === windowItemName) return false;
                 if (clickedBody === pickedObjectBody) return false;
-                if (fromLeftClick && (clickedBody.userData.type === stoneItemName || clickedBody.userData.type === cutTrunkItemName || clickedBody.userData.type === firewoodItemName || clickedBody.userData.type === treeTrunkItemName)) return false;
+                if (fromLeftClick && (clickedBody.userData.type === stoneItemName || clickedBody.userData.type === cutTrunkItemName || clickedBody.userData.type === firewoodItemName || clickedBody.userData.type === treeTrunkItemName || placedConstructionBodies.includes(clickedBody))) return false;
 
                 // NOVO: Se for um contêiner (contêiner/caixote), só permite guardar se estiver vazio
                 if (clickedBody.userData.isChest) {
@@ -10028,12 +10029,13 @@
                         playSyntheticCollectSound();
                         return true;
                     }
-                } else if (clickedBody.userData.type === workbenchItemName || clickedBody.userData.type === smallTableItemName || clickedBody.userData.type === mesaItemName || clickedBody.userData.type === largeTableItemName || clickedBody.userData.type === bigornaItemName || clickedBody.userData.type === furnaceItemName || clickedBody.userData.type === pestleItemName || clickedBody.userData.type === torchItemName || clickedBody.userData.type === treeTrunkItemName) {
+                } else if (placedConstructionBodies.includes(clickedBody)) {
                     const constructionIndex = placedConstructionBodies.indexOf(clickedBody);
                     if (constructionIndex > -1) {
                         const type = clickedBody.userData.type;
                         const fuel = clickedBody.userData.fuel;
                         const isOn = clickedBody.userData.isOn;
+                        const quantity = clickedBody.userData.quantity || 1;
 
                         const mesh = placedConstructionMeshes[constructionIndex];
                         if (mesh) {
@@ -10046,7 +10048,7 @@
                         placedConstructionMeshes.splice(constructionIndex, 1);
                         world.removeBody(clickedBody);
 
-                        if (type === torchItemName || type === furnaceItemName) {
+                        if (type === torchItemName || type === furnaceItemName || type === campfireItemName) {
                             const campfireIndex = activeCampfires.indexOf(clickedBody);
                             if (campfireIndex !== -1) activeCampfires.splice(campfireIndex, 1);
                         }
@@ -10055,10 +10057,10 @@
 
                         const item = {
                             name: type,
-                            quantity: 1
+                            quantity: quantity
                         };
-                        if (fuel !== undefined) item.fuel = fuel;
-                        if (isOn !== undefined) item.isOn = isOn;
+                        if (fuel !== undefined && fuel !== null) item.fuel = fuel;
+                        if (isOn !== undefined && isOn !== null) item.isOn = isOn;
 
                         addItemToInventory(backpackItems, item);
                         updateBackpackDisplay();
@@ -12276,7 +12278,7 @@
                                 let identified = false;
 
                                 if (firstIntersect.distance <= pickUpDistance && (body.userData.type === doorItemName || body.userData.type === windowItemName)) {
-                                    interactionHintText = `(Botão Esq.) ${body.userData.isOpen ? 'Fechar' : 'Abrir'}`;
+                                    interactionHintText = `(Botão Esq.) ${body.userData.isOpen ? 'Fechar' : 'Abrir'} / (G) Guardar`;
                                     identified = true;
                                 } else if (body.userData.isDestructible) {
                                     const targetType = body.userData.type;
@@ -12296,15 +12298,24 @@
                                             } else {
                                                 interactionHintText = "(Botão Esq.) Destruir";
                                             }
+                                            if (firstIntersect.distance <= pickUpDistance) interactionHintText += " / (G) Guardar";
+                                            identified = true;
+                                        } else if (firstIntersect.distance <= pickUpDistance) {
+                                            interactionHintText = "(G) Guardar";
                                             identified = true;
                                         }
                                     } else if (isWoodenBlockOrFloor) {
                                         if (isHoldingAxe) {
                                             interactionHintText = "(Botão Esq.) Destruir";
+                                            if (firstIntersect.distance <= pickUpDistance) interactionHintText += " / (G) Guardar";
+                                            identified = true;
+                                        } else if (firstIntersect.distance <= pickUpDistance) {
+                                            interactionHintText = "(G) Guardar";
                                             identified = true;
                                         }
                                     } else {
                                         interactionHintText = "(Botão Esq.) Destruir";
+                                        if (firstIntersect.distance <= pickUpDistance) interactionHintText += " / (G) Guardar";
                                         identified = true;
                                     }
                                 } else if (firstIntersect.distance <= pickUpDistance) {
@@ -12316,16 +12327,16 @@
                                         }
                                         identified = true;
                                     } else if (body.userData.type === cutTrunkItemName || body.userData.type === firewoodItemName) {
-                                        interactionHintText = "(Botão Esq.) Agarrar / (E) Opções";
+                                        interactionHintText = "(Botão Esq.) Agarrar / (E) Opções / (G) Guardar";
                                         identified = true;
                                     } else if (body.userData.type === torchItemName) {
                                         interactionHintText = "(Botão Esq.) Usar / (G) Guardar";
                                         identified = true;
                                     } else if (body.userData.type === campfireItemName) {
-                                        interactionHintText = "(Botão Esq.) Usar";
+                                        interactionHintText = "(Botão Esq.) Usar / (G) Guardar";
                                         identified = true;
                                     } else if (body.userData.isChest) {
-                                        interactionHintText = "(Botão Esq.) Abrir / (E) Opções";
+                                        interactionHintText = "(Botão Esq.) Abrir / (E) Opções / (G) Guardar";
                                         identified = true;
                                     } else if (body.userData.isRaft) {
                                         interactionHintText = "(Botão Esq.) Navegar / (G) Guardar";
@@ -12341,6 +12352,9 @@
                                         } else {
                                             interactionHintText = "(G) Guardar";
                                         }
+                                        identified = true;
+                                    } else if (!identified) {
+                                        interactionHintText = "(G) Guardar";
                                         identified = true;
                                     }
                                 }
