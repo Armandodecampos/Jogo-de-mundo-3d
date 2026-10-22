@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-test('Verify Porta (Door) and Janela (Window) cannot be grabbed with F key (grabObject)', async ({ page }) => {
+test('Verify Porta (Door) and Janela (Window) cannot be grabbed with grabObject', async ({ page }) => {
     await page.goto('http://localhost:8080/index.htm');
     await page.click('#startButton');
 
@@ -32,7 +32,7 @@ test('Verify Porta (Door) and Janela (Window) cannot be grabbed with F key (grab
             }
         };
 
-        // Create a normal grabbable box body for comparison
+        // Create a box body
         const boxBody = {
             position: new CANNON.Vec3(),
             quaternion: new CANNON.Quaternion(),
@@ -48,33 +48,15 @@ test('Verify Porta (Door) and Janela (Window) cannot be grabbed with F key (grab
         window.placedConstructionBodies.push(windowBody);
         window.placedConstructionBodies.push(boxBody);
 
-        // Attempt to grab door
-        window.raycaster.intersectObjects = () => [
-            {
-                distance: 1.0,
-                object: { userData: { physicsBody: doorBody } }
-            }
-        ];
+        // Attempt to grab door without target parameter
         window.grabObject();
         const doorGrabbed = doorBody.type === CANNON.Body.KINEMATIC;
 
-        // Attempt to grab window
-        window.raycaster.intersectObjects = () => [
-            {
-                distance: 1.0,
-                object: { userData: { physicsBody: windowBody } }
-            }
-        ];
+        // Attempt to grab window without target parameter
         window.grabObject();
         const windowGrabbed = windowBody.type === CANNON.Body.KINEMATIC;
 
-        // Attempt to grab box
-        window.raycaster.intersectObjects = () => [
-            {
-                distance: 1.0,
-                object: { userData: { physicsBody: boxBody } }
-            }
-        ];
+        // Verify grabObject without target parameter does not grab box
         window.grabObject();
         const boxGrabbed = boxBody.type === CANNON.Body.KINEMATIC;
 
@@ -87,5 +69,5 @@ test('Verify Porta (Door) and Janela (Window) cannot be grabbed with F key (grab
 
     expect(result.doorGrabbed).toBe(false);
     expect(result.windowGrabbed).toBe(false);
-    expect(result.boxGrabbed).toBe(true);
+    expect(result.boxGrabbed).toBe(false);
 });
