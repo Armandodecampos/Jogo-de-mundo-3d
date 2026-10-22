@@ -2264,9 +2264,18 @@
                 title.textContent = "Opções";
             }
 
+            const storeBtn = document.getElementById('chestOptionsStoreButton');
+            if (storeBtn) {
+                if (chestBody.userData && chestBody.userData.type === treeTrunkItemName) {
+                    storeBtn.textContent = "Remover";
+                } else {
+                    storeBtn.textContent = "Guardar";
+                }
+            }
+
             const rotateBtn = document.getElementById('chestOptionsRotateButton');
             if (rotateBtn) {
-                if (chestBody.userData && (chestBody.userData.type === cutTrunkItemName || chestBody.userData.type === firewoodItemName)) {
+                if (chestBody.userData && (chestBody.userData.type === cutTrunkItemName || chestBody.userData.type === firewoodItemName || chestBody.userData.type === treeTrunkItemName)) {
                     rotateBtn.classList.add('hidden');
                 } else {
                     rotateBtn.classList.remove('hidden');
@@ -2328,17 +2337,30 @@
                 pickedObjectMesh = null;
             }
 
-            const collectibleIndex = collectibleBoxes.findIndex(box => box.body === currentOptionsChest);
-            if (collectibleIndex > -1) {
-                const collectibleToRemove = collectibleBoxes[collectibleIndex];
-                world.removeBody(collectibleToRemove.body);
-                scene.remove(collectibleToRemove.mesh);
-                collectibleBoxes.splice(collectibleIndex, 1);
-                raycastTargetsNeedUpdate = true;
+            if (currentOptionsChest.userData && currentOptionsChest.userData.type === treeTrunkItemName) {
+                const constructionIndex = placedConstructionBodies.indexOf(currentOptionsChest);
+                if (constructionIndex > -1) {
+                    const mesh = placedConstructionMeshes[constructionIndex];
+                    world.removeBody(currentOptionsChest);
+                    if (mesh) scene.remove(mesh);
+                    placedConstructionBodies.splice(constructionIndex, 1);
+                    placedConstructionMeshes.splice(constructionIndex, 1);
+                    raycastTargetsNeedUpdate = true;
+                    playSyntheticCollectSound();
+                }
+            } else {
+                const collectibleIndex = collectibleBoxes.findIndex(box => box.body === currentOptionsChest);
+                if (collectibleIndex > -1) {
+                    const collectibleToRemove = collectibleBoxes[collectibleIndex];
+                    world.removeBody(collectibleToRemove.body);
+                    scene.remove(collectibleToRemove.mesh);
+                    collectibleBoxes.splice(collectibleIndex, 1);
+                    raycastTargetsNeedUpdate = true;
 
-                addItemToInventory(backpackItems, { name: itemType, quantity: itemQuantity });
-                updateBackpackDisplay();
-                playSyntheticCollectSound();
+                    addItemToInventory(backpackItems, { name: itemType, quantity: itemQuantity });
+                    updateBackpackDisplay();
+                    playSyntheticCollectSound();
+                }
             }
 
             closeChestOptionsMenu();
@@ -7224,7 +7246,7 @@
             world.addBody(blockBody);
             Object.assign(blockBody.userData, {
                 isCollectible: (type === workbenchItemName || type === smallTableItemName || type === mesaItemName || type === largeTableItemName || type === bigornaItemName || type === furnaceItemName || type === pestleItemName || type === doorItemName || type === windowItemName),
-                isDestructible: true,
+                isDestructible: (type !== treeTrunkItemName),
                 durability: durability,
                 originalMass: initialMass,
                 initialPosition: new CANNON.Vec3().copy(blockBody.position),
@@ -8980,7 +9002,7 @@
                         while (current) {
                             if (current.userData && current.userData.physicsBody) {
                                 const b = current.userData.physicsBody;
-                                if (b && b.userData && (b.userData.isChest || b.userData.type === cutTrunkItemName || b.userData.type === firewoodItemName)) {
+                                if (b && b.userData && (b.userData.isChest || b.userData.type === cutTrunkItemName || b.userData.type === firewoodItemName || b.userData.type === treeTrunkItemName)) {
                                     bodyToOpenOptions = b;
                                 }
                                 break;
@@ -12310,9 +12332,9 @@
                                 } else if (firstIntersect.distance <= pickUpDistance) {
                                     if (body.userData.type === treeTrunkItemName) {
                                         if (isTopFaceIntersect(firstIntersect) && !isTrunkObstructed(body)) {
-                                            interactionHintText = "(Botão Esq.) Opções de corte";
+                                            interactionHintText = "(Botão Esq.) Corte de Madeira / (E) Opções";
                                         } else {
-                                            interactionHintText = "";
+                                            interactionHintText = "(E) Opções";
                                         }
                                         identified = true;
                                     } else if (body.userData.type === cutTrunkItemName || body.userData.type === firewoodItemName) {
