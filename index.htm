@@ -8980,15 +8980,19 @@
                     let bodyToOpenOptions = null;
                     if (firstIntersect && firstIntersect.distance <= pickUpDistance) {
                         let current = firstIntersect.object;
+                        let targetBody = null;
                         while (current) {
                             if (current.userData && current.userData.physicsBody) {
-                                const b = current.userData.physicsBody;
-                                if (b && b.userData && b.userData.isChest) {
-                                    bodyToOpenOptions = b;
+                                targetBody = current.userData.physicsBody;
+                                if (targetBody && targetBody.userData && targetBody.userData.isChest) {
+                                    bodyToOpenOptions = targetBody;
                                 }
                                 break;
                             }
                             current = current.parent;
+                        }
+                        if (targetBody && targetBody.userData && (targetBody.userData.type === cutTrunkItemName || targetBody.userData.type === firewoodItemName)) {
+                            return;
                         }
                     }
 
