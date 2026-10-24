@@ -2975,7 +2975,6 @@
         const cutTrunkItemName = 'tronco_cortado'; // NOVO: Nome do item de tronco cortado
         const firewoodItemName = 'lenha'; // NOVO: Nome do item de lenha
         const firewoodUrl = "https://dl.dropbox.com/scl/fi/zflbrbr35n236bqmmhfh2/Cortando-lenha.mp3?rlkey=a36724k4ccx3zoaizuc9d42wr&st=1f39mn2z&dl=1";
-        const woodenPlankItemName = 'tábuas'; // NOVO: Nome do item de tábuas de madeira
         const boxItemName = 'caixote'; // NOVO: Nome do item de caixote
         const basketItemName = 'cesto_capim'; // NOVO: Nome do item de cesto de capim
         const vegetableOilItemName = 'oleo_vegetal';
@@ -3087,7 +3086,6 @@
             [treeTrunkItemName]: 'Tronco de Árvore',
             [cutTrunkItemName]: 'Tronco Cortado',
             [firewoodItemName]: 'Lenha',
-            [woodenPlankItemName]: 'Piso de Madeira',
             [boxItemName]: 'Caixote',
             [raftItemName]: 'Jangada\nPara navegar no mar', // NOVO
             [branchItemName]: 'Galho',
@@ -3147,7 +3145,6 @@
             [cutTrunkItemName]: 6.0,
             [firewoodItemName]: 2.0,
             [doorItemName]: 10.0,
-            [woodenPlankItemName]: 1.5,
             [boxItemName]: 12.0,
             [basketItemName]: 4.0, // NOVO: 1/3 do peso do caixote
             [raftItemName]: 30.0, // Jangada é pesada
@@ -3200,11 +3197,7 @@
         const floorDurability = 1.0; // Durabilidade do piso em segundos
 
         // Dimensões da tábua de madeira
-        const woodenPlankWidth = cobWidth;
-        const woodenPlankHeight = cobHeight / 5;
-        const woodenPlankDepth = cobSize;
-        const initialWoodenPlankMass = 50;
-        const woodenPlankDurability = 0.5; // Durabilidade da tábua em segundos
+
 
         // Stone Block dimensions
         const stoneBlockWidth = cobWidth;
@@ -3950,7 +3943,6 @@
             if (itemName === treeTrunkItemName) return treeTrunkImageURL;
             if (itemName === cutTrunkItemName) return woodTextureURL;
             if (itemName === firewoodItemName) return woodTextureURL;
-            if (itemName === woodenPlankItemName) return woodenPlankTextureURL;
             if (itemName === raftItemName) return treeBarkTextureURL;
             if (itemName === stoneBlockItemName) return stoneBlockTextureURL;
             if (itemName === furnaceItemName) return "https://placehold.co/100x100/444444/FFFFFF?text=Forno";
@@ -4263,7 +4255,7 @@
                 ironShovelItemName, ironPickaxeItemName, stoneItemName, ironOreItemName, ironBarItemName,
                 dirtItemName, sandItemName, glassItemName, shovelItemName, pickaxeItemName, cobItemName,
                 floorItemName, treeSaplingItemName, treeTrunkItemName, cutTrunkItemName, firewoodItemName,
-                woodenPlankItemName, boxItemName, raftItemName, branchItemName, stoneBlockItemName,
+boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 woodenBlockItemName, stoneFloorItemName, woodenFloorItemName, ropeItemName, fabricItemName,
                 campfireItemName, torchItemName, grassBedItemName, sleepingMatItemName, bedItemName,
                 doorItemName, basketItemName, vegetableOilItemName, workbenchToolkitItemName,
@@ -5488,7 +5480,7 @@
         }
 
         function isPositionOccupiedByFloor(x, z, radius = 2.5) {
-            const floorTypes = [floorItemName, stoneFloorItemName, woodenFloorItemName, woodenPlankItemName];
+            const floorTypes = [floorItemName, stoneFloorItemName, woodenFloorItemName];
             for (const body of placedConstructionBodies) {
                 if (body.userData && floorTypes.includes(body.userData.type)) {
                     const dist = calculateWrappedDistance(new THREE.Vector3(x, body.position.y, z), body.position);
@@ -6676,15 +6668,7 @@
                 mesh = new THREE.Mesh(new THREE.CylinderGeometry(trunkRadius, trunkRadius, trunkHeight, trunkSegments), treeTrunkMaterialMesh);
                 initialMass = initialTrunkMass;
                 durability = treeTrunkDurability;
-            } else if (type === 'tábuas') { // NOVO: Bloco de tábuas de madeira
-                width = woodenPlankWidth;
-                height = woodenPlankHeight;
-                depth = woodenPlankDepth;
-                blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
-                blockBody.addShape(blockShape);
-                mesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), woodenPlankMaterialMesh);
-                initialMass = initialWoodenPlankMass;
-                durability = woodenPlankDurability;
+
             } else if (type === stoneBlockItemName) {
                 width = stoneBlockWidth;
                 height = stoneBlockHeight;
@@ -7253,7 +7237,7 @@
                 }
             }
 
-            if ([floorItemName, stoneFloorItemName, woodenFloorItemName, woodenPlankItemName].includes(type)) {
+            if ([floorItemName, stoneFloorItemName, woodenFloorItemName].includes(type)) {
                 removeCapimNear(position, 2.0);
             }
             // NOVO: Adiciona ao array de macieiras se for uma macieira adulta inicial
@@ -9316,7 +9300,7 @@
             function hasGhostPreview(itemName) {
                 if (!itemName) return false;
                 const ghostItems = [
-                    raftItemName, cobItemName, floorItemName, woodenPlankItemName,
+                    raftItemName, cobItemName, floorItemName,
                     stoneBlockItemName, woodenBlockItemName, stoneFloorItemName, woodenFloorItemName,
                     treeSaplingItemName, appleSeedItemName, pineSeedItemName, coconutItemName, coconutSeedItemName,
                     treeTrunkItemName, cutTrunkItemName, firewoodItemName, boxItemName, basketItemName,
@@ -9334,7 +9318,7 @@
                 // O martelo foi removido temporariamente das ferramentas de destruição
                 if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === ironAxeItemName || item.name === ironPickaxeItemName || item.name === ironShovelItemName || item.name === branchItemName || item.name === dirtItemName || item.name === sandItemName) return 'destroy';
                 // Itens de colocação
-                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === coconutSeedItemName || item.name === woodenPlankItemName || item.name === treeTrunkItemName || item.name === cutTrunkItemName || item.name === firewoodItemName || item.name === boxItemName || item.name === basketItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === woodenFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName || item.name === workbenchItemName || item.name === smallTableItemName || item.name === mesaItemName || item.name === largeTableItemName || item.name === bigornaItemName || item.name === furnaceItemName || item.name === pestleItemName || item.name === grassBedItemName || item.name === sleepingMatItemName || item.name === bedItemName || item.name === doorItemName || item.name === windowItemName) return 'place';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === coconutSeedItemName || item.name === treeTrunkItemName || item.name === cutTrunkItemName || item.name === firewoodItemName || item.name === boxItemName || item.name === basketItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === woodenFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName || item.name === workbenchItemName || item.name === smallTableItemName || item.name === mesaItemName || item.name === largeTableItemName || item.name === bigornaItemName || item.name === furnaceItemName || item.name === pestleItemName || item.name === grassBedItemName || item.name === sleepingMatItemName || item.name === bedItemName || item.name === doorItemName || item.name === windowItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
             }
 
@@ -9484,7 +9468,7 @@
                     // Exige machado para destruir blocos e pisos de madeira (apenas para objetos destrutíveis)
                     if (target.body && target.body.userData && target.body.userData.isDestructible) {
                         const targetType = target.body.userData.type;
-                        const isWoodenBlockOrFloor = [woodenBlockItemName, woodenFloorItemName, woodenPlankItemName].includes(targetType);
+                        const isWoodenBlockOrFloor = [woodenBlockItemName, woodenFloorItemName].includes(targetType);
                         if (isWoodenBlockOrFloor) {
                             const isHoldingAxe = (heldItemName === axeItemName || heldItemName === ironAxeItemName);
                             if (!isHoldingAxe) {
@@ -9642,7 +9626,7 @@
                         baseDurability = target.body.userData.durability || 1.0;
                         const targetType = target.body.userData.type;
                         const isTree = !!target.body.userData.growthStage;
-                        const isWooden = [woodenPlankItemName, treeTrunkItemName, cutTrunkItemName, firewoodItemName, boxItemName, basketItemName, woodenBlockItemName, woodenFloorItemName].includes(targetType);
+                        const isWooden = [treeTrunkItemName, cutTrunkItemName, firewoodItemName, boxItemName, basketItemName, woodenBlockItemName, woodenFloorItemName].includes(targetType);
                         const isStone = [stoneBlockItemName, stoneFloorItemName, stoneItemName].includes(targetType);
                         const isEarth = [cobItemName, floorItemName].includes(targetType);
 
@@ -10146,10 +10130,10 @@
                 if (ghostBlockMesh.visible && ghostBlockMesh.material.color.getHex() === 0x00ff00) {
 
                     // Final, definitive check for floor stacking before consuming an item.
-                    const isPlacingFloor = currentBlockType === floorItemName || currentBlockType === woodenPlankItemName || currentBlockType === stoneFloorItemName || currentBlockType === woodenFloorItemName;
+                    const isPlacingFloor = currentBlockType === floorItemName  || currentBlockType === stoneFloorItemName || currentBlockType === woodenFloorItemName;
                     if (isPlacingFloor) {
                         for (const existingBody of placedConstructionBodies) {
-                            const isExistingFloor = existingBody.userData.type === floorItemName || existingBody.userData.type === woodenPlankItemName || existingBody.userData.type === stoneFloorItemName || existingBody.userData.type === woodenFloorItemName;
+                            const isExistingFloor = existingBody.userData.type === floorItemName  || existingBody.userData.type === stoneFloorItemName || existingBody.userData.type === woodenFloorItemName;
                             if (isExistingFloor) {
                                 // Check if a floor already exists at the target position.
                                 if (ghostBlockMesh.position.distanceToSquared(existingBody.position) < 0.01) {
@@ -10163,7 +10147,6 @@
                     let materialLoaded = false;
                     if (currentBlockType === 'cob' && cobMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === 'piso' && floorMaterialMesh) materialLoaded = true;
-                    else if (currentBlockType === 'tábuas' && woodenPlankMaterialMesh) materialLoaded = true;
                     else if ((currentBlockType === 'muda_arvore' || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName) && treeTrunkMaterialMesh && treeLeavesMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === 'tronco_arvore' && treeTrunkMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === stoneBlockItemName && stoneBlockMaterialMesh) materialLoaded = true;
@@ -10238,7 +10221,6 @@
                     primaryToolForVisuals.name === cobItemName ||
                     primaryToolForVisuals.name === floorItemName ||
                     primaryToolForVisuals.name === treeSaplingItemName ||
-                    primaryToolForVisuals.name === woodenPlankItemName ||
                     primaryToolForVisuals.name === treeTrunkItemName ||
                     primaryToolForVisuals.name === boxItemName ||
                     primaryToolForVisuals.name === stoneBlockItemName ||
@@ -12294,7 +12276,7 @@
                                 } else if (body.userData.isDestructible) {
                                     const targetType = body.userData.type;
                                     const isCobOrStoneBlock = [cobItemName, floorItemName, stoneBlockItemName, stoneFloorItemName].includes(targetType);
-                                    const isWoodenBlockOrFloor = [woodenBlockItemName, woodenFloorItemName, woodenPlankItemName].includes(targetType);
+                                    const isWoodenBlockOrFloor = [woodenBlockItemName, woodenFloorItemName].includes(targetType);
                                     const heldItemForHint = beltItems[selectedSlotIndex];
                                     const isHoldingPickaxe = heldItemForHint && (heldItemForHint.name === pickaxeItemName || heldItemForHint.name === ironPickaxeItemName);
                                     const isHoldingAxe = heldItemForHint && (heldItemForHint.name === axeItemName || heldItemForHint.name === ironAxeItemName);
@@ -12555,8 +12537,7 @@
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(cobWidth, cobHeight, cobDepth);
                         } else if (currentBlockType === 'piso') {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(floorWidth, floorHeight, floorDepth);
-                        } else if (currentBlockType === 'tábuas') {
-                            ghostBlockMesh.geometry = new THREE.BoxGeometry(woodenPlankWidth, woodenPlankHeight, woodenPlankDepth);
+
                         } else if (currentBlockType === stoneBlockItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(stoneBlockWidth, stoneBlockHeight, stoneBlockDepth);
                         } else if (currentBlockType === woodenBlockItemName) {
@@ -12770,7 +12751,6 @@
                     else if (currentBlockType === bigornaItemName) { currentGhostWidth = 0.8; currentGhostHeight = 0.6; currentGhostDepth = 0.4; }
                     else if (currentBlockType === 'cob') { currentGhostWidth = cobWidth; currentGhostHeight = cobHeight; currentGhostDepth = cobDepth; }
                     else if (currentBlockType === 'piso') { currentGhostWidth = floorWidth; currentGhostHeight = floorHeight; currentGhostDepth = floorDepth; }
-                    else if (currentBlockType === 'tábuas') { currentGhostWidth = woodenPlankWidth; currentGhostHeight = woodenPlankHeight; currentGhostDepth = woodenPlankDepth; }
                     else if (currentBlockType === stoneBlockItemName || currentBlockType === woodenBlockItemName) { currentGhostWidth = 0.4; currentGhostHeight = 0.4; currentGhostDepth = 0.4; }
                     else if (currentBlockType === stoneFloorItemName || currentBlockType === woodenFloorItemName) { currentGhostWidth = stoneFloorWidth; currentGhostHeight = stoneFloorHeight; currentGhostDepth = stoneFloorDepth; }
                     else if (currentBlockType === appleItemName || currentBlockType === appleSeedItemName || currentBlockType === pineSeedItemName || currentBlockType === coconutItemName || currentBlockType === coconutSeedItemName || currentBlockType === 'muda_arvore') { currentGhostWidth = 0.4; currentGhostHeight = treeStages['semente'].visual.mound.height; currentGhostDepth = 0.4; }
@@ -12837,7 +12817,7 @@
                                     const currentHalfZ = currentGhostDepth / 2;
 
                                     const isConstructionBlock = [
-                                        'cob', 'piso', 'tábuas',
+                                        'cob', 'piso',
                                         stoneBlockItemName, woodenBlockItemName,
                                         stoneFloorItemName, woodenFloorItemName,
                                         doorItemName, windowItemName
@@ -12875,8 +12855,8 @@
                                     } else if (Math.abs(hitNormal.x) > 0.7) {
                                         placementPosition.x = intersectedBody.position.x + Math.sign(hitNormal.x) * (targetHalfX + currentHalfX);
                                         placementPosition.z = intersectedBody.position.z;
-                                        const isFloorType = ['piso', stoneFloorItemName, woodenFloorItemName, 'tábuas'].includes(currentBlockType);
-                                        const isTargetFloor = intersectedBody.userData && ['piso', stoneFloorItemName, woodenFloorItemName, 'tábuas'].includes(intersectedBody.userData.type);
+                                        const isFloorType = ['piso', stoneFloorItemName, woodenFloorItemName].includes(currentBlockType);
+                                        const isTargetFloor = intersectedBody.userData && ['piso', stoneFloorItemName, woodenFloorItemName].includes(intersectedBody.userData.type);
                                         if (isFloorType) {
                                             if (isTargetFloor) {
                                                 placementPosition.y = intersectedBody.position.y;
@@ -12894,8 +12874,8 @@
                                     } else if (Math.abs(hitNormal.z) > 0.7) {
                                         placementPosition.z = intersectedBody.position.z + Math.sign(hitNormal.z) * (targetHalfZ + currentHalfZ);
                                         placementPosition.x = intersectedBody.position.x;
-                                        const isFloorType = ['piso', stoneFloorItemName, woodenFloorItemName, 'tábuas'].includes(currentBlockType);
-                                        const isTargetFloor = intersectedBody.userData && ['piso', stoneFloorItemName, woodenFloorItemName, 'tábuas'].includes(intersectedBody.userData.type);
+                                        const isFloorType = ['piso', stoneFloorItemName, woodenFloorItemName].includes(currentBlockType);
+                                        const isTargetFloor = intersectedBody.userData && ['piso', stoneFloorItemName, woodenFloorItemName].includes(intersectedBody.userData.type);
                                         if (isFloorType) {
                                             if (isTargetFloor) {
                                                 placementPosition.y = intersectedBody.position.y;
