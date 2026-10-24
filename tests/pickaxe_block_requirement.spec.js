@@ -65,7 +65,7 @@ test.describe('Pickaxe Requirement for Clay and Stone Blocks', () => {
         window.selectedSlotIndex = 0;
 
         const isCobOrStoneBlock = ['cob', 'piso', 'bloco_pedra', 'piso_pedra'].includes(bodyType);
-        const isWoodenBlockOrFloor = ['bloco_madeira', 'piso_madeira', 'tábuas'].includes(bodyType);
+        const isWoodenBlockOrFloor = ['bloco_madeira', 'piso_madeira'].includes(bodyType);
         const heldItemForHint = window.beltItems[0];
         const isHoldingPickaxe = heldItemForHint && (heldItemForHint.name === 'picareta' || heldItemForHint.name === 'picareta_ferro');
         const isHoldingAxe = heldItemForHint && (heldItemForHint.name === 'machado' || heldItemForHint.name === 'machado_ferro');

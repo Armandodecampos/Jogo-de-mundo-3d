@@ -17,9 +17,6 @@ test.describe('Axe Requirement for Wooden Blocks and Wooden Floors', () => {
       const posWoodFloor = new window.THREE.Vector3(2, 0.08, -2);
       const woodFloorBody = window.createPlaceableBlock(posWoodFloor, null, 'piso_madeira');
 
-      const posWoodPlanks = new window.THREE.Vector3(4, 0.08, -2);
-      const woodPlanksBody = window.createPlaceableBlock(posWoodPlanks, null, 'tábuas');
-
       const testDestructionOnBody = (body, toolItem) => {
         window.beltItems[0] = toolItem;
         window.selectedSlotIndex = 0;
@@ -28,7 +25,7 @@ test.describe('Axe Requirement for Wooden Blocks and Wooden Floors', () => {
         const heldItemName = heldItem?.name;
 
         const targetType = body.userData.type;
-        const isWoodenBlockOrFloor = ['bloco_madeira', 'piso_madeira', 'tábuas'].includes(targetType);
+        const isWoodenBlockOrFloor = ['bloco_madeira', 'piso_madeira'].includes(targetType);
         const isHoldingAxe = (heldItemName === 'machado' || heldItemName === 'machado_ferro');
 
         if (isWoodenBlockOrFloor && !isHoldingAxe) {
@@ -46,18 +43,13 @@ test.describe('Axe Requirement for Wooden Blocks and Wooden Floors', () => {
       const handOnWoodFloor = testDestructionOnBody(woodFloorBody, null);
       const axeOnWoodFloor = testDestructionOnBody(woodFloorBody, { name: 'machado', quantity: 1 });
 
-      const handOnWoodPlanks = testDestructionOnBody(woodPlanksBody, null);
-      const ironAxeOnWoodPlanks = testDestructionOnBody(woodPlanksBody, { name: 'machado_ferro', quantity: 1 });
-
       return {
         handOnWoodBlock,
         pickaxeOnWoodBlock,
         axeOnWoodBlock,
         ironAxeOnWoodBlock,
         handOnWoodFloor,
-        axeOnWoodFloor,
-        handOnWoodPlanks,
-        ironAxeOnWoodPlanks
+        axeOnWoodFloor
       };
     });
 
@@ -71,10 +63,6 @@ test.describe('Axe Requirement for Wooden Blocks and Wooden Floors', () => {
     expect(result.handOnWoodFloor.allowed).toBe(false);
     expect(result.handOnWoodFloor.notification).toBe("Você precisa de um machado para destruir este bloco!");
     expect(result.axeOnWoodFloor.allowed).toBe(true);
-
-    expect(result.handOnWoodPlanks.allowed).toBe(false);
-    expect(result.handOnWoodPlanks.notification).toBe("Você precisa de um machado para destruir este bloco!");
-    expect(result.ironAxeOnWoodPlanks.allowed).toBe(true);
   });
 
   test('Interaction hint for wooden blocks and floors only shows destruction when holding an axe', async ({ page }) => {
@@ -83,7 +71,7 @@ test.describe('Axe Requirement for Wooden Blocks and Wooden Floors', () => {
         window.beltItems[0] = toolItem;
         window.selectedSlotIndex = 0;
 
-        const isWoodenBlockOrFloor = ['bloco_madeira', 'piso_madeira', 'tábuas'].includes(bodyType);
+        const isWoodenBlockOrFloor = ['bloco_madeira', 'piso_madeira'].includes(bodyType);
         const heldItemForHint = window.beltItems[0];
         const isHoldingAxe = heldItemForHint && (heldItemForHint.name === 'machado' || heldItemForHint.name === 'machado_ferro');
 
@@ -104,9 +92,7 @@ test.describe('Axe Requirement for Wooden Blocks and Wooden Floors', () => {
         woodBlockWithAxe: getHintForBody('bloco_madeira', { name: 'machado', quantity: 1 }),
         woodBlockWithIronAxe: getHintForBody('bloco_madeira', { name: 'machado_ferro', quantity: 1 }),
         woodFloorWithHand: getHintForBody('piso_madeira', null),
-        woodFloorWithAxe: getHintForBody('piso_madeira', { name: 'machado', quantity: 1 }),
-        woodPlanksWithHand: getHintForBody('tábuas', null),
-        woodPlanksWithIronAxe: getHintForBody('tábuas', { name: 'machado_ferro', quantity: 1 })
+        woodFloorWithAxe: getHintForBody('piso_madeira', { name: 'machado', quantity: 1 })
       };
     });
 
@@ -116,7 +102,5 @@ test.describe('Axe Requirement for Wooden Blocks and Wooden Floors', () => {
     expect(hintResult.woodBlockWithIronAxe).toBe("(Botão Esq.) Destruir");
     expect(hintResult.woodFloorWithHand).toBe("");
     expect(hintResult.woodFloorWithAxe).toBe("(Botão Esq.) Destruir");
-    expect(hintResult.woodPlanksWithHand).toBe("");
-    expect(hintResult.woodPlanksWithIronAxe).toBe("(Botão Esq.) Destruir");
   });
 });

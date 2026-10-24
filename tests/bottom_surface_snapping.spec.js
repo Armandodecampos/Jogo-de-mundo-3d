@@ -25,7 +25,7 @@ test.describe('Bottom Surface Block Snapping', () => {
             const hitNormal = new window.THREE.Vector3(0, -1, 0);
 
             const isConstructionBlock = [
-                'cob', 'piso', 'tábuas',
+                'cob', 'piso',
                 window.stoneBlockItemName, window.woodenBlockItemName,
                 window.stoneFloorItemName, window.woodenFloorItemName,
                 window.doorItemName, window.windowItemName

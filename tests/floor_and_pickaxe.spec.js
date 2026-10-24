@@ -29,7 +29,7 @@ test.describe('Floor Spawn Prevention and Pickaxe Destruction Tests', () => {
 
   test('Pickaxes are ideal tools for all blocks and floors with iron pickaxe faster than stone pickaxe', async ({ page }) => {
     const speeds = await page.evaluate(() => {
-      const blockTypes = ['cob', 'piso', 'bloco_pedra', 'bloco_madeira', 'piso_pedra', 'piso_madeira', 'tábuas'];
+      const blockTypes = ['cob', 'piso', 'bloco_pedra', 'bloco_madeira', 'piso_pedra', 'piso_madeira'];
       const results = {};
 
       for (const bType of blockTypes) {
@@ -46,13 +46,13 @@ test.describe('Floor Spawn Prevention and Pickaxe Destruction Tests', () => {
 
         // Helper calculation function matching index.htm logic
         const calculateMultiplier = (heldItemName, target) => {
-          const materialType = target.body.userData.type.includes('pedra') ? 'stone' : (target.body.userData.type.includes('madeira') || target.body.userData.type === 'tábuas') ? 'wood' : 'earth';
+          const materialType = target.body.userData.type.includes('pedra') ? 'stone' : (target.body.userData.type.includes('madeira')) ? 'wood' : 'earth';
           const isBuildingAction = (heldItemName === 'terra' || heldItemName === 'areia');
 
           const isBlockOrFloorTarget = target.body && target.body.userData && [
             'cob', 'piso',
             'bloco_pedra', 'piso_pedra',
-            'bloco_madeira', 'piso_madeira', 'tábuas'
+            'bloco_madeira', 'piso_madeira'
           ].includes(target.body.userData.type);
 
           const isPickaxe = (heldItemName === 'picareta' || heldItemName === 'picareta_ferro');
