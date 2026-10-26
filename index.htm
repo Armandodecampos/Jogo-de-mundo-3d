@@ -1794,6 +1794,7 @@
             addAsset("Ícone da Picareta", "Textura", pickaxeImageURL);
             addAsset("Textura de Madeira", "Textura", woodTextureURL);
             addAsset("Textura Folhas da Árvore", "Textura", treeLeavesTextureURL);
+            addAsset("Textura Folhas do Coqueiro", "Textura", coconutLeavesTextureURL);
             addAsset("Textura Cama de Capim", "Textura", grassBedTextureURL);
             addAsset("Textura Cesto de Capim", "Textura", basketTextureURL);
             addAsset("Textura de Tecido", "Textura", fabricTextureURL);
@@ -3262,6 +3263,8 @@
         const woodTextureURL = 'https://dl.dropbox.com/scl/fi/zmvg8gpsyxt2kfbfizf1u/madeira-teste-3.png?rlkey=cfveb1zhd5kulw9jqjv873gun&st=s4x0y6d9&dl=0';
         const treeBarkTextureURL = woodTextureURL;
         const treeLeavesTextureURL = 'https://dl.dropbox.com/scl/fi/kegrjpsn04ajhlrzqhl6q/textura-de-folhas-de-arvores.png?rlkey=jyd1iuc0plhqbopdk1qspwi78&st=k4egrbat&dl=1';
+        const coconutLeavesTextureURL = 'https://dl.dropbox.com/scl/fi/faocuuffm5793vtu9aefn/mato-2.png?rlkey=wt0ebjvi5wc500ujs4xtq3olm&st=no2mt88z&dl=1';
+        const capimBladeTextureURL = 'https://dl.dropbox.com/scl/fi/faocuuffm5793vtu9aefn/mato-2.png?rlkey=wt0ebjvi5wc500ujs4xtq3olm&st=no2mt88z&dl=1';
         const grassBedTextureURL = 'https://dl.dropbox.com/scl/fi/r8o42t13edeo2m8idqdky/mato-tran-ado.png?rlkey=a6ip4m4b0aal9bs39z2uheknb&st=akaujzb8&dl=1';
         const basketTextureURL = 'https://dl.dropbox.com/scl/fi/6q7wvuyqgdjyjf0kqen1b/cesto-de-capim.png?rlkey=6yei1e0quo2c3lnp0fiuy188e&st=w6nsfphy&dl=1';
         const fabricTextureURL = 'https://dl.dropbox.com/scl/fi/c4idrmneprqf8ppp5ozdp/tecido.png?rlkey=8q785cb0hu2sdwbmlacekjfmw&st=fduo3lc8&dl=1';
@@ -3283,7 +3286,7 @@
         // Geometrias e materiais compartilhados
         const capimSharedGeometry = new THREE.CylinderGeometry(0, 0.1, 1, 4);
         capimSharedGeometry.translate(0, 0.5, 0); // Alinha a base da geometria no ponto de origem
-        const capimSharedMaterial = new THREE.MeshStandardMaterial({ color: 0x2d5a27 }); // Verde escuro
+        const capimSharedMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide });
 
         // Global variables for materials
         let cubeMaterialMesh; // NOVO: Material da caixa global
@@ -3299,6 +3302,7 @@
         let windowMaterialMesh; // Material for window frames
         let windowGlassMaterialMesh; // Material for window glass
         let treeLeavesMaterialMesh; // Material for tree leaves (3D model)
+        let coconutLeavesMaterialMesh; // Material para folhas de coqueiro (3D model)
         let woodenPlankMaterialMesh; // NOVO: Material para tábuas de madeira
         let stoneMaterialMesh; // NOVO: Material para pedras coletáveis
         let stoneBlockMaterialMesh;
@@ -3484,6 +3488,8 @@
             if (sailMaterialMesh) sailMaterialMesh.map = useTextures ? (texturesRegistry.fabric || null) : null;
             if (treeTrunkMaterialMesh) treeTrunkMaterialMesh.map = useTextures ? (texturesRegistry.treeBark || null) : null;
             if (treeLeavesMaterialMesh) treeLeavesMaterialMesh.map = useTextures ? (texturesRegistry.treeLeaves || null) : null;
+            if (coconutLeavesMaterialMesh) coconutLeavesMaterialMesh.map = useTextures ? (texturesRegistry.coconutLeaves || null) : null;
+            if (capimSharedMaterial) capimSharedMaterial.map = useTextures ? (texturesRegistry.capimBlade || null) : null;
             if (treeSaplingMaterialMesh) treeSaplingMaterialMesh.map = useTextures ? (texturesRegistry.treeSapling || null) : null;
             if (doorMaterialMesh) doorMaterialMesh.map = useTextures ? (texturesRegistry.woodenBlock || null) : null;
             if (windowMaterialMesh) windowMaterialMesh.map = useTextures ? (texturesRegistry.woodenBlock || null) : null;
@@ -3493,7 +3499,7 @@
             // Notify materials of changes
             [cubeMaterialMesh, basketMaterialMesh, cobMaterialMesh, floorMaterialMesh, woodenPlankMaterialMesh,
              stoneMaterialMesh, stoneBlockMaterialMesh, woodenBlockMaterialMesh, stoneFloorMaterialMesh, grassBedMaterialMesh, fabricMaterialMesh,
-             raftMaterialMesh, sailMaterialMesh, treeTrunkMaterialMesh, treeLeavesMaterialMesh,
+             raftMaterialMesh, sailMaterialMesh, treeTrunkMaterialMesh, treeLeavesMaterialMesh, coconutLeavesMaterialMesh, capimSharedMaterial,
              treeSaplingMaterialMesh, doorMaterialMesh, windowMaterialMesh, windowGlassMaterialMesh, holeMaterial, stoneHoleMaterial].forEach(m => {
                 if (m) m.needsUpdate = true;
             });
@@ -6355,7 +6361,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                         frondPivot.rotation.y = (i / numFronds) * Math.PI * 2;
 
                         const frondGeom = new THREE.BoxGeometry(leavesRadius * 1.5, 0.05, leavesRadius * 0.3);
-                        const frondMesh = new THREE.Mesh(frondGeom, treeLeavesMaterialMesh);
+                        const frondMesh = new THREE.Mesh(frondGeom, coconutLeavesMaterialMesh);
                         frondMesh.position.x = leavesRadius * 0.75;
                         frondMesh.rotation.z = -0.3;
                         frondPivot.add(frondMesh);
@@ -7677,6 +7683,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             windowMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff });
             windowGlassMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x87CEEB, transparent: true, opacity: 0.5 });
             treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, alphaTest: 0.5 });
+            coconutLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, alphaTest: 0.5, side: THREE.DoubleSide });
 
             // Define o offset inicial do nível dos olhos da câmera como o raio da esfera
             cameraEyeLevelOffset = playerRadius;
@@ -8602,6 +8609,28 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 applyTextureSettings();
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura das folhas da árvore:', error);
+            });
+
+            // Load coconut leaves texture
+            textureLoader.load(coconutLeavesTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                texturesRegistry.coconutLeaves = texture;
+                applyTextureSettings();
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura das folhas do coqueiro:', error);
+            });
+
+            // Load capim blade texture
+            textureLoader.load(capimBladeTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                texturesRegistry.capimBlade = texture;
+                applyTextureSettings();
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura do capim:', error);
             });
 
             // Load grass bed texture
