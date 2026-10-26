@@ -1,8 +1,22 @@
 import os
+import http.server
+import socketserver
+import threading
 from playwright.sync_api import sync_playwright
 
-def test_e_key_behavior(page):
-    page.goto("http://localhost:8080/index.htm")
+class ReusableTCPServer(socketserver.TCPServer):
+    allow_reuse_address = True
+
+def start_server(port=8088):
+    handler = http.server.SimpleHTTPRequestHandler
+    httpd = ReusableTCPServer(("", port), handler)
+    thread = threading.Thread(target=httpd.serve_forever)
+    thread.daemon = True
+    thread.start()
+    return httpd, port
+
+def test_e_key_behavior(page, port):
+    page.goto(f"http://localhost:{port}/index.htm")
     page.wait_for_timeout(1000)
 
     # Click Novo Jogo
@@ -85,8 +99,8 @@ def test_e_key_behavior(page):
     print(f"Test 3 (Aiming at door - press E): door toggled count? {doorToggled} (Expected: 0)")
     assert doorToggled == 0, "Door was toggled when pressing E!"
 
-    # Test 4: Aiming at a Chest - pressing 'E' OPENS options menu
-    page.evaluate('''() => {
+    # Test 4: Aiming at a Chest/Caixote - pressing 'E' does NOT open options menu, and hint is updated
+    hintText, chestOptionsDisplay = page.evaluate('''() => {
         const playerPos = window.playerBody ? window.playerBody.position : { x: 0, y: 1, z: 0 };
         const boxPos = new THREE.Vector3(playerPos.x, playerPos.y, playerPos.z - 2);
         const boxBody = window.createBox(boxPos, null);
@@ -98,43 +112,35 @@ def test_e_key_behavior(page):
             object: box.mesh
         }];
 
+        window.animate(); // trigger hint update loop
+        const hint = document.getElementById('interactionHint').textContent;
+
         window.dispatchEvent(new KeyboardEvent('keydown', { key: 'e' }));
+
+        const el = document.getElementById('chestOptionsMenu');
+        const isMenuOpen = el && el.style.display !== 'none' && !el.classList.contains('hidden');
+        return [hint, isMenuOpen];
     }''')
     page.wait_for_timeout(500)
 
-    chestOptionsDisplay = page.evaluate('''() => {
-        const el = document.getElementById('chestOptionsMenu');
-        return el && el.style.display !== 'none' && !el.classList.contains('hidden');
-    }''')
-    print(f"Test 4 (Aiming at chest - press E): options menu open? {chestOptionsDisplay} (Expected: True)")
-    assert chestOptionsDisplay == True, "Chest options menu did NOT open when pressing E on chest!"
+    print(f"Test 4 (Aiming at chest - hint text): '{hintText}' (Expected: '(Botão Esq.) Abrir / (G) Guardar')")
+    assert "(Botão Esq.) Abrir / (G) Guardar" in hintText, f"Hint text mismatch: {hintText}"
+    print(f"Test 4 (Aiming at chest - press E): options menu open? {chestOptionsDisplay} (Expected: False)")
+    assert chestOptionsDisplay == False, "Chest options menu opened when pressing E on chest!"
 
-    # Take screenshot of the chest options modal
-    page.screenshot(path="/home/jules/verification/screenshots/e_key_chest_options.png")
-
-    # Test 5: Pressing 'E' while chest options menu is open CLOSES it
-    page.evaluate('''() => {
-        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'e' }));
-    }''')
-    page.wait_for_timeout(500)
-
-    chestOptionsDisplay = page.evaluate('''() => {
-        const el = document.getElementById('chestOptionsMenu');
-        return el && el.style.display !== 'none' && !el.classList.contains('hidden');
-    }''')
-    print(f"Test 5 (Press E while chest options menu is open): options menu open? {chestOptionsDisplay} (Expected: False)")
-    assert chestOptionsDisplay == False, "Chest options menu did NOT close when pressing E!"
-
+    page.screenshot(path="verification/test_result.png")
     print("ALL TESTS PASSED SUCCESSFULLY!")
 
 if __name__ == "__main__":
-    os.makedirs("/home/jules/verification/screenshots", exist_ok=True)
+    os.makedirs("verification", exist_ok=True)
+    server, port = start_server(8089)
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         context = browser.new_context()
         page = context.new_page()
         try:
-            test_e_key_behavior(page)
+            test_e_key_behavior(page, port)
         finally:
             context.close()
             browser.close()
+            server.shutdown()
