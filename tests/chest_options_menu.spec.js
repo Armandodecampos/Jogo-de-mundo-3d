@@ -14,7 +14,7 @@ test.describe('Chest Options Menu Functionality', () => {
         });
     });
 
-    test('Interaction hint for caixote and cesto_capim displays (Botão Esq.) Abrir / (E) Opções', async ({ page }) => {
+    test('Interaction hint for caixote and cesto_capim displays (Botão Esq.) Abrir / (G) Guardar', async ({ page }) => {
         const hintTexts = await page.evaluate(async () => {
             // Spawn box and basket near player
             const posBox = new window.CANNON.Vec3(0, 2, -3);
@@ -52,11 +52,11 @@ test.describe('Chest Options Menu Functionality', () => {
             return { boxHint, basketHint };
         });
 
-        expect(hintTexts.boxHint).toBe('(Botão Esq.) Abrir / (E) Opções');
-        expect(hintTexts.basketHint).toBe('(Botão Esq.) Abrir / (E) Opções');
+        expect(hintTexts.boxHint).toBe('(Botão Esq.) Abrir / (G) Guardar');
+        expect(hintTexts.basketHint).toBe('(Botão Esq.) Abrir / (G) Guardar');
     });
 
-    test('Key E opens #chestOptionsMenu and NOT #chestModal when aiming at box', async ({ page }) => {
+    test('Key E does NOT open #chestOptionsMenu or #chestModal when aiming at box', async ({ page }) => {
         const result = await page.evaluate(async () => {
             const pos = new window.CANNON.Vec3(0, 2, -3);
             const boxBody = window.createBox(pos, null);
@@ -85,7 +85,7 @@ test.describe('Chest Options Menu Functionality', () => {
             };
         });
 
-        expect(result.chestOptionsMenuHidden).toBe(false);
+        expect(result.chestOptionsMenuHidden).toBe(true);
         expect(result.chestModalHidden).toBe(true);
     });
 
