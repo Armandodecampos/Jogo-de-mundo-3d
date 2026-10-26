@@ -1794,6 +1794,9 @@
             addAsset("Ícone da Picareta", "Textura", pickaxeImageURL);
             addAsset("Textura de Madeira", "Textura", woodTextureURL);
             addAsset("Textura Folhas da Árvore", "Textura", treeLeavesTextureURL);
+            addAsset("Textura Cama de Capim", "Textura", grassBedTextureURL);
+            addAsset("Textura Cesto de Capim", "Textura", basketTextureURL);
+            addAsset("Textura de Tecido", "Textura", fabricTextureURL);
             addAsset("Imagem da Mão", "Textura", handImageURL);
             addAsset("Ícone do Galho", "Textura", branchImageURL);
             addAsset("Textura de Buraco", "Textura", holeTextureURL);
@@ -3258,7 +3261,10 @@
         const pickaxeImageURL = 'https://placehold.co/100x100/808080/FFFFFF?text=Picareta'; // NOVO: Imagem para a picareta
         const woodTextureURL = 'https://dl.dropbox.com/scl/fi/zmvg8gpsyxt2kfbfizf1u/madeira-teste-3.png?rlkey=cfveb1zhd5kulw9jqjv873gun&st=s4x0y6d9&dl=0';
         const treeBarkTextureURL = woodTextureURL;
-        const treeLeavesTextureURL = 'https://dl.dropbox.com/scl/fi/u636vo3d674wnbku37w0f/ChatGPT-Image-6-de-fev.-de-2026-21_55_222.png?rlkey=ia0p0yck3kgec32olpezpov16&st=d5u2tnhg&dl=1';
+        const treeLeavesTextureURL = 'https://dl.dropbox.com/scl/fi/kegrjpsn04ajhlrzqhl6q/textura-de-folhas-de-arvores.png?rlkey=jyd1iuc0plhqbopdk1qspwi78&st=k4egrbat&dl=1';
+        const grassBedTextureURL = 'https://dl.dropbox.com/scl/fi/r8o42t13edeo2m8idqdky/mato-tran-ado.png?rlkey=a6ip4m4b0aal9bs39z2uheknb&st=akaujzb8&dl=1';
+        const basketTextureURL = 'https://dl.dropbox.com/scl/fi/6q7wvuyqgdjyjf0kqen1b/cesto-de-capim.png?rlkey=6yei1e0quo2c3lnp0fiuy188e&st=w6nsfphy&dl=1';
+        const fabricTextureURL = 'https://dl.dropbox.com/scl/fi/c4idrmneprqf8ppp5ozdp/tecido.png?rlkey=8q785cb0hu2sdwbmlacekjfmw&st=fduo3lc8&dl=1';
         const handImageURL = 'https://dl.dropbox.com/scl/fi/adirqfks81emnagkoljcw/m-o-direita.png?rlkey=pj17lswbeg8lene1n5ypdbmob&st=i2qtxssr&dl=0';
         const branchImageURL = 'https://placehold.co/100x100/8B4513/FFFFFF?text=Galho'; // NOVO: Ícone para o galho
         const treeTrunkImageURL = woodTextureURL;
@@ -3298,6 +3304,8 @@
         let stoneBlockMaterialMesh;
         let woodenBlockMaterialMesh;
         let stoneFloorMaterialMesh;
+        let grassBedMaterialMesh; // Material para cama de capim
+        let fabricMaterialMesh; // Material para tecidos (cama, colchonete, vela)
         let holeMaterial; // NOVO: Material para o buraco cavado
         let stoneHoleMaterial;
         let sandHoleMaterial;
@@ -3462,7 +3470,7 @@
             window.useTextures = useTextures;
             // Update materials
             if (cubeMaterialMesh) cubeMaterialMesh.map = useTextures ? (texturesRegistry.cube || null) : null;
-            if (basketMaterialMesh) basketMaterialMesh.map = useTextures ? (texturesRegistry.capim || null) : null;
+            if (basketMaterialMesh) basketMaterialMesh.map = useTextures ? (texturesRegistry.basket || texturesRegistry.capim || null) : null;
             if (cobMaterialMesh) cobMaterialMesh.map = useTextures ? (texturesRegistry.cob || null) : null;
             if (floorMaterialMesh) floorMaterialMesh.map = useTextures ? (texturesRegistry.floor || null) : null;
             if (woodenPlankMaterialMesh) woodenPlankMaterialMesh.map = useTextures ? (texturesRegistry.plank || null) : null;
@@ -3470,8 +3478,10 @@
             if (stoneBlockMaterialMesh) stoneBlockMaterialMesh.map = useTextures ? (texturesRegistry.stoneBlock || null) : null;
             if (woodenBlockMaterialMesh) woodenBlockMaterialMesh.map = useTextures ? (texturesRegistry.woodenBlock || null) : null;
             if (stoneFloorMaterialMesh) stoneFloorMaterialMesh.map = useTextures ? (texturesRegistry.stoneFloor || null) : null;
+            if (grassBedMaterialMesh) grassBedMaterialMesh.map = useTextures ? (texturesRegistry.grassBed || null) : null;
+            if (fabricMaterialMesh) fabricMaterialMesh.map = useTextures ? (texturesRegistry.fabric || null) : null;
             if (raftMaterialMesh) raftMaterialMesh.map = useTextures ? (texturesRegistry.treeBark || null) : null;
-            if (sailMaterialMesh) sailMaterialMesh.map = null; // Vela não tem textura por enquanto
+            if (sailMaterialMesh) sailMaterialMesh.map = useTextures ? (texturesRegistry.fabric || null) : null;
             if (treeTrunkMaterialMesh) treeTrunkMaterialMesh.map = useTextures ? (texturesRegistry.treeBark || null) : null;
             if (treeLeavesMaterialMesh) treeLeavesMaterialMesh.map = useTextures ? (texturesRegistry.treeLeaves || null) : null;
             if (treeSaplingMaterialMesh) treeSaplingMaterialMesh.map = useTextures ? (texturesRegistry.treeSapling || null) : null;
@@ -3482,7 +3492,7 @@
 
             // Notify materials of changes
             [cubeMaterialMesh, basketMaterialMesh, cobMaterialMesh, floorMaterialMesh, woodenPlankMaterialMesh,
-             stoneMaterialMesh, stoneBlockMaterialMesh, woodenBlockMaterialMesh, stoneFloorMaterialMesh,
+             stoneMaterialMesh, stoneBlockMaterialMesh, woodenBlockMaterialMesh, stoneFloorMaterialMesh, grassBedMaterialMesh, fabricMaterialMesh,
              raftMaterialMesh, sailMaterialMesh, treeTrunkMaterialMesh, treeLeavesMaterialMesh,
              treeSaplingMaterialMesh, doorMaterialMesh, windowMaterialMesh, windowGlassMaterialMesh, holeMaterial, stoneHoleMaterial].forEach(m => {
                 if (m) m.needsUpdate = true;
@@ -6977,7 +6987,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 blockBody.addShape(blockShape);
 
                 const group = new THREE.Group();
-                const grassBedMat = new THREE.MeshStandardMaterial({ color: 0x3A5F0B });
+                const grassBedMat = grassBedMaterialMesh || new THREE.MeshStandardMaterial({ color: 0xffffff });
                 const ropeMat = new THREE.MeshStandardMaterial({ color: 0x8B5A2B });
 
                 const matMesh = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.2, 2.0), grassBedMat);
@@ -7000,8 +7010,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 blockBody.addShape(blockShape);
 
                 const group = new THREE.Group();
-                const matMat = new THREE.MeshStandardMaterial({ color: 0x5C4033 }); // Marrom
-                const pillowMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF });
+                const matMat = fabricMaterialMesh || new THREE.MeshStandardMaterial({ color: 0xffffff });
+                const pillowMat = fabricMaterialMesh || new THREE.MeshStandardMaterial({ color: 0xffffff });
 
                 const matMesh = new THREE.Mesh(new THREE.BoxGeometry(1.0, 0.1, 2.0), matMat);
                 group.add(matMesh);
@@ -7020,8 +7030,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
                 const group = new THREE.Group();
                 const woodMat = woodenBlockMaterialMesh || new THREE.MeshStandardMaterial({ color: 0xffffff });
-                const mattressMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF });
-                const blanketMat = new THREE.MeshStandardMaterial({ color: 0x5C4033 }); // Marrom
+                const mattressMat = fabricMaterialMesh || new THREE.MeshStandardMaterial({ color: 0xffffff });
+                const blanketMat = fabricMaterialMesh || new THREE.MeshStandardMaterial({ color: 0xffffff });
 
                 // Bed frame base
                 const base = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.2, 2.2), woodMat);
@@ -7649,9 +7659,9 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
             // Inicializa materiais com padrões para evitar erros de undefined e falta de textura inicial
             cubeMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff });
-            basketMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x32CD32 }); // Cor inicial verde (LimeGreen)
+            basketMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff });
             raftMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff });
-            sailMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xF5F5DC, side: THREE.DoubleSide });
+            sailMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide });
             cobMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff });
             floorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xaaaaaa });
             woodenPlankMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide });
@@ -7659,12 +7669,14 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             stoneBlockMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x888888 });
             woodenBlockMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff });
             stoneFloorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x888888 });
+            grassBedMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            fabricMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide });
             treeSaplingMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 });
             treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide });
             doorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff });
             windowMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff });
             windowGlassMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x87CEEB, transparent: true, opacity: 0.5 });
-            treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22, transparent: true, alphaTest: 0.5 });
+            treeLeavesMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, alphaTest: 0.5 });
 
             // Define o offset inicial do nível dos olhos da câmera como o raio da esfera
             cameraEyeLevelOffset = playerRadius;
@@ -8590,6 +8602,33 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 applyTextureSettings();
             }, undefined, (error) => {
                 console.error('Erro ao carregar a textura das folhas da árvore:', error);
+            });
+
+            // Load grass bed texture
+            textureLoader.load(grassBedTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                texturesRegistry.grassBed = texture;
+                applyTextureSettings();
+            });
+
+            // Load basket texture
+            textureLoader.load(basketTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                texturesRegistry.basket = texture;
+                applyTextureSettings();
+            });
+
+            // Load fabric texture
+            textureLoader.load(fabricTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                texturesRegistry.fabric = texture;
+                applyTextureSettings();
             });
 
             // Cria um corpo "grabber" invisível para segurar objetos
