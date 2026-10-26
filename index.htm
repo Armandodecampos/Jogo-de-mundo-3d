@@ -6357,16 +6357,37 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                         treeGroup.add(segMesh);
                     }
 
-                    // Folhas de palmeira
+                    // Folhas de palmeira (formato triangular)
                     const palmGroup = new THREE.Group();
                     const numFronds = 8;
+                    const frondLength = leavesRadius * 1.5;
+                    const frondWidth = leavesRadius * 0.4;
+                    const frondGeom = new THREE.BufferGeometry();
+                    const vertices = new Float32Array([
+                        0, 0, -frondWidth / 2,
+                        0, 0, frondWidth / 2,
+                        frondLength, 0, 0
+                    ]);
+                    const uvs = new Float32Array([
+                        0, 0,
+                        0, 1,
+                        1, 0.5
+                    ]);
+                    const normals = new Float32Array([
+                        0, 1, 0,
+                        0, 1, 0,
+                        0, 1, 0
+                    ]);
+                    frondGeom.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+                    frondGeom.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+                    frondGeom.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+
                     for (let i = 0; i < numFronds; i++) {
                         const frondPivot = new THREE.Group();
                         frondPivot.rotation.y = (i / numFronds) * Math.PI * 2;
 
-                        const frondGeom = new THREE.BoxGeometry(leavesRadius * 1.5, 0.05, leavesRadius * 0.3);
                         const frondMesh = new THREE.Mesh(frondGeom, coconutLeavesMaterialMesh);
-                        frondMesh.position.x = leavesRadius * 0.75;
+                        frondMesh.position.x = 0;
                         frondMesh.rotation.z = -0.3;
                         frondPivot.add(frondMesh);
                         palmGroup.add(frondPivot);
