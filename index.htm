@@ -242,7 +242,7 @@
 
         #interactionHint {
             position: absolute;
-            top: calc(50% + 40px);
+            bottom: 110px;
             left: 50%;
             transform: translateX(-50%);
             color: white;
@@ -2196,7 +2196,7 @@
         let isPrimaryToolDestroying = false;
         let isPrimaryToolGrabbing = false;
         let lowPerformance = false; // NOVO: Flag para modo de baixa performance
-        let useInspector = localStorage.getItem('useInspector') === 'true'; // NOVO: Flag para o modo inspetor
+        let useInspector = localStorage.getItem('useInspector') !== 'false'; // NOVO: Flag para o modo inspetor (padrão true)
         let lowFPSStart = null;
         let highFPSStart = null;
         let nextMeteorCheckTime = -1; // NOVO: Próximo horário de checagem do meteoro
@@ -10632,7 +10632,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 if (inspectorStatus) inspectorStatus.textContent = useInspector ? "Ativado" : "Desativado";
                 if (inspectorToggle) inspectorToggle.value = useInspector.toString();
                 if (hudInspectorText) hudInspectorText.textContent = `Inspetor: ${useInspector ? "ON" : "OFF"}`;
-                if (inspectorDisplay) inspectorDisplay.style.display = useInspector ? "block" : "none";
+                if (inspectorDisplay) inspectorDisplay.style.display = 'none';
             };
 
             if (inspectorToggle) {
@@ -12535,8 +12535,9 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
 
             // NOVO: Lógica do Modo Inspetor
+            let inspectorNameText = "";
             if (useInspector && !gamePaused) {
-                let inspectorText = "Céu (sky)";
+                let inspectorText = "Céu";
                 const lookDir = new THREE.Vector3();
                 camera.getWorldDirection(lookDir);
 
@@ -12548,7 +12549,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
                     // Verificar se é água
                     if (obj.userData.isWater) {
-                        inspectorText = "Água (water)";
+                        inspectorText = "Água";
                     } else {
                         let body = null;
                         let current = obj;
@@ -12563,13 +12564,12 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                         if (body && body.userData) {
                             const type = body.userData.type || "Objeto";
                             const displayName = itemDisplayNames[type] || type;
-                            inspectorText = `${displayName.split('\n')[0]} (${type})`;
-                            if (body.userData.growthStage) inspectorText = `Árvore (${body.userData.growthStage})`;
+                            inspectorText = displayName.split('\n')[0];
+                            if (body.userData.growthStage) inspectorText = "Árvore";
                         } else if (obj.userData.isBranch) {
-                            inspectorText = "Galho (galho)";
+                            inspectorText = "Galho";
                         } else if ((obj.userData.isApple || obj.userData.isCoconut)) {
-                            const type = obj.userData.isApple ? "maca" : "coco";
-                            inspectorText = `${obj.userData.isApple ? "Maçã" : "Coco"} (${type})`;
+                            inspectorText = obj.userData.isApple ? "Maçã" : "Coco";
                         } else {
                             // Verificar Terreno/Bioma
                             const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
@@ -12579,16 +12579,16 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                 const naturalY = getSurfaceHeight(hitPoint.x, hitPoint.z);
 
                                 if (hitPoint.y < naturalY - 4.5) {
-                                    inspectorText = "Pedra (stone_layer)";
+                                    inspectorText = "Pedra";
                                 } else if (distFromCenter > capimRadius + 30) {
-                                    inspectorText = "Areia (sand)";
+                                    inspectorText = "Areia";
                                 } else if (distFromCenter > capimRadius) {
-                                    inspectorText = "Transição Terra/Areia (transition)";
+                                    inspectorText = "Transição Terra/Areia";
                                 } else {
-                                    inspectorText = "Terra/Gramado (dirt_grass)";
+                                    inspectorText = "Terra/Gramado";
                                 }
                             } else {
-                                inspectorText = `Objeto Desconhecido (${obj.name || "unknown"})`;
+                                inspectorText = obj.name || "Objeto Desconhecido";
                             }
                         }
                     }
@@ -12597,7 +12597,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     const cloudMeshes = clouds.map(c => c.mesh);
                     const cloudIntersects = raycaster.intersectObjects(cloudMeshes, true);
                     if (cloudIntersects.length > 0) {
-                        inspectorText = "Nuvem (cloud)";
+                        inspectorText = "Nuvem";
                     } else {
                         // 3. Verificar Sol e Lua (Baseado em ângulo, apenas se nada físico na frente)
                         const sunDir = new THREE.Vector3().subVectors(sunMesh.position, camera.position).normalize();
@@ -12605,11 +12605,12 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                         const sunAngle = lookDir.angleTo(sunDir);
                         const moonAngle = lookDir.angleTo(moonDir);
 
-                        if (sunAngle < 0.05) inspectorText = "Sol (sun)";
-                        else if (moonAngle < 0.05) inspectorText = "Lua (moon)";
+                        if (sunAngle < 0.05) inspectorText = "Sol";
+                        else if (moonAngle < 0.05) inspectorText = "Lua";
                     }
                 }
-                inspectorDisplay.textContent = `Mirando em: ${inspectorText}`;
+                inspectorNameText = inspectorText;
+                if (inspectorDisplay) inspectorDisplay.style.display = 'none';
             }
 
             // Lógica do ghost block para colocação e snapping
@@ -13271,8 +13272,20 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             }
 
             if (interactionHintElement) {
+                let finalText = "";
+                if (inspectorNameText) {
+                    finalText = inspectorNameText;
+                }
                 if (interactionHintText && useInteractionHints) {
-                    interactionHintElement.textContent = interactionHintText;
+                    if (finalText) {
+                        finalText += "\n" + interactionHintText;
+                    } else {
+                        finalText = interactionHintText;
+                    }
+                }
+
+                if (finalText) {
+                    interactionHintElement.textContent = finalText;
                     interactionHintElement.style.display = 'block';
                 } else {
                     interactionHintElement.style.display = 'none';
