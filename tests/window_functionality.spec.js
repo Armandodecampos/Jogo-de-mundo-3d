@@ -17,9 +17,9 @@ test('Verify Janela (Window) functionality', async ({ page }) => {
     const windowItemName = await page.evaluate(() => window.windowItemName);
     expect(windowItemName).toBe('janela');
 
-    // Check if window is in rotatableItems
+    // Check if window is in rotatableItems (windows are excluded from rotatableItems)
     const isRotatable = await page.evaluate((name) => window.rotatableItems.includes(name), windowItemName);
-    expect(isRotatable).toBe(true);
+    expect(isRotatable).toBe(false);
 
     // Test window origin alignment when placed between two blocks (centered at vertex 0.2)
     const windowPlacement = await page.evaluate(() => {

@@ -12,9 +12,9 @@ test('Verify Porta (Door) functionality', async ({ page }) => {
     const doorItemName = await page.evaluate(() => window.doorItemName);
     expect(doorItemName).toBe('porta');
 
-    // Check if door is in rotatableItems
+    // Check if door is in rotatableItems (doors are excluded from rotatableItems)
     const isRotatable = await page.evaluate((name) => window.rotatableItems.includes(name), doorItemName);
-    expect(isRotatable).toBe(true);
+    expect(isRotatable).toBe(false);
 
     // Test snapped position for door
     const snappedPos = await page.evaluate(() => {
