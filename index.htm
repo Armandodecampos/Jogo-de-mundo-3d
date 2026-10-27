@@ -1681,8 +1681,6 @@
         const grabSoundUrl = "https://dl.dropbox.com/scl/fi/lodeviqq1l9ow634wcqgt/pegar.mp3?rlkey=3f3f29o45pic8mkbpj3le4zhj&st=xkhwq0cu&dl=1";
         const beachAmbientUrl = "https://dl.dropbox.com/scl/fi/3qs6wkjtqu39aoidghorr/wind_beach_island_-4-1774031023927.mp3?rlkey=ml8fmu53qoyxpmbpavb9ftg0w&st=akxmu8qk&dl=1";
         const underwaterAmbientUrl = "https://dl.dropbox.com/scl/fi/01d0vevg72ih6q5a9g3ji/resonant-underwater.mp3?rlkey=k2bvw8nrfkqyfheco3twwtqy2&st=4uv9bygj&dl=1";
-        const grassStepUrl = "https://dl.dropbox.com/scl/fi/jgj1y0e1xe18j5n9apfes/passos-na-grama.mp3?rlkey=l39ipbmtt37r1wpd14e7mxlck&st=ekcy7ysd&dl=1";
-        const sandStepUrl = "https://dl.dropbox.com/scl/fi/lzrkkil2qp5ua72l9u1hz/walking_on_the_sand_-3-1781042767660.mp3?rlkey=9o2uetbuwu4tcvxmbsputmkts&st=es337xoe&dl=1";
         const diggingUrl = "https://dl.dropbox.com/scl/fi/xtor1zj17v4vycgkkaybf/cavando-terra-e-areia.mp3?rlkey=n7as7ibw4wojnwdkya6e3mjcj&st=wpwg16d7&dl=1";
         const miningUrl = "https://dl.dropbox.com/scl/fi/6me6x5lkgop8m5lv6gmmy/minerando-pedra.mp3?rlkey=stz92ds8nhaau960i4u6cea8c&st=h3gy4llf&dl=1";
         const swimStepUrl = "https://dl.dropbox.com/scl/fi/vk9ebser1j3ryt6reuugj/Splashing_water_soun_-2-1781042635696.mp3?rlkey=hnrkkkolk9fkiat9sq0cfoiuh&st=ldc9eirs&dl=1";
@@ -1747,6 +1745,7 @@
         let campfireGainNode = null;
         let torchSourceNode = null;
         let campfireSourceNode = null;
+        let footstepTimer = 0;
 
         async function loadAudioBuffer(url) {
             if (!gameAudioContext) {
@@ -1786,8 +1785,6 @@
             addAsset("Pegar Item", "Áudio", grabSoundUrl);
             addAsset("Vento da Praia", "Áudio", beachAmbientUrl);
             addAsset("Sons Subaquáticos", "Áudio", underwaterAmbientUrl);
-            addAsset("Passos na Grama", "Áudio", grassStepUrl);
-            addAsset("Passos na Areia", "Áudio", sandStepUrl);
             addAsset("Cavando Terra e Areia", "Áudio", diggingUrl);
             addAsset("Minerando Pedra", "Áudio", miningUrl);
             addAsset("Natação e Água", "Áudio", swimStepUrl);
@@ -2118,6 +2115,98 @@
             noiseGain.connect(gameAudioContext.destination);
             noise.start(now);
             noise.stop(now + 0.1);
+        }
+
+        function playSyntheticGrassStep(volume = 0.5) {
+            if (!gameAudioContext) return;
+            const now = gameAudioContext.currentTime;
+            const noiseBuffer = getNoiseBuffer();
+            if (!noiseBuffer) return;
+
+            const pitchJitter = 0.9 + Math.random() * 0.2;
+
+            // Grass crunch / rustle
+            const noiseSource = gameAudioContext.createBufferSource();
+            noiseSource.buffer = noiseBuffer;
+
+            const filter = gameAudioContext.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(1600 * pitchJitter, now);
+            filter.Q.setValueAtTime(1.2, now);
+
+            const noiseGain = gameAudioContext.createGain();
+            const duration = 0.08 + Math.random() * 0.02;
+            noiseGain.gain.setValueAtTime(volume * 0.3, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            noiseSource.connect(filter);
+            filter.connect(noiseGain);
+            noiseGain.connect(gameAudioContext.destination);
+
+            noiseSource.start(now);
+            noiseSource.stop(now + duration);
+
+            // Soft earth thud
+            const osc = gameAudioContext.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(90 * pitchJitter, now);
+            osc.frequency.exponentialRampToValueAtTime(35 * pitchJitter, now + 0.07);
+
+            const oscGain = gameAudioContext.createGain();
+            oscGain.gain.setValueAtTime(volume * 0.35, now);
+            oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+
+            osc.connect(oscGain);
+            oscGain.connect(gameAudioContext.destination);
+
+            osc.start(now);
+            osc.stop(now + 0.07);
+        }
+
+        function playSyntheticSandStep(volume = 0.5) {
+            if (!gameAudioContext) return;
+            const now = gameAudioContext.currentTime;
+            const noiseBuffer = getNoiseBuffer();
+            if (!noiseBuffer) return;
+
+            const pitchJitter = 0.9 + Math.random() * 0.2;
+
+            // Sand grit / crunch
+            const noiseSource = gameAudioContext.createBufferSource();
+            noiseSource.buffer = noiseBuffer;
+
+            const filter = gameAudioContext.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(3200 * pitchJitter, now);
+            filter.Q.setValueAtTime(0.9, now);
+
+            const noiseGain = gameAudioContext.createGain();
+            const duration = 0.11 + Math.random() * 0.03;
+            noiseGain.gain.setValueAtTime(volume * 0.35, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+
+            noiseSource.connect(filter);
+            filter.connect(noiseGain);
+            noiseGain.connect(gameAudioContext.destination);
+
+            noiseSource.start(now);
+            noiseSource.stop(now + duration);
+
+            // Sand displacement thud
+            const osc = gameAudioContext.createOscillator();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(110 * pitchJitter, now);
+            osc.frequency.exponentialRampToValueAtTime(45 * pitchJitter, now + 0.08);
+
+            const oscGain = gameAudioContext.createGain();
+            oscGain.gain.setValueAtTime(volume * 0.25, now);
+            oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+            osc.connect(oscGain);
+            oscGain.connect(gameAudioContext.destination);
+
+            osc.start(now);
+            osc.stop(now + 0.08);
         }
 
         let rainNoiseNode = null;
@@ -11759,7 +11848,18 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
                 // Atualiza volume e velocidade dos sons de passos e nado
                 if (gameAudioContext && grassGainNode && sandGainNode && swimGainNode && diggingGainNode && miningGainNode && torchGainNode && campfireGainNode) {
-                    if (gamePaused || isSleeping || isDrivingRaft || isFlying) {
+                    const isModalOpen = (document.getElementById('chestModal') && !document.getElementById('chestModal').classList.contains('hidden')) ||
+                                       (document.getElementById('backpackModal') && document.getElementById('backpackModal').classList.contains('active')) ||
+                                       (document.getElementById('actionMenu') && !document.getElementById('actionMenu').classList.contains('hidden')) ||
+                                       (document.getElementById('craftingModal') && document.getElementById('craftingModal').classList.contains('active')) ||
+                                       (document.getElementById('sleepModal') && !document.getElementById('sleepModal').classList.contains('hidden')) ||
+                                       (document.getElementById('fuelModal') && !document.getElementById('fuelModal').classList.contains('hidden')) ||
+                                       (document.getElementById('chestOptionsMenu') && !document.getElementById('chestOptionsMenu').classList.contains('hidden')) ||
+                                       (document.getElementById('optionsScreen') && document.getElementById('optionsScreen').classList.contains('active'));
+
+                    const isStoppedOrInModal = gamePaused || isSleeping || isDrivingRaft || isFlying || isFainted || openedChest !== null || currentOptionsChest !== null || isModalOpen;
+                    if (isStoppedOrInModal) {
+                        footstepTimer = 0.25;
                         grassGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                         sandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                         swimGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
@@ -11771,6 +11871,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                         const isMoving = (keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d']);
                         const onGround = window.onWalkableGround;
                         const playerPos = playerBody.position;
+                        const horizSpeed = Math.sqrt(playerBody.velocity.x * playerBody.velocity.x + playerBody.velocity.z * playerBody.velocity.z);
                         const playerBottomY = playerPos.y - (isCrouching ? crouchRadius : playerRadius);
                         const isInWater = playerBottomY < waterLevel && hasWaterAt(playerPos.x, playerPos.z);
                         const isUnderwater = camera.position.y < waterLevel && hasWaterAt(camera.position.x, camera.position.z);
@@ -11796,8 +11897,6 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                             });
                         }
 
-                        let targetGrass = 0;
-                        let targetSand = 0;
                         let targetSwim = 0;
                         let targetDigging = 0;
                         let targetMining = 0;
@@ -11815,16 +11914,32 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                             targetCampfire = campfireLin * campfireLin;
                         }
 
-                        if (isMoving) {
+                        const isActuallyMoving = isMoving && horizSpeed > 0.1;
+
+                        if (isActuallyMoving) {
                             if (isInWater && !isUnderwater) {
                                 targetSwim = 0.5;
+                                footstepTimer = 0.25;
                             } else if (onGround) {
-                                if (dist < capimRadius) {
-                                    targetGrass = 0.5;
-                                } else {
-                                    targetSand = 0.5;
+                                // Dynamic step interval and volume scaled with player speed
+                                const effectiveSpeed = Math.max(1.0, horizSpeed > 0.5 ? horizSpeed : (typeof currentMoveSpeed !== 'undefined' ? currentMoveSpeed : walkSpeed));
+                                const stepInterval = Math.max(0.18, Math.min(0.55, 0.35 * (walkSpeed / effectiveSpeed)));
+
+                                footstepTimer += delta;
+                                if (footstepTimer >= stepInterval) {
+                                    footstepTimer = 0;
+                                    const stepVol = Math.max(0.2, Math.min(0.6, 0.35 * (effectiveSpeed / walkSpeed)));
+                                    if (dist < capimRadius) {
+                                        playSyntheticGrassStep(stepVol);
+                                    } else {
+                                        playSyntheticSandStep(stepVol);
+                                    }
                                 }
+                            } else {
+                                footstepTimer = 0.25;
                             }
+                        } else {
+                            footstepTimer = 0.25;
                         }
 
                         if (isDestroying && !destructionComplete) {
@@ -11837,8 +11952,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                             }
                         }
 
-                        grassGainNode.gain.setTargetAtTime(targetGrass, gameAudioContext.currentTime, 0.1);
-                        sandGainNode.gain.setTargetAtTime(targetSand, gameAudioContext.currentTime, 0.1);
+                        grassGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                        sandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                         swimGainNode.gain.setTargetAtTime(targetSwim, gameAudioContext.currentTime, 0.1);
                         diggingGainNode.gain.setTargetAtTime(targetDigging, gameAudioContext.currentTime, 0.1);
                         miningGainNode.gain.setTargetAtTime(targetMining, gameAudioContext.currentTime, 0.1);
@@ -11847,8 +11962,6 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
                         const speedRatio = typeof currentMoveSpeed !== 'undefined' ? (currentMoveSpeed / walkSpeed) : 1.0;
                         const playbackRate = Math.max(0.5, Math.min(2.5, speedRatio));
-                        if (grassSourceNode) grassSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
-                        if (sandSourceNode) sandSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
                         if (swimSourceNode) swimSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
                     }
                 }
@@ -14259,8 +14372,6 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 await loadAudioBuffer(grabSoundUrl);
                 const beachBuf = await loadAudioBuffer(beachAmbientUrl);
                 const underwaterBuf = await loadAudioBuffer(underwaterAmbientUrl);
-                const grassBuf = await loadAudioBuffer(grassStepUrl);
-                const sandBuf = await loadAudioBuffer(sandStepUrl);
                 const swimBuf = await loadAudioBuffer(swimStepUrl);
                 const diggingBuf = await loadAudioBuffer(diggingUrl);
                 const miningBuf = await loadAudioBuffer(miningUrl);
@@ -14298,22 +14409,6 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     underwaterSourceNode.loop = true;
                     underwaterSourceNode.connect(underwaterGainNode);
                     underwaterSourceNode.start(0);
-                }
-
-                if (grassBuf) {
-                    grassSourceNode = gameAudioContext.createBufferSource();
-                    grassSourceNode.buffer = grassBuf;
-                    grassSourceNode.loop = true;
-                    grassSourceNode.connect(grassGainNode);
-                    grassSourceNode.start(0);
-                }
-
-                if (sandBuf) {
-                    sandSourceNode = gameAudioContext.createBufferSource();
-                    sandSourceNode.buffer = sandBuf;
-                    sandSourceNode.loop = true;
-                    sandSourceNode.connect(sandGainNode);
-                    sandSourceNode.start(0);
                 }
 
                 if (swimBuf) {
@@ -14390,7 +14485,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             window.isTrunkObstructed = isTrunkObstructed;
             window.findItemInInventory = findItemInInventory;
             window.createFirewood = createFirewood;
-            window.grassStepUrl = grassStepUrl;
+            window.playSyntheticGrassStep = playSyntheticGrassStep;
+            window.playSyntheticSandStep = playSyntheticSandStep;
             window.diggingUrl = diggingUrl;
             window.miningUrl = miningUrl;
             window.firewoodUrl = firewoodUrl;
