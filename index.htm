@@ -1592,14 +1592,17 @@
         let targetStoneCount = 100;
         let showFPS = localStorage.getItem('showFPS') === 'true';
         let autoRenderDistance = localStorage.getItem('autoRenderDistance') === 'true';
-        Object.defineProperty(window, 'autoRenderDistance', {
-            get: () => autoRenderDistance,
-            set: (v) => {
-                autoRenderDistance = (v === true || v === 'true');
-                localStorage.setItem('autoRenderDistance', autoRenderDistance);
-                if (typeof applyAutoRenderDistanceSettings === 'function') applyAutoRenderDistanceSettings();
-            }
-        });
+        if (!('autoRenderDistance' in window)) {
+            Object.defineProperty(window, 'autoRenderDistance', {
+                get: () => autoRenderDistance,
+                set: (v) => {
+                    autoRenderDistance = (v === true || v === 'true');
+                    localStorage.setItem('autoRenderDistance', autoRenderDistance);
+                    if (typeof applyAutoRenderDistanceSettings === 'function') applyAutoRenderDistanceSettings();
+                },
+                configurable: true
+            });
+        }
         let fpsFrames = 0;
         let fpsLastTime = performance.now();
         let veryLowFPSCounter = 0; // Contador para evitar oscilação da chuva em FPS baixo
@@ -14672,7 +14675,6 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             window.applyFPSSettings = applyFPSSettings;
             Object.defineProperty(window, 'showFPS', { get: () => showFPS, set: (v) => { showFPS = v; } });
             window.applyAutoRenderDistanceSettings = applyAutoRenderDistanceSettings;
-            Object.defineProperty(window, 'autoRenderDistance', { get: () => autoRenderDistance, set: (v) => { autoRenderDistance = v; applyAutoRenderDistanceSettings(); } });
             window.setRenderDistance = setRenderDistance;
             window.showSettingsScreen = showSettingsScreen;
             window.showOptionsScreen = showOptionsScreen;
