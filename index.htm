@@ -1423,6 +1423,26 @@
         </div>
     </div>
 
+    <!-- Modal do Menu de Ações (Tecla O) -->
+    <div id="actionMenu" class="parchment-window hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 p-6 z-[11300] w-80 flex flex-col text-[#2d1a0a]">
+        <button id="closeActionMenuButton" class="close-button">X</button>
+        <h2 id="actionMenuTitle" class="text-2xl font-bold mb-6 text-center text-[#2d1a0a]">Menu</h2>
+        <div class="flex flex-col gap-4">
+            <button id="actionMenuBackpackButton" class="parchment-btn py-3 font-bold">
+                Mochila
+            </button>
+            <button id="actionMenuCraftingButton" class="parchment-btn py-3 font-bold">
+                Criar
+            </button>
+            <button id="actionMenuRestButton" class="parchment-btn py-3 font-bold">
+                Descansar
+            </button>
+            <button id="actionMenuBackButton" class="parchment-btn py-3 font-bold">
+                Voltar
+            </button>
+        </div>
+    </div>
+
     <!-- Modal de Opções do Contêiner (Caixote e Cesto de Capim) -->
     <div id="chestOptionsMenu" class="parchment-window hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 p-6 z-[11300] w-80 flex flex-col text-[#2d1a0a]">
         <button id="closeChestOptionsButton" class="close-button">X</button>
@@ -2251,6 +2271,47 @@
             }
         }
 
+        function openActionMenu() {
+            gamePaused = true;
+            const modal = document.getElementById('actionMenu');
+            if (modal) {
+                modal.classList.remove('hidden');
+                modal.style.display = 'flex';
+            }
+
+            const crosshair = document.getElementById('crosshair');
+            if (crosshair) crosshair.style.display = 'none';
+            document.body.style.cursor = 'default';
+            if (renderer && renderer.domElement) {
+                renderer.domElement.style.cursor = 'default';
+            }
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) hudButtons.style.display = 'none';
+            if (ghostBlockMesh) ghostBlockMesh.visible = false;
+
+            pointerLockExitForBackpack = true;
+            document.exitPointerLock();
+        }
+
+        function closeActionMenu() {
+            gamePaused = false;
+            const modal = document.getElementById('actionMenu');
+            if (modal) {
+                modal.classList.add('hidden');
+                modal.style.display = 'none';
+            }
+
+            const crosshair = document.getElementById('crosshair');
+            if (crosshair) crosshair.style.display = 'flex';
+            const hudButtons = document.getElementById('hudButtons');
+            if (hudButtons) hudButtons.style.display = 'flex';
+
+            pointerLockExitForBackpack = false;
+            if (renderer && renderer.domElement) {
+                renderer.domElement.requestPointerLock().catch(() => {});
+            }
+        }
+
         let currentOptionsChest = null;
 
         function openChestOptionsMenu(chestBody) {
@@ -2454,6 +2515,7 @@
             }
             if (playerBody) {
                 playerBody.userData.sleepTarget = target;
+                playerBody.userData.sleepStartEnergy = playerEnergy;
                 playerBody.userData.sleepStartWorldTime = (typeof world !== 'undefined' && world) ? world.time : 0;
                 playerBody.userData.sleepTargetWorldTime = ((typeof world !== 'undefined' && world) ? world.time : 0) + hours * (dayDuration / 24);
             }
@@ -8955,6 +9017,16 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     }
                 }
 
+                // Action menu modal handling
+                const actionMenuEl = document.getElementById('actionMenu');
+                if (actionMenuEl && actionMenuEl.style.display !== 'none' && !actionMenuEl.classList.contains('hidden')) {
+                    if (event.key === 'Escape') {
+                        closeActionMenu();
+                        return;
+                    }
+                    return;
+                }
+
                 // Fuel modal handling
                 if (!document.getElementById('fuelModal').classList.contains('hidden')) {
                     if (event.key === 'Escape') {
@@ -8971,7 +9043,9 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 if (event.key === 'Escape') {
                     event.preventDefault(); // IMPEDE O COMPORTAMENTO PADRÃO DO NAVEGADOR (sair do pointer lock)
 
-                    if (!document.getElementById('chestOptionsMenu').classList.contains('hidden')) {
+                    if (!document.getElementById('actionMenu').classList.contains('hidden')) {
+                        closeActionMenu();
+                    } else if (!document.getElementById('chestOptionsMenu').classList.contains('hidden')) {
                         closeChestOptionsMenu();
                     } else if (!document.getElementById('cuttingModal').classList.contains('hidden')) {
                         closeCuttingMenu();
@@ -8995,66 +9069,13 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     }
                 }
 
-                // Toggle crafting menu with 'R' key
-                if (event.key.toLowerCase() === 'r') {
-                    if (craftingModal.classList.contains('active')) {
-                        closeCraftingMenu();
-                    } else {
-                        openCraftingMenu('initial');
-                    }
-                }
-
-                // Toggle backpack with 'B' key
-                if (event.key.toLowerCase() === 'b') {
-                    if (backpackModal.classList.contains('active')) {
-                        closeBackpack();
-                    } else {
-                        openBackpack();
-                    }
-                }
-
-                // Sleep with 'M' key
-                if (event.key.toLowerCase() === 'm') {
+                // Toggle Action Menu with 'O' key
+                if (event.key.toLowerCase() === 'o') {
                     if (event.repeat) return;
-                    if (isSleeping) {
-                        isSleeping = false;
-                        return;
-                    }
-
-                    const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
-                    const isInWater = playerBottomY < waterLevel && hasWaterAt(playerBody.position.x, playerBody.position.z);
-
-                    if (isInWater) {
-                        showNotification("Você não pode dormir na água");
-                        return;
-                    }
-
-                    // Check if looking at ground, mat or bed
-                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-                    const intersects = raycaster.intersectObjects(raycastTargets, true);
-                    const firstIntersect = getFirstValidIntersect(intersects);
-                    let sleepTarget = 'ground';
-                    let canSleep = false;
-                    if (firstIntersect && firstIntersect.distance <= 5) {
-                        let body = null;
-                        let current = firstIntersect.object;
-                        while (current) {
-                            if (current.userData && current.userData.physicsBody) {
-                                body = current.userData.physicsBody;
-                                break;
-                            }
-                            current = current.parent;
-                        }
-                        if (body && (body.userData.type === grassBedItemName || body.userData.type === sleepingMatItemName || body.userData.type === bedItemName)) {
-                            canSleep = true;
-                            sleepTarget = body.userData.type;
-                        }
-                    }
-
-                    if (canSleep) {
-                        openSleepModal(sleepTarget);
+                    if (actionMenuEl && actionMenuEl.style.display !== 'none' && !actionMenuEl.classList.contains('hidden')) {
+                        closeActionMenu();
                     } else {
-                        showNotification("Você precisa olhar para um colchonete ou cama para dormir");
+                        openActionMenu();
                     }
                 }
 
@@ -11490,9 +11511,13 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 if (playerBody.userData.sleepTarget === grassBedItemName) maxRecovery = playerMaxEnergy * 0.5;
                 else if (playerBody.userData.sleepTarget === sleepingMatItemName) maxRecovery = playerMaxEnergy * 0.75;
                 else if (playerBody.userData.sleepTarget === bedItemName) maxRecovery = playerMaxEnergy * 1.0;
+                else if (playerBody.userData.sleepTarget === 'ground') {
+                    const startE = (playerBody.userData.sleepStartEnergy !== undefined) ? playerBody.userData.sleepStartEnergy : 0;
+                    maxRecovery = Math.min(playerMaxEnergy * 0.5, Math.max(playerMaxEnergy * 0.3, startE + 25));
+                }
 
                 if (playerEnergy < maxRecovery) {
-                    playerEnergy += physicsDelta * 1.0;
+                    playerEnergy += physicsDelta * 2.0;
                     if (playerEnergy > maxRecovery) playerEnergy = maxRecovery;
                 }
 
@@ -14119,6 +14144,27 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 document.getElementById('sleepHoursInput').value = 24;
             });
 
+            document.getElementById('closeActionMenuButton').addEventListener('click', closeActionMenu);
+            document.getElementById('actionMenuBackButton').addEventListener('click', closeActionMenu);
+            document.getElementById('actionMenuBackpackButton').addEventListener('click', () => {
+                closeActionMenu();
+                openBackpack();
+            });
+            document.getElementById('actionMenuCraftingButton').addEventListener('click', () => {
+                closeActionMenu();
+                openCraftingMenu('initial');
+            });
+            document.getElementById('actionMenuRestButton').addEventListener('click', () => {
+                closeActionMenu();
+                const playerBottomY = playerBody.position.y - (isCrouching ? crouchRadius : playerRadius);
+                const isInWater = playerBottomY < waterLevel && hasWaterAt(playerBody.position.x, playerBody.position.z);
+                if (isInWater) {
+                    showNotification("Você não pode descansar na água");
+                    return;
+                }
+                startSleep('ground', 8);
+            });
+
             document.getElementById('closeChestOptionsButton').addEventListener('click', closeChestOptionsMenu);
             document.getElementById('chestOptionsStoreButton').addEventListener('click', handleChestOptionsStore);
             document.getElementById('chestOptionsRotateButton').addEventListener('click', handleChestOptionsRotate);
@@ -14340,6 +14386,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             window.closeCuttingMenu = closeCuttingMenu;
             window.handleCutTrunk = handleCutTrunk;
             window.handleCreateFirewood = handleCreateFirewood;
+            window.openActionMenu = openActionMenu;
+            window.closeActionMenu = closeActionMenu;
             window.openChestOptionsMenu = openChestOptionsMenu;
             window.closeChestOptionsMenu = closeChestOptionsMenu;
             window.handleChestOptionsStore = handleChestOptionsStore;
