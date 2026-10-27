@@ -1119,11 +1119,17 @@
     </div>
 
     <!-- Novo botão de menu no canto superior esquerdo -->
-    <div id="hudButtons" class="fixed top-4 left-4 flex gap-2 z-[9800] hidden">
-        <button id="menuIconButton" class="parchment-btn py-2 px-4 flex items-center space-x-2">
-            <i class="fas fa-cog"></i> <!-- Ícone de engrenagem -->
-            <span>Esc</span>
-        </button>
+    <div id="hudButtons" class="fixed top-4 left-4 flex gap-2 z-[9800] hidden items-start">
+        <div class="flex flex-col gap-2">
+            <button id="menuIconButton" class="parchment-btn py-2 px-4 flex items-center space-x-2">
+                <i class="fas fa-cog"></i> <!-- Ícone de engrenagem -->
+                <span>Esc</span>
+            </button>
+            <button id="hudMenuMButton" class="parchment-btn py-2 px-4 flex items-center space-x-2">
+                <i class="fas fa-bars"></i> <!-- Ícone de menu -->
+                <span>M</span>
+            </button>
+        </div>
         <button id="hudWeatherToggle" class="parchment-btn py-2 px-4 flex items-center space-x-2">
             <i class="fas fa-sun" id="hudWeatherIcon"></i>
             <span id="hudWeatherText">Sol</span>
@@ -4367,15 +4373,6 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 const slotDiv = renderSlot(beltItems[i], i, 'belt');
                 inventoryBeltElement.appendChild(slotDiv);
             }
-
-            // Botão da mochila ao final
-            const backpackButton = document.createElement('button');
-            backpackButton.id = 'backpackButton';
-            const backpackIcon = document.createElement('i');
-            backpackIcon.classList.add('fas', 'fa-shopping-bag');
-            backpackButton.appendChild(backpackIcon);
-            backpackButton.addEventListener('click', openBackpack);
-            inventoryBeltElement.appendChild(backpackButton);
 
             // Atualiza a referência aos elementos dos slots para drag and drop
             slots = Array.from(inventoryBeltElement.querySelectorAll('.slot'));
@@ -9394,7 +9391,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
 
             // Listeners para o botão da mochila
-            document.getElementById('backpackButton').addEventListener('click', openBackpack);
+            const bBtn = document.getElementById('backpackButton');
+            if (bBtn) bBtn.addEventListener('click', openBackpack);
             document.getElementById('closeBackpackButton').addEventListener('click', closeBackpack);
 
         }
@@ -10660,6 +10658,14 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 });
             }
 
+            const hudMenuMButton = document.getElementById('hudMenuMButton');
+            if (hudMenuMButton) {
+                hudMenuMButton.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    openActionMenu();
+                });
+            }
+
             const hudGiveAllItems = document.getElementById('hudGiveAllItems');
             if (hudGiveAllItems) {
                 hudGiveAllItems.addEventListener('click', (e) => {
@@ -11528,9 +11534,6 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 if (timeExpired) {
                     isSleeping = false;
                     sleepTimer = 0;
-                    if (playerEnergy < playerMaxEnergy && maxRecovery < playerMaxEnergy) {
-                        showNotification("Você não consegue descansar mais aqui");
-                    }
                 }
 
                 // Stop sleeping if movement keys are pressed
