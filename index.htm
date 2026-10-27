@@ -1971,7 +1971,9 @@
 
         let cachedNoiseBuffer = null;
         function getNoiseBuffer() {
-            if (!gameAudioContext) return null;
+            if (!gameAudioContext) {
+                gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
             if (cachedNoiseBuffer) return cachedNoiseBuffer;
             const bufferSize = gameAudioContext.sampleRate * 1.0;
             cachedNoiseBuffer = gameAudioContext.createBuffer(1, bufferSize, gameAudioContext.sampleRate);
@@ -2118,7 +2120,12 @@
         }
 
         function playSyntheticGrassStep(volume = 0.5) {
-            if (!gameAudioContext) return;
+            if (!gameAudioContext) {
+                gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (gameAudioContext.state === 'suspended') {
+                gameAudioContext.resume().catch(() => {});
+            }
             const now = gameAudioContext.currentTime;
             const noiseBuffer = getNoiseBuffer();
             if (!noiseBuffer) return;
@@ -2135,9 +2142,10 @@
             filter.Q.setValueAtTime(1.2, now);
 
             const noiseGain = gameAudioContext.createGain();
-            const duration = 0.08 + Math.random() * 0.02;
-            noiseGain.gain.setValueAtTime(volume * 0.3, now);
-            noiseGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+            const duration = 0.09 + Math.random() * 0.02;
+            const volVal = Math.max(0.05, volume * 0.6);
+            noiseGain.gain.setValueAtTime(volVal, now);
+            noiseGain.gain.linearRampToValueAtTime(0, now + duration);
 
             noiseSource.connect(filter);
             filter.connect(noiseGain);
@@ -2149,22 +2157,28 @@
             // Soft earth thud
             const osc = gameAudioContext.createOscillator();
             osc.type = 'sine';
-            osc.frequency.setValueAtTime(90 * pitchJitter, now);
-            osc.frequency.exponentialRampToValueAtTime(35 * pitchJitter, now + 0.07);
+            osc.frequency.setValueAtTime(110 * pitchJitter, now);
+            osc.frequency.linearRampToValueAtTime(40 * pitchJitter, now + 0.08);
 
             const oscGain = gameAudioContext.createGain();
-            oscGain.gain.setValueAtTime(volume * 0.35, now);
-            oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+            const oscVol = Math.max(0.05, volume * 0.7);
+            oscGain.gain.setValueAtTime(oscVol, now);
+            oscGain.gain.linearRampToValueAtTime(0, now + 0.08);
 
             osc.connect(oscGain);
             oscGain.connect(gameAudioContext.destination);
 
             osc.start(now);
-            osc.stop(now + 0.07);
+            osc.stop(now + 0.08);
         }
 
         function playSyntheticSandStep(volume = 0.5) {
-            if (!gameAudioContext) return;
+            if (!gameAudioContext) {
+                gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (gameAudioContext.state === 'suspended') {
+                gameAudioContext.resume().catch(() => {});
+            }
             const now = gameAudioContext.currentTime;
             const noiseBuffer = getNoiseBuffer();
             if (!noiseBuffer) return;
@@ -2178,12 +2192,13 @@
             const filter = gameAudioContext.createBiquadFilter();
             filter.type = 'bandpass';
             filter.frequency.setValueAtTime(3200 * pitchJitter, now);
-            filter.Q.setValueAtTime(0.9, now);
+            filter.Q.setValueAtTime(0.8, now);
 
             const noiseGain = gameAudioContext.createGain();
-            const duration = 0.11 + Math.random() * 0.03;
-            noiseGain.gain.setValueAtTime(volume * 0.35, now);
-            noiseGain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+            const duration = 0.12 + Math.random() * 0.03;
+            const volVal = Math.max(0.05, volume * 0.7);
+            noiseGain.gain.setValueAtTime(volVal, now);
+            noiseGain.gain.linearRampToValueAtTime(0, now + duration);
 
             noiseSource.connect(filter);
             filter.connect(noiseGain);
@@ -2195,18 +2210,72 @@
             // Sand displacement thud
             const osc = gameAudioContext.createOscillator();
             osc.type = 'triangle';
-            osc.frequency.setValueAtTime(110 * pitchJitter, now);
-            osc.frequency.exponentialRampToValueAtTime(45 * pitchJitter, now + 0.08);
+            osc.frequency.setValueAtTime(120 * pitchJitter, now);
+            osc.frequency.linearRampToValueAtTime(50 * pitchJitter, now + 0.09);
 
             const oscGain = gameAudioContext.createGain();
-            oscGain.gain.setValueAtTime(volume * 0.25, now);
-            oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+            const oscVol = Math.max(0.05, volume * 0.5);
+            oscGain.gain.setValueAtTime(oscVol, now);
+            oscGain.gain.linearRampToValueAtTime(0, now + 0.09);
 
             osc.connect(oscGain);
             oscGain.connect(gameAudioContext.destination);
 
             osc.start(now);
-            osc.stop(now + 0.08);
+            osc.stop(now + 0.09);
+        }
+
+        function playSyntheticWaterStep(volume = 0.5) {
+            if (!gameAudioContext) {
+                gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (gameAudioContext.state === 'suspended') {
+                gameAudioContext.resume().catch(() => {});
+            }
+            const now = gameAudioContext.currentTime;
+            const noiseBuffer = getNoiseBuffer();
+            if (!noiseBuffer) return;
+
+            const pitchJitter = 0.85 + Math.random() * 0.3;
+
+            // Water spray / splash noise
+            const noiseSource = gameAudioContext.createBufferSource();
+            noiseSource.buffer = noiseBuffer;
+
+            const filter = gameAudioContext.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(1800 * pitchJitter, now);
+            filter.Q.setValueAtTime(1.5, now);
+
+            const noiseGain = gameAudioContext.createGain();
+            const duration = 0.16 + Math.random() * 0.04;
+            const volVal = Math.max(0.05, volume * 0.8);
+            noiseGain.gain.setValueAtTime(volVal, now);
+            noiseGain.gain.linearRampToValueAtTime(0, now + duration);
+
+            noiseSource.connect(filter);
+            filter.connect(noiseGain);
+            noiseGain.connect(gameAudioContext.destination);
+
+            noiseSource.start(now);
+            noiseSource.stop(now + duration);
+
+            // Water displacement / bubble plop tone
+            const osc = gameAudioContext.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(320 * pitchJitter, now);
+            osc.frequency.exponentialRampToValueAtTime(140 * pitchJitter, now + 0.12);
+
+            const oscGain = gameAudioContext.createGain();
+            const oscVol = Math.max(0.05, volume * 0.6);
+            oscGain.gain.setValueAtTime(oscVol, now);
+            oscGain.gain.linearRampToValueAtTime(0, now + 0.12);
+
+            osc.connect(oscGain);
+            oscGain.connect(gameAudioContext.destination);
+
+            osc.start(now);
+            osc.stop(now + 0.12);
         }
 
         let rainNoiseNode = null;
@@ -11919,7 +11988,15 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                         if (isActuallyMoving) {
                             if (isInWater && !isUnderwater) {
                                 targetSwim = 0.5;
-                                footstepTimer = 0.25;
+                                const effectiveSpeed = Math.max(1.0, horizSpeed > 0.5 ? horizSpeed : (typeof currentMoveSpeed !== 'undefined' ? currentMoveSpeed : walkSpeed));
+                                const stepInterval = Math.max(0.22, Math.min(0.65, 0.42 * (walkSpeed / effectiveSpeed)));
+
+                                footstepTimer += delta;
+                                if (footstepTimer >= stepInterval) {
+                                    footstepTimer = 0;
+                                    const stepVol = Math.max(0.25, Math.min(0.7, 0.4 * (effectiveSpeed / walkSpeed)));
+                                    playSyntheticWaterStep(stepVol);
+                                }
                             } else if (onGround) {
                                 // Dynamic step interval and volume scaled with player speed
                                 const effectiveSpeed = Math.max(1.0, horizSpeed > 0.5 ? horizSpeed : (typeof currentMoveSpeed !== 'undefined' ? currentMoveSpeed : walkSpeed));
@@ -14487,6 +14564,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             window.createFirewood = createFirewood;
             window.playSyntheticGrassStep = playSyntheticGrassStep;
             window.playSyntheticSandStep = playSyntheticSandStep;
+            window.playSyntheticWaterStep = playSyntheticWaterStep;
             window.diggingUrl = diggingUrl;
             window.miningUrl = miningUrl;
             window.firewoodUrl = firewoodUrl;
