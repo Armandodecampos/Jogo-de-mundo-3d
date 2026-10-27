@@ -2138,200 +2138,86 @@
         window.addEventListener('pointerdown', ensureAudioContext);
         window.addEventListener('mousedown', ensureAudioContext);
 
+        const proceduralStepBuffers = {};
+
+        function createProceduralStepBuffer(ctx, type) {
+            const sampleRate = ctx.sampleRate || 44100;
+            let duration = 0.14;
+            if (type === 'swim') duration = 0.25;
+            if (type === 'water') duration = 0.18;
+
+            const numSamples = Math.floor(sampleRate * duration);
+            const buffer = ctx.createBuffer(1, numSamples, sampleRate);
+            const data = buffer.getChannelData(0);
+
+            for (let i = 0; i < numSamples; i++) {
+                const t = i / sampleRate;
+                const progress = i / numSamples;
+                const attack = Math.min(1.0, i / (sampleRate * 0.005));
+                const decay = Math.min(1.0, (numSamples - i) / (sampleRate * 0.03));
+                const env = attack * decay;
+
+                if (type === 'grass') {
+                    const noise = (Math.random() * 2 - 1) * Math.exp(-progress * 15.0) * 0.6;
+                    const freq = 120 - progress * 70;
+                    const thud = Math.sin(2 * Math.PI * freq * t) * Math.exp(-progress * 22.0) * 0.7;
+                    data[i] = (noise + thud) * env * 0.95;
+                } else if (type === 'sand') {
+                    const noise = (Math.random() * 2 - 1) * Math.exp(-progress * 10.0) * 0.8;
+                    const freq = 140 - progress * 90;
+                    const thud = Math.sin(2 * Math.PI * freq * t) * Math.exp(-progress * 18.0) * 0.5;
+                    data[i] = (noise + thud) * env * 0.95;
+                } else if (type === 'water') {
+                    const noise = (Math.random() * 2 - 1) * Math.exp(-progress * 8.0) * 0.55;
+                    const freq = 360 - progress * 220;
+                    const splash = Math.sin(2 * Math.PI * freq * t) * Math.exp(-progress * 12.0) * 0.85;
+                    data[i] = (noise + splash) * env * 0.95;
+                } else if (type === 'swim') {
+                    const noise = (Math.random() * 2 - 1) * Math.exp(-progress * 6.0) * 0.45;
+                    const freq = 240 - progress * 150;
+                    const stroke = Math.sin(2 * Math.PI * freq * t) * Math.exp(-progress * 9.0) * 0.95;
+                    data[i] = (noise + stroke) * env * 0.95;
+                }
+            }
+            return buffer;
+        }
+
+        function playProceduralStepSound(type, volume = 0.8) {
+            const ctx = ensureAudioContext();
+            if (!ctx) return;
+
+            if (!proceduralStepBuffers[type]) {
+                proceduralStepBuffers[type] = createProceduralStepBuffer(ctx, type);
+            }
+
+            console.log(`[Passos Audio] Tocando ${type}. Vol: ${volume.toFixed(2)}, Ctx state: ${ctx.state}`);
+
+            const source = ctx.createBufferSource();
+            source.buffer = proceduralStepBuffers[type];
+            source.playbackRate.value = 0.88 + Math.random() * 0.24; // Pitch variation per step
+
+            const gain = ctx.createGain();
+            gain.gain.value = Math.max(0.15, Math.min(1.0, volume));
+
+            source.connect(gain);
+            gain.connect(ctx.destination);
+            source.start(0);
+        }
+
         function playSyntheticGrassStep(volume = 0.8) {
-            ensureAudioContext();
-            if (!gameAudioContext) return;
-            console.log('[Passos Audio] Tocando passo Grama/Terra. Volume:', volume.toFixed(2), 'Estado Contexto:', gameAudioContext.state);
-            const now = gameAudioContext.currentTime;
-            const noiseBuffer = getNoiseBuffer();
-            if (!noiseBuffer) return;
-
-            const pitchJitter = 0.85 + Math.random() * 0.3;
-
-            // 1. Noise crunch (bandpass filtered noise)
-            const noise = gameAudioContext.createBufferSource();
-            noise.buffer = noiseBuffer;
-
-            const filter = gameAudioContext.createBiquadFilter();
-            filter.type = 'bandpass';
-            filter.frequency.setValueAtTime(1400 * pitchJitter, now);
-            filter.Q.setValueAtTime(1.5, now);
-
-            const noiseGain = gameAudioContext.createGain();
-            const duration = 0.12;
-            const vol = Math.max(0.1, volume * 0.8);
-            noiseGain.gain.setValueAtTime(vol, now);
-            noiseGain.gain.linearRampToValueAtTime(0.001, now + duration);
-
-            noise.connect(filter);
-            filter.connect(noiseGain);
-            noiseGain.connect(gameAudioContext.destination);
-
-            noise.start(now);
-            noise.stop(now + duration);
-
-            // 2. Earth / Grass Impact Thud (sine wave pitch sweep)
-            const osc = gameAudioContext.createOscillator();
-            const oscGain = gameAudioContext.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(130 * pitchJitter, now);
-            osc.frequency.exponentialRampToValueAtTime(40 * pitchJitter, now + 0.09);
-
-            oscGain.gain.setValueAtTime(vol * 0.9, now);
-            oscGain.gain.linearRampToValueAtTime(0.001, now + 0.09);
-
-            osc.connect(oscGain);
-            oscGain.connect(gameAudioContext.destination);
-
-            osc.start(now);
-            osc.stop(now + 0.09);
+            playProceduralStepSound('grass', volume);
         }
 
         function playSyntheticSandStep(volume = 0.8) {
-            ensureAudioContext();
-            if (!gameAudioContext) return;
-            console.log('[Passos Audio] Tocando passo Areia. Volume:', volume.toFixed(2), 'Estado Contexto:', gameAudioContext.state);
-            const now = gameAudioContext.currentTime;
-            const noiseBuffer = getNoiseBuffer();
-            if (!noiseBuffer) return;
-
-            const pitchJitter = 0.85 + Math.random() * 0.3;
-
-            // High frequency abrasive sand grit
-            const noise = gameAudioContext.createBufferSource();
-            noise.buffer = noiseBuffer;
-
-            const filter = gameAudioContext.createBiquadFilter();
-            filter.type = 'bandpass';
-            filter.frequency.setValueAtTime(2800 * pitchJitter, now);
-            filter.Q.setValueAtTime(0.8, now);
-
-            const noiseGain = gameAudioContext.createGain();
-            const duration = 0.15;
-            const vol = Math.max(0.1, volume * 0.8);
-            noiseGain.gain.setValueAtTime(vol, now);
-            noiseGain.gain.linearRampToValueAtTime(0.001, now + duration);
-
-            noise.connect(filter);
-            filter.connect(noiseGain);
-            noiseGain.connect(gameAudioContext.destination);
-
-            noise.start(now);
-            noise.stop(now + duration);
-
-            // Soft sand displacement thud
-            const osc = gameAudioContext.createOscillator();
-            const oscGain = gameAudioContext.createGain();
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(110 * pitchJitter, now);
-            osc.frequency.exponentialRampToValueAtTime(45 * pitchJitter, now + 0.10);
-
-            oscGain.gain.setValueAtTime(vol * 0.7, now);
-            oscGain.gain.linearRampToValueAtTime(0.001, now + 0.10);
-
-            osc.connect(oscGain);
-            oscGain.connect(gameAudioContext.destination);
-
-            osc.start(now);
-            osc.stop(now + 0.10);
+            playProceduralStepSound('sand', volume);
         }
 
         function playSyntheticWaterStep(volume = 0.8) {
-            ensureAudioContext();
-            if (!gameAudioContext) return;
-            console.log('[Passos Audio] Tocando passo Água Rasa. Volume:', volume.toFixed(2), 'Estado Contexto:', gameAudioContext.state);
-            const now = gameAudioContext.currentTime;
-            const noiseBuffer = getNoiseBuffer();
-            if (!noiseBuffer) return;
-
-            const pitchJitter = 0.85 + Math.random() * 0.3;
-
-            // Water splash noise
-            const noise = gameAudioContext.createBufferSource();
-            noise.buffer = noiseBuffer;
-
-            const filter = gameAudioContext.createBiquadFilter();
-            filter.type = 'lowpass';
-            filter.frequency.setValueAtTime(2200 * pitchJitter, now);
-            filter.Q.setValueAtTime(2.0, now);
-
-            const noiseGain = gameAudioContext.createGain();
-            const duration = 0.18;
-            const vol = Math.max(0.1, volume * 0.9);
-            noiseGain.gain.setValueAtTime(vol, now);
-            noiseGain.gain.linearRampToValueAtTime(0.001, now + duration);
-
-            noise.connect(filter);
-            filter.connect(noiseGain);
-            noiseGain.connect(gameAudioContext.destination);
-
-            noise.start(now);
-            noise.stop(now + duration);
-
-            // Water bubble / plop tone
-            const osc = gameAudioContext.createOscillator();
-            const oscGain = gameAudioContext.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(360 * pitchJitter, now);
-            osc.frequency.exponentialRampToValueAtTime(150 * pitchJitter, now + 0.14);
-
-            oscGain.gain.setValueAtTime(vol * 0.8, now);
-            oscGain.gain.linearRampToValueAtTime(0.001, now + 0.14);
-
-            osc.connect(oscGain);
-            oscGain.connect(gameAudioContext.destination);
-
-            osc.start(now);
-            osc.stop(now + 0.14);
+            playProceduralStepSound('water', volume);
         }
 
         function playSyntheticSwimStep(volume = 0.8) {
-            ensureAudioContext();
-            if (!gameAudioContext) return;
-            console.log('[Passos Audio] Tocando braçada Natação/Água Profunda. Volume:', volume.toFixed(2), 'Estado Contexto:', gameAudioContext.state);
-            const now = gameAudioContext.currentTime;
-            const noiseBuffer = getNoiseBuffer();
-            if (!noiseBuffer) return;
-
-            const pitchJitter = 0.85 + Math.random() * 0.3;
-
-            // Deep water stroke / water surge noise
-            const noise = gameAudioContext.createBufferSource();
-            noise.buffer = noiseBuffer;
-
-            const filter = gameAudioContext.createBiquadFilter();
-            filter.type = 'lowpass';
-            filter.frequency.setValueAtTime(1200 * pitchJitter, now);
-            filter.Q.setValueAtTime(2.5, now);
-
-            const noiseGain = gameAudioContext.createGain();
-            const duration = 0.25;
-            const vol = Math.max(0.1, volume * 0.95);
-            noiseGain.gain.setValueAtTime(vol, now);
-            noiseGain.gain.linearRampToValueAtTime(0.001, now + duration);
-
-            noise.connect(filter);
-            filter.connect(noiseGain);
-            noiseGain.connect(gameAudioContext.destination);
-
-            noise.start(now);
-            noise.stop(now + duration);
-
-            // Deep underwater woosh / wave surge
-            const osc = gameAudioContext.createOscillator();
-            const oscGain = gameAudioContext.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(220 * pitchJitter, now);
-            osc.frequency.exponentialRampToValueAtTime(80 * pitchJitter, now + 0.22);
-
-            oscGain.gain.setValueAtTime(vol * 0.8, now);
-            oscGain.gain.linearRampToValueAtTime(0.001, now + 0.22);
-
-            osc.connect(oscGain);
-            oscGain.connect(gameAudioContext.destination);
-
-            osc.start(now);
-            osc.stop(now + 0.22);
+            playProceduralStepSound('swim', volume);
         }
 
         let rainNoiseNode = null;
