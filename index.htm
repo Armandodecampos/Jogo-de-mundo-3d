@@ -2457,10 +2457,10 @@
             }
             const targetText = document.getElementById('sleepTargetText');
             let targetName = "Cama de Madeira (Máx: 100% Energia)";
-            if (target === grassBedItemName) targetName = "Cama de Capim (Máx: 50% Energia)";
-            else if (target === sleepingMatItemName) targetName = "Colchonete (Máx: 75% Energia)";
+            if (target === grassBedItemName) targetName = "Cama de Capim (Máx: 40% Energia)";
+            else if (target === sleepingMatItemName) targetName = "Colchonete (Máx: 70% Energia)";
             else if (target === bedItemName) targetName = "Cama de Madeira (Máx: 100% Energia)";
-            else if (target === 'ground') targetName = "Chão / Descanso (Máx: 50% Energia)";
+            else if (target === 'ground') targetName = "Chão / Descanso (Máx: 20% Energia)";
 
             if (targetText) targetText.textContent = `Local: ${targetName}`;
 
@@ -3171,8 +3171,8 @@
             [fabricItemName]: 'Tecido',
             [campfireItemName]: 'Fogueira\nProporciona luz e calor',
             [torchItemName]: 'Tocha\nIlumina o caminho',
-            [grassBedItemName]: 'Cama de Capim\nRecupera 50% de energia',
-            [sleepingMatItemName]: 'Colchonete\nRecupera 75% de energia',
+            [grassBedItemName]: 'Cama de Capim\nRecupera 40% de energia',
+            [sleepingMatItemName]: 'Colchonete\nRecupera 70% de energia',
             [bedItemName]: 'Cama de Madeira\nRecupera 100% de energia',
             [doorItemName]: 'Porta',
             [basketItemName]: 'Cesto de Capim',
@@ -11514,13 +11514,12 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 if (eyeBottom) eyeBottom.style.height = '50%';
 
                 // Recover energy based on accelerated physics time
-                let maxRecovery = playerMaxEnergy * 0.3; // Chão recupera até 30%
-                if (playerBody.userData.sleepTarget === grassBedItemName) maxRecovery = playerMaxEnergy * 0.5;
-                else if (playerBody.userData.sleepTarget === sleepingMatItemName) maxRecovery = playerMaxEnergy * 0.75;
+                let maxRecovery = playerMaxEnergy * 0.2; // Chão recupera até 20%
+                if (playerBody.userData.sleepTarget === grassBedItemName) maxRecovery = playerMaxEnergy * 0.4;
+                else if (playerBody.userData.sleepTarget === sleepingMatItemName) maxRecovery = playerMaxEnergy * 0.7;
                 else if (playerBody.userData.sleepTarget === bedItemName) maxRecovery = playerMaxEnergy * 1.0;
                 else if (playerBody.userData.sleepTarget === 'ground') {
-                    const startE = (playerBody.userData.sleepStartEnergy !== undefined) ? playerBody.userData.sleepStartEnergy : 0;
-                    maxRecovery = Math.min(playerMaxEnergy * 0.5, Math.max(playerMaxEnergy * 0.3, startE + 25));
+                    maxRecovery = playerMaxEnergy * 0.2;
                 }
 
                 if (playerEnergy < maxRecovery) {
@@ -14040,12 +14039,12 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     if (hungerWarning) hungerWarning.style.display = 'none';
                 }
 
-                // Energy effects (Exhaustion below 30%)
-                if (!isSleeping && playerEnergy < playerMaxEnergy * 0.3) {
+                // Energy effects (Exhaustion below 10%)
+                if (!isSleeping && playerEnergy < playerMaxEnergy * 0.1) {
                     if (exhaustedWarning) exhaustedWarning.style.display = 'block';
 
-                    const energyFactor = playerEnergy / (playerMaxEnergy * 0.3); // 1.0 at 30%, 0.0 at 0%
-                    const eyeHeight = (1.0 - energyFactor) * 50; // 0% at 30% energy, 50% at 0% energy
+                    const energyFactor = playerEnergy / (playerMaxEnergy * 0.1); // 1.0 at 10%, 0.0 at 0%
+                    const eyeHeight = (1.0 - energyFactor) * 50; // 0% at 10% energy, 50% at 0% energy
 
                     if (eyeTop) eyeTop.style.height = `${eyeHeight}%`;
                     if (eyeBottom) eyeBottom.style.height = `${eyeHeight}%`;
