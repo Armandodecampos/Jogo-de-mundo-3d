@@ -40,18 +40,18 @@ test.describe('Grass Bed and Save/Load Ground Items Tests', () => {
             window.playerEnergy = 0;
             const maxEnergy = 100;
 
-            // Grass Bed (50%)
+            // Grass Bed (40%)
             window.playerBody.userData.sleepTarget = window.grassBedItemName;
-            let targetMaxGrass = maxEnergy * 0.5;
+            let targetMaxGrass = maxEnergy * 0.4;
             if (window.playerEnergy < targetMaxGrass) {
                 window.playerEnergy = Math.min(targetMaxGrass, window.playerEnergy + 10);
             }
             const grassEnergy = window.playerEnergy;
 
-            // Sleeping Mat (75%)
+            // Sleeping Mat (70%)
             window.playerBody.userData.sleepTarget = window.sleepingMatItemName;
             window.playerEnergy = 0;
-            let targetMaxMat = maxEnergy * 0.75;
+            let targetMaxMat = maxEnergy * 0.7;
             window.playerEnergy = Math.min(targetMaxMat, window.playerEnergy + 70);
             const matEnergy = window.playerEnergy;
 
