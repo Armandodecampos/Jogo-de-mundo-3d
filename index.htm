@@ -2122,10 +2122,16 @@
         function ensureAudioContext() {
             if (!gameAudioContext) {
                 gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+                console.log('[Passos Audio] AudioContext criado. Estado:', gameAudioContext.state);
             }
             if (gameAudioContext && gameAudioContext.state === 'suspended') {
-                gameAudioContext.resume().catch(() => {});
+                gameAudioContext.resume().then(() => {
+                    console.log('[Passos Audio] AudioContext desbloqueado/retomado. Estado:', gameAudioContext.state);
+                }).catch(err => {
+                    console.warn('[Passos Audio] Erro ao retomar AudioContext:', err);
+                });
             }
+            return gameAudioContext;
         }
         window.addEventListener('click', ensureAudioContext);
         window.addEventListener('keydown', ensureAudioContext);
@@ -2135,6 +2141,7 @@
         function playSyntheticGrassStep(volume = 0.8) {
             ensureAudioContext();
             if (!gameAudioContext) return;
+            console.log('[Passos Audio] Tocando passo Grama/Terra. Volume:', volume.toFixed(2), 'Estado Contexto:', gameAudioContext.state);
             const now = gameAudioContext.currentTime;
             const noiseBuffer = getNoiseBuffer();
             if (!noiseBuffer) return;
@@ -2183,6 +2190,7 @@
         function playSyntheticSandStep(volume = 0.8) {
             ensureAudioContext();
             if (!gameAudioContext) return;
+            console.log('[Passos Audio] Tocando passo Areia. Volume:', volume.toFixed(2), 'Estado Contexto:', gameAudioContext.state);
             const now = gameAudioContext.currentTime;
             const noiseBuffer = getNoiseBuffer();
             if (!noiseBuffer) return;
@@ -2231,6 +2239,7 @@
         function playSyntheticWaterStep(volume = 0.8) {
             ensureAudioContext();
             if (!gameAudioContext) return;
+            console.log('[Passos Audio] Tocando passo Água Rasa. Volume:', volume.toFixed(2), 'Estado Contexto:', gameAudioContext.state);
             const now = gameAudioContext.currentTime;
             const noiseBuffer = getNoiseBuffer();
             if (!noiseBuffer) return;
@@ -2279,6 +2288,7 @@
         function playSyntheticSwimStep(volume = 0.8) {
             ensureAudioContext();
             if (!gameAudioContext) return;
+            console.log('[Passos Audio] Tocando braçada Natação/Água Profunda. Volume:', volume.toFixed(2), 'Estado Contexto:', gameAudioContext.state);
             const now = gameAudioContext.currentTime;
             const noiseBuffer = getNoiseBuffer();
             if (!noiseBuffer) return;
@@ -11962,27 +11972,29 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 window.onWalkableGround = onWalkableGround;
 
                 // Atualiza volume e velocidade dos sons de passos e nado
-                if (gameAudioContext) {
-                    const isModalOpen = (document.getElementById('chestModal') && !document.getElementById('chestModal').classList.contains('hidden')) ||
-                                       (document.getElementById('backpackModal') && document.getElementById('backpackModal').classList.contains('active')) ||
-                                       (document.getElementById('actionMenu') && !document.getElementById('actionMenu').classList.contains('hidden')) ||
-                                       (document.getElementById('craftingModal') && document.getElementById('craftingModal').classList.contains('active')) ||
-                                       (document.getElementById('sleepModal') && !document.getElementById('sleepModal').classList.contains('hidden')) ||
-                                       (document.getElementById('fuelModal') && !document.getElementById('fuelModal').classList.contains('hidden')) ||
-                                       (document.getElementById('chestOptionsMenu') && !document.getElementById('chestOptionsMenu').classList.contains('hidden')) ||
-                                       (document.getElementById('optionsScreen') && document.getElementById('optionsScreen').classList.contains('active'));
+                const ctx = gameAudioContext || ensureAudioContext();
+                const isModalOpen = (document.getElementById('chestModal') && !document.getElementById('chestModal').classList.contains('hidden')) ||
+                                   (document.getElementById('backpackModal') && document.getElementById('backpackModal').classList.contains('active')) ||
+                                   (document.getElementById('actionMenu') && !document.getElementById('actionMenu').classList.contains('hidden')) ||
+                                   (document.getElementById('craftingModal') && document.getElementById('craftingModal').classList.contains('active')) ||
+                                   (document.getElementById('sleepModal') && !document.getElementById('sleepModal').classList.contains('hidden')) ||
+                                   (document.getElementById('fuelModal') && !document.getElementById('fuelModal').classList.contains('hidden')) ||
+                                   (document.getElementById('chestOptionsMenu') && !document.getElementById('chestOptionsMenu').classList.contains('hidden')) ||
+                                   (document.getElementById('optionsScreen') && document.getElementById('optionsScreen').classList.contains('active'));
 
-                    const isStoppedOrInModal = gamePaused || isSleeping || isDrivingRaft || isFlying || isFainted || openedChest !== null || currentOptionsChest !== null || isModalOpen;
-                    if (isStoppedOrInModal) {
-                        footstepTimer = 0.25;
-                        if (grassGainNode) grassGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        if (sandGainNode) sandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        if (swimGainNode) swimGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        if (diggingGainNode) diggingGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        if (miningGainNode) miningGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        if (torchGainNode) torchGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        if (campfireGainNode) campfireGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                    } else {
+                const isStoppedOrInModal = gamePaused || isSleeping || isDrivingRaft || isFlying || isFainted || openedChest !== null || currentOptionsChest !== null || isModalOpen;
+                if (isStoppedOrInModal) {
+                    footstepTimer = 0.25;
+                    if (ctx) {
+                        if (grassGainNode) grassGainNode.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+                        if (sandGainNode) sandGainNode.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+                        if (swimGainNode) swimGainNode.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+                        if (diggingGainNode) diggingGainNode.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+                        if (miningGainNode) miningGainNode.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+                        if (torchGainNode) torchGainNode.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+                        if (campfireGainNode) campfireGainNode.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+                    }
+                } else {
                         const isMoving = (keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d'] || keysPressed[' '] || keysPressed['c']);
                         const onGround = window.onWalkableGround;
                         const playerPos = playerBody.position;
@@ -12083,19 +12095,20 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                             }
                         }
 
-                        if (grassGainNode) grassGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        if (sandGainNode) sandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        if (swimGainNode) swimGainNode.gain.setTargetAtTime(targetSwim, gameAudioContext.currentTime, 0.1);
-                        if (diggingGainNode) diggingGainNode.gain.setTargetAtTime(targetDigging, gameAudioContext.currentTime, 0.1);
-                        if (miningGainNode) miningGainNode.gain.setTargetAtTime(targetMining, gameAudioContext.currentTime, 0.1);
-                        if (torchGainNode) torchGainNode.gain.setTargetAtTime(targetTorch, gameAudioContext.currentTime, 0.1);
-                        if (campfireGainNode) campfireGainNode.gain.setTargetAtTime(targetCampfire, gameAudioContext.currentTime, 0.1);
+                        if (ctx) {
+                            if (grassGainNode) grassGainNode.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+                            if (sandGainNode) sandGainNode.gain.setTargetAtTime(0, ctx.currentTime, 0.05);
+                            if (swimGainNode) swimGainNode.gain.setTargetAtTime(targetSwim, ctx.currentTime, 0.1);
+                            if (diggingGainNode) diggingGainNode.gain.setTargetAtTime(targetDigging, ctx.currentTime, 0.1);
+                            if (miningGainNode) miningGainNode.gain.setTargetAtTime(targetMining, ctx.currentTime, 0.1);
+                            if (torchGainNode) torchGainNode.gain.setTargetAtTime(targetTorch, ctx.currentTime, 0.1);
+                            if (campfireGainNode) campfireGainNode.gain.setTargetAtTime(targetCampfire, ctx.currentTime, 0.1);
 
-                        const speedRatio = typeof currentMoveSpeed !== 'undefined' ? (currentMoveSpeed / walkSpeed) : 1.0;
-                        const playbackRate = Math.max(0.5, Math.min(2.5, speedRatio));
-                        if (swimSourceNode) swimSourceNode.playbackRate.setTargetAtTime(playbackRate, gameAudioContext.currentTime, 0.1);
+                            const speedRatio = typeof currentMoveSpeed !== 'undefined' ? (currentMoveSpeed / walkSpeed) : 1.0;
+                            const playbackRate = Math.max(0.5, Math.min(2.5, speedRatio));
+                            if (swimSourceNode) swimSourceNode.playbackRate.setTargetAtTime(playbackRate, ctx.currentTime, 0.1);
+                        }
                     }
-                }
 
                 const noMovementKeys = !(keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d'] || keysPressed[' ']);
                 if (noMovementKeys && window.onWalkableGround) {
