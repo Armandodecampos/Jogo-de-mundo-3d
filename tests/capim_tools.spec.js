@@ -18,41 +18,32 @@ test('Capim destruction time with tools', async ({ page }) => {
 
       window.updateUI();
 
+      const realIslandMesh = window.islandMeshes[0].mesh;
       const originalIntersect = window.THREE.Raycaster.prototype.intersectObjects;
       window.THREE.Raycaster.prototype.intersectObjects = function() {
         return [{
             distance: 1,
             point: new window.THREE.Vector3(10, 0, 10),
-            object: window.islandMeshes[0].mesh
+            object: realIslandMesh
         }];
       };
 
       const originalDistance = window.calculateWrappedDistance;
       window.calculateWrappedDistance = () => 0.1;
 
-      // Mock capimClusters to ensure potentialCapim is set
-      const originalClusters = window.capimClusters;
-      window.capimClusters = [{ position: new window.THREE.Vector3(10, 0, 10) }];
+      // Position camera aiming directly at (10, 0, 10)
+      window.camera.position.set(10, 1.6, 11);
+      window.camera.lookAt(new window.THREE.Vector3(10, 0.5, 10));
+      window.camera.updateMatrixWorld();
+      window.camera.matrixWorldInverse.copy(window.camera.matrixWorld).invert();
+
+      // Mutate existing capimClusters array so local scope in index.htm sees it
+      const savedClusters = [...window.capimClusters];
+      window.capimClusters.length = 0;
+      window.capimClusters.push({ position: new window.THREE.Vector3(10, 0, 10) });
 
       try {
         window.startDestruction();
-        // Force target to be the capim if startDestruction didn't pick it
-        if (!window.targetDestroyTime || window.targetDestroyTime === 15) {
-             // Re-run the core logic with forced target
-             const target = { isCapim: true, cluster: window.capimClusters[0] };
-             window.stopDestruction();
-             // Manually invoke the internal logic of startDestruction for the target
-             // Since we can't easily do that, let's just use the exposed window.targetDestroyTime
-             // after a manual assignment if we could, but we can't.
-             // Let's try to just make potentialCapim the ONLY thing it can find.
-             const oldIslandMeshes = window.islandMeshes;
-             window.islandMeshes = []; // This will skip the isIslandMesh check and the potentialGround assignment
-             try {
-                window.startDestruction();
-             } finally {
-                window.islandMeshes = oldIslandMeshes;
-             }
-        }
 
         const time = window.targetDestroyTime;
         window.stopDestruction();
@@ -60,7 +51,8 @@ test('Capim destruction time with tools', async ({ page }) => {
       } finally {
         window.THREE.Raycaster.prototype.intersectObjects = originalIntersect;
         window.calculateWrappedDistance = originalDistance;
-        window.capimClusters = originalClusters;
+        window.capimClusters.length = 0;
+        window.capimClusters.push(...savedClusters);
       }
     }, itemName);
   };
