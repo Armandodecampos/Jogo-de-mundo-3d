@@ -2119,163 +2119,122 @@
             noise.stop(now + 0.1);
         }
 
-        function playSyntheticGrassStep(volume = 0.5) {
+        let syntheticGrassBuffer = null;
+        let syntheticSandBuffer = null;
+        let syntheticWaterBuffer = null;
+
+        function ensureAudioContext() {
             if (!gameAudioContext) {
                 gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
-            if (gameAudioContext.state === 'suspended') {
+            if (gameAudioContext && gameAudioContext.state === 'suspended') {
                 gameAudioContext.resume().catch(() => {});
             }
-            const now = gameAudioContext.currentTime;
-            const noiseBuffer = getNoiseBuffer();
-            if (!noiseBuffer) return;
+        }
+        window.addEventListener('click', ensureAudioContext);
+        window.addEventListener('keydown', ensureAudioContext);
+        window.addEventListener('pointerdown', ensureAudioContext);
 
-            const pitchJitter = 0.9 + Math.random() * 0.2;
+        function createSyntheticGrassBuffer(ctx) {
+            const sampleRate = ctx.sampleRate || 44100;
+            const duration = 0.12;
+            const numSamples = Math.floor(sampleRate * duration);
+            const buffer = ctx.createBuffer(1, numSamples, sampleRate);
+            const data = buffer.getChannelData(0);
 
-            // Grass crunch / rustle
-            const noiseSource = gameAudioContext.createBufferSource();
-            noiseSource.buffer = noiseBuffer;
+            for (let i = 0; i < numSamples; i++) {
+                const t = i / sampleRate;
+                const progress = i / numSamples;
+                const noise = (Math.random() * 2 - 1) * Math.exp(-progress * 22.0);
+                const freq = 100 - progress * 60;
+                const thud = Math.sin(2 * Math.PI * freq * t) * Math.exp(-progress * 28.0);
+                data[i] = (noise * 0.45 + thud * 0.55) * (1.0 - progress);
+            }
+            return buffer;
+        }
 
-            const filter = gameAudioContext.createBiquadFilter();
-            filter.type = 'bandpass';
-            filter.frequency.setValueAtTime(1600 * pitchJitter, now);
-            filter.Q.setValueAtTime(1.2, now);
+        function createSyntheticSandBuffer(ctx) {
+            const sampleRate = ctx.sampleRate || 44100;
+            const duration = 0.14;
+            const numSamples = Math.floor(sampleRate * duration);
+            const buffer = ctx.createBuffer(1, numSamples, sampleRate);
+            const data = buffer.getChannelData(0);
 
-            const noiseGain = gameAudioContext.createGain();
-            const duration = 0.09 + Math.random() * 0.02;
-            const volVal = Math.max(0.05, volume * 0.6);
-            noiseGain.gain.setValueAtTime(volVal, now);
-            noiseGain.gain.linearRampToValueAtTime(0, now + duration);
+            for (let i = 0; i < numSamples; i++) {
+                const t = i / sampleRate;
+                const progress = i / numSamples;
+                const noise = (Math.random() * 2 - 1) * Math.exp(-progress * 16.0);
+                const freq = 130 - progress * 75;
+                const thud = Math.sin(2 * Math.PI * freq * t) * Math.exp(-progress * 20.0);
+                data[i] = (noise * 0.65 + thud * 0.35) * (1.0 - progress);
+            }
+            return buffer;
+        }
 
-            noiseSource.connect(filter);
-            filter.connect(noiseGain);
-            noiseGain.connect(gameAudioContext.destination);
+        function createSyntheticWaterBuffer(ctx) {
+            const sampleRate = ctx.sampleRate || 44100;
+            const duration = 0.18;
+            const numSamples = Math.floor(sampleRate * duration);
+            const buffer = ctx.createBuffer(1, numSamples, sampleRate);
+            const data = buffer.getChannelData(0);
 
-            noiseSource.start(now);
-            noiseSource.stop(now + duration);
+            for (let i = 0; i < numSamples; i++) {
+                const t = i / sampleRate;
+                const progress = i / numSamples;
+                const noise = (Math.random() * 2 - 1) * Math.exp(-progress * 12.0);
+                const freq = 340 - progress * 200;
+                const bubble = Math.sin(2 * Math.PI * freq * t) * Math.exp(-progress * 14.0);
+                data[i] = (noise * 0.5 + bubble * 0.5) * (1.0 - progress);
+            }
+            return buffer;
+        }
 
-            // Soft earth thud
-            const osc = gameAudioContext.createOscillator();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(110 * pitchJitter, now);
-            osc.frequency.linearRampToValueAtTime(40 * pitchJitter, now + 0.08);
-
-            const oscGain = gameAudioContext.createGain();
-            const oscVol = Math.max(0.05, volume * 0.7);
-            oscGain.gain.setValueAtTime(oscVol, now);
-            oscGain.gain.linearRampToValueAtTime(0, now + 0.08);
-
-            osc.connect(oscGain);
-            oscGain.connect(gameAudioContext.destination);
-
-            osc.start(now);
-            osc.stop(now + 0.08);
+        function playSyntheticGrassStep(volume = 0.5) {
+            ensureAudioContext();
+            if (!gameAudioContext) return;
+            if (!syntheticGrassBuffer) {
+                syntheticGrassBuffer = createSyntheticGrassBuffer(gameAudioContext);
+            }
+            const source = gameAudioContext.createBufferSource();
+            source.buffer = syntheticGrassBuffer;
+            source.playbackRate.value = 0.9 + Math.random() * 0.2;
+            const gainNode = gameAudioContext.createGain();
+            gainNode.gain.value = Math.max(0.1, volume * 0.85);
+            source.connect(gainNode);
+            gainNode.connect(gameAudioContext.destination);
+            source.start(0);
         }
 
         function playSyntheticSandStep(volume = 0.5) {
-            if (!gameAudioContext) {
-                gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            ensureAudioContext();
+            if (!gameAudioContext) return;
+            if (!syntheticSandBuffer) {
+                syntheticSandBuffer = createSyntheticSandBuffer(gameAudioContext);
             }
-            if (gameAudioContext.state === 'suspended') {
-                gameAudioContext.resume().catch(() => {});
-            }
-            const now = gameAudioContext.currentTime;
-            const noiseBuffer = getNoiseBuffer();
-            if (!noiseBuffer) return;
-
-            const pitchJitter = 0.9 + Math.random() * 0.2;
-
-            // Sand grit / crunch
-            const noiseSource = gameAudioContext.createBufferSource();
-            noiseSource.buffer = noiseBuffer;
-
-            const filter = gameAudioContext.createBiquadFilter();
-            filter.type = 'bandpass';
-            filter.frequency.setValueAtTime(3200 * pitchJitter, now);
-            filter.Q.setValueAtTime(0.8, now);
-
-            const noiseGain = gameAudioContext.createGain();
-            const duration = 0.12 + Math.random() * 0.03;
-            const volVal = Math.max(0.05, volume * 0.7);
-            noiseGain.gain.setValueAtTime(volVal, now);
-            noiseGain.gain.linearRampToValueAtTime(0, now + duration);
-
-            noiseSource.connect(filter);
-            filter.connect(noiseGain);
-            noiseGain.connect(gameAudioContext.destination);
-
-            noiseSource.start(now);
-            noiseSource.stop(now + duration);
-
-            // Sand displacement thud
-            const osc = gameAudioContext.createOscillator();
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(120 * pitchJitter, now);
-            osc.frequency.linearRampToValueAtTime(50 * pitchJitter, now + 0.09);
-
-            const oscGain = gameAudioContext.createGain();
-            const oscVol = Math.max(0.05, volume * 0.5);
-            oscGain.gain.setValueAtTime(oscVol, now);
-            oscGain.gain.linearRampToValueAtTime(0, now + 0.09);
-
-            osc.connect(oscGain);
-            oscGain.connect(gameAudioContext.destination);
-
-            osc.start(now);
-            osc.stop(now + 0.09);
+            const source = gameAudioContext.createBufferSource();
+            source.buffer = syntheticSandBuffer;
+            source.playbackRate.value = 0.9 + Math.random() * 0.2;
+            const gainNode = gameAudioContext.createGain();
+            gainNode.gain.value = Math.max(0.1, volume * 0.85);
+            source.connect(gainNode);
+            gainNode.connect(gameAudioContext.destination);
+            source.start(0);
         }
 
         function playSyntheticWaterStep(volume = 0.5) {
-            if (!gameAudioContext) {
-                gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            ensureAudioContext();
+            if (!gameAudioContext) return;
+            if (!syntheticWaterBuffer) {
+                syntheticWaterBuffer = createSyntheticWaterBuffer(gameAudioContext);
             }
-            if (gameAudioContext.state === 'suspended') {
-                gameAudioContext.resume().catch(() => {});
-            }
-            const now = gameAudioContext.currentTime;
-            const noiseBuffer = getNoiseBuffer();
-            if (!noiseBuffer) return;
-
-            const pitchJitter = 0.85 + Math.random() * 0.3;
-
-            // Water spray / splash noise
-            const noiseSource = gameAudioContext.createBufferSource();
-            noiseSource.buffer = noiseBuffer;
-
-            const filter = gameAudioContext.createBiquadFilter();
-            filter.type = 'lowpass';
-            filter.frequency.setValueAtTime(1800 * pitchJitter, now);
-            filter.Q.setValueAtTime(1.5, now);
-
-            const noiseGain = gameAudioContext.createGain();
-            const duration = 0.16 + Math.random() * 0.04;
-            const volVal = Math.max(0.05, volume * 0.8);
-            noiseGain.gain.setValueAtTime(volVal, now);
-            noiseGain.gain.linearRampToValueAtTime(0, now + duration);
-
-            noiseSource.connect(filter);
-            filter.connect(noiseGain);
-            noiseGain.connect(gameAudioContext.destination);
-
-            noiseSource.start(now);
-            noiseSource.stop(now + duration);
-
-            // Water displacement / bubble plop tone
-            const osc = gameAudioContext.createOscillator();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(320 * pitchJitter, now);
-            osc.frequency.exponentialRampToValueAtTime(140 * pitchJitter, now + 0.12);
-
-            const oscGain = gameAudioContext.createGain();
-            const oscVol = Math.max(0.05, volume * 0.6);
-            oscGain.gain.setValueAtTime(oscVol, now);
-            oscGain.gain.linearRampToValueAtTime(0, now + 0.12);
-
-            osc.connect(oscGain);
-            oscGain.connect(gameAudioContext.destination);
-
-            osc.start(now);
-            osc.stop(now + 0.12);
+            const source = gameAudioContext.createBufferSource();
+            source.buffer = syntheticWaterBuffer;
+            source.playbackRate.value = 0.85 + Math.random() * 0.3;
+            const gainNode = gameAudioContext.createGain();
+            gainNode.gain.value = Math.max(0.1, volume * 0.9);
+            source.connect(gainNode);
+            gainNode.connect(gameAudioContext.destination);
+            source.start(0);
         }
 
         let rainNoiseNode = null;
