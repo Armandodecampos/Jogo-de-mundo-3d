@@ -11916,7 +11916,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 window.onWalkableGround = onWalkableGround;
 
                 // Atualiza volume e velocidade dos sons de passos e nado
-                if (gameAudioContext && grassGainNode && sandGainNode && swimGainNode && diggingGainNode && miningGainNode && torchGainNode && campfireGainNode) {
+                if (gameAudioContext) {
                     const isModalOpen = (document.getElementById('chestModal') && !document.getElementById('chestModal').classList.contains('hidden')) ||
                                        (document.getElementById('backpackModal') && document.getElementById('backpackModal').classList.contains('active')) ||
                                        (document.getElementById('actionMenu') && !document.getElementById('actionMenu').classList.contains('hidden')) ||
@@ -11929,13 +11929,13 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     const isStoppedOrInModal = gamePaused || isSleeping || isDrivingRaft || isFlying || isFainted || openedChest !== null || currentOptionsChest !== null || isModalOpen;
                     if (isStoppedOrInModal) {
                         footstepTimer = 0.25;
-                        grassGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        sandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        swimGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        diggingGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        miningGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        torchGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        campfireGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                        if (grassGainNode) grassGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                        if (sandGainNode) sandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                        if (swimGainNode) swimGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                        if (diggingGainNode) diggingGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                        if (miningGainNode) miningGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                        if (torchGainNode) torchGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                        if (campfireGainNode) campfireGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                     } else {
                         const isMoving = (keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d']);
                         const onGround = window.onWalkableGround;
@@ -11983,9 +11983,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                             targetCampfire = campfireLin * campfireLin;
                         }
 
-                        const isActuallyMoving = isMoving && horizSpeed > 0.1;
-
-                        if (isActuallyMoving) {
+                        if (isMoving) {
                             if (isInWater && !isUnderwater) {
                                 targetSwim = 0.5;
                                 const effectiveSpeed = Math.max(1.0, horizSpeed > 0.5 ? horizSpeed : (typeof currentMoveSpeed !== 'undefined' ? currentMoveSpeed : walkSpeed));
@@ -12029,13 +12027,13 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                             }
                         }
 
-                        grassGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        sandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        swimGainNode.gain.setTargetAtTime(targetSwim, gameAudioContext.currentTime, 0.1);
-                        diggingGainNode.gain.setTargetAtTime(targetDigging, gameAudioContext.currentTime, 0.1);
-                        miningGainNode.gain.setTargetAtTime(targetMining, gameAudioContext.currentTime, 0.1);
-                        torchGainNode.gain.setTargetAtTime(targetTorch, gameAudioContext.currentTime, 0.1);
-                        campfireGainNode.gain.setTargetAtTime(targetCampfire, gameAudioContext.currentTime, 0.1);
+                        if (grassGainNode) grassGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                        if (sandGainNode) sandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                        if (swimGainNode) swimGainNode.gain.setTargetAtTime(targetSwim, gameAudioContext.currentTime, 0.1);
+                        if (diggingGainNode) diggingGainNode.gain.setTargetAtTime(targetDigging, gameAudioContext.currentTime, 0.1);
+                        if (miningGainNode) miningGainNode.gain.setTargetAtTime(targetMining, gameAudioContext.currentTime, 0.1);
+                        if (torchGainNode) torchGainNode.gain.setTargetAtTime(targetTorch, gameAudioContext.currentTime, 0.1);
+                        if (campfireGainNode) campfireGainNode.gain.setTargetAtTime(targetCampfire, gameAudioContext.currentTime, 0.1);
 
                         const speedRatio = typeof currentMoveSpeed !== 'undefined' ? (currentMoveSpeed / walkSpeed) : 1.0;
                         const playbackRate = Math.max(0.5, Math.min(2.5, speedRatio));
