@@ -1168,6 +1168,17 @@
                     <input type="range" id="renderDistanceSlider" min="40" max="400" value="250" class="w-full">
                 </div>
                 <div class="option-item">
+                    <label for="autoRenderDistanceToggle" class="flex justify-between w-full">
+                        <span>Distância de Visão Automática</span>
+                        <span id="autoRenderDistanceStatus">Desativado</span>
+                    </label>
+                    <select id="autoRenderDistanceToggle" class="w-full p-2 rounded">
+                        <option value="false">Desativado</option>
+                        <option value="true">Ativado</option>
+                    </select>
+                    <p class="text-xs text-[#2d1a0a] opacity-80 mt-1">Ajusta automaticamente a distância de visão para manter pelo menos 30 FPS, ajudando a melhorar o desempenho.</p>
+                </div>
+                <div class="option-item">
                     <label for="capimDensitySlider" class="flex justify-between w-full">
                         <span>Densidade de Capim</span>
                         <span id="capimDensityValue">1000</span>
@@ -1580,6 +1591,15 @@
         let targetCapimCount = parseInt(localStorage.getItem('targetCapimCount')) || 1000;
         let targetStoneCount = 100;
         let showFPS = localStorage.getItem('showFPS') === 'true';
+        let autoRenderDistance = localStorage.getItem('autoRenderDistance') === 'true';
+        Object.defineProperty(window, 'autoRenderDistance', {
+            get: () => autoRenderDistance,
+            set: (v) => {
+                autoRenderDistance = (v === true || v === 'true');
+                localStorage.setItem('autoRenderDistance', autoRenderDistance);
+                if (typeof applyAutoRenderDistanceSettings === 'function') applyAutoRenderDistanceSettings();
+            }
+        });
         let fpsFrames = 0;
         let fpsLastTime = performance.now();
         let veryLowFPSCounter = 0; // Contador para evitar oscilação da chuva em FPS baixo
@@ -3630,6 +3650,39 @@
             const toggle = document.getElementById('fpsToggle');
             if (toggle) toggle.value = showFPS.toString();
         }
+
+        function applyAutoRenderDistanceSettings() {
+            const status = document.getElementById('autoRenderDistanceStatus');
+            if (status) status.textContent = autoRenderDistance ? "Ativado" : "Desativado";
+            const toggle = document.getElementById('autoRenderDistanceToggle');
+            if (toggle) toggle.value = autoRenderDistance.toString();
+        }
+
+        function setRenderDistance(val, updateSliderUI = true) {
+            renderDistance = Math.max(40, Math.min(400, Math.round(val)));
+            localStorage.setItem('renderDistance', renderDistance);
+
+            if (updateSliderUI) {
+                const slider = document.getElementById('renderDistanceSlider');
+                const valueSpan = document.getElementById('renderDistanceValue');
+                if (slider) slider.value = renderDistance;
+                if (valueSpan) valueSpan.textContent = renderDistance;
+            }
+
+            if (typeof skyFog !== 'undefined' && skyFog) {
+                skyFog.near = renderDistance * 0.5;
+                skyFog.far = renderDistance;
+            }
+
+            if (typeof updateShadowCameras === 'function') {
+                updateShadowCameras(renderDistance);
+            }
+
+            if (typeof camera !== 'undefined' && camera) {
+                camera.updateProjectionMatrix();
+            }
+        }
+        window.setRenderDistance = setRenderDistance;
 
         // NOVO: Função para ajustar as bordas da câmera de sombra dinamicamente
         function updateShadowCameras(distance) {
@@ -10447,23 +10500,23 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 renderDistanceSlider.value = renderDistance;
                 renderDistanceValue.textContent = renderDistance;
                 renderDistanceSlider.addEventListener('input', () => {
-                    renderDistance = parseInt(renderDistanceSlider.value);
+                    if (autoRenderDistance) {
+                        autoRenderDistance = false;
+                        localStorage.setItem('autoRenderDistance', 'false');
+                        applyAutoRenderDistanceSettings();
+                    }
+                    setRenderDistance(parseInt(renderDistanceSlider.value), false);
                     renderDistanceValue.textContent = renderDistance;
-                    localStorage.setItem('renderDistance', renderDistance);
+                });
+            }
 
-                    // Atualizar o fog
-                    if (typeof skyFog !== 'undefined' && skyFog) {
-                        skyFog.near = renderDistance * 0.5;
-                        skyFog.far = renderDistance;
-                    }
-
-                    // Atualizar as câmeras de sombra
-                    updateShadowCameras(renderDistance);
-
-                    // Atualizar a câmera (A câmera permanece com far fixo em 5000 para ver o céu)
-                    if (typeof camera !== 'undefined' && camera) {
-                        camera.updateProjectionMatrix();
-                    }
+            const autoRenderDistanceToggle = document.getElementById('autoRenderDistanceToggle');
+            if (autoRenderDistanceToggle) {
+                autoRenderDistanceToggle.value = autoRenderDistance.toString();
+                autoRenderDistanceToggle.addEventListener('change', () => {
+                    autoRenderDistance = autoRenderDistanceToggle.value === 'true';
+                    localStorage.setItem('autoRenderDistance', autoRenderDistance);
+                    applyAutoRenderDistanceSettings();
                 });
             }
 
@@ -10834,6 +10887,18 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             if (now > fpsLastTime + 1000) {
                 const fps = Math.round((fpsFrames * 1000) / (now - fpsLastTime));
                 if (showFPS) document.getElementById('fpsCounter').textContent = `FPS: ${fps}`;
+
+                if (autoRenderDistance) {
+                    if (fps < 30) {
+                        const diff = 30 - fps;
+                        const step = diff > 10 ? 25 : (diff > 5 ? 15 : 10);
+                        if (renderDistance > 40) {
+                            setRenderDistance(renderDistance - step, true);
+                        }
+                    } else if (fps > 35 && renderDistance < 400) {
+                        setRenderDistance(renderDistance + 5, true);
+                    }
+                }
 
                 // Monitor performance
                 if (fps < 28) {
@@ -14085,6 +14150,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             applyShadowSettings(); // Aplica as configurações de sombra após init
             applyHintSettings(); // Aplica as configurações de dicas após init
             applyFPSSettings(); // Aplica as configurações de FPS após init
+            applyAutoRenderDistanceSettings(); // Aplica as configurações de distância de visão automática
             populateCapim(); // NOVO: Popula a ilha com capim
             populateTrees(); // NOVO: Popula a ilha com árvores
             populateStones(); // NOVO: Popula a ilha com pedras
@@ -14605,6 +14671,9 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             window.spawnBirdGroup = spawnBirdGroup;
             window.applyFPSSettings = applyFPSSettings;
             Object.defineProperty(window, 'showFPS', { get: () => showFPS, set: (v) => { showFPS = v; } });
+            window.applyAutoRenderDistanceSettings = applyAutoRenderDistanceSettings;
+            Object.defineProperty(window, 'autoRenderDistance', { get: () => autoRenderDistance, set: (v) => { autoRenderDistance = v; applyAutoRenderDistanceSettings(); } });
+            window.setRenderDistance = setRenderDistance;
             window.showSettingsScreen = showSettingsScreen;
             window.showOptionsScreen = showOptionsScreen;
             window.showNotification = showNotification;
