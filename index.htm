@@ -1165,7 +1165,7 @@
                         <span>Distância de Visão</span>
                         <span id="renderDistanceValue">250</span>
                     </label>
-                    <input type="range" id="renderDistanceSlider" min="5" max="400" value="250" class="w-full">
+                    <input type="range" id="renderDistanceSlider" min="20" max="400" value="250" class="w-full">
                 </div>
                 <div class="option-item">
                     <label for="autoRenderDistanceToggle" class="flex justify-between w-full">
@@ -3630,7 +3630,7 @@
         }
 
         function setRenderDistance(val, updateSliderUI = true) {
-            renderDistance = Math.max(5, Math.min(400, Math.round(val)));
+            renderDistance = Math.max(20, Math.min(400, Math.round(val)));
             localStorage.setItem('renderDistance', renderDistance);
 
             if (updateSliderUI) {
@@ -9480,10 +9480,12 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     target = potentialCapim || potentialGround || potentialObject;
                 } else if (heldItemName === dirtItemName || heldItemName === sandItemName) {
                     target = potentialGround || potentialObject || potentialCapim;
-                } else if (heldItemName === axeItemName || heldItemName === pickaxeItemName || heldItemName === ironAxeItemName || heldItemName === ironPickaxeItemName) {
+                } else if (heldItemName === pickaxeItemName || heldItemName === ironPickaxeItemName) {
+                    target = potentialObject || potentialGround || potentialCapim;
+                } else if (heldItemName === axeItemName || heldItemName === ironAxeItemName) {
                     target = potentialObject || potentialCapim;
                 } else {
-                    // Mão ou outros: prioriza capim, depois objetos (terreno requer pá)
+                    // Mão ou outros: prioriza capim, depois objetos (terreno requer pá/picareta)
                     target = potentialCapim || potentialObject;
                 }
 
@@ -9642,10 +9644,29 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                         if (currentMound) {
                             destroyTargetDigInfo = { mound: currentMound, isBuilding: isBuilding };
                             const surfaceHeight = getSurfaceHeight(hitPoint.x, hitPoint.z);
-                            // Pedra começa ~5 unidades abaixo da superfície natural
-                            // O usuário quer que acompanhe a curvatura. getSurfaceHeight(x, z) já inclui a curvatura base e montanhas.
-                            const isStoneLayer = hitPoint.y < getSurfaceHeight(hitPoint.x, hitPoint.z) - 4.5;
+                            // Pedra começa ~4.5 unidades abaixo da superfície natural
+                            const isStoneLayer = hitPoint.y < surfaceHeight - 4.5;
                             currentMound.isStoneLayer = isStoneLayer;
+
+                            // Verificação de ferramenta para escavação/mineração do terreno
+                            if (!isBuilding) {
+                                const isPickaxe = (heldItemName === pickaxeItemName || heldItemName === ironPickaxeItemName);
+                                const isShovel = (heldItemName === shovelItemName || heldItemName === ironShovelItemName);
+                                if (isStoneLayer && !isPickaxe) {
+                                    showNotification("Você precisa de uma picareta para minerar pedra!");
+                                    isDestroying = false;
+                                    isAttemptingToDestroy = false;
+                                    progressContainer.style.display = 'none';
+                                    return;
+                                } else if (!isStoneLayer && !isShovel) {
+                                    showNotification("Você precisa de uma pá para cavar!");
+                                    isDestroying = false;
+                                    isAttemptingToDestroy = false;
+                                    progressContainer.style.display = 'none';
+                                    return;
+                                }
+                            }
+
                             materialType = isStoneLayer ? 'stone' : ((currentMound.itemType === sandItemName || (heldItemName === sandItemName && isBuilding)) ? 'sand' : 'earth');
                             // Aumentado para garantir que a barra de progresso seja visível e sentida
                             baseDurability = isBuilding ? 0.3 : (isStoneLayer ? 3.0 : 1.5);
@@ -10761,7 +10782,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     if (fps < 30) {
                         const diff = 30 - fps;
                         const step = diff > 10 ? 25 : (diff > 5 ? 15 : 10);
-                        if (renderDistance > 5) {
+                        if (renderDistance > 20) {
                             setRenderDistance(renderDistance - step, true);
                         }
                     } else if (fps > 35 && renderDistance < 400) {
@@ -12454,14 +12475,18 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                     interactionHintText = "(Botão Esq.) Colher Capim";
                                 } else if (heldItemName === shovelItemName || heldItemName === ironShovelItemName) {
                                     const hitPoint = firstIntersect.point;
-                                    const distFromCenter = Math.sqrt(hitPoint.x ** 2 + hitPoint.z ** 2);
-                                    let material = "Terra";
-                                    if (hitPoint.y < getSurfaceHeight(hitPoint.x, hitPoint.z) - 5.0) {
-                                        material = "Pedra";
-                                    } else if (distFromCenter > capimRadius) {
-                                        material = "Areia";
+                                    const isStoneLayer = hitPoint.y < getSurfaceHeight(hitPoint.x, hitPoint.z) - 4.5;
+                                    if (!isStoneLayer) {
+                                        const distFromCenter = Math.sqrt(hitPoint.x ** 2 + hitPoint.z ** 2);
+                                        const material = (distFromCenter > capimRadius) ? "Areia" : "Terra";
+                                        interactionHintText = `(Botão Esq.) Cavar ${material}`;
                                     }
-                                    interactionHintText = `(Botão Esq.) Cavar ${material}`;
+                                } else if (heldItemName === pickaxeItemName || heldItemName === ironPickaxeItemName) {
+                                    const hitPoint = firstIntersect.point;
+                                    const isStoneLayer = hitPoint.y < getSurfaceHeight(hitPoint.x, hitPoint.z) - 4.5;
+                                    if (isStoneLayer) {
+                                        interactionHintText = "(Botão Esq.) Minerar Pedra";
+                                    }
                                 }
                             }
                         }
@@ -13728,9 +13753,11 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                 const heldItem = beltItems[selectedSlotIndex];
                                 const heldItemName = heldItem ? heldItem.name : null;
                                 const isShovel = (heldItemName === shovelItemName || heldItemName === ironShovelItemName);
+                                const isPickaxe = (heldItemName === pickaxeItemName || heldItemName === ironPickaxeItemName);
                                 const isTerra = (heldItemName === dirtItemName || heldItemName === sandItemName);
                                 const nearCapim = !!getCapimUnderCrosshair(firstIntersect.point, raycaster.ray, 0.5);
-                                if (isShovel || isTerra || nearCapim) {
+                                const isStoneLayer = firstIntersect.point.y < getSurfaceHeight(firstIntersect.point.x, firstIntersect.point.z) - 4.5;
+                                if ((isShovel && !isStoneLayer) || (isPickaxe && isStoneLayer) || isTerra || nearCapim) {
                                     canDestroy = true;
                                     isTerraHit = true;
                                 }
