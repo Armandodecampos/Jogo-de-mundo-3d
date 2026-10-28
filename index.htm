@@ -2134,6 +2134,40 @@
             noise.stop(now + 0.08);
         }
 
+        function playRotateSound() {
+            if (!gameAudioContext) return;
+            const now = gameAudioContext.currentTime;
+
+            // Pitch slide sweep (350Hz -> 650Hz -> 200Hz) simulating object rotation swish
+            const osc = gameAudioContext.createOscillator();
+            const oscGain = gameAudioContext.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(350, now);
+            osc.frequency.linearRampToValueAtTime(650, now + 0.05);
+            osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
+            oscGain.gain.setValueAtTime(0.5, now);
+            oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.connect(oscGain);
+            oscGain.connect(gameAudioContext.destination);
+            osc.start(now);
+            osc.stop(now + 0.1);
+
+            // Crisp ratchet / click noise snap
+            const noise = gameAudioContext.createBufferSource();
+            noise.buffer = getNoiseBuffer();
+            const filter = gameAudioContext.createBiquadFilter();
+            const noiseGain = gameAudioContext.createGain();
+            filter.type = 'highpass';
+            filter.frequency.setValueAtTime(2500, now);
+            noiseGain.gain.setValueAtTime(0.3, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+            noise.connect(filter);
+            filter.connect(noiseGain);
+            noiseGain.connect(gameAudioContext.destination);
+            noise.start(now);
+            noise.stop(now + 0.05);
+        }
+
         function playSyntheticCollectSound() {
             playJumpCollectSound(0.5);
         }
@@ -2494,6 +2528,7 @@
                     mesh.updateMatrixWorld();
                 }
             }
+            playRotateSound();
         }
 
         let pendingSleepTarget = null;
@@ -2924,6 +2959,7 @@
                                 mesh.updateMatrixWorld();
                             }
                         }
+                        playRotateSound();
                         return;
                     }
 
@@ -2961,6 +2997,7 @@
                         mesh.quaternion.set(currentQuat.x, currentQuat.y, currentQuat.z, currentQuat.w);
                         mesh.updateMatrixWorld();
                     }
+                    playRotateSound();
                 }
             } catch (e) {
                 console.error("Erro ao girar objeto:", e);
@@ -9088,6 +9125,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                         ghostBlockRotationY += Math.PI / 4;
                         const snapAngle = Math.PI / 4;
                         ghostBlockRotationY = Math.round(ghostBlockRotationY / snapAngle) * snapAngle;
+                        playRotateSound();
                     } else {
                         rotateLookedAtObject();
                     }
@@ -14392,6 +14430,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             window.playToolWoodImpactSound = playToolWoodImpactSound;
             window.playBranchBreakSound = playBranchBreakSound;
             window.playPlacementSound = playPlacementSound;
+            window.playRotateSound = playRotateSound;
             window.activeCampfires = activeCampfires;
             Object.defineProperty(window, 'currentFuelBody', { get: () => currentFuelBody, set: (v) => { currentFuelBody = v; } });
             Object.defineProperty(window, 'openedFurnace', { get: () => openedFurnace, set: (v) => { openedFurnace = v; } });
