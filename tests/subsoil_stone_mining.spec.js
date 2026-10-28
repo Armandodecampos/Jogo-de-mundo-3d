@@ -49,20 +49,32 @@ test.describe('Subsoil Stone Mining and Minimum Render Distance', () => {
       };
 
       const shovelOnStone = testDigging(hitPointStone, { name: 'pá', quantity: 1 });
+      const axeOnStone = testDigging(hitPointStone, { name: 'machado', quantity: 1 });
+      const ironAxeOnStone = testDigging(hitPointStone, { name: 'machado_ferro', quantity: 1 });
       const pickaxeOnStone = testDigging(hitPointStone, { name: 'picareta', quantity: 1 });
       const ironPickaxeOnStone = testDigging(hitPointStone, { name: 'picareta_ferro', quantity: 1 });
 
       const pickaxeOnSurface = testDigging(hitPointSurface, { name: 'picareta', quantity: 1 });
       const shovelOnSurface = testDigging(hitPointSurface, { name: 'pá', quantity: 1 });
 
+      // Check hammer removal from recipes and items
+      const hasHammerRecipe = Object.values(window.recipes).some(category =>
+        category.some(recipe => recipe.result.name === 'martelo' || recipe.result.name === 'martelo_ferro')
+      );
+      const hasHammerDisplayName = 'martelo' in window.itemDisplayNames || 'martelo_ferro' in window.itemDisplayNames;
+
       return {
         sliderMin,
         clampedDistance,
         shovelOnStone,
+        axeOnStone,
+        ironAxeOnStone,
         pickaxeOnStone,
         ironPickaxeOnStone,
         pickaxeOnSurface,
-        shovelOnSurface
+        shovelOnSurface,
+        hasHammerRecipe,
+        hasHammerDisplayName
       };
     });
 
@@ -73,8 +85,16 @@ test.describe('Subsoil Stone Mining and Minimum Render Distance', () => {
     // Verify subsoil stone mining restrictions
     expect(result.shovelOnStone.allowed).toBe(false);
     expect(result.shovelOnStone.notification).toBe("Você precisa de uma picareta para minerar pedra!");
+    expect(result.axeOnStone.allowed).toBe(false);
+    expect(result.axeOnStone.notification).toBe("Você precisa de uma picareta para minerar pedra!");
+    expect(result.ironAxeOnStone.allowed).toBe(false);
+    expect(result.ironAxeOnStone.notification).toBe("Você precisa de uma picareta para minerar pedra!");
     expect(result.pickaxeOnStone.allowed).toBe(true);
     expect(result.ironPickaxeOnStone.allowed).toBe(true);
+
+    // Verify hammer removal
+    expect(result.hasHammerRecipe).toBe(false);
+    expect(result.hasHammerDisplayName).toBe(false);
 
     // Verify surface digging restrictions
     expect(result.pickaxeOnSurface.allowed).toBe(false);
