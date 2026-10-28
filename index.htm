@@ -2137,39 +2137,87 @@
         function playRotateSound() {
             if (!gameAudioContext) return;
             const now = gameAudioContext.currentTime;
+            const duration = 0.22;
 
-            // Pitch slide sweep (350Hz -> 650Hz -> 200Hz) simulating object rotation swish
-            const osc = gameAudioContext.createOscillator();
-            const oscGain = gameAudioContext.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(350, now);
-            osc.frequency.linearRampToValueAtTime(650, now + 0.05);
-            osc.frequency.exponentialRampToValueAtTime(200, now + 0.1);
-            oscGain.gain.setValueAtTime(0.5, now);
-            oscGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-            osc.connect(oscGain);
-            oscGain.connect(gameAudioContext.destination);
-            osc.start(now);
-            osc.stop(now + 0.1);
-
-            // Crisp ratchet / click noise snap
+            // Heavy furniture scraping friction noise across floor/ground
             const noise = gameAudioContext.createBufferSource();
             noise.buffer = getNoiseBuffer();
             const filter = gameAudioContext.createBiquadFilter();
             const noiseGain = gameAudioContext.createGain();
-            filter.type = 'highpass';
-            filter.frequency.setValueAtTime(2500, now);
-            noiseGain.gain.setValueAtTime(0.3, now);
-            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(320, now);
+            filter.frequency.exponentialRampToValueAtTime(520, now + duration * 0.5);
+            filter.frequency.exponentialRampToValueAtTime(240, now + duration);
+            filter.Q.setValueAtTime(3.0, now);
+
+            noiseGain.gain.setValueAtTime(0.01, now);
+            noiseGain.gain.linearRampToValueAtTime(0.7, now + 0.04);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
             noise.connect(filter);
             filter.connect(noiseGain);
             noiseGain.connect(gameAudioContext.destination);
             noise.start(now);
-            noise.stop(now + 0.05);
+            noise.stop(now + duration);
+
+            // Low furniture weight friction rumble
+            const osc = gameAudioContext.createOscillator();
+            const oscGain = gameAudioContext.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(110, now);
+            osc.frequency.exponentialRampToValueAtTime(80, now + duration);
+
+            const oscFilter = gameAudioContext.createBiquadFilter();
+            oscFilter.type = 'lowpass';
+            oscFilter.frequency.setValueAtTime(250, now);
+
+            oscGain.gain.setValueAtTime(0.01, now);
+            oscGain.gain.linearRampToValueAtTime(0.4, now + 0.03);
+            oscGain.gain.exponentialRampToValueAtTime(0.01, now + duration);
+
+            osc.connect(oscFilter);
+            oscFilter.connect(oscGain);
+            oscGain.connect(gameAudioContext.destination);
+            osc.start(now);
+            osc.stop(now + duration);
         }
 
         function playSyntheticCollectSound() {
-            playJumpCollectSound(0.5);
+            if (!gameAudioContext) {
+                playJumpCollectSound(0.5);
+                return;
+            }
+            const now = gameAudioContext.currentTime;
+
+            // Bright ascending dual chime pitch progression (480Hz -> 880Hz)
+            const osc1 = gameAudioContext.createOscillator();
+            const oscGain1 = gameAudioContext.createGain();
+            osc1.type = 'sine';
+            osc1.frequency.setValueAtTime(480, now);
+            osc1.frequency.exponentialRampToValueAtTime(880, now + 0.12);
+            oscGain1.gain.setValueAtTime(0.5, now);
+            oscGain1.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+            osc1.connect(oscGain1);
+            oscGain1.connect(gameAudioContext.destination);
+            osc1.start(now);
+            osc1.stop(now + 0.15);
+
+            // Soft item pouch rustle
+            const noise = gameAudioContext.createBufferSource();
+            noise.buffer = getNoiseBuffer();
+            const filter = gameAudioContext.createBiquadFilter();
+            const noiseGain = gameAudioContext.createGain();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(2200, now);
+            filter.Q.setValueAtTime(1.2, now);
+            noiseGain.gain.setValueAtTime(0.3, now);
+            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            noise.connect(filter);
+            filter.connect(noiseGain);
+            noiseGain.connect(gameAudioContext.destination);
+            noise.start(now);
+            noise.stop(now + 0.1);
         }
 
         function playSyntheticObjectImpactSound(intensity) {
