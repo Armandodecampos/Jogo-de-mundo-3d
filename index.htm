@@ -2185,39 +2185,25 @@
 
         function playSyntheticCollectSound() {
             if (!gameAudioContext) {
-                playJumpCollectSound(0.5);
+                playJumpCollectSound(0.2);
                 return;
             }
             const now = gameAudioContext.currentTime;
 
-            // Bright ascending dual chime pitch progression (480Hz -> 880Hz)
-            const osc1 = gameAudioContext.createOscillator();
-            const oscGain1 = gameAudioContext.createGain();
-            osc1.type = 'sine';
-            osc1.frequency.setValueAtTime(480, now);
-            osc1.frequency.exponentialRampToValueAtTime(880, now + 0.12);
-            oscGain1.gain.setValueAtTime(0.5, now);
-            oscGain1.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
-            osc1.connect(oscGain1);
-            oscGain1.connect(gameAudioContext.destination);
-            osc1.start(now);
-            osc1.stop(now + 0.15);
+            // Soft, low-volume neutral pop/blip
+            const osc = gameAudioContext.createOscillator();
+            const oscGain = gameAudioContext.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(420, now);
+            osc.frequency.exponentialRampToValueAtTime(560, now + 0.05);
 
-            // Soft item pouch rustle
-            const noise = gameAudioContext.createBufferSource();
-            noise.buffer = getNoiseBuffer();
-            const filter = gameAudioContext.createBiquadFilter();
-            const noiseGain = gameAudioContext.createGain();
-            filter.type = 'bandpass';
-            filter.frequency.setValueAtTime(2200, now);
-            filter.Q.setValueAtTime(1.2, now);
-            noiseGain.gain.setValueAtTime(0.3, now);
-            noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
-            noise.connect(filter);
-            filter.connect(noiseGain);
-            noiseGain.connect(gameAudioContext.destination);
-            noise.start(now);
-            noise.stop(now + 0.1);
+            oscGain.gain.setValueAtTime(0.12, now);
+            oscGain.gain.exponentialRampToValueAtTime(0.005, now + 0.05);
+
+            osc.connect(oscGain);
+            oscGain.connect(gameAudioContext.destination);
+            osc.start(now);
+            osc.stop(now + 0.05);
         }
 
         function playSyntheticObjectImpactSound(intensity) {
