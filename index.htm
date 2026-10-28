@@ -1709,6 +1709,7 @@
         const pestleOpenUrl = "https://dl.dropbox.com/scl/fi/qzhsu1euccn3mw23xvqu0/usando-pil-o.mp3?rlkey=9buzkcoz518gij9qulis091x3&st=w9s4ahfs&dl=1";
         const torchSoundUrl = "https://dl.dropbox.com/scl/fi/65kf28rvhtu7b9ff6hgnk/tocha.mp3?rlkey=ej47rbviavphftwkh3yyu09xf&st=5h5rh7c5&dl=1";
         const campfireSoundUrl = "https://dl.dropbox.com/scl/fi/7y5cwg18iv375a66qmdlw/fogueira.mp3?rlkey=1ma751rka0aqq5q6y0ib2257t&st=dzyvct23&dl=1";
+        const branchBreakUrl = "https://dl.dropbox.com/scl/fi/03qsseb38bqwinplsufby/quebrando-galho.mp3?rlkey=omqt0cpjnu2gl0ffg050gnq57&st=8zcnl6c6&dl=1";
 
         const birdSoundUrls = [
             "https://dl.dropbox.com/scl/fi/eqw59rwqync9f3ky3rdoa/bird_singing_-1-1774014921293.mp3?rlkey=s4g2iyvptt761ekbrq0f7tisl&st=1mvzcxbd&dl=1",
@@ -1815,6 +1816,7 @@
             addAsset("Som da Tocha", "Áudio", torchSoundUrl);
             addAsset("Som da Fogueira", "Áudio", campfireSoundUrl);
             addAsset("Cortando Lenha", "Áudio", firewoodUrl);
+            addAsset("Quebrando Galho", "Áudio", branchBreakUrl);
 
             birdSoundUrls.forEach((url, i) => addAsset(`Canto dos Pássaros ${i + 1}`, "Áudio", url));
             seagullSoundUrls.forEach((url, i) => addAsset(`Canto das Gaivotas ${i + 1}`, "Áudio", url));
@@ -2095,56 +2097,7 @@
         }
 
         function playBranchBreakSound() {
-            if (!gameAudioContext) return;
-            const now = gameAudioContext.currentTime;
-
-            // Wood snap sharp crack (noise burst)
-            const noise = gameAudioContext.createBufferSource();
-            const noiseBuffer = getNoiseBuffer();
-            if (noiseBuffer) {
-                noise.buffer = noiseBuffer;
-                const filter = gameAudioContext.createBiquadFilter();
-                const noiseGain = gameAudioContext.createGain();
-                filter.type = 'bandpass';
-                filter.frequency.setValueAtTime(2800, now);
-                filter.Q.setValueAtTime(2.5, now);
-                noiseGain.gain.setValueAtTime(0.7, now);
-                noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
-                noise.connect(filter);
-                filter.connect(noiseGain);
-                noiseGain.connect(gameAudioContext.destination);
-                noise.start(now);
-                noise.stop(now + 0.08);
-            }
-
-            // Wooden branch snap pitch bend
-            const osc = gameAudioContext.createOscillator();
-            const oscGain = gameAudioContext.createGain();
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(750, now);
-            osc.frequency.exponentialRampToValueAtTime(150, now + 0.09);
-            oscGain.gain.setValueAtTime(0.6, now);
-            oscGain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
-            osc.connect(oscGain);
-            oscGain.connect(gameAudioContext.destination);
-            osc.start(now);
-            osc.stop(now + 0.09);
-
-            // Wood body crackle / resonance
-            const woodOsc = gameAudioContext.createOscillator();
-            const woodGain = gameAudioContext.createGain();
-            woodOsc.type = 'sine';
-            woodOsc.frequency.setValueAtTime(320, now);
-            woodOsc.frequency.exponentialRampToValueAtTime(120, now + 0.12);
-            woodGain.gain.setValueAtTime(0.4, now);
-            woodGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-            woodOsc.connect(woodGain);
-            woodGain.connect(gameAudioContext.destination);
-            woodOsc.start(now);
-            woodOsc.stop(now + 0.12);
-
-            // Item collection feedback sound
-            playSyntheticCollectSound();
+            playInterfaceSound(branchBreakUrl, 0.8);
         }
 
         function playSyntheticCollectSound() {
@@ -14269,6 +14222,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 const diggingBuf = await loadAudioBuffer(diggingUrl);
                 const miningBuf = await loadAudioBuffer(miningUrl);
                 await loadAudioBuffer(firewoodUrl);
+                await loadAudioBuffer(branchBreakUrl);
                 const torchBuf = await loadAudioBuffer(torchSoundUrl);
                 const campfireBuf = await loadAudioBuffer(campfireSoundUrl);
                 await loadAudioBuffer(doorOpenUrl);
@@ -14398,6 +14352,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             window.diggingUrl = diggingUrl;
             window.miningUrl = miningUrl;
             window.firewoodUrl = firewoodUrl;
+            window.branchBreakUrl = branchBreakUrl;
             window.playHandWoodImpactSound = playHandWoodImpactSound;
             window.playToolWoodImpactSound = playToolWoodImpactSound;
             window.playBranchBreakSound = playBranchBreakSound;
