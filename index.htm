@@ -6776,21 +6776,23 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 width = 1.2; // 3 blocks wide (3 * 0.4)
                 height = 2.4; // 6 blocks high (6 * 0.4)
                 depth = 0.1;
+                const panelHeight = height - floorHeight; // 2.32 (leaves a bottom gap equal to floorHeight = 0.08)
                 // Physics body needs to be offset so the hinge is at the body origin
                 // We offset by -depth/2 in Z so the door rotates around its edge surface
-                blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
-                blockBody.addShape(blockShape, new CANNON.Vec3(width / 2, 0, -depth / 2));
+                // And offset by floorHeight / 2 in Y so bottom gap is left for floor placement
+                blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, panelHeight / 2, depth / 2));
+                blockBody.addShape(blockShape, new CANNON.Vec3(width / 2, floorHeight / 2, -depth / 2));
 
                 const group = new THREE.Group();
-                const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(width, height, depth), doorMaterialMesh);
-                doorMesh.position.set(width / 2, 0, -depth / 2);
+                const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(width, panelHeight, depth), doorMaterialMesh);
+                doorMesh.position.set(width / 2, floorHeight / 2, -depth / 2);
                 group.add(doorMesh);
 
                 // Add handle
                 const handleGeom = new THREE.BoxGeometry(0.05, 0.2, 0.15);
                 const handleMat = new THREE.MeshStandardMaterial({ color: 0x333333 });
                 const handle = new THREE.Mesh(handleGeom, handleMat);
-                handle.position.set(width - 0.1, 0, -depth / 2);
+                handle.position.set(width - 0.1, floorHeight / 2, -depth / 2);
                 group.add(handle);
 
                 mesh = group;
@@ -12784,8 +12786,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                         } else if (currentBlockType === bedItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(1.2, 0.6, 2.2);
                         } else if (currentBlockType === doorItemName) {
-                            ghostBlockMesh.geometry = new THREE.BoxGeometry(1.2, 2.4, 0.1);
-                            ghostBlockMesh.geometry.translate(0.6, 0, -0.05);
+                            ghostBlockMesh.geometry = new THREE.BoxGeometry(1.2, 2.4 - floorHeight, 0.1);
+                            ghostBlockMesh.geometry.translate(0.6, floorHeight / 2, -0.05);
                         } else if (currentBlockType === windowItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(0.8, 0.8, 0.1);
                             ghostBlockMesh.geometry.translate(0.4, 0, -0.05);
@@ -12920,7 +12922,12 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                             placementPosition.x = intersectedBody.position.x - currentGhostWidth / 2;
                                             placementPosition.y = intersectedBody.position.y - targetHalfY + currentGhostHeight / 2;
                                         } else {
-                                            placementPosition.y = intersectedBody.position.y + targetHalfY + currentGhostHeight / 2;
+                                            const isTargetFloor = intersectedBody.userData && ['piso', stoneFloorItemName, woodenFloorItemName].includes(intersectedBody.userData.type);
+                                            if (currentBlockType === doorItemName && isTargetFloor) {
+                                                placementPosition.y = (intersectedBody.position.y - targetHalfY) + currentGhostHeight / 2;
+                                            } else {
+                                                placementPosition.y = intersectedBody.position.y + targetHalfY + currentGhostHeight / 2;
+                                            }
                                             const unwrappedX = hitPoint.x + visualOffsetX;
                                             const unwrappedZ = hitPoint.z + visualOffsetZ;
                                             if (!isRotated90) {
@@ -13105,7 +13112,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                     const inset = 0.02; // Tolerância para encaixe exato entre blocos
                                     const pMinX = ghostCenterX - wHalfX + inset;
                                     const pMaxX = ghostCenterX + wHalfX - inset;
-                                    const pMinY = ghostCenterY - wHalfY + inset;
+                                    const pMinY = (currentBlockType === doorItemName) ? (ghostCenterY - wHalfY + floorHeight + inset) : (ghostCenterY - wHalfY + inset);
                                     const pMaxY = ghostCenterY + wHalfY - inset;
                                     const pMinZ = ghostCenterZ - wHalfZ + inset;
                                     const pMaxZ = ghostCenterZ + wHalfZ - inset;
@@ -13119,6 +13126,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                         let sCenterY = staticBody.position.y;
                                         let sCenterZ = staticBody.position.z;
                                         let sHalfX = 0.2, sHalfY = 0.2, sHalfZ = 0.2;
+                                        const isStaticDoor = staticBody.userData && staticBody.userData.type === doorItemName;
 
                                         if (staticBody.userData && (staticBody.userData.type === doorItemName || staticBody.userData.type === windowItemName)) {
                                             const dims = staticBody.userData.dimensions || { width: 1.2, height: 2.4, depth: 0.1 };
@@ -13147,7 +13155,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
                                         const sMinX = sCenterX - sHalfX;
                                         const sMaxX = sCenterX + sHalfX;
-                                        const sMinY = sCenterY - sHalfY;
+                                        const sMinY = isStaticDoor ? (sCenterY - sHalfY + floorHeight) : (sCenterY - sHalfY);
                                         const sMaxY = sCenterY + sHalfY;
                                         const sMinZ = sCenterZ - sHalfZ;
                                         const sMaxZ = sCenterZ + sHalfZ;
