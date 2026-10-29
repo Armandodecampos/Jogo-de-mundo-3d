@@ -26,7 +26,7 @@ test('verify crafting menu result quantity format and fixed furnace warning', as
     const cobRecipeName = initialRecipeNames.find(name => name.includes('Bloco de Barro'));
     expect(cobRecipeName).toBe('100 Bloco de Barro');
 
-    // Open workbench crafting menu and check 'tecido' recipe ("1 Tecido")
+    // Open workbench crafting menu and check 'tecido' recipe ("1 Tecido") as well as all initial recipes
     await page.evaluate(() => {
         window.openCraftingMenu('workbench');
     });
@@ -34,6 +34,19 @@ test('verify crafting menu result quantity format and fixed furnace warning', as
     const workbenchRecipeNames = await page.locator('.recipe-name').allTextContents();
     const fabricRecipeName = workbenchRecipeNames.find(name => name.includes('Tecido'));
     expect(fabricRecipeName).toBe('1 Tecido');
+
+    // Verify that every recipe in 'initial' is also in 'workbench'
+    const initialRecipesInWindow = await page.evaluate(() => window.recipes.initial);
+    const workbenchRecipesInWindow = await page.evaluate(() => window.recipes.workbench);
+    expect(workbenchRecipesInWindow.length).toBeGreaterThanOrEqual(initialRecipesInWindow.length);
+
+    for (const initRecipe of initialRecipesInWindow) {
+        const found = workbenchRecipesInWindow.some(wbRecipe =>
+            wbRecipe.result.name === initRecipe.result.name &&
+            wbRecipe.result.quantity === initRecipe.result.quantity
+        );
+        expect(found).toBe(true);
+    }
 
     // Test Furnace Menu when unlit
     await page.evaluate(() => {
