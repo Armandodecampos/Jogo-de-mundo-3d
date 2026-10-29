@@ -50,9 +50,9 @@ test('Piso de barro and Cob recipe yield and item weight verification', async ({
   const totalCobBatchWeight = cobRecipe.result.quantity * cobWeight;
   expect(totalCobBatchWeight).toBeCloseTo(2.4, 4);
 
-  // 7. Verify floor texture URL
+  // 7. Verify floor icon URL
   const floorTextureURL = await page.evaluate(() => {
     return window.getItemIconURL ? window.getItemIconURL('piso') : null;
   });
-  expect(floorTextureURL).toContain('Cob-piso.png');
+  expect(floorTextureURL).toContain('D2B48C');
 });
