@@ -1742,6 +1742,7 @@
         let rainOcclusionHeightmap = new Float32Array(30 * 30);
         let gameAudioContext = null;
         let audioBuffers = {};
+        let pendingAudioLoads = {};
         let islandGainNode = null;
         let beachGainNode = null;
         let underwaterGainNode = null;
@@ -1772,28 +1773,37 @@
             if (targetUrl.includes('dropbox.com')) {
                 targetUrl = targetUrl.replace('www.dropbox.com', 'dl.dropbox.com').replace('dl=0', 'dl=1');
             }
-            if (!gameAudioContext) {
-                gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
-            }
             if (audioBuffers[originalUrl]) return audioBuffers[originalUrl];
             if (audioBuffers[targetUrl]) {
                 audioBuffers[originalUrl] = audioBuffers[targetUrl];
                 return audioBuffers[targetUrl];
             }
-            try {
-                const response = await fetch(targetUrl);
-                if (!response.ok) {
-                    throw new Error("HTTP error " + response.status);
-                }
-                const arrayBuffer = await response.arrayBuffer();
-                const audioBuffer = await gameAudioContext.decodeAudioData(arrayBuffer);
-                audioBuffers[originalUrl] = audioBuffer;
-                audioBuffers[targetUrl] = audioBuffer;
-                return audioBuffer;
-            } catch (e) {
-                console.error("Erro ao carregar áudio:", targetUrl, e);
-                return null;
+            if (pendingAudioLoads[originalUrl]) return pendingAudioLoads[originalUrl];
+
+            if (!gameAudioContext) {
+                gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
+
+            pendingAudioLoads[originalUrl] = (async () => {
+                try {
+                    const response = await fetch(targetUrl);
+                    if (!response.ok) {
+                        throw new Error("HTTP error " + response.status);
+                    }
+                    const arrayBuffer = await response.arrayBuffer();
+                    const audioBuffer = await gameAudioContext.decodeAudioData(arrayBuffer);
+                    audioBuffers[originalUrl] = audioBuffer;
+                    audioBuffers[targetUrl] = audioBuffer;
+                    delete pendingAudioLoads[originalUrl];
+                    return audioBuffer;
+                } catch (e) {
+                    console.error("Erro ao carregar áudio:", targetUrl, e);
+                    delete pendingAudioLoads[originalUrl];
+                    return null;
+                }
+            })();
+
+            return pendingAudioLoads[originalUrl];
         }
 
         let pendingGameLaunch = null;
