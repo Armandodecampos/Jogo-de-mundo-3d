@@ -11825,30 +11825,37 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 }
                 window.onWalkableGround = onWalkableGround;
 
-                // Atualiza volume do som de navegação da jangada
+                // Atualiza volume e execução do som de navegação da jangada (toca apenas quando o jogador navega e pressiona botões de direção)
                 if (gameAudioContext && raftGainNode) {
-                    let targetRaft = 0;
-                    if (!gamePaused && !isSleeping && isDrivingRaft && currentRaftBody) {
-                        const raftSpeedSq = currentRaftBody.velocity.x * currentRaftBody.velocity.x + currentRaftBody.velocity.z * currentRaftBody.velocity.z;
-                        const isMovingRaft = (keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d'] || keysPressed['arrowup'] || keysPressed['arrowdown'] || keysPressed['arrowleft'] || keysPressed['arrowright']) || (raftSpeedSq > 0.05);
-                        if (isMovingRaft) {
-                            targetRaft = 0.6;
-                            if (!raftSourceNode && audioBuffers[raftSailingUrl]) {
-                                try {
-                                    raftSourceNode = gameAudioContext.createBufferSource();
-                                    raftSourceNode.buffer = audioBuffers[raftSailingUrl];
-                                    raftSourceNode.loop = true;
-                                    raftSourceNode.connect(raftGainNode);
-                                    raftSourceNode.start(0);
-                                } catch (e) {
-                                    console.error("Erro ao iniciar raftSourceNode:", e);
-                                }
-                            } else if (!audioBuffers[raftSailingUrl]) {
-                                loadAudioBuffer(raftSailingUrl);
+                    const isDirectionKeyPressed = !!(keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d'] || keysPressed['arrowup'] || keysPressed['arrowdown'] || keysPressed['arrowleft'] || keysPressed['arrowright']);
+                    const isNavigatingRaft = !gamePaused && !isSleeping && isDrivingRaft && currentRaftBody && isDirectionKeyPressed;
+
+                    if (isNavigatingRaft) {
+                        ensureAudioContext();
+                        if (!raftSourceNode && audioBuffers[raftSailingUrl]) {
+                            try {
+                                raftSourceNode = gameAudioContext.createBufferSource();
+                                raftSourceNode.buffer = audioBuffers[raftSailingUrl];
+                                raftSourceNode.loop = true;
+                                raftSourceNode.connect(raftGainNode);
+                                raftSourceNode.start(0);
+                            } catch (e) {
+                                console.error("Erro ao iniciar raftSourceNode:", e);
                             }
+                        } else if (!audioBuffers[raftSailingUrl]) {
+                            loadAudioBuffer(raftSailingUrl);
+                        }
+                        raftGainNode.gain.setTargetAtTime(0.8, gameAudioContext.currentTime, 0.05);
+                    } else {
+                        raftGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                        if (raftSourceNode && raftGainNode.gain.value < 0.01) {
+                            try {
+                                raftSourceNode.stop();
+                                raftSourceNode.disconnect();
+                            } catch (e) {}
+                            raftSourceNode = null;
                         }
                     }
-                    raftGainNode.gain.setTargetAtTime(targetRaft, gameAudioContext.currentTime, 0.1);
                 }
 
                 // Atualiza volume e velocidade dos sons de passos e nado
@@ -14488,13 +14495,6 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     campfireSourceNode.start(0);
                 }
 
-                if (raftSailingBuf) {
-                    raftSourceNode = gameAudioContext.createBufferSource();
-                    raftSourceNode.buffer = raftSailingBuf;
-                    raftSourceNode.loop = true;
-                    raftSourceNode.connect(raftGainNode);
-                    raftSourceNode.start(0);
-                }
 
                 // Pre-load bird sounds
                 birdSoundUrls.forEach(url => loadAudioBuffer(url));
