@@ -1710,6 +1710,7 @@
         const torchSoundUrl = "https://dl.dropbox.com/scl/fi/65kf28rvhtu7b9ff6hgnk/tocha.mp3?rlkey=ej47rbviavphftwkh3yyu09xf&st=5h5rh7c5&dl=1";
         const campfireSoundUrl = "https://dl.dropbox.com/scl/fi/7y5cwg18iv375a66qmdlw/fogueira.mp3?rlkey=1ma751rka0aqq5q6y0ib2257t&st=dzyvct23&dl=1";
         const branchBreakUrl = "https://dl.dropbox.com/scl/fi/03qsseb38bqwinplsufby/quebrando-galho.mp3?rlkey=omqt0cpjnu2gl0ffg050gnq57&st=8zcnl6c6&dl=1";
+        const raftSailingUrl = "https://dl.dropbox.com/scl/fi/ds5j20rqohxpk1oxjfb7u/navegando.mp3?rlkey=3ckttj6wlow8x7v6o3muv3cbm&st=xeynhclc&dl=1";
 
         const birdSoundUrls = [
             "https://dl.dropbox.com/scl/fi/eqw59rwqync9f3ky3rdoa/bird_singing_-1-1774014921293.mp3?rlkey=s4g2iyvptt761ekbrq0f7tisl&st=1mvzcxbd&dl=1",
@@ -1761,6 +1762,8 @@
         let campfireGainNode = null;
         let torchSourceNode = null;
         let campfireSourceNode = null;
+        let raftGainNode = null;
+        let raftSourceNode = null;
 
         async function loadAudioBuffer(url) {
             if (!gameAudioContext) {
@@ -1817,6 +1820,7 @@
             addAsset("Som da Fogueira", "Áudio", campfireSoundUrl);
             addAsset("Cortando Lenha", "Áudio", firewoodUrl);
             addAsset("Quebrando Galho", "Áudio", branchBreakUrl);
+            addAsset("Navegando de Jangada", "Áudio", raftSailingUrl);
 
             birdSoundUrls.forEach((url, i) => addAsset(`Canto dos Pássaros ${i + 1}`, "Áudio", url));
             seagullSoundUrls.forEach((url, i) => addAsset(`Canto das Gaivotas ${i + 1}`, "Áudio", url));
@@ -10852,6 +10856,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     if (rainGainNode) rainGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                     if (torchGainNode) torchGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                     if (campfireGainNode) campfireGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                    if (raftGainNode) raftGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                 }
                 renderer.render(scene, camera);
                 return;
@@ -11819,6 +11824,19 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     }
                 }
                 window.onWalkableGround = onWalkableGround;
+
+                // Atualiza volume do som de navegação da jangada
+                if (gameAudioContext && raftGainNode) {
+                    let targetRaft = 0;
+                    if (!gamePaused && !isSleeping && isDrivingRaft && currentRaftBody) {
+                        const raftInWater = currentRaftBody.position.y < waterLevel + 2.0 && hasWaterAt(currentRaftBody.position.x, currentRaftBody.position.z);
+                        const isMovingRaft = (keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d']);
+                        if (raftInWater && isMovingRaft) {
+                            targetRaft = 0.6;
+                        }
+                    }
+                    raftGainNode.gain.setTargetAtTime(targetRaft, gameAudioContext.currentTime, 0.1);
+                }
 
                 // Atualiza volume e velocidade dos sons de passos e nado
                 if (gameAudioContext && grassGainNode && sandGainNode && swimGainNode && diggingGainNode && miningGainNode && torchGainNode && campfireGainNode) {
@@ -14346,6 +14364,10 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             campfireGainNode.gain.value = 0;
             campfireGainNode.connect(gameAudioContext.destination);
 
+            raftGainNode = gameAudioContext.createGain();
+            raftGainNode.gain.value = 0;
+            raftGainNode.connect(gameAudioContext.destination);
+
             async function startAmbientSounds() {
                 const islandBuf = await loadAudioBuffer(islandAmbientUrl);
                 await loadAudioBuffer(jumpCollectUrl);
@@ -14361,6 +14383,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 await loadAudioBuffer(branchBreakUrl);
                 const torchBuf = await loadAudioBuffer(torchSoundUrl);
                 const campfireBuf = await loadAudioBuffer(campfireSoundUrl);
+                const raftSailingBuf = await loadAudioBuffer(raftSailingUrl);
                 await loadAudioBuffer(doorOpenUrl);
                 await loadAudioBuffer(doorCloseUrl);
                 await loadAudioBuffer(chestOpenUrl);
@@ -14448,6 +14471,14 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     campfireSourceNode.loop = true;
                     campfireSourceNode.connect(campfireGainNode);
                     campfireSourceNode.start(0);
+                }
+
+                if (raftSailingBuf) {
+                    raftSourceNode = gameAudioContext.createBufferSource();
+                    raftSourceNode.buffer = raftSailingBuf;
+                    raftSourceNode.loop = true;
+                    raftSourceNode.connect(raftGainNode);
+                    raftSourceNode.start(0);
                 }
 
                 // Pre-load bird sounds
@@ -14557,6 +14588,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             Object.defineProperty(window, 'swimGainNode', { get: () => swimGainNode });
             Object.defineProperty(window, 'torchGainNode', { get: () => torchGainNode });
             Object.defineProperty(window, 'campfireGainNode', { get: () => campfireGainNode });
+            Object.defineProperty(window, 'raftGainNode', { get: () => raftGainNode });
             Object.defineProperty(window, 'gameAudioContext', { get: () => gameAudioContext });
             Object.defineProperty(window, 'rainIntensity', { get: () => rainIntensity, set: (v) => { rainIntensity = v; } });
             Object.defineProperty(window, 'localRainIntensity', { get: () => localRainIntensity, set: (v) => { localRainIntensity = v; } });
