@@ -10066,6 +10066,12 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                             playerBody.collisionResponse = false;
                             playerBody.collisionFilterGroup = 0;
                             playerBody.collisionFilterMask = 0;
+                            // Silencia sons de nado e movimento imediatamente ao subir na jangada
+                            if (gameAudioContext) {
+                                if (swimGainNode) swimGainNode.gain.setValueAtTime(0, gameAudioContext.currentTime);
+                                if (grassGainNode) grassGainNode.gain.setValueAtTime(0, gameAudioContext.currentTime);
+                                if (sandGainNode) sandGainNode.gain.setValueAtTime(0, gameAudioContext.currentTime);
+                            }
                             return true;
                         }
                         if (body.userData.type === grassBedItemName || body.userData.type === sleepingMatItemName || body.userData.type === bedItemName) {
@@ -11814,11 +11820,11 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 // Atualiza volume e velocidade dos sons de passos e nado
                 if (gameAudioContext && grassGainNode && sandGainNode && swimGainNode && diggingGainNode && miningGainNode && torchGainNode && campfireGainNode) {
                     if (gamePaused || isSleeping || isDrivingRaft || isFlying) {
-                        grassGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        sandGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        swimGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        diggingGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
-                        miningGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
+                        grassGainNode.gain.setValueAtTime(0, gameAudioContext.currentTime);
+                        sandGainNode.gain.setValueAtTime(0, gameAudioContext.currentTime);
+                        swimGainNode.gain.setValueAtTime(0, gameAudioContext.currentTime);
+                        diggingGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.01);
+                        miningGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.01);
                         torchGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                         campfireGainNode.gain.setTargetAtTime(0, gameAudioContext.currentTime, 0.05);
                     } else {
