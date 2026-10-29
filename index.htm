@@ -13386,11 +13386,11 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
                     const antiGravityForce = totalMass * gravityMagnitude;
 
-                    // Sincroniza a flutuação com as ondas do shader
+                    // Sincroniza a flutuação com as ondas do shader (movimento suave e sutil)
                     const uTimeNow = performance.now() / 1000;
-                    const waveHeight = Math.sin(raft.position.x * 0.05 + uTimeNow * 2.0) * 0.15 + Math.cos(raft.position.z * 0.05 + uTimeNow * 1.5) * 0.15;
+                    const waveHeight = Math.sin(raft.position.x * 0.05 + uTimeNow * 2.0) * 0.03 + Math.cos(raft.position.z * 0.05 + uTimeNow * 1.5) * 0.03;
                     const raftHeight = raft.userData.dimensions ? raft.userData.dimensions.height : 0.4;
-                    const targetY = waterLevel + waveHeight + raftHeight + 0.1;
+                    const targetY = waterLevel + (raftHeight / 2) + waveHeight;
 
                     const displacement = raft.position.y - targetY;
                     const springForce = -K_SPRING_RAFT * displacement;
@@ -13399,7 +13399,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     const totalBuoyancyForce = antiGravityForce + springForce + dampingForce;
                     raft.applyForce(new CANNON.Vec3(0, totalBuoyancyForce, 0));
 
-                    // Garante que a jangada nunca afunde abaixo da superfície da água
+                    // Garante que a jangada fique no nível da água e nunca afunde
                     if (raft.position.y < targetY) {
                         raft.position.y = targetY;
                         if (raft.velocity.y < 0) {
