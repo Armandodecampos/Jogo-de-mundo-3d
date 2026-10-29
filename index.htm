@@ -1743,6 +1743,7 @@
         let gameAudioContext = null;
         let audioBuffers = {};
         let pendingAudioLoads = {};
+        let failedAudioLoads = {};
         let islandGainNode = null;
         let beachGainNode = null;
         let underwaterGainNode = null;
@@ -1778,6 +1779,7 @@
                 audioBuffers[originalUrl] = audioBuffers[targetUrl];
                 return audioBuffers[targetUrl];
             }
+            if (failedAudioLoads[originalUrl] || failedAudioLoads[targetUrl]) return null;
             if (pendingAudioLoads[originalUrl]) return pendingAudioLoads[originalUrl];
 
             if (!gameAudioContext) {
@@ -1798,6 +1800,8 @@
                     return audioBuffer;
                 } catch (e) {
                     console.error("Erro ao carregar áudio:", targetUrl, e);
+                    failedAudioLoads[originalUrl] = true;
+                    failedAudioLoads[targetUrl] = true;
                     delete pendingAudioLoads[originalUrl];
                     return null;
                 }
@@ -11836,18 +11840,17 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
                 if (isNavigatingRaft) {
                     ensureAudioContext();
-                    if (!raftSourceNode && audioBuffers[raftSailingUrl]) {
+                    const buf = audioBuffers[raftSailingUrl];
+                    if (!raftSourceNode && buf) {
                         try {
                             raftSourceNode = gameAudioContext.createBufferSource();
-                            raftSourceNode.buffer = audioBuffers[raftSailingUrl];
+                            raftSourceNode.buffer = buf;
                             raftSourceNode.loop = true;
                             raftSourceNode.connect(raftGainNode);
                             raftSourceNode.start(0);
                         } catch (e) {
                             console.error("Erro ao iniciar raftSourceNode:", e);
                         }
-                    } else if (!audioBuffers[raftSailingUrl]) {
-                        loadAudioBuffer(raftSailingUrl);
                     }
                     raftGainNode.gain.setTargetAtTime(0.8, gameAudioContext.currentTime, 0.05);
                 } else {
