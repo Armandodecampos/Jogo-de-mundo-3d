@@ -13390,7 +13390,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     const uTimeNow = performance.now() / 1000;
                     const waveHeight = Math.sin(raft.position.x * 0.05 + uTimeNow * 2.0) * 0.15 + Math.cos(raft.position.z * 0.05 + uTimeNow * 1.5) * 0.15;
                     const raftHeight = raft.userData.dimensions ? raft.userData.dimensions.height : 0.4;
-                    const targetY = waterLevel + waveHeight + (raftHeight / 2);
+                    const targetY = waterLevel + waveHeight + raftHeight + 0.1;
 
                     const displacement = raft.position.y - targetY;
                     const springForce = -K_SPRING_RAFT * displacement;
@@ -13398,6 +13398,14 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     const dampingForce = -C_DAMPING_RAFT * verticalVelocity;
                     const totalBuoyancyForce = antiGravityForce + springForce + dampingForce;
                     raft.applyForce(new CANNON.Vec3(0, totalBuoyancyForce, 0));
+
+                    // Garante que a jangada nunca afunde abaixo da superfície da água
+                    if (raft.position.y < targetY) {
+                        raft.position.y = targetY;
+                        if (raft.velocity.y < 0) {
+                            raft.velocity.y = 0;
+                        }
+                    }
 
                     // Arrasto da água para a jangada (independente de frame-rate)
                     const waterDrag = Math.pow(0.98, delta * 60);
