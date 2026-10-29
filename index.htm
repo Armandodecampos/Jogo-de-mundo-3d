@@ -11833,10 +11833,11 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             // Atualiza o mundo da física e o tempo simulado
             world.step(1 / 60, physicsDelta, isSleeping ? 100 : 10);
 
-            // Atualiza volume e execução do som de navegação da jangada (toca apenas quando o jogador navega e pressiona botões de direção)
+            // Atualiza volume e execução do som de navegação da jangada (toca apenas quando o jogador navega, a jangada esta na agua e pressiona botões de direção)
             if (gameAudioContext && raftGainNode) {
                 const isDirectionKeyPressed = !!(keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d'] || keysPressed['W'] || keysPressed['S'] || keysPressed['A'] || keysPressed['D'] || keysPressed['arrowup'] || keysPressed['arrowdown'] || keysPressed['arrowleft'] || keysPressed['arrowright']);
-                const isNavigatingRaft = !gamePaused && !isSleeping && isDrivingRaft && currentRaftBody && isDirectionKeyPressed;
+                const isRaftInWater = currentRaftBody && (currentRaftBody.position.y < waterLevel + 2.0) && hasWaterAt(currentRaftBody.position.x, currentRaftBody.position.z);
+                const isNavigatingRaft = !gamePaused && !isSleeping && isDrivingRaft && currentRaftBody && isRaftInWater && isDirectionKeyPressed;
 
                 if (isNavigatingRaft) {
                     if (gameAudioContext.state === 'suspended') {
