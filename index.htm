@@ -11670,8 +11670,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 const raftInWater = currentRaftBody.position.y < waterLevel + 2.0 && hasWaterAt(currentRaftBody.position.x, currentRaftBody.position.z);
 
                 const speedMultiplier = raftInWater ? 1.0 : 0.0; // Bloqueia movimento na terra
-                const maxLinearSpeed = 37.5 * speedMultiplier;
-                const maxAngularSpeed = 1.5 * speedMultiplier;
+                const maxLinearSpeed = 75.0 * speedMultiplier;
+                const maxAngularSpeed = 2.5 * speedMultiplier;
 
                 let linearInput = 0;
                 if (keysPressed['w']) linearInput += 1;
@@ -11690,7 +11690,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 const targetAngularVelocityY = angularInput * maxAngularSpeed;
 
                 // Suavização do movimento (lerp) para maior fluidez (independente de frame-rate)
-                const lerpFactor = 1.0 - Math.pow(1.0 - 0.02, delta * 60);
+                const lerpFactor = 1.0 - Math.pow(1.0 - 0.05, delta * 60);
                 currentRaftBody.velocity.x += (targetVelocityX - currentRaftBody.velocity.x) * lerpFactor;
                 currentRaftBody.velocity.z += (targetVelocityZ - currentRaftBody.velocity.z) * lerpFactor;
                 currentRaftBody.angularVelocity.y += (targetAngularVelocityY - currentRaftBody.angularVelocity.y) * lerpFactor;
@@ -12407,6 +12407,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             if (document.pointerLockElement === renderer.domElement && !gamePaused) {
                 if (pickedObjectBody) {
                     interactionHintText = "(Botão Esq.) Soltar";
+                } else if (isDrivingRaft) {
+                    interactionHintText = "(Botão Esq.) Sair";
                 } else {
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                     // Use a pré-calculada raycastTargets para evitar percorrer milhares de objetos (como partículas e capim instanciada sem hitbox)
@@ -12480,6 +12482,10 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                         interactionHintText = "(Botão Esq.) Dormir";
                                         if (firstIntersect.distance <= pickUpDistance) interactionHintText += " / (G) Guardar";
                                         identified = true;
+                                    } else if (body.userData.isRaft || targetType === raftItemName) {
+                                        interactionHintText = "(Botão Esq.) Conduzir";
+                                        if (firstIntersect.distance <= pickUpDistance) interactionHintText += " / (G) Guardar";
+                                        identified = true;
                                     } else {
                                         interactionHintText = "(Botão Esq.) Destruir";
                                         if (firstIntersect.distance <= pickUpDistance) interactionHintText += " / (G) Guardar";
@@ -12506,7 +12512,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                         interactionHintText = "(Botão Esq.) Abrir / (G) Guardar";
                                         identified = true;
                                     } else if (body.userData.isRaft) {
-                                        interactionHintText = "(Botão Esq.) Navegar / (G) Guardar";
+                                        interactionHintText = "(Botão Esq.) Conduzir / (G) Guardar";
                                         identified = true;
                                     } else if (body.userData.type === grassBedItemName || body.userData.type === sleepingMatItemName || body.userData.type === bedItemName) {
                                         interactionHintText = "(Botão Esq.) Dormir / (G) Guardar";
@@ -12671,6 +12677,9 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                         if (sunAngle < 0.05) inspectorText = "Sol";
                         else if (moonAngle < 0.05) inspectorText = "Lua";
                     }
+                }
+                if (isDrivingRaft) {
+                    inspectorText = "Jangada";
                 }
                 inspectorNameText = inspectorText;
                 if (inspectorDisplay) inspectorDisplay.style.display = 'none';
