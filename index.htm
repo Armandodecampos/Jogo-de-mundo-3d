@@ -11829,10 +11829,23 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 if (gameAudioContext && raftGainNode) {
                     let targetRaft = 0;
                     if (!gamePaused && !isSleeping && isDrivingRaft && currentRaftBody) {
-                        const raftInWater = currentRaftBody.position.y < waterLevel + 2.0 && hasWaterAt(currentRaftBody.position.x, currentRaftBody.position.z);
-                        const isMovingRaft = (keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d']);
-                        if (raftInWater && isMovingRaft) {
+                        const raftSpeedSq = currentRaftBody.velocity.x * currentRaftBody.velocity.x + currentRaftBody.velocity.z * currentRaftBody.velocity.z;
+                        const isMovingRaft = (keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d'] || keysPressed['arrowup'] || keysPressed['arrowdown'] || keysPressed['arrowleft'] || keysPressed['arrowright']) || (raftSpeedSq > 0.05);
+                        if (isMovingRaft) {
                             targetRaft = 0.6;
+                            if (!raftSourceNode && audioBuffers[raftSailingUrl]) {
+                                try {
+                                    raftSourceNode = gameAudioContext.createBufferSource();
+                                    raftSourceNode.buffer = audioBuffers[raftSailingUrl];
+                                    raftSourceNode.loop = true;
+                                    raftSourceNode.connect(raftGainNode);
+                                    raftSourceNode.start(0);
+                                } catch (e) {
+                                    console.error("Erro ao iniciar raftSourceNode:", e);
+                                }
+                            } else if (!audioBuffers[raftSailingUrl]) {
+                                loadAudioBuffer(raftSailingUrl);
+                            }
                         }
                     }
                     raftGainNode.gain.setTargetAtTime(targetRaft, gameAudioContext.currentTime, 0.1);
@@ -11951,6 +11964,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     currentRaftBody.position.z
                 );
                 playerBody.velocity.set(0, 0, 0);
+                camera.position.copy(playerBody.position);
+                camera.position.y += (typeof cameraEyeLevelOffset !== 'undefined' ? cameraEyeLevelOffset : playerRadius);
             }
 
             // Lógica para os cubos e blocos: sempre dinâmicos e com massa original, a menos que sejam segurados
