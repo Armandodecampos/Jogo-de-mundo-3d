@@ -1710,7 +1710,7 @@
         const torchSoundUrl = "https://dl.dropbox.com/scl/fi/65kf28rvhtu7b9ff6hgnk/tocha.mp3?rlkey=ej47rbviavphftwkh3yyu09xf&st=5h5rh7c5&dl=1";
         const campfireSoundUrl = "https://dl.dropbox.com/scl/fi/7y5cwg18iv375a66qmdlw/fogueira.mp3?rlkey=1ma751rka0aqq5q6y0ib2257t&st=dzyvct23&dl=1";
         const branchBreakUrl = "https://dl.dropbox.com/scl/fi/03qsseb38bqwinplsufby/quebrando-galho.mp3?rlkey=omqt0cpjnu2gl0ffg050gnq57&st=8zcnl6c6&dl=1";
-        const raftSailingUrl = "https://dl.dropbox.com/scl/fi/ds5j20rqohxpk1oxjfb7u/navegando.mp3?rlkey=3ckttj6wlow8x7v6o3muv3cbm&st=xeynhclc&dl=1";
+        const raftSailingUrl = "https://dl.dropbox.com/scl/fi/ds5j20rqohxpk1oxjfb7u/navegando.mp3?rlkey=3ckttj6wlow8x7v6o3muv3cbm&st=xeynhclc&dl=0";
 
         const birdSoundUrls = [
             "https://dl.dropbox.com/scl/fi/eqw59rwqync9f3ky3rdoa/bird_singing_-1-1774014921293.mp3?rlkey=s4g2iyvptt761ekbrq0f7tisl&st=1mvzcxbd&dl=1",
@@ -1766,21 +1766,32 @@
         let raftSourceNode = null;
 
         async function loadAudioBuffer(url) {
+            if (!url) return null;
+            const originalUrl = url;
+            let targetUrl = url;
+            if (targetUrl.includes('dropbox.com')) {
+                targetUrl = targetUrl.replace('www.dropbox.com', 'dl.dropbox.com').replace('dl=0', 'dl=1');
+            }
             if (!gameAudioContext) {
                 gameAudioContext = new (window.AudioContext || window.webkitAudioContext)();
             }
-            if (audioBuffers[url]) return audioBuffers[url];
+            if (audioBuffers[originalUrl]) return audioBuffers[originalUrl];
+            if (audioBuffers[targetUrl]) {
+                audioBuffers[originalUrl] = audioBuffers[targetUrl];
+                return audioBuffers[targetUrl];
+            }
             try {
-                const response = await fetch(url);
+                const response = await fetch(targetUrl);
                 if (!response.ok) {
                     throw new Error("HTTP error " + response.status);
                 }
                 const arrayBuffer = await response.arrayBuffer();
                 const audioBuffer = await gameAudioContext.decodeAudioData(arrayBuffer);
-                audioBuffers[url] = audioBuffer;
+                audioBuffers[originalUrl] = audioBuffer;
+                audioBuffers[targetUrl] = audioBuffer;
                 return audioBuffer;
             } catch (e) {
-                console.error("Erro ao carregar áudio:", url, e);
+                console.error("Erro ao carregar áudio:", targetUrl, e);
                 return null;
             }
         }
@@ -11827,7 +11838,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
                 // Atualiza volume e execução do som de navegação da jangada (toca apenas quando o jogador navega e pressiona botões de direção)
                 if (gameAudioContext && raftGainNode) {
-                    const isDirectionKeyPressed = !!(keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d'] || keysPressed['arrowup'] || keysPressed['arrowdown'] || keysPressed['arrowleft'] || keysPressed['arrowright']);
+                    const isDirectionKeyPressed = !!(keysPressed['w'] || keysPressed['s'] || keysPressed['a'] || keysPressed['d'] || keysPressed['W'] || keysPressed['S'] || keysPressed['A'] || keysPressed['D'] || keysPressed['arrowup'] || keysPressed['arrowdown'] || keysPressed['arrowleft'] || keysPressed['arrowright']);
                     const isNavigatingRaft = !gamePaused && !isSleeping && isDrivingRaft && currentRaftBody && isDirectionKeyPressed;
 
                     if (isNavigatingRaft) {
