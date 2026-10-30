@@ -2107,11 +2107,22 @@
             let totalAttempts = 0;
             while (capimClusters.length < targetCapimCount && totalAttempts < 20) {
                 totalAttempts++;
-                const angle = Math.random() * Math.PI * 2;
-                const dist = Math.random() * capimRadius;
-                const x = Math.cos(angle) * dist;
-                const z = Math.sin(angle) * dist;
-                const y = window.getSurfaceHeight(x, z);
+                let x, z, y;
+                const dirtMounds = mounds.filter(m => !m.flattened && (m.itemType === dirtItemName || !m.itemType || m.itemType === 'terra' || m.materialType === 'terra') && m.maxHeightChange > 0);
+                if (Math.random() < 0.5 && dirtMounds.length > 0) {
+                    const mound = dirtMounds[Math.floor(Math.random() * dirtMounds.length)];
+                    const angle = Math.random() * Math.PI * 2;
+                    const r = Math.random() * (mound.radius * (worldSize / hfGridSize)) * 0.8;
+                    x = mound.position.x + Math.cos(angle) * r;
+                    z = mound.position.z + Math.sin(angle) * r;
+                    y = window.getActualHeight ? window.getActualHeight(x, z) : window.getSurfaceHeight(x, z);
+                } else {
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = Math.random() * capimRadius;
+                    x = Math.cos(angle) * dist;
+                    z = Math.sin(angle) * dist;
+                    y = window.getSurfaceHeight(x, z);
+                }
 
                 if (y > waterLevel + 0.5 && y < 25) {
                     if (!isAreaOccupiedByConstruction(x, z, 2.0) && !isPositionOccupied(x, z, 4.0)) {
@@ -4736,6 +4747,16 @@
                                     mound.mesh.scale.set(baseScale, baseScale, baseScale);
                                 }
                                 terrainNeedsUpdate = true; terrainAffectedMounds.push(mound);
+
+                                // Spawna capim no monte de terra elevado
+                                if (mound.itemType === dirtItemName || !mound.itemType || mound.itemType === 'terra' || mound.materialType === 'terra') {
+                                    const mx = mound.position.x + (Math.random() - 0.5) * 0.8;
+                                    const mz = mound.position.z + (Math.random() - 0.5) * 0.8;
+                                    const my = window.getActualHeight ? window.getActualHeight(mx, mz) : mound.position.y;
+                                    if (my > waterLevel + 0.5) {
+                                        createCapim(new THREE.Vector3(mx, my, mz));
+                                    }
+                                }
                             }
 
                             // Consome o item Terra
