@@ -2553,7 +2553,9 @@
             const collectibleIndex = collectibleBoxes.findIndex(box => box.body === currentOptionsChest);
             if (collectibleIndex > -1) {
                 const collectibleToRemove = collectibleBoxes[collectibleIndex];
-                world.removeBody(collectibleToRemove.body);
+                if (collectibleToRemove.body && collectibleToRemove.body.world) {
+                    world.removeBody(collectibleToRemove.body);
+                }
                 scene.remove(collectibleToRemove.mesh);
                 collectibleBoxes.splice(collectibleIndex, 1);
                 raycastTargetsNeedUpdate = true;
@@ -2819,7 +2821,9 @@
                     raycastTargetsNeedUpdate = true;
                 }
 
-                world.removeBody(currentFuelBody);
+                if (currentFuelBody.world) {
+                    world.removeBody(currentFuelBody);
+                }
 
                 const campfireIndex = activeCampfires.indexOf(currentFuelBody);
                 if (campfireIndex !== -1) activeCampfires.splice(campfireIndex, 1);
@@ -3684,8 +3688,51 @@
             raycastTargets.length = 0;
             islandMeshes.forEach(tile => { if (tile && tile.mesh) raycastTargets.push(tile.mesh); });
             waterMeshes.forEach(tile => { if (tile && tile.mesh) raycastTargets.push(tile.mesh); });
-            placedConstructionMeshes.forEach(mesh => { if (mesh) raycastTargets.push(mesh); });
-            collectibleBoxes.forEach(box => { if (box && box.mesh) raycastTargets.push(box.mesh); });
+
+            const maxRaycastDistSq = Math.min((typeof renderDistance !== 'undefined' ? renderDistance : 250) ** 2, 80 * 80);
+            const playerPos = (typeof playerBody !== 'undefined' && playerBody) ? playerBody.position : null;
+            const halfSize = (typeof worldSize !== 'undefined' ? worldSize : 1200) / 2;
+
+            placedConstructionMeshes.forEach(mesh => {
+                if (!mesh) return;
+                if (!playerPos) {
+                    raycastTargets.push(mesh);
+                    return;
+                }
+                const dx = mesh.position.x - playerPos.x;
+                const dz = mesh.position.z - playerPos.z;
+                let wrappedX = mesh.position.x;
+                let wrappedZ = mesh.position.z;
+                if (Math.abs(dx) > halfSize) wrappedX += (dx > 0 ? -worldSize : worldSize);
+                if (Math.abs(dz) > halfSize) wrappedZ += (dz > 0 ? -worldSize : worldSize);
+                const fDx = wrappedX - playerPos.x;
+                const fDz = wrappedZ - playerPos.z;
+                const fDy = mesh.position.y - playerPos.y;
+                if (fDx * fDx + fDy * fDy + fDz * fDz <= maxRaycastDistSq) {
+                    raycastTargets.push(mesh);
+                }
+            });
+
+            collectibleBoxes.forEach(box => {
+                if (!box || !box.mesh) return;
+                if (!playerPos) {
+                    raycastTargets.push(box.mesh);
+                    return;
+                }
+                const mesh = box.mesh;
+                const dx = mesh.position.x - playerPos.x;
+                const dz = mesh.position.z - playerPos.z;
+                let wrappedX = mesh.position.x;
+                let wrappedZ = mesh.position.z;
+                if (Math.abs(dx) > halfSize) wrappedX += (dx > 0 ? -worldSize : worldSize);
+                if (Math.abs(dz) > halfSize) wrappedZ += (dz > 0 ? -worldSize : worldSize);
+                const fDx = wrappedX - playerPos.x;
+                const fDz = wrappedZ - playerPos.z;
+                const fDy = mesh.position.y - playerPos.y;
+                if (fDx * fDx + fDy * fDy + fDz * fDz <= maxRaycastDistSq) {
+                    raycastTargets.push(box.mesh);
+                }
+            });
         }
 
         function applyTextureSettings() {
@@ -10192,7 +10239,9 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 if (collectibleIndex > -1) {
                     const collectibleToRemove = collectibleBoxes[collectibleIndex];
 
-                    world.removeBody(collectibleToRemove.body);
+                    if (collectibleToRemove.body && collectibleToRemove.body.world) {
+                        world.removeBody(collectibleToRemove.body);
+                    }
                     scene.remove(collectibleToRemove.mesh);
                     collectibleBoxes.splice(collectibleIndex, 1);
                     raycastTargetsNeedUpdate = true;
@@ -10210,7 +10259,9 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                             placedConstructionBodies.splice(constructionIndex, 1);
                             placedConstructionMeshes.splice(constructionIndex, 1);
                         }
-                        world.removeBody(clickedBody);
+                        if (clickedBody.world) {
+                            world.removeBody(clickedBody);
+                        }
                         raftBodies.splice(raftIndex, 1);
                         raycastTargetsNeedUpdate = true;
 
@@ -10236,7 +10287,9 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
                         placedConstructionBodies.splice(constructionIndex, 1);
                         placedConstructionMeshes.splice(constructionIndex, 1);
-                        world.removeBody(clickedBody);
+                        if (clickedBody.world) {
+                            world.removeBody(clickedBody);
+                        }
 
                         if (type === torchItemName || type === furnaceItemName || type === campfireItemName) {
                             const campfireIndex = activeCampfires.indexOf(clickedBody);
@@ -11071,6 +11124,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
             // Animate Campfires
             if (typeof activeCampfires !== 'undefined') {
+                const playerPos = playerBody ? playerBody.position : null;
                 activeCampfires.forEach(cf => {
                     // Fuel consumption
                     if (cf.userData.isOn) {
@@ -11087,7 +11141,16 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                         }
                     }
 
+                    // Check distance to player (skip particle and light updates if farther than 60m)
+                    const isNearPlayer = playerPos ? (calculateWrappedDistance(playerPos, cf.position) <= 60) : true;
                     const fg = cf.userData.fireGroup;
+
+                    if (!isNearPlayer) {
+                        if (fg) fg.visible = false;
+                        if (cf.userData.fireLight) cf.userData.fireLight.visible = false;
+                        return;
+                    }
+
                     if (fg) {
                         // Update visibility based on isOn
                         fg.visible = cf.userData.isOn;
@@ -11498,7 +11561,9 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                 updateBackpackDisplay();
 
                                 // Remove o corpo e a malha PRIMEIRO para evitar colisões indesejadas com os itens dropados
-                                world.removeBody(destroyTargetBody);
+                                if (destroyTargetBody.world) {
+                                    world.removeBody(destroyTargetBody);
+                                }
                                 scene.remove(placedConstructionMeshes[bodyIndex]);
                                 placedConstructionBodies.splice(bodyIndex, 1);
                                 placedConstructionMeshes.splice(bodyIndex, 1);
@@ -11517,7 +11582,9 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                 const itemQuantity = destroyTargetBody.userData.quantity || 1;
                                 addItemToInventory(backpackItems, { name: itemType, quantity: itemQuantity });
 
-                                world.removeBody(destroyTargetBody);
+                                if (destroyTargetBody.world) {
+                                    world.removeBody(destroyTargetBody);
+                                }
                                 scene.remove(collectibleBoxes[collectibleIndex].mesh);
                                 collectibleBoxes.splice(collectibleIndex, 1);
                                 raycastTargetsNeedUpdate = true;
@@ -11817,12 +11884,45 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             // Aplica o envolvimento ao corpo de física do jogador
             wrapObject(playerBody, worldSize);
 
-            // Aplica o envolvimento aos corpos de física dos cubos e blocos
+            // --- OTIMIZAÇÃO: GERENCIAMENTO DE CORPOS DE FÍSICA ATIVOS POR DISTÂNCIA ---
+            const PHYSICS_ACTIVE_DIST_SQ = 80 * 80; // 80 metros
+            const halfWorldSizeForPhysics = worldSize / 2;
+
             const allPickableBodies = collectibleBoxes.map(b => b.body);
             const allStaticBodies = [...placedConstructionBodies];
-            [...allPickableBodies, ...allStaticBodies].forEach(body => {
+            const allManagedBodies = [...allPickableBodies, ...allStaticBodies];
+
+            allManagedBodies.forEach(body => {
+                if (!body || !body.position) return;
+
                 if (body !== pickedObjectBody) { // Apenas se não estiver sendo segurado
                     wrapObject(body, worldSize);
+                }
+
+                // Jangadas e objeto segurado permanecem sempre ativos na física
+                if (body === pickedObjectBody || (body.userData && body.userData.isRaft)) {
+                    if (!body.world) world.addBody(body);
+                    return;
+                }
+
+                if (playerBody) {
+                    const dx = body.position.x - playerBody.position.x;
+                    const dz = body.position.z - playerBody.position.z;
+                    let wrappedX = body.position.x;
+                    let wrappedZ = body.position.z;
+                    if (Math.abs(dx) > halfWorldSizeForPhysics) wrappedX += (dx > 0 ? -worldSize : worldSize);
+                    if (Math.abs(dz) > halfWorldSizeForPhysics) wrappedZ += (dz > 0 ? -worldSize : worldSize);
+
+                    const fDx = wrappedX - playerBody.position.x;
+                    const fDz = wrappedZ - playerBody.position.z;
+                    const fDy = body.position.y - playerBody.position.y;
+                    const distSq = fDx * fDx + fDy * fDy + fDz * fDz;
+
+                    if (distSq <= PHYSICS_ACTIVE_DIST_SQ) {
+                        if (!body.world) world.addBody(body);
+                    } else {
+                        if (body.world) world.removeBody(body);
+                    }
                 }
             });
 
@@ -12017,27 +12117,12 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 if (body.userData && (body.userData.type === stoneItemName || body.userData.type === boxItemName)) {
                     body.mass = 0;
                     body.type = CANNON.Body.STATIC;
-                    body.allowSleep = false;
+                    body.allowSleep = true;
                     body.collisionResponse = true;
                     return;
                 }
-                // Cubos soltos no chão devem ser dinâmicos quando não estão sendo pegos
-                body.mass = body.userData.originalMass || 1;
-                body.type = CANNON.Body.DYNAMIC;
-                body.allowSleep = true; // Permite que cubos "durmam" para otimização
-                body.wakeUp(); // Garante que esteja ativo se houver movimento
-                body.collisionResponse = true; // Garante que a resposta de colisão esteja sempre ativada
-            });
-
-            allStaticBodies.forEach(body => {
-                // Blocos (apenas os colocados) devem ser estáticos, exceto jangadas e itens segurados
-                if (body.userData.isRaft || body === pickedObjectBody) {
-                    return; // Jangadas e itens segurados permanecem dinâmicos/cinemáticos
-                }
-                body.mass = 0;
-                body.type = CANNON.Body.STATIC;
-                body.allowSleep = false; // Mantém ativo para colisão, mas não se move por física
-                body.collisionResponse = true; // Garante que a resposta de colisão esteja sempre ativada
+                body.allowSleep = true;
+                body.collisionResponse = true;
             });
 
             // Calcula o offset da "origem visual" para toda a grade de tiles
@@ -12051,6 +12136,9 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
             // Nature population maintenance
             frameCount++;
+            if (frameCount % 15 === 0) {
+                raycastTargetsNeedUpdate = true;
+            }
             if (frameCount % 60 === 0) {
                 // NOVO: Respawn de maçãs nas macieiras adultas
                 appleTrees.forEach(body => {
@@ -12206,9 +12294,14 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 if (distSq > renderDistSq) {
                     mesh.visible = false;
                 } else {
-                    mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
-                    mesh.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
-                    mesh.updateMatrixWorld();
+                    const targetX = wrappedX - visualOffsetX;
+                    const targetY = body.position.y;
+                    const targetZ = wrappedZ - visualOffsetZ;
+                    if (mesh.position.x !== targetX || mesh.position.y !== targetY || mesh.position.z !== targetZ || body === pickedObjectBody) {
+                        mesh.position.set(targetX, targetY, targetZ);
+                        mesh.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
+                        mesh.updateMatrixWorld();
+                    }
                     mesh.visible = true;
                 }
             });
@@ -12237,9 +12330,14 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 if (distSq > renderDistSq) {
                     mesh.visible = false;
                 } else {
-                    mesh.position.set(wrappedX - visualOffsetX, body.position.y, wrappedZ - visualOffsetZ);
-                    mesh.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
-                    mesh.updateMatrixWorld();
+                    const targetX = wrappedX - visualOffsetX;
+                    const targetY = body.position.y;
+                    const targetZ = wrappedZ - visualOffsetZ;
+                    if (mesh.position.x !== targetX || mesh.position.y !== targetY || mesh.position.z !== targetZ || (body.userData && body.userData.isRaft) || body === pickedObjectBody) {
+                        mesh.position.set(targetX, targetY, targetZ);
+                        mesh.quaternion.set(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
+                        mesh.updateMatrixWorld();
+                    }
                     mesh.visible = true;
                 }
             });
