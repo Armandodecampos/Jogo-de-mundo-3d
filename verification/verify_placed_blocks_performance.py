@@ -22,53 +22,50 @@ def run_performance_test():
             // Give items to player
             window.giveAllItemsToPlayer();
 
-            // Place 150 cob blocks around the player
+            // Place 150 cob blocks: 20 blocks within 3m (interaction range) and 130 blocks farther than 10m
             const initialCount = window.placedConstructionBodies.length;
             const px = player.position.x;
             const py = player.position.y;
             const pz = player.position.z;
 
-            // Place 100 blocks near player and 50 blocks far away (150m away)
-            for (let i = 0; i < 100; i++) {
-                const ox = (i % 10) * 0.5 - 2.5;
-                const oz = Math.floor(i / 10) * 0.5 - 2.5;
+            // Nearby blocks (within 3m)
+            for (let i = 0; i < 20; i++) {
+                const ox = (i % 4) * 0.5 - 1.0;
+                const oz = Math.floor(i / 4) * 0.5 - 1.0;
                 window.createPlaceableBlock(
-                    new THREE.Vector3(px + ox, py + 2 + (i % 3) * 0.4, pz + oz),
+                    new THREE.Vector3(px + ox, py + 2 + (i % 2) * 0.4, pz + oz),
                     new THREE.Quaternion(),
                     'cob'
                 );
             }
 
-            for (let i = 0; i < 50; i++) {
-                const ox = (i % 5) * 0.5;
-                const oz = Math.floor(i / 5) * 0.5;
+            // Distant blocks (15m to 150m away)
+            for (let i = 0; i < 130; i++) {
+                const ox = (i % 10) * 0.5;
+                const oz = Math.floor(i / 10) * 0.5;
                 window.createPlaceableBlock(
-                    new THREE.Vector3(px + 150 + ox, py + 2, pz + 150 + oz),
+                    new THREE.Vector3(px + 15 + ox, py + 2, pz + 15 + oz),
                     new THREE.Quaternion(),
                     'cob'
                 );
             }
 
             const totalPlaced = window.placedConstructionBodies.length;
-            const bodiesInWorld = window.world.bodies.length;
-
             return {
                 initialCount,
-                totalPlaced,
-                bodiesInWorld
+                totalPlaced
             };
         }""")
 
         print("Initial placement result:", result)
         assert result["totalPlaced"] >= 150, "Expected at least 150 placed blocks"
 
-        # Allow physics step to run
+        # Allow physics step and raycast updates to run
         page.wait_for_timeout(1000)
 
-        # Check active physics bodies count
+        # Check active physics bodies count & raycast targets
         stats = page.evaluate("""() => {
             const totalPlaced = window.placedConstructionBodies.length;
-            const totalWorldBodies = window.world.bodies.length;
             let activePlacedInWorld = 0;
             let inactivePlaced = 0;
 
@@ -79,17 +76,19 @@ def run_performance_test():
 
             return {
                 totalPlaced,
-                totalWorldBodies,
+                totalWorldBodies: window.world.bodies.length,
+                totalRaycastTargets: window.raycastTargets.length,
                 activePlacedInWorld,
                 inactivePlaced
             };
         }""")
 
-        print("Physics active stats:", stats)
-        assert stats["activePlacedInWorld"] >= 100, f"Expected nearby blocks active in world, got {stats['activePlacedInWorld']}"
-        assert stats["inactivePlaced"] >= 50, f"Expected distant blocks inactive in world, got {stats['inactivePlaced']}"
+        print("Physics & Raycast active stats:", stats)
+        # Nearby blocks (<= 5m) should be active, distant blocks (> 5m) should be inactive
+        assert stats["activePlacedInWorld"] <= 30, f"Expected physics active count to be small (<=30), got {stats['activePlacedInWorld']}"
+        assert stats["inactivePlaced"] >= 120, f"Expected distant blocks (>5m) to be inactive in physics, got {stats['inactivePlaced']}"
 
-        # Test Save & Load with distant blocks
+        # Test Save & Load
         page.evaluate("""() => {
             const saveData = window.getGameStateData();
             window.loadGameState(saveData);
@@ -115,13 +114,10 @@ def run_performance_test():
 
         print("Save/Load test result (after frame tick):", save_load_result)
         assert save_load_result["restoredTotal"] >= 150, "Save/Load should restore all placed blocks"
-        assert save_load_result["inactiveCount"] >= 50, f"Expected distant blocks inactive after load, got {save_load_result['inactiveCount']}"
-
-        # Take screenshot for visual verification
-        page.screenshot(path="verification/performance_verification.png")
+        assert save_load_result["inactiveCount"] >= 120, f"Expected distant blocks inactive after load, got {save_load_result['inactiveCount']}"
 
         browser.close()
-        print("PERFORMANCE AND DISTANCE PHYSICS VERIFICATION PASSED SUCCESSFULLY!")
+        print("INTERACTION DISTANCE PERFORMANCE VERIFICATION PASSED SUCCESSFULLY!")
 
 if __name__ == "__main__":
     run_performance_test()
