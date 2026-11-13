@@ -4937,7 +4937,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             world.addBody(bucketBody);
 
             const mesh = new THREE.Group();
-            const woodMaterial = woodenBlockMaterialMesh || new THREE.MeshStandardMaterial({ color: 0x8b5a2b });
+            const woodMaterial = (woodenBlockMaterialMesh || new THREE.MeshStandardMaterial({ color: 0x8b5a2b })).clone();
+            woodMaterial.side = THREE.DoubleSide;
             const bucketBodyMesh = new THREE.Mesh(
                 new THREE.CylinderGeometry(0.2, 0.15, 0.4, 12, 1, true),
                 woodMaterial
@@ -6342,6 +6343,31 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             }
         }
 
+        function isBucketExposedToRain(bucketBody) {
+            const openingY = bucketBody.position.y + 0.12;
+
+            return !placedConstructionBodies.some(body => {
+                const dimensions = body.userData?.dimensions;
+                if (!dimensions || body.position.y - dimensions.height / 2 <= openingY) return false;
+
+                let dx = bucketBody.position.x - body.position.x;
+                let dz = bucketBody.position.z - body.position.z;
+                if (Math.abs(dx) > worldSize / 2) dx -= Math.sign(dx) * worldSize;
+                if (Math.abs(dz) > worldSize / 2) dz -= Math.sign(dz) * worldSize;
+
+                const inverseRotation = new THREE.Quaternion(
+                    body.quaternion.x,
+                    body.quaternion.y,
+                    body.quaternion.z,
+                    body.quaternion.w
+                ).invert();
+                const localPosition = new THREE.Vector3(dx, 0, dz).applyQuaternion(inverseRotation);
+
+                return Math.abs(localPosition.x) <= dimensions.width / 2 &&
+                    Math.abs(localPosition.z) <= dimensions.depth / 2;
+            });
+        }
+
         function updateWeather(delta) {
             const oldTargetRain = targetRainIntensity;
             // Tenta mudar o clima com duração variável
@@ -6383,7 +6409,9 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
             if (rainIntensity > 0) {
                 collectibleBoxes.forEach(({ body }) => {
-                    if (body.userData?.type === bucketItemName && !body.userData.hasWater) {
+                    if (body.userData?.type === bucketItemName &&
+                        !body.userData.hasWater &&
+                        isBucketExposedToRain(body)) {
                         body.userData.hasWater = true;
                         if (body.userData.waterMesh) body.userData.waterMesh.visible = true;
                     }

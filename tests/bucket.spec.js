@@ -63,11 +63,37 @@ test.describe('Bucket rain and collection', () => {
             window.collectObject();
             return {
                 collected: window.backpackItems.some(item => item && item.name === 'balde_vazio'),
-                displayName: window.itemDisplayNames.balde_vazio
+                displayName: window.itemDisplayNames.balde_vazio,
+                insideVisible: bucket.mesh.children[0].material.side === THREE.DoubleSide
             };
         });
 
         expect(result.collected).toBe(true);
         expect(result.displayName).toBe('Balde vazio');
+        expect(result.insideVisible).toBe(true);
+    });
+
+    test('only fills buckets exposed to rain', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const exposedBucket = window.createBucket(new THREE.Vector3(10, 1, 10), null);
+            const coveredBucket = window.createBucket(new THREE.Vector3(20, 1, 20), null);
+            window.placedConstructionBodies.push({
+                position: new THREE.Vector3(20, 4, 20),
+                quaternion: new THREE.Quaternion(),
+                userData: { dimensions: { width: 2, height: 0.2, depth: 2 } }
+            });
+
+            window.targetRainIntensity = 1;
+            window.rainIntensity = 1;
+            window.updateWeather(0);
+
+            return {
+                exposedBucketFilled: exposedBucket.userData.hasWater,
+                coveredBucketFilled: coveredBucket.userData.hasWater
+            };
+        });
+
+        expect(result.exposedBucketFilled).toBe(true);
+        expect(result.coveredBucketFilled).toBe(false);
     });
 });
