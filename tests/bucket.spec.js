@@ -19,7 +19,9 @@ test.describe('Bucket rain and collection', () => {
 
             window.targetRainIntensity = 1;
             window.rainIntensity = 1;
-            window.updateWeather(0);
+            window.lastWeatherChange = window.world.time;
+            window.nextWeatherDuration = 1000;
+            window.updateWeather(8);
             const saveData = window.getGameStateData();
             window.loadGameState(saveData);
 
@@ -55,6 +57,39 @@ test.describe('Bucket rain and collection', () => {
         expect(result.placementAction).toBe('place');
     });
 
+    test('bucket water level rises gradually while exposed to rain', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const body = window.createBucket(new THREE.Vector3(10, 1, 10), null);
+            window.targetRainIntensity = 1;
+            window.rainIntensity = 1;
+            window.lastWeatherChange = window.world.time;
+            window.nextWeatherDuration = 1000;
+
+            window.updateWeather(2);
+            const partialFill = {
+                progress: body.userData.waterFillProgress,
+                isFull: body.userData.hasWater,
+                visible: body.userData.waterMesh.visible,
+                height: body.userData.waterMesh.scale.y
+            };
+            window.updateWeather(6);
+
+            return {
+                partialFill,
+                finalProgress: body.userData.waterFillProgress,
+                isFull: body.userData.hasWater
+            };
+        });
+
+        expect(result.partialFill.progress).toBeGreaterThan(0);
+        expect(result.partialFill.progress).toBeLessThan(1);
+        expect(result.partialFill.isFull).toBe(false);
+        expect(result.partialFill.visible).toBe(true);
+        expect(result.partialFill.height).toBeGreaterThan(0);
+        expect(result.finalProgress).toBe(1);
+        expect(result.isFull).toBe(true);
+    });
+
     test('collecting a dry bucket adds a Balde vazio', async ({ page }) => {
         const result = await page.evaluate(() => {
             const body = window.createBucket(new THREE.Vector3(5, 1, 5), null);
@@ -85,7 +120,9 @@ test.describe('Bucket rain and collection', () => {
 
             window.targetRainIntensity = 1;
             window.rainIntensity = 1;
-            window.updateWeather(0);
+            window.lastWeatherChange = window.world.time;
+            window.nextWeatherDuration = 1000;
+            window.updateWeather(8);
 
             return {
                 exposedBucketFilled: exposedBucket.userData.hasWater,
@@ -95,5 +132,31 @@ test.describe('Bucket rain and collection', () => {
 
         expect(result.exposedBucketFilled).toBe(true);
         expect(result.coveredBucketFilled).toBe(false);
+    });
+
+    test('rain creates short-lived puddles on the ground', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const originalRandom = Math.random;
+            Math.random = () => 0;
+            window.targetRainIntensity = 1;
+            window.rainIntensity = 1;
+            window.lastWeatherChange = window.world.time;
+            window.nextWeatherDuration = 1000;
+            window.updateWeather(0.5);
+
+            const appeared = window.rainPuddles.length > 0;
+            const puddleY = appeared ? window.rainPuddles[0].mesh.position.y : null;
+
+            window.targetRainIntensity = 0;
+            window.rainIntensity = 0;
+            window.updateWeather(5);
+            Math.random = originalRandom;
+
+            return { appeared, puddleY, disappeared: window.rainPuddles.length === 0 };
+        });
+
+        expect(result.appeared).toBe(true);
+        expect(result.puddleY).toBeGreaterThan(-8);
+        expect(result.disappeared).toBe(true);
     });
 });

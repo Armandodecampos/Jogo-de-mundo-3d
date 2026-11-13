@@ -1737,6 +1737,9 @@
         let localRainIntensity = 0; // Intensidade local (onde o jogador está)
         let targetRainIntensity = 0; // Intensidade alvo para transições suaves
         let rainParticles = null; // Sistema de partículas da chuva
+        let rainPuddles = [];
+        let rainPuddleGeometry = null;
+        let rainPuddleSpawnTimer = 0;
         let lastRainCameraPos = new THREE.Vector3();
         let lastOcclusionPos = new THREE.Vector3();
         let rainOcclusionHeightmap = new Float32Array(30 * 30);
@@ -4924,7 +4927,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             return basketBody;
         }
 
-        function createBucket(position, quaternion, hasWater = false) {
+        function createBucket(position, quaternion, hasWater = false, fillProgress = hasWater ? 1 : 0) {
             const bucketBody = new CANNON.Body({
                 mass: 0,
                 type: CANNON.Body.STATIC,
@@ -4958,12 +4961,13 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             mesh.add(handle);
 
             const waterMesh = new THREE.Mesh(
-                new THREE.CircleGeometry(0.17, 12),
+                new THREE.CylinderGeometry(0.16, 0.12, 1, 12),
                 new THREE.MeshStandardMaterial({ color: 0x3f9be0, transparent: true, opacity: 0.8 })
             );
-            waterMesh.rotation.x = -Math.PI / 2;
-            waterMesh.position.y = 0.12;
-            waterMesh.visible = Boolean(hasWater);
+            const initialFillProgress = hasWater ? 1 : Math.max(0, Math.min(1, Number(fillProgress) || 0));
+            waterMesh.scale.y = initialFillProgress * 0.32;
+            waterMesh.position.y = -0.16 + initialFillProgress * 0.16;
+            waterMesh.visible = initialFillProgress > 0;
             mesh.add(waterMesh);
 
             mesh.position.copy(position);
@@ -4973,6 +4977,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 isCollectible: true,
                 type: bucketItemName,
                 hasWater: Boolean(hasWater),
+                waterFillProgress: initialFillProgress,
                 waterMesh
             };
             scene.add(mesh);
@@ -6368,6 +6373,89 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             });
         }
 
+        function updateBucketFilling(delta) {
+            if (delta <= 0) return;
+
+            collectibleBoxes.forEach(({ body }) => {
+                const userData = body.userData;
+                if (userData?.type !== bucketItemName || userData.hasWater ||
+                    rainIntensity <= 0.05 || !isBucketExposedToRain(body)) return;
+
+                userData.waterFillProgress = Math.min(1, (userData.waterFillProgress || 0) + delta * rainIntensity / 8);
+                const waterMesh = userData.waterMesh;
+                if (waterMesh) {
+                    waterMesh.visible = userData.waterFillProgress > 0;
+                    waterMesh.scale.y = userData.waterFillProgress * 0.32;
+                    waterMesh.position.y = -0.16 + userData.waterFillProgress * 0.16;
+                }
+
+                if (userData.waterFillProgress >= 1) userData.hasWater = true;
+            });
+        }
+
+        function spawnRainPuddle() {
+            const playerPosition = playerBody && playerBody.position;
+            const getGroundHeight = window.getActualHeight || window.getSurfaceHeight;
+            if (!playerPosition || !getGroundHeight || rainPuddles.length >= 24) return;
+
+            const angle = Math.random() * Math.PI * 2;
+            const distance = 3 + Math.random() * 18;
+            const x = playerPosition.x + Math.cos(angle) * distance;
+            const z = playerPosition.z + Math.sin(angle) * distance;
+            const y = getGroundHeight(x, z);
+            if (!Number.isFinite(y) || y <= waterLevel + 0.5) return;
+
+            if (!rainPuddleGeometry) rainPuddleGeometry = new THREE.CircleGeometry(1, 16);
+            const material = new THREE.MeshBasicMaterial({
+                color: 0x638d9d,
+                transparent: true,
+                opacity: 0,
+                depthWrite: false
+            });
+            const mesh = new THREE.Mesh(rainPuddleGeometry, material);
+            const width = 0.35 + Math.random() * 0.45;
+            const depth = 0.2 + Math.random() * 0.3;
+            mesh.rotation.set(-Math.PI / 2, 0, Math.random() * Math.PI);
+            mesh.position.set(x, y + 0.025, z);
+            mesh.scale.set(width, depth, 1);
+            mesh.renderOrder = 1;
+            scene.add(mesh);
+            rainPuddles.push({
+                mesh,
+                age: 0,
+                lifetime: 3 + Math.random() * 2,
+                width,
+                depth
+            });
+        }
+
+        function updateRainPuddles(delta) {
+            for (let i = rainPuddles.length - 1; i >= 0; i--) {
+                const puddle = rainPuddles[i];
+                puddle.age += delta;
+                if (puddle.age >= puddle.lifetime) {
+                    scene.remove(puddle.mesh);
+                    puddle.mesh.material.dispose();
+                    rainPuddles.splice(i, 1);
+                    continue;
+                }
+
+                const fadeIn = Math.min(1, puddle.age / 0.3);
+                const fadeOut = Math.min(1, (puddle.lifetime - puddle.age) / 1.2);
+                puddle.mesh.material.opacity = 0.45 * fadeIn * fadeOut;
+                const scale = 0.7 + 0.3 * fadeIn;
+                puddle.mesh.scale.set(puddle.width * scale, puddle.depth * scale, 1);
+            }
+
+            if (rainIntensity > 0.05) {
+                rainPuddleSpawnTimer -= delta;
+                if (rainPuddleSpawnTimer <= 0) {
+                    spawnRainPuddle();
+                    rainPuddleSpawnTimer = 0.45 + Math.random() * 0.55;
+                }
+            }
+        }
+
         function updateWeather(delta) {
             const oldTargetRain = targetRainIntensity;
             // Tenta mudar o clima com duração variável
@@ -6407,16 +6495,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 rainIntensity = Math.max(targetRainIntensity, rainIntensity - 0.002 * 60 * delta);
             }
 
-            if (rainIntensity > 0) {
-                collectibleBoxes.forEach(({ body }) => {
-                    if (body.userData?.type === bucketItemName &&
-                        !body.userData.hasWater &&
-                        isBucketExposedToRain(body)) {
-                        body.userData.hasWater = true;
-                        if (body.userData.waterMesh) body.userData.waterMesh.visible = true;
-                    }
-                });
-            }
+            updateBucketFilling(delta);
+            updateRainPuddles(delta);
 
             // REMOÇÃO INSTANTÂNEA: Se o alvo de chuva for positivo mas ainda houver nuvens esparsas, limpa-as
             if (targetRainIntensity > 0 && clouds.length > 0) {
@@ -14987,6 +15067,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             // Weather exposure
             window.clouds = clouds;
             window.birds = birds;
+            window.rainPuddles = rainPuddles;
             Object.defineProperty(window, 'targetCloudCount', {
                 get: () => targetCloudCount,
                 set: (v) => { targetCloudCount = v; }
@@ -15080,6 +15161,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                         fuel: ud.fuel !== undefined ? ud.fuel : null,
                         isOn: ud.isOn !== undefined ? ud.isOn : null,
                         hasWater: ud.hasWater || false,
+                        waterFillProgress: ud.waterFillProgress || 0,
                         inventory: ud.inventory ? JSON.parse(JSON.stringify(ud.inventory)) : (ud.chestItems ? JSON.parse(JSON.stringify(ud.chestItems)) : null),
                         chestItems: ud.chestItems ? JSON.parse(JSON.stringify(ud.chestItems)) : (ud.inventory ? JSON.parse(JSON.stringify(ud.inventory)) : null)
                     }
@@ -15300,7 +15382,12 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     if (item.type === stoneItemName) {
                         createStone(pos, quat || new THREE.Quaternion());
                     } else if (item.type === bucketItemName) {
-                        createBucket(pos, quat, Boolean(item.userData && item.userData.hasWater));
+                        createBucket(
+                            pos,
+                            quat,
+                            Boolean(item.userData && item.userData.hasWater),
+                            item.userData && item.userData.waterFillProgress
+                        );
                     } else if (item.type === basketItemName) {
                         const basketBody = createBasket(pos, quat);
                         const containerItems = item.userData ? (item.userData.inventory || item.userData.chestItems) : null;
