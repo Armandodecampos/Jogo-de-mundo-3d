@@ -176,13 +176,16 @@ test('Glass Pot item exists, is craftable in Furnace with Sand, and Vegetable Oi
 
     const recipeCheck = await page.evaluate(() => {
         const glassPotInFurnace = window.recipes.furnace.some(r => r.result.name === 'pote_vidro' && r.ingredients.some(i => i.name === 'areia' && i.quantity === 1));
+        const clayPotRecipe = window.recipes.furnace.find(r => r.result.name === 'pote_barro');
         const vegetableOilWithClayPot = window.recipes.pestle.some(r => r.result.name === 'oleo_vegetal' && r.ingredients.some(i => i.name === 'pote_barro'));
         const vegetableOilWithGlassPot = window.recipes.pestle.some(r => r.result.name === 'oleo_vegetal' && r.ingredients.some(i => i.name === 'pote_vidro'));
 
-        return { glassPotInFurnace, vegetableOilWithClayPot, vegetableOilWithGlassPot };
+        return { glassPotInFurnace, clayPotRecipe, vegetableOilWithClayPot, vegetableOilWithGlassPot };
     });
 
     expect(recipeCheck.glassPotInFurnace).toBe(true);
+    expect(recipeCheck.clayPotRecipe.result.quantity).toBe(20);
+    expect(recipeCheck.clayPotRecipe.ingredients).toEqual([{ name: 'terra', quantity: 1 }]);
     expect(recipeCheck.vegetableOilWithClayPot).toBe(true);
     expect(recipeCheck.vegetableOilWithGlassPot).toBe(true);
 });
