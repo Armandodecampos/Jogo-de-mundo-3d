@@ -3221,6 +3221,9 @@
         const bucketItemName = 'balde_vazio';
         const waterBucketItemName = 'balde_agua';
         const saltWaterBucketItemName = 'balde_agua_salgada';
+        const clayStillItemName = 'alambique_barro';
+        const emptyJarItemName = 'jarra_vazia';
+        const waterJarItemName = 'jarra_com_agua';
         const vegetableOilItemName = 'oleo_vegetal';
         const workbenchToolkitItemName = 'kit_ferramentas_bancada';
         const clayPotItemName = 'pote_barro';
@@ -3256,6 +3259,8 @@
             furnace: [
                 { result: { name: glassItemName, quantity: 10 }, ingredients: [{ name: sandItemName, quantity: 1 }] },
                 { result: { name: 'pote_barro', quantity: 20 }, ingredients: [{ name: 'terra', quantity: 1 }, { name: 'areia', quantity: 1 }] },
+                { result: { name: clayStillItemName, quantity: 1 }, ingredients: [{ name: dirtItemName, quantity: 1 }] },
+                { result: { name: emptyJarItemName, quantity: 1 }, ingredients: [{ name: dirtItemName, quantity: 1 }] },
                 { result: { name: 'pote_vidro', quantity: 10 }, ingredients: [{ name: 'areia', quantity: 1 }] },
                 { result: { name: 'barra_ferro', quantity: 1 }, ingredients: [{ name: 'minerio_ferro', quantity: 1 }] },
                 { result: { name: 'bigorna', quantity: 1 }, ingredients: [{ name: 'minerio_ferro', quantity: 10 }] },
@@ -3271,6 +3276,9 @@
                 { result: { name: 'oleo_vegetal', quantity: 1 }, ingredients: [{ name: 'semente_macieira', quantity: 1 }, { name: 'pote_vidro', quantity: 1 }] },
                 { result: { name: 'oleo_vegetal', quantity: 1 }, ingredients: [{ name: 'pinhão', quantity: 1 }, { name: 'pote_barro', quantity: 1 }] },
                 { result: { name: 'oleo_vegetal', quantity: 1 }, ingredients: [{ name: 'pinhão', quantity: 1 }, { name: 'pote_vidro', quantity: 1 }] }
+            ],
+            distiller: [
+                { result: { name: waterJarItemName, quantity: 1, waterFillProgress: 1 }, ingredients: [{ name: saltWaterBucketItemName, quantity: 1 }, { name: emptyJarItemName, quantity: 1 }] }
             ],
             workbench: [
                 ...initialRecipes,
@@ -3334,6 +3342,9 @@
             [bucketItemName]: 'Balde vazio',
             [waterBucketItemName]: 'Balde de água',
             [saltWaterBucketItemName]: 'Balde de água salgada',
+            [clayStillItemName]: 'Alambique de Barro',
+            [emptyJarItemName]: 'Jarra vazia',
+            [waterJarItemName]: 'Jarra com água',
             [raftItemName]: 'Jangada\nPara navegar no mar', // NOVO
             [branchItemName]: 'Galho',
             [stoneBlockItemName]: 'Bloco de Pedra',
@@ -3395,6 +3406,9 @@
             [bucketItemName]: 2.0,
             [waterBucketItemName]: 3.0,
             [saltWaterBucketItemName]: 3.0,
+            [clayStillItemName]: 2.0,
+            [emptyJarItemName]: 1.0,
+            [waterJarItemName]: 1.2,
             [raftItemName]: 30.0, // Jangada é pesada
             [branchItemName]: 0.5,
             [stoneBlockItemName]: 5.0,
@@ -4012,7 +4026,8 @@
                 furnace: 'Menu do Forno',
                 anvil: 'Menu da Bigorna',
                 pestle: 'Menu do Pilão',
-                workbench: 'Menu da Bancada de Trabalho'
+                workbench: 'Menu da Bancada de Trabalho',
+                distiller: 'Alambique de Barro'
             };
             craftingTitle.textContent = titles[type] || 'Criação';
 
@@ -4245,6 +4260,9 @@
             if (itemName === bucketItemName) return 'https://placehold.co/100x100/8B5A2B/FFFFFF?text=Balde';
             if (itemName === waterBucketItemName) return 'https://placehold.co/100x100/4682B4/FFFFFF?text=Balde+de+agua';
             if (itemName === saltWaterBucketItemName) return 'https://placehold.co/100x100/4682B4/FFFFFF?text=Balde+de+agua+salgada';
+            if (itemName === clayStillItemName) return 'https://placehold.co/100x100/A0522D/FFFFFF?text=Alambique';
+            if (itemName === emptyJarItemName) return 'https://placehold.co/100x100/A0522D/FFFFFF?text=Jarra';
+            if (itemName === waterJarItemName) return 'https://placehold.co/100x100/4682B4/FFFFFF?text=Jarra+com+agua';
             if (itemName === appleItemName) return "https://placehold.co/100x100/ff0000/FFFFFF?text=Maçã"; // Adicionado na etapa 3
             if (itemName === pineSeedItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Pinhão";
             if (itemName === coconutSeedItemName) return "https://placehold.co/100x100/D2B48C/FFFFFF?text=Semente+Coco";
@@ -4942,6 +4960,76 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             return basketBody;
         }
 
+        function createJar(position, quaternion, item) {
+            const fillProgress = item.name === waterJarItemName
+                ? Math.max(0, Math.min(1, Number(item.waterFillProgress ?? 1) || 0))
+                : 0;
+            const body = new CANNON.Body({
+                mass: 0,
+                type: CANNON.Body.STATIC,
+                shape: new CANNON.Box(new CANNON.Vec3(0.18, 0.22, 0.18)),
+                material: cubeMaterial,
+                allowSleep: false
+            });
+            body.position.copy(position);
+            if (quaternion) body.quaternion.copy(quaternion);
+            world.addBody(body);
+
+            const group = new THREE.Group();
+            const clayMaterial = new THREE.MeshStandardMaterial({ color: 0xa0522d, roughness: 0.9 });
+            const jarBody = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.12, 0.32, 12), clayMaterial);
+            group.add(jarBody);
+            const jarNeck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.1, 12), clayMaterial);
+            jarNeck.position.y = 0.2;
+            group.add(jarNeck);
+            const waterMesh = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.105, 0.1, 0.01, 12),
+                new THREE.MeshStandardMaterial({ color: 0x3f9be0, transparent: true, opacity: 0.85 })
+            );
+            waterMesh.position.y = 0.12;
+            waterMesh.visible = fillProgress > 0;
+            group.add(waterMesh);
+
+            group.position.copy(position);
+            if (quaternion) group.quaternion.copy(quaternion);
+            group.userData.physicsBody = body;
+            body.userData = {
+                isCollectible: true,
+                type: item.name,
+                quantity: item.quantity || 1,
+                waterFillProgress: fillProgress,
+                waterMesh
+            };
+            scene.add(group);
+            collectibleBoxes.push({ body, mesh: group });
+            raycastTargetsNeedUpdate = true;
+            return body;
+        }
+
+        function drinkWaterJar(body) {
+            const userData = body.userData;
+            if (userData.type !== waterJarItemName || userData.waterFillProgress <= 0) return true;
+            if (playerThirst >= playerMaxThirst) {
+                showNotification("Você não está com sede!");
+                return true;
+            }
+
+            userData.waterFillProgress = Math.max(0, userData.waterFillProgress - 0.25);
+            playerThirst = Math.min(playerMaxThirst, playerThirst + playerMaxThirst * 0.25);
+            if (userData.waterMesh) userData.waterMesh.visible = userData.waterFillProgress > 0;
+            if (userData.waterFillProgress <= 0) userData.type = emptyJarItemName;
+            return true;
+        }
+
+        function canPlaceClayStillOnCampfire(body, normal) {
+            if (body?.userData?.type !== campfireItemName || !normal || normal.y <= 0.7) return false;
+            return !placedConstructionBodies.some(existing =>
+                existing.userData.type === clayStillItemName &&
+                Math.abs(existing.position.x - body.position.x) < 0.1 &&
+                Math.abs(existing.position.z - body.position.z) < 0.1
+            );
+        }
+
         function createBucket(position, quaternion, hasWater = false, fillProgress = hasWater ? 1 : 0, isSaltWater = false) {
             const bucketBody = new CANNON.Body({
                 mass: 0,
@@ -5174,7 +5262,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             itemBody.userData = {
                 isCollectible: true,
                 type: item.name,
-                quantity: item.quantity
+                quantity: item.quantity,
+                waterFillProgress: item.waterFillProgress
             };
 
             const mesh = new THREE.Mesh(itemGeometry, itemMaterial);
@@ -7290,6 +7379,28 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 fireGroup.visible = blockBody.userData.isOn;
                 if (light) light.visible = blockBody.userData.isOn;
                 activeCampfires.push(blockBody);
+            } else if (type === clayStillItemName) {
+                width = 0.55; height = 0.45; depth = 0.55;
+                blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
+                blockBody.addShape(blockShape);
+
+                const stillGroup = new THREE.Group();
+                const clayMaterial = new THREE.MeshStandardMaterial({ color: 0xa0522d, roughness: 0.9 });
+                const vessel = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.2, 0.35, 10), clayMaterial);
+                stillGroup.add(vessel);
+                const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 0.16, 10), clayMaterial);
+                neck.position.y = 0.23;
+                stillGroup.add(neck);
+                const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.05, 10), clayMaterial);
+                lid.position.y = 0.335;
+                stillGroup.add(lid);
+                const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 0.32, 8), clayMaterial);
+                spout.rotation.z = Math.PI / 2;
+                spout.position.set(0.23, 0.24, 0);
+                stillGroup.add(spout);
+                mesh = stillGroup;
+                initialMass = 8;
+                durability = 1.0;
             } else if (type === torchItemName) {
                 width = 0.2; height = 0.8; depth = 0.2;
                 blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
@@ -9720,7 +9831,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     stoneBlockItemName, woodenBlockItemName, stoneFloorItemName, woodenFloorItemName,
                     treeSaplingItemName, appleSeedItemName, pineSeedItemName, coconutItemName, coconutSeedItemName,
                     treeTrunkItemName, cutTrunkItemName, firewoodItemName, boxItemName, basketItemName,
-                    bucketItemName, waterBucketItemName, saltWaterBucketItemName,
+                    bucketItemName, waterBucketItemName, saltWaterBucketItemName, clayStillItemName,
+                    emptyJarItemName, waterJarItemName,
                     stoneItemName, campfireItemName, torchItemName, workbenchItemName, smallTableItemName,
                     mesaItemName, largeTableItemName, bigornaItemName, furnaceItemName, pestleItemName,
                     grassBedItemName, sleepingMatItemName, bedItemName, doorItemName, windowItemName
@@ -9734,7 +9846,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 // Ferramentas de destruição e modificação de terreno
                 if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === ironAxeItemName || item.name === ironPickaxeItemName || item.name === ironShovelItemName || item.name === branchItemName || item.name === dirtItemName || item.name === sandItemName) return 'destroy';
                 // Itens de colocação
-                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === coconutSeedItemName || item.name === treeTrunkItemName || item.name === cutTrunkItemName || item.name === firewoodItemName || item.name === boxItemName || item.name === basketItemName || item.name === bucketItemName || item.name === waterBucketItemName || item.name === saltWaterBucketItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === woodenFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName || item.name === workbenchItemName || item.name === smallTableItemName || item.name === mesaItemName || item.name === largeTableItemName || item.name === bigornaItemName || item.name === furnaceItemName || item.name === pestleItemName || item.name === grassBedItemName || item.name === sleepingMatItemName || item.name === bedItemName || item.name === doorItemName || item.name === windowItemName) return 'place';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === coconutSeedItemName || item.name === treeTrunkItemName || item.name === cutTrunkItemName || item.name === firewoodItemName || item.name === boxItemName || item.name === basketItemName || item.name === bucketItemName || item.name === waterBucketItemName || item.name === saltWaterBucketItemName || item.name === clayStillItemName || item.name === emptyJarItemName || item.name === waterJarItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === woodenFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName || item.name === workbenchItemName || item.name === smallTableItemName || item.name === mesaItemName || item.name === largeTableItemName || item.name === bigornaItemName || item.name === furnaceItemName || item.name === pestleItemName || item.name === grassBedItemName || item.name === sleepingMatItemName || item.name === bedItemName || item.name === doorItemName || item.name === windowItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
             }
 
@@ -10317,6 +10429,13 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     }
 
                     if (body && body.userData) {
+                        if (body.userData.type === clayStillItemName) {
+                            openCraftingMenu('distiller');
+                            return true;
+                        }
+                        if (body.userData.type === waterJarItemName || body.userData.type === emptyJarItemName) {
+                            return drinkWaterJar(body);
+                        }
                         if (body.userData.type === bucketItemName) {
                             if (body.userData.waterFillProgress > 0) {
                                 if (body.userData.isSaltWater) {
@@ -10459,7 +10578,9 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 }
                 const itemQuantity = clickedBody.userData.quantity || 1; // Padrão para 1 se não especificado
                 const collectedItem = { name: itemType, quantity: itemQuantity };
-                if (itemType !== bucketItemName && clickedBody.userData.waterFillProgress > 0 &&
+                if (itemType === waterJarItemName && clickedBody.userData.waterFillProgress > 0) {
+                    collectedItem.waterFillProgress = clickedBody.userData.waterFillProgress;
+                } else if (itemType === bucketItemName && clickedBody.userData.waterFillProgress > 0 &&
                     clickedBody.userData.waterFillProgress < 1) {
                     collectedItem.waterFillProgress = clickedBody.userData.waterFillProgress;
                 }
@@ -10633,6 +10754,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     else if (currentBlockType === boxItemName && cubeMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === basketItemName && basketMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === bucketItemName || currentBlockType === waterBucketItemName || currentBlockType === saltWaterBucketItemName) materialLoaded = true;
+                    else if (currentBlockType === clayStillItemName || currentBlockType === emptyJarItemName || currentBlockType === waterJarItemName) materialLoaded = true;
                     else if (currentBlockType === raftItemName && raftMaterialMesh) materialLoaded = true; // NOVO
                     else if (currentBlockType === stoneItemName) materialLoaded = true; // Pedra sempre carregada (usa material básico)
                     else if (currentBlockType === campfireItemName) materialLoaded = true;
@@ -10646,6 +10768,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                             createBox(ghostBlockMesh.position, ghostBlockMesh.quaternion);
                         } else if (currentBlockType === basketItemName) {
                             createBasket(ghostBlockMesh.position, ghostBlockMesh.quaternion);
+                        } else if (currentBlockType === emptyJarItemName || currentBlockType === waterJarItemName) {
+                            createJar(ghostBlockMesh.position, ghostBlockMesh.quaternion, item);
                         } else if (currentBlockType === bucketItemName || currentBlockType === waterBucketItemName || currentBlockType === saltWaterBucketItemName) {
                             const isInSea = hasWaterAt(ghostBlockMesh.position.x, ghostBlockMesh.position.z) &&
                                 ghostBlockMesh.position.y <= waterLevel + 0.25;
@@ -10716,6 +10840,9 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     primaryToolForVisuals.name === boxItemName ||
                     primaryToolForVisuals.name === stoneBlockItemName ||
                     primaryToolForVisuals.name === woodenBlockItemName ||
+                    primaryToolForVisuals.name === clayStillItemName ||
+                    primaryToolForVisuals.name === emptyJarItemName ||
+                    primaryToolForVisuals.name === waterJarItemName ||
                     primaryToolForVisuals.name === stoneItemName ||
                     primaryToolForVisuals.name === pestleItemName ||
                     primaryToolForVisuals.name === doorItemName ||
@@ -12870,7 +12997,16 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                 currentLookedAtBody = body; // Salva para uso em rotateLookedAtObject
                                 let identified = false;
 
-                                if (body.userData.type === bucketItemName) {
+                                if (body.userData.type === clayStillItemName) {
+                                    interactionHintText = "(Botão Esq.) Usar / (G) Guardar";
+                                    identified = true;
+                                } else if (body.userData.type === waterJarItemName) {
+                                    interactionHintText = "(Botão Esq.) Beber / (G) Guardar";
+                                    identified = true;
+                                } else if (body.userData.type === emptyJarItemName) {
+                                    interactionHintText = "(G) Guardar";
+                                    identified = true;
+                                } else if (body.userData.type === bucketItemName) {
                                     if (firstIntersect.distance <= pickUpDistance) {
                                         if (body.userData.waterFillProgress > 0) {
                                             interactionHintText = "(Botão Esq.) Beber / (G) Guardar";
@@ -13229,6 +13365,10 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(1, 1, 1);
                         } else if (currentBlockType === basketItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+                        } else if (currentBlockType === emptyJarItemName || currentBlockType === waterJarItemName) {
+                            ghostBlockMesh.geometry = new THREE.CylinderGeometry(0.16, 0.12, 0.32, 12);
+                        } else if (currentBlockType === clayStillItemName) {
+                            ghostBlockMesh.geometry = new THREE.CylinderGeometry(0.25, 0.2, 0.45, 10);
                         } else if (currentBlockType === bucketItemName || currentBlockType === waterBucketItemName || currentBlockType === saltWaterBucketItemName) {
                             ghostBlockMesh.geometry = new THREE.CylinderGeometry(0.2, 0.15, 0.4, 12, 1, true);
                         } else if (currentBlockType === stoneItemName) {
@@ -13399,6 +13539,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     else if (currentBlockType === cutTrunkItemName || currentBlockType === firewoodItemName) { currentGhostWidth = 0.4; currentGhostHeight = 1.0; currentGhostDepth = 0.4; }
                     else if (currentBlockType === boxItemName) { currentGhostWidth = 1.0; currentGhostHeight = 1.0; currentGhostDepth = 1.0; }
                     else if (currentBlockType === basketItemName) { currentGhostWidth = 0.5; currentGhostHeight = 0.5; currentGhostDepth = 0.5; }
+                    else if (currentBlockType === clayStillItemName) { currentGhostWidth = 0.55; currentGhostHeight = 0.45; currentGhostDepth = 0.55; }
+                    else if (currentBlockType === emptyJarItemName || currentBlockType === waterJarItemName) { currentGhostWidth = 0.36; currentGhostHeight = 0.44; currentGhostDepth = 0.36; }
                     else if (currentBlockType === bucketItemName || currentBlockType === waterBucketItemName || currentBlockType === saltWaterBucketItemName) { currentGhostWidth = 0.6; currentGhostHeight = 0.5; currentGhostDepth = 0.6; }
                     else if (currentBlockType === stoneItemName) { currentGhostWidth = 0.6; currentGhostHeight = 0.3; currentGhostDepth = 0.7; }
                     else if (currentBlockType === campfireItemName) { currentGhostWidth = 0.8; currentGhostHeight = 0.5; currentGhostDepth = 0.8; }
@@ -13435,7 +13577,6 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                         if ((intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) || (isWater && (isRaft || isBucket))) {
                             // Verifica a distância máxima para colocação
                             if (intersects[i].distance <= pickUpDistance + 1) { // Um pouco mais longe que pegar
-                                targetHit = true;
                                 const hitPoint = intersects[i].point;
 
                                 let hitNormal;
@@ -13445,6 +13586,11 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                     hitNormal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
                                 }
 
+                                if (currentBlockType === clayStillItemName &&
+                                    !canPlaceClayStillOnCampfire(intersectedBody, hitNormal)) {
+                                    continue;
+                                }
+                                targetHit = true;
                                 const isIntersectedStatic = intersectedBody && (placedConstructionBodies.includes(intersectedBody) || allCollectibleBodies.includes(intersectedBody));
 
                                 if (isIntersectedStatic) {
@@ -13463,7 +13609,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                         'cob', 'piso',
                                         stoneBlockItemName, woodenBlockItemName,
                                         stoneFloorItemName, woodenFloorItemName,
-                                        doorItemName, windowItemName
+                                        doorItemName, windowItemName, clayStillItemName
                                     ].includes(currentBlockType);
 
                                     if (currentBlockType === doorItemName || currentBlockType === windowItemName) {
@@ -14938,6 +15084,11 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             window.isWorldReady = true;
             isWorldReady = true;
             window.recipes = recipes;
+            window.clayStillItemName = clayStillItemName;
+            window.emptyJarItemName = emptyJarItemName;
+            window.waterJarItemName = waterJarItemName;
+            window.createJar = createJar;
+            window.canPlaceClayStillOnCampfire = canPlaceClayStillOnCampfire;
             window.isTopFaceIntersect = isTopFaceIntersect;
             window.isTrunkObstructed = isTrunkObstructed;
             window.findItemInInventory = findItemInInventory;
@@ -15467,6 +15618,12 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     const quat = item.quaternion ? new THREE.Quaternion(item.quaternion.x, item.quaternion.y, item.quaternion.z, item.quaternion.w) : null;
                     if (item.type === stoneItemName) {
                         createStone(pos, quat || new THREE.Quaternion());
+                    } else if (item.type === emptyJarItemName || item.type === waterJarItemName) {
+                        createJar(pos, quat, {
+                            name: item.type,
+                            quantity: item.quantity || 1,
+                            waterFillProgress: item.userData && item.userData.waterFillProgress
+                        });
                     } else if (item.type === bucketItemName) {
                         createBucket(
                             pos,
@@ -15494,7 +15651,11 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     } else if (item.type === firewoodItemName) {
                         createFirewood(pos, null, quat);
                     } else if (item.type) {
-                        createDroppableItem(pos, { name: item.type, quantity: item.quantity || 1 });
+                        createDroppableItem(pos, {
+                            name: item.type,
+                            quantity: item.quantity || 1,
+                            waterFillProgress: item.userData && item.userData.waterFillProgress
+                        });
                     }
                 });
             }
