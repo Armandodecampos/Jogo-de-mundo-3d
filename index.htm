@@ -7399,26 +7399,42 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
                 const stillGroup = new THREE.Group();
                 const clayMaterial = new THREE.MeshStandardMaterial({ color: 0xa0522d, roughness: 0.9 });
+                const firewoodMaterial = woodenBlockMaterialMesh || new THREE.MeshStandardMaterial({ color: 0x5a3822, roughness: 1 });
+                const firewoodRadius = 0.07;
+                const firewoodY = -height / 2 + firewoodRadius;
+                for (let i = 0; i < 3; i++) {
+                    const log = new THREE.Mesh(
+                        new THREE.CylinderGeometry(firewoodRadius, firewoodRadius, 0.58, 8),
+                        firewoodMaterial
+                    );
+                    log.rotation.z = Math.PI / 2;
+                    log.rotation.y = (i / 3) * Math.PI;
+                    log.position.y = firewoodY;
+                    log.userData.isStillFirewood = true;
+                    stillGroup.add(log);
+                }
+
                 const vessel = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.2, 0.35, 10), clayMaterial);
-                vessel.position.y = 0.125;
+                vessel.position.y = firewoodY + firewoodRadius + 0.35 / 2;
+                vessel.userData.isStillVessel = true;
                 stillGroup.add(vessel);
                 const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 0.16, 10), clayMaterial);
-                neck.position.y = 0.35;
+                neck.position.y = vessel.position.y + 0.23;
                 stillGroup.add(neck);
                 const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.05, 10), clayMaterial);
-                lid.position.y = 0.455;
+                lid.position.y = neck.position.y + 0.105;
                 stillGroup.add(lid);
                 const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 0.32, 8), clayMaterial);
                 spout.rotation.z = Math.PI / 2;
-                spout.position.set(0.23, 0.36, 0);
+                spout.position.set(0.23, neck.position.y + 0.01, 0);
                 stillGroup.add(spout);
 
                 const fireGroup = new THREE.Group();
                 fireGroup.position.y = -height / 2;
                 const fireLayers = [
-                    { mat: torchOrangeFireMat, s: { w: 0.45, h: 0.4 }, speed: 0.8, offset: 0 },
-                    { mat: torchYellowFireMat, s: { w: 0.3, h: 0.32 }, speed: 1.1, offset: 0.3 },
-                    { mat: torchCoreFireMat, s: { w: 0.12, h: 0.24 }, speed: 1.4, offset: 0.6 }
+                    { mat: torchOrangeFireMat, s: { w: 0.45, h: 0.18 }, speed: 0.8, offset: 0 },
+                    { mat: torchYellowFireMat, s: { w: 0.3, h: 0.14 }, speed: 1.1, offset: 0.3 },
+                    { mat: torchCoreFireMat, s: { w: 0.12, h: 0.1 }, speed: 1.4, offset: 0.6 }
                 ];
                 fireLayers.forEach(layer => {
                     const flame = new THREE.Mesh(torchFireGeom, layer.mat);
