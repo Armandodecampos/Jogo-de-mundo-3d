@@ -4506,7 +4506,12 @@
             }
 
             // Add result
-            addItemToInventory(backpackItems, { ...recipe.result });
+            const craftedItem = { ...recipe.result };
+            if (craftedItem.name === torchItemName) {
+                craftedItem.fuel = 100;
+                craftedItem.isOn = false;
+            }
+            addItemToInventory(backpackItems, craftedItem);
             addNotification(`Criado: ${itemDisplayNames[recipe.result.name] || recipe.result.name} x${recipe.result.quantity}`);
             updateUI();
             updateCraftingDisplay(currentCraftingMenuType);
@@ -11551,7 +11556,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             // Fuel consumption for held torch
             const heldItemForFuel = beltItems[selectedSlotIndex];
             if (heldItemForFuel && heldItemForFuel.name === torchItemName && heldItemForFuel.isOn && !gamePaused) {
-                heldItemForFuel.fuel = Math.max(0, (heldItemForFuel.fuel || 0) - (0.1 * delta));
+                heldItemForFuel.fuel = Math.max(0, (heldItemForFuel.fuel || 0) - (0.02 * delta));
                 if (heldItemForFuel.fuel <= 0) {
                     heldItemForFuel.isOn = false;
                 }
@@ -11563,7 +11568,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 activeCampfires.forEach(cf => {
                     // Fuel consumption
                     if (cf.userData.isOn) {
-                        cf.userData.fuel = Math.max(0, (cf.userData.fuel || 0) - (0.1 * delta));
+                        const fuelConsumptionRate = cf.userData.type === torchItemName ? 0.02 : 0.1;
+                        cf.userData.fuel = Math.max(0, (cf.userData.fuel || 0) - (fuelConsumptionRate * delta));
                         if (cf.userData.fuel <= 0) {
                             cf.userData.isOn = false;
                             if (cf.userData.fireGroup) cf.userData.fireGroup.visible = false;
