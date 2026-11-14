@@ -21,6 +21,25 @@ test.describe('Player thirst', () => {
         await page.waitForFunction(() => window.isFainted === true, { timeout: 30000 });
     });
 
+    test('eating an apple or coconut restores thirst, and coconut restores more', async ({ page }) => {
+        const thirstAfterEating = await page.evaluate(() => {
+            window.thirstDecayRate = 0;
+            window.playerThirst = 50;
+            const apple = { name: 'maca', quantity: 1 };
+            window.eatItem(apple, 1);
+            const afterApple = window.playerThirst;
+
+            window.playerThirst = 50;
+            const coconut = { name: 'coco', quantity: 1 };
+            window.eatItem(coconut, 2);
+
+            return { afterApple, afterCoconut: window.playerThirst };
+        });
+
+        expect(thirstAfterEating.afterApple).toBe(55);
+        expect(thirstAfterEating.afterCoconut).toBe(65);
+    });
+
     test('drinking fresh water restores thirst by sips and empties the bucket', async ({ page }) => {
         const result = await page.evaluate(() => {
             Object.defineProperty(document, 'pointerLockElement', {
