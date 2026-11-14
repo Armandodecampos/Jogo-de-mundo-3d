@@ -53,6 +53,7 @@ test.describe('Clay still and water jars', () => {
                     recipe.result.name === window.emptyJarItemName
                 ).ingredients,
                 saltBucketConsumed: !window.backpackItems.some(item => item && item.name === 'balde_agua_salgada'),
+                emptyBucketReturned: window.backpackItems.some(item => item && item.name === 'balde_vazio'),
                 filledJar: filledJar && {
                     quantity: filledJar.quantity,
                     fill: filledJar.waterFillProgress
@@ -70,6 +71,7 @@ test.describe('Clay still and water jars', () => {
         expect(result.recipeIngredients).toContain('1 Balde de água salgada');
         expect(result.recipeIngredients).toContain('1 Jarra vazia');
         expect(result.saltBucketConsumed).toBe(true);
+        expect(result.emptyBucketReturned).toBe(true);
         expect(result.filledJar).toEqual({ quantity: 1, fill: 1 });
     });
 
