@@ -8306,7 +8306,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 precision: "highp",
                 stencil: false
             }); // Habilita antialiasing para gráficos mais suaves
-            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
             renderer.setSize(window.innerWidth, window.innerHeight); // Define o tamanho do renderizador para o tamanho da janela
             renderer.shadowMap.enabled = false;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -13041,6 +13041,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
             // PERFORM MAIN RAYCAST ONCE PER FRAME for crosshair and interaction checks
             let mainIntersects = [];
+            let mainRaycastPerformed = false;
             let interactionHintText = "";
             currentLookedAtBody = null; // Reset a cada frame
             if (document.pointerLockElement === renderer.domElement && !gamePaused) {
@@ -13052,6 +13053,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
                     // Use a pré-calculada raycastTargets para evitar percorrer milhares de objetos (como partículas e capim instanciada sem hitbox)
                     mainIntersects = raycaster.intersectObjects(raycastTargets, true);
+                    mainRaycastPerformed = true;
                     const firstIntersect = getFirstValidIntersect(mainIntersects);
 
                     if (firstIntersect && firstIntersect.distance <= destroyDistance) {
@@ -13265,7 +13267,11 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 camera.getWorldDirection(lookDir);
 
                 // 1. Verificar Objetos e Terreno (Prioridade Máxima: Raycast)
-                const inspectorIntersects = raycaster.intersectObjects(raycastTargets, true);
+                let inspectorIntersects = mainIntersects;
+                if (!mainRaycastPerformed) {
+                    raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+                    inspectorIntersects = raycaster.intersectObjects(raycastTargets, true);
+                }
                 if (inspectorIntersects.length > 0) {
                     const intersect = inspectorIntersects[0];
                     const obj = intersect.object;
