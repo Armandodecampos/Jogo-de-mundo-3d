@@ -3728,6 +3728,29 @@
         let dustParticles = null; // NOVO: Para o efeito de poeira da tela inteira
         let particlesGroup = new THREE.Group(); // Grupo para partículas (excluído de raycasting)
 
+        function isBodyWithinPlayerDistance(body, playerPosition, maxDistance) {
+            const dx = body.position.x - playerPosition.x;
+            const dz = body.position.z - playerPosition.z;
+            let wrappedX = body.position.x;
+            let wrappedZ = body.position.z;
+            const halfSize = worldSize / 2;
+            if (Math.abs(dx) > halfSize) wrappedX += dx > 0 ? -worldSize : worldSize;
+            if (Math.abs(dz) > halfSize) wrappedZ += dz > 0 ? -worldSize : worldSize;
+
+            const horizontalX = wrappedX - playerPosition.x;
+            const horizontalZ = wrappedZ - playerPosition.z;
+            let verticalDistance = body.position.y - playerPosition.y;
+            if (body.userData?.growthStage && body.userData.dimensions?.height) {
+                verticalDistance = Math.max(
+                    0,
+                    Math.abs(verticalDistance) - body.userData.dimensions.height / 2
+                );
+            }
+
+            return horizontalX * horizontalX + horizontalZ * horizontalZ + verticalDistance * verticalDistance
+                <= maxDistance * maxDistance;
+        }
+
         function updateRaycastTargets() {
             if (typeof raycastTargets === 'undefined') return;
             raycastTargets.length = 0;
@@ -3742,6 +3765,11 @@
                 if (!mesh) return;
                 if (!playerPos) {
                     raycastTargets.push(mesh);
+                    return;
+                }
+                const body = mesh.userData.physicsBody;
+                if (body?.userData?.growthStage) {
+                    if (isBodyWithinPlayerDistance(body, playerPos, 6.0)) raycastTargets.push(mesh);
                     return;
                 }
                 const dx = mesh.position.x - playerPos.x;
@@ -12355,8 +12383,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             wrapObject(playerBody, worldSize);
 
             // --- OTIMIZAÇÃO: GERENCIAMENTO DE CORPOS DE FÍSICA ATIVOS POR DISTÂNCIA ---
-            const PHYSICS_ACTIVE_DIST_SQ = destroyDistance * destroyDistance; // 5.0m (distância de interação)
-            const halfWorldSizeForPhysics = worldSize / 2;
+            const physicsActiveDistance = destroyDistance;
 
             const allPickableBodies = collectibleBoxes.map(b => b.body);
             const allStaticBodies = [...placedConstructionBodies];
@@ -12376,19 +12403,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 }
 
                 if (playerBody) {
-                    const dx = body.position.x - playerBody.position.x;
-                    const dz = body.position.z - playerBody.position.z;
-                    let wrappedX = body.position.x;
-                    let wrappedZ = body.position.z;
-                    if (Math.abs(dx) > halfWorldSizeForPhysics) wrappedX += (dx > 0 ? -worldSize : worldSize);
-                    if (Math.abs(dz) > halfWorldSizeForPhysics) wrappedZ += (dz > 0 ? -worldSize : worldSize);
-
-                    const fDx = wrappedX - playerBody.position.x;
-                    const fDz = wrappedZ - playerBody.position.z;
-                    const fDy = body.position.y - playerBody.position.y;
-                    const distSq = fDx * fDx + fDy * fDy + fDz * fDz;
-
-                    if (distSq <= PHYSICS_ACTIVE_DIST_SQ) {
+                    if (isBodyWithinPlayerDistance(body, playerBody.position, physicsActiveDistance)) {
                         if (!body.world) world.addBody(body);
                     } else {
                         if (body.world) world.removeBody(body);
