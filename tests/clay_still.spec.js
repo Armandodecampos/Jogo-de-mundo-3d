@@ -13,6 +13,7 @@ test.describe('Clay still and water jars', () => {
             const addItem = (name, quantity) =>
                 window.addItemToInventory(window.backpackItems, { name, quantity }, Infinity, true);
             addItem('terra', 2);
+            addItem('galho', 3);
             window.openedFurnace = { userData: { isOn: true } };
             window.openCraftingMenu('furnace');
 
@@ -26,8 +27,17 @@ test.describe('Clay still and water jars', () => {
             const furnaceItems = window.backpackItems.filter(Boolean).map(item => item.name);
             window.closeCraftingMenu();
 
+            const still = window.createPlaceableBlock(
+                new THREE.Vector3(10, window.getSurfaceHeight(10, 10) + 0.45, 10),
+                null,
+                window.clayStillItemName,
+                null,
+                { fuel: 50, isOn: true }
+            );
             addItem('balde_agua_salgada', 1);
-            window.openCraftingMenu('distiller');
+            window.openFuelMenu(still);
+            document.getElementById('accessFurnaceButton').click();
+
             const distillerRecipe = document.querySelector('#recipesContainer .recipe-item');
             const recipeIngredients = distillerRecipe.querySelector('.recipe-ingredients').textContent;
             distillerRecipe.querySelector('.craft-button').click();
@@ -52,7 +62,10 @@ test.describe('Clay still and water jars', () => {
 
         expect(result.furnaceItems).toContain('alambique_barro');
         expect(result.furnaceItems).toContain('jarra_vazia');
-        expect(result.stillRecipe).toEqual([{ name: 'terra', quantity: 1 }]);
+        expect(result.stillRecipe).toEqual([
+            { name: 'terra', quantity: 1 },
+            { name: 'galho', quantity: 3 }
+        ]);
         expect(result.emptyJarRecipe).toEqual([{ name: 'terra', quantity: 1 }]);
         expect(result.recipeIngredients).toContain('1 Balde de água salgada');
         expect(result.recipeIngredients).toContain('1 Jarra vazia');
@@ -60,39 +73,61 @@ test.describe('Clay still and water jars', () => {
         expect(result.filledJar).toEqual({ quantity: 1, fill: 1 });
     });
 
-    test('still support is restricted to campfire tops and clicking it opens crafting', async ({ page }) => {
+    test('still can be placed alone and needs fuel before opening its crafting menu', async ({ page }) => {
         const result = await page.evaluate(() => {
             Object.defineProperty(document, 'pointerLockElement', {
                 get: () => window.renderer.domElement,
                 configurable: true
             });
-            const campfirePosition = new THREE.Vector3(10, window.getSurfaceHeight(10, 10) + 0.25, 10);
-            const campfire = window.createPlaceableBlock(campfirePosition, null, 'fogueira');
-            const topNormal = new THREE.Vector3(0, 1, 0);
-            const sideNormal = new THREE.Vector3(1, 0, 0);
-            const onCampfireTop = window.canPlaceClayStillOnCampfire(campfire, topNormal);
-            const onCampfireSide = window.canPlaceClayStillOnCampfire(campfire, sideNormal);
-            const stillPosition = campfirePosition.clone().add(new THREE.Vector3(0, 0.475, 0));
+            const stillPosition = new THREE.Vector3(10, window.getSurfaceHeight(10, 10) + 0.45, 10);
             const still = window.createPlaceableBlock(stillPosition, null, window.clayStillItemName);
             const stillMesh = window.scene.children.find(child => child.userData.physicsBody === still);
             window.raycaster.intersectObjects = () => [{ distance: 1, object: stillMesh }];
             const opened = window.interact();
+            const placedAlone = window.placedConstructionBodies.includes(still);
+            const fuelMenuTitle = document.getElementById('fuelTitle').textContent;
+            const accessText = document.getElementById('accessFurnaceButton').textContent;
+            window.addItemToInventory(window.backpackItems, { name: 'galho', quantity: 1 }, Infinity, true);
+            document.getElementById('addFuelButton').click();
+            const refueled = still.userData.fuel;
+            document.getElementById('toggleFireButton').click();
+            const fireIsOn = still.userData.isOn;
+            document.getElementById('accessFurnaceButton').click();
+            const stillRegisteredForFuel = window.activeCampfires.includes(still);
+            const saved = window.getGameStateData();
+            window.closeCraftingMenu();
+            window.loadGameState(saved);
+            const restoredStill = window.placedConstructionBodies.find(body =>
+                body.userData.type === window.clayStillItemName
+            );
             return {
-                onCampfireTop,
-                onCampfireSide,
-                onOtherSurface: window.canPlaceClayStillOnCampfire(still, topNormal),
-                duplicateRejected: !window.canPlaceClayStillOnCampfire(campfire, topNormal),
+                placedAlone,
+                hasBuiltInFire: Boolean(still.userData.fireGroup && still.userData.fireLight),
                 opened,
-                title: document.getElementById('craftingTitle').textContent
+                fuelMenuTitle,
+                accessText,
+                refueled,
+                fireIsOn,
+                craftingTitle: document.getElementById('craftingTitle').textContent,
+                stillRegisteredForFuel,
+                restoredFuel: restoredStill.userData.fuel,
+                restoredFireIsOn: restoredStill.userData.isOn,
+                restoredHasFire: Boolean(restoredStill.userData.fireGroup)
             };
         });
 
-        expect(result.onCampfireTop).toBe(true);
-        expect(result.onCampfireSide).toBe(false);
-        expect(result.onOtherSurface).toBe(false);
-        expect(result.duplicateRejected).toBe(true);
+        expect(result.placedAlone).toBe(true);
+        expect(result.hasBuiltInFire).toBe(true);
         expect(result.opened).toBe(true);
-        expect(result.title).toBe('Alambique de Barro');
+        expect(result.fuelMenuTitle).toBe('Alambique de Barro');
+        expect(result.accessText).toBe('Usar Alambique');
+        expect(result.refueled).toBe(20);
+        expect(result.fireIsOn).toBe(true);
+        expect(result.craftingTitle).toBe('Alambique de Barro');
+        expect(result.stillRegisteredForFuel).toBe(true);
+        expect(result.restoredFuel).toBe(20);
+        expect(result.restoredFireIsOn).toBe(true);
+        expect(result.restoredHasFire).toBe(true);
     });
 
     test('water jar gives four sips and retains its water amount in a save', async ({ page }) => {

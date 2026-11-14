@@ -2374,6 +2374,7 @@
         let currentLookedAtBody = null; // Reutilizado para o hint e para o comando de girar
         let currentFuelBody = null; // Corpo que está sendo abastecido/manipulado no menu de combustível
         let openedFurnace = null; // Referência para o forno atualmente aberto para crafting
+        let openedStill = null;
 
         function openFuelMenu(body) {
             if (!body || !body.userData) return;
@@ -2394,6 +2395,13 @@
             if (body.userData.type === furnaceItemName) {
                 title.textContent = "Forno";
                 accessBtn.classList.remove('hidden');
+                accessBtn.textContent = "Acessar Forno";
+                addBtn.textContent = "Abastecer (1 Galho / 1 Lenha)";
+                if (useBtn) useBtn.classList.add('hidden');
+            } else if (body.userData.type === clayStillItemName) {
+                title.textContent = "Alambique de Barro";
+                accessBtn.classList.remove('hidden');
+                accessBtn.textContent = "Usar Alambique";
                 addBtn.textContent = "Abastecer (1 Galho / 1 Lenha)";
                 if (useBtn) useBtn.classList.add('hidden');
             } else if (body.userData.type === campfireItemName) {
@@ -3259,7 +3267,7 @@
             furnace: [
                 { result: { name: glassItemName, quantity: 10 }, ingredients: [{ name: sandItemName, quantity: 1 }] },
                 { result: { name: 'pote_barro', quantity: 20 }, ingredients: [{ name: 'terra', quantity: 1 }, { name: 'areia', quantity: 1 }] },
-                { result: { name: clayStillItemName, quantity: 1 }, ingredients: [{ name: dirtItemName, quantity: 1 }] },
+                { result: { name: clayStillItemName, quantity: 1 }, ingredients: [{ name: dirtItemName, quantity: 1 }, { name: branchItemName, quantity: 3 }] },
                 { result: { name: emptyJarItemName, quantity: 1 }, ingredients: [{ name: dirtItemName, quantity: 1 }] },
                 { result: { name: 'pote_vidro', quantity: 10 }, ingredients: [{ name: 'areia', quantity: 1 }] },
                 { result: { name: 'barra_ferro', quantity: 1 }, ingredients: [{ name: 'minerio_ferro', quantity: 1 }] },
@@ -4011,6 +4019,7 @@
 
         function openCraftingMenu(type) {
             currentCraftingMenuType = type;
+            if (type !== 'distiller') openedStill = null;
 
             // Play sound based on menu type
             if (type === 'furnace') playInterfaceSound(furnaceOpenUrl);
@@ -4052,6 +4061,7 @@
             craftingModal.classList.remove('active');
             gamePaused = false;
             openedFurnace = null;
+            openedStill = null;
             pointerLockExitForBackpack = false;
             const hudButtons = document.getElementById('hudButtons');
             if (hudButtons) {
@@ -4069,7 +4079,15 @@
 
             const furnaceWarning = document.getElementById('furnaceWarning');
             if (type === 'furnace' && openedFurnace && !openedFurnace.userData.isOn) {
-                if (furnaceWarning) furnaceWarning.style.display = 'block';
+                if (furnaceWarning) {
+                    furnaceWarning.textContent = 'Forno Apagado - Abasteça e ligue para usar';
+                    furnaceWarning.style.display = 'block';
+                }
+            } else if (type === 'distiller' && openedStill && !openedStill.userData.isOn) {
+                if (furnaceWarning) {
+                    furnaceWarning.textContent = 'Alambique apagado - Abasteça e ligue para usar';
+                    furnaceWarning.style.display = 'block';
+                }
             } else {
                 if (furnaceWarning) furnaceWarning.style.display = 'none';
             }
@@ -4424,6 +4442,9 @@
             // If it's a furnace recipe, furnace must be on
             if (currentCraftingMenuType === 'furnace') {
                 if (!openedFurnace || !openedFurnace.userData.isOn) return false;
+            }
+            if (currentCraftingMenuType === 'distiller') {
+                if (!openedStill || !openedStill.userData.isOn) return false;
             }
 
             // Check ingredients
@@ -5019,15 +5040,6 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             if (userData.waterMesh) userData.waterMesh.visible = userData.waterFillProgress > 0;
             if (userData.waterFillProgress <= 0) userData.type = emptyJarItemName;
             return true;
-        }
-
-        function canPlaceClayStillOnCampfire(body, normal) {
-            if (body?.userData?.type !== campfireItemName || !normal || normal.y <= 0.7) return false;
-            return !placedConstructionBodies.some(existing =>
-                existing.userData.type === clayStillItemName &&
-                Math.abs(existing.position.x - body.position.x) < 0.1 &&
-                Math.abs(existing.position.z - body.position.z) < 0.1
-            );
         }
 
         function createBucket(position, quaternion, hasWater = false, fillProgress = hasWater ? 1 : 0, isSaltWater = false) {
@@ -7380,27 +7392,73 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 if (light) light.visible = blockBody.userData.isOn;
                 activeCampfires.push(blockBody);
             } else if (type === clayStillItemName) {
-                width = 0.55; height = 0.45; depth = 0.55;
+                ensureTorchAssets();
+                width = 0.7; height = 0.9; depth = 0.7;
                 blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
                 blockBody.addShape(blockShape);
 
                 const stillGroup = new THREE.Group();
                 const clayMaterial = new THREE.MeshStandardMaterial({ color: 0xa0522d, roughness: 0.9 });
+                const hearth = new THREE.Mesh(
+                    new THREE.CylinderGeometry(0.3, 0.34, 0.18, 10),
+                    new THREE.MeshStandardMaterial({ color: 0x55443a, roughness: 1 })
+                );
+                hearth.position.y = -0.36;
+                stillGroup.add(hearth);
+                for (let i = 0; i < 3; i++) {
+                    const log = new THREE.Mesh(
+                        new THREE.CylinderGeometry(0.045, 0.045, 0.58, 8),
+                        woodenBlockMaterialMesh || clayMaterial
+                    );
+                    log.rotation.z = Math.PI / 2;
+                    log.rotation.y = (i / 3) * Math.PI;
+                    log.position.y = -0.27;
+                    stillGroup.add(log);
+                }
                 const vessel = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.2, 0.35, 10), clayMaterial);
+                vessel.position.y = 0.12;
                 stillGroup.add(vessel);
                 const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.2, 0.16, 10), clayMaterial);
-                neck.position.y = 0.23;
+                neck.position.y = 0.35;
                 stillGroup.add(neck);
                 const lid = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.05, 10), clayMaterial);
-                lid.position.y = 0.335;
+                lid.position.y = 0.455;
                 stillGroup.add(lid);
                 const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.06, 0.32, 8), clayMaterial);
                 spout.rotation.z = Math.PI / 2;
-                spout.position.set(0.23, 0.24, 0);
+                spout.position.set(0.23, 0.36, 0);
                 stillGroup.add(spout);
+
+                const fireGroup = new THREE.Group();
+                const fireLayers = [
+                    { mat: torchOrangeFireMat, s: { w: 0.45, h: 0.45 }, speed: 0.8, offset: 0 },
+                    { mat: torchYellowFireMat, s: { w: 0.3, h: 0.35 }, speed: 1.1, offset: 0.3 },
+                    { mat: torchCoreFireMat, s: { w: 0.12, h: 0.25 }, speed: 1.4, offset: 0.6 }
+                ];
+                fireLayers.forEach(layer => {
+                    const flame = new THREE.Mesh(torchFireGeom, layer.mat);
+                    flame.scale.set(layer.s.w, layer.s.h, layer.s.w);
+                    flame.userData.baseScale = { x: layer.s.w, y: layer.s.h, z: layer.s.w };
+                    flame.userData.animSpeed = layer.speed;
+                    flame.userData.animOffset = layer.offset;
+                    flame.position.y = -0.25;
+                    fireGroup.add(flame);
+                });
+                stillGroup.add(fireGroup);
+                const fireLight = new THREE.PointLight(0xffaa00, 2.0, 5);
+                fireLight.position.y = -0.2;
+                stillGroup.add(fireLight);
                 mesh = stillGroup;
-                initialMass = 8;
+                initialMass = 12;
                 durability = 1.0;
+                blockBody.userData.fireGroup = fireGroup;
+                blockBody.userData.fireLight = fireLight;
+                blockBody.userData.fireOffset = Math.random() * 1000;
+                blockBody.userData.fuel = (extraData && extraData.fuel !== undefined) ? extraData.fuel : 0;
+                blockBody.userData.isOn = (extraData && extraData.isOn !== undefined) ? extraData.isOn : false;
+                fireGroup.visible = blockBody.userData.isOn;
+                fireLight.visible = blockBody.userData.isOn;
+                activeCampfires.push(blockBody);
             } else if (type === torchItemName) {
                 width = 0.2; height = 0.8; depth = 0.2;
                 blockShape = new CANNON.Box(new CANNON.Vec3(width / 2, height / 2, depth / 2));
@@ -10430,7 +10488,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
                     if (body && body.userData) {
                         if (body.userData.type === clayStillItemName) {
-                            openCraftingMenu('distiller');
+                            openFuelMenu(body);
                             return true;
                         }
                         if (body.userData.type === waterJarItemName || body.userData.type === emptyJarItemName) {
@@ -10460,7 +10518,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                         if (body.userData.type === doorItemName || body.userData.type === windowItemName) {
                             toggleDoor(body);
                             return true;
-                        } else if (body.userData.type === furnaceItemName || body.userData.type === campfireItemName || body.userData.type === torchItemName) {
+                        } else if (body.userData.type === furnaceItemName || body.userData.type === campfireItemName || body.userData.type === torchItemName || body.userData.type === clayStillItemName) {
                             openFuelMenu(body);
                             return true;
                         } else if (body.userData.type === bigornaItemName) {
@@ -10641,7 +10699,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                             world.removeBody(clickedBody);
                         }
 
-                        if (type === torchItemName || type === furnaceItemName || type === campfireItemName) {
+                        if (type === torchItemName || type === furnaceItemName || type === campfireItemName || type === clayStillItemName) {
                             const campfireIndex = activeCampfires.indexOf(clickedBody);
                             if (campfireIndex !== -1) activeCampfires.splice(campfireIndex, 1);
                         }
@@ -10790,6 +10848,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                             createCutTrunk(ghostBlockMesh.position, null, ghostBlockMesh.quaternion);
                         } else if (currentBlockType === firewoodItemName) {
                             createFirewood(ghostBlockMesh.position, null, ghostBlockMesh.quaternion);
+                        } else if (currentBlockType === clayStillItemName) {
+                            createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, clayStillItemName, null, { fuel: item.fuel, isOn: item.isOn });
                         } else if (currentBlockType === campfireItemName) {
                             createPlaceableBlock(ghostBlockMesh.position, ghostBlockMesh.quaternion, campfireItemName, null, { fuel: item.fuel, isOn: item.isOn });
                         } else if (currentBlockType === torchItemName) {
@@ -11508,6 +11568,9 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                             if (openedFurnace === cf && currentCraftingMenuType === 'furnace') {
                                 updateCraftingDisplay('furnace');
                             }
+                            if (openedStill === cf && currentCraftingMenuType === 'distiller') {
+                                updateCraftingDisplay('distiller');
+                            }
                         }
                     }
 
@@ -11929,6 +11992,18 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                     if (typeof activeCampfires !== 'undefined') {
                                         const cfIdx = activeCampfires.indexOf(destroyTargetBody);
                                         if (cfIdx !== -1) activeCampfires.splice(cfIdx, 1);
+                                    }
+                                } else if (destroyTargetBody.userData.type === clayStillItemName) {
+                                    const stillItem = {
+                                        name: clayStillItemName,
+                                        quantity: 1,
+                                        fuel: destroyTargetBody.userData.fuel,
+                                        isOn: destroyTargetBody.userData.isOn
+                                    };
+                                    addItemToInventory(backpackItems, stillItem);
+                                    if (typeof activeCampfires !== 'undefined') {
+                                        const stillIndex = activeCampfires.indexOf(destroyTargetBody);
+                                        if (stillIndex !== -1) activeCampfires.splice(stillIndex, 1);
                                     }
                                 } else {
                                     // Retorna o item original para outros tipos de construção (cob, piso, madeira, etc)
@@ -13539,7 +13614,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     else if (currentBlockType === cutTrunkItemName || currentBlockType === firewoodItemName) { currentGhostWidth = 0.4; currentGhostHeight = 1.0; currentGhostDepth = 0.4; }
                     else if (currentBlockType === boxItemName) { currentGhostWidth = 1.0; currentGhostHeight = 1.0; currentGhostDepth = 1.0; }
                     else if (currentBlockType === basketItemName) { currentGhostWidth = 0.5; currentGhostHeight = 0.5; currentGhostDepth = 0.5; }
-                    else if (currentBlockType === clayStillItemName) { currentGhostWidth = 0.55; currentGhostHeight = 0.45; currentGhostDepth = 0.55; }
+                    else if (currentBlockType === clayStillItemName) { currentGhostWidth = 0.7; currentGhostHeight = 0.9; currentGhostDepth = 0.7; }
                     else if (currentBlockType === emptyJarItemName || currentBlockType === waterJarItemName) { currentGhostWidth = 0.36; currentGhostHeight = 0.44; currentGhostDepth = 0.36; }
                     else if (currentBlockType === bucketItemName || currentBlockType === waterBucketItemName || currentBlockType === saltWaterBucketItemName) { currentGhostWidth = 0.6; currentGhostHeight = 0.5; currentGhostDepth = 0.6; }
                     else if (currentBlockType === stoneItemName) { currentGhostWidth = 0.6; currentGhostHeight = 0.3; currentGhostDepth = 0.7; }
@@ -13586,10 +13661,6 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                     hitNormal = intersects[i].face.normal.clone().transformDirection(intersectedObject.matrixWorld).normalize();
                                 }
 
-                                if (currentBlockType === clayStillItemName &&
-                                    !canPlaceClayStillOnCampfire(intersectedBody, hitNormal)) {
-                                    continue;
-                                }
                                 targetHit = true;
                                 const isIntersectedStatic = intersectedBody && (placedConstructionBodies.includes(intersectedBody) || allCollectibleBodies.includes(intersectedBody));
 
@@ -14887,10 +14958,12 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             document.getElementById('toggleFireButton').addEventListener('click', toggleFire);
             document.getElementById('useTorchButton').addEventListener('click', takeToBelt);
             document.getElementById('accessFurnaceButton').addEventListener('click', () => {
-                openedFurnace = currentFuelBody;
+                const isStill = currentFuelBody?.userData?.type === clayStillItemName;
+                if (isStill) openedStill = currentFuelBody;
+                else openedFurnace = currentFuelBody;
                 document.getElementById('fuelModal').classList.add('hidden');
                 currentFuelBody = null;
-                openCraftingMenu('furnace');
+                openCraftingMenu(isStill ? 'distiller' : 'furnace');
             });
 
             chestModal.addEventListener('click', (e) => {
@@ -15088,7 +15161,6 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             window.emptyJarItemName = emptyJarItemName;
             window.waterJarItemName = waterJarItemName;
             window.createJar = createJar;
-            window.canPlaceClayStillOnCampfire = canPlaceClayStillOnCampfire;
             window.isTopFaceIntersect = isTopFaceIntersect;
             window.isTrunkObstructed = isTrunkObstructed;
             window.findItemInInventory = findItemInInventory;
