@@ -156,6 +156,59 @@ test.describe('Bucket rain and collection', () => {
         expect(result.insideVisible).toBe(true);
     });
 
+    test('aiming at buckets shows their water type and only offers G to collect', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            Object.defineProperty(document, 'pointerLockElement', {
+                get: () => window.renderer.domElement,
+                configurable: true
+            });
+
+            const emptyBucket = window.createBucket(new THREE.Vector3(0, 1, -2), null);
+            const freshWaterBucket = window.createBucket(new THREE.Vector3(0, 1, -2), null, true);
+            const saltWaterBucket = window.createBucket(new THREE.Vector3(0, 1, -2), null, true, undefined, true);
+            const buckets = [emptyBucket, freshWaterBucket, saltWaterBucket].map(body =>
+                window.collectibleBoxes.find(({ body: candidate }) => candidate === body)
+            );
+            const originalRaycast = window.raycaster.intersectObjects;
+
+            const hints = buckets.map(bucket => {
+                window.raycaster.intersectObjects = () => [{
+                    distance: 1,
+                    object: bucket.mesh
+                }];
+                window.animate();
+                return document.getElementById('interactionHint').textContent;
+            });
+
+            window.raycaster.intersectObjects = () => [{
+                distance: 1,
+                object: buckets[2].mesh
+            }];
+            const initialInventory = window.getGameStateData().inventory.backpackItems;
+            window.renderer.domElement.dispatchEvent(new MouseEvent('mousedown', { button: 0 }));
+            window.renderer.domElement.dispatchEvent(new MouseEvent('mouseup', { button: 0 }));
+            window.raycaster.intersectObjects = originalRaycast;
+
+            return {
+                hints,
+                bucketStillInWorld: window.collectibleBoxes.some(({ body }) => body === saltWaterBucket),
+                inventoryUnchanged: JSON.stringify(window.getGameStateData().inventory.backpackItems) === JSON.stringify(initialInventory)
+            };
+        });
+
+        expect(result.hints[0]).toContain('Balde vazio');
+        expect(result.hints[0]).toContain('(G) Guardar');
+        expect(result.hints[1]).toContain('Balde de água');
+        expect(result.hints[1]).toContain('(G) Guardar');
+        expect(result.hints[2]).toContain('Balde de água salgada');
+        expect(result.hints[2]).toContain('(G) Guardar');
+        for (const hint of result.hints) {
+            expect(hint).not.toContain('Botão Esq.');
+        }
+        expect(result.bucketStillInWorld).toBe(true);
+        expect(result.inventoryUnchanged).toBe(true);
+    });
+
     test('only fills buckets exposed to rain', async ({ page }) => {
         const result = await page.evaluate(() => {
             const exposedBucket = window.createBucket(new THREE.Vector3(10, 1, 10), null);

@@ -10305,6 +10305,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     }
 
                     if (body && body.userData) {
+                        if (body.userData.type === bucketItemName) return true;
+
                         if (body.userData.type === doorItemName || body.userData.type === windowItemName) {
                             toggleDoor(body);
                             return true;
@@ -12831,7 +12833,18 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                 currentLookedAtBody = body; // Salva para uso em rotateLookedAtObject
                                 let identified = false;
 
-                                if (firstIntersect.distance <= pickUpDistance && (body.userData.type === doorItemName || body.userData.type === windowItemName)) {
+                                if (body.userData.type === bucketItemName) {
+                                    const bucketName = !body.userData.hasWater
+                                        ? itemDisplayNames[bucketItemName]
+                                        : body.userData.isSaltWater
+                                            ? itemDisplayNames[saltWaterBucketItemName]
+                                            : itemDisplayNames[waterBucketItemName];
+                                    interactionHintText = bucketName;
+                                    if (firstIntersect.distance <= pickUpDistance) {
+                                        interactionHintText += " / (G) Guardar";
+                                    }
+                                    identified = true;
+                                } else if (firstIntersect.distance <= pickUpDistance && (body.userData.type === doorItemName || body.userData.type === windowItemName)) {
                                     interactionHintText = `(Botão Esq.) ${body.userData.isOpen ? 'Fechar' : 'Abrir'} / (G) Guardar`;
                                     identified = true;
                                 } else if (body.userData.isDestructible) {
@@ -13723,7 +13736,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 }
             }
 
-            if (isPrimaryToolPlacing && ghostBlockMesh && ghostBlockMesh.visible) {
+            const isLookingAtBucket = currentLookedAtBody && currentLookedAtBody.userData.type === bucketItemName;
+            if (!isLookingAtBucket && isPrimaryToolPlacing && ghostBlockMesh && ghostBlockMesh.visible) {
                 const isHoldingSeed = heldItem && (
                     heldItem.name === pineSeedItemName ||
                     heldItem.name === appleSeedItemName ||
@@ -13741,7 +13755,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 } else {
                     interactionHintText = "(Botão Esq.) Colocar / (T) Girar";
                 }
-            } else if (heldItem && (heldItem.name === appleItemName || heldItem.name === coconutItemName)) {
+            } else if (!isLookingAtBucket && heldItem && (heldItem.name === appleItemName || heldItem.name === coconutItemName)) {
                 const foodName = itemDisplayNames[heldItem.name] || heldItem.name;
                 if (!interactionHintText) {
                     interactionHintText = `(Botão Esq.) Comer ${foodName}`;
