@@ -25,6 +25,9 @@ test.describe('Clay still and water jars', () => {
             craftRecipe('Alambique de Barro');
             craftRecipe('Jarra vazia');
             const furnaceItems = window.backpackItems.filter(Boolean).map(item => item.name);
+            const emptyJarCount = window.backpackItems
+                .filter(item => item && item.name === window.emptyJarItemName)
+                .reduce((total, item) => total + item.quantity, 0);
             window.closeCraftingMenu();
 
             const still = window.createPlaceableBlock(
@@ -52,6 +55,10 @@ test.describe('Clay still and water jars', () => {
                 emptyJarRecipe: window.recipes.furnace.find(recipe =>
                     recipe.result.name === window.emptyJarItemName
                 ).ingredients,
+                emptyJarYield: window.recipes.furnace.find(recipe =>
+                    recipe.result.name === window.emptyJarItemName
+                ).result.quantity,
+                emptyJarCount,
                 saltBucketConsumed: !window.backpackItems.some(item => item && item.name === 'balde_agua_salgada'),
                 emptyBucketReturned: window.backpackItems.some(item => item && item.name === 'balde_vazio'),
                 filledJar: filledJar && {
@@ -68,6 +75,8 @@ test.describe('Clay still and water jars', () => {
             { name: 'galho', quantity: 3 }
         ]);
         expect(result.emptyJarRecipe).toEqual([{ name: 'terra', quantity: 1 }]);
+        expect(result.emptyJarYield).toBe(10);
+        expect(result.emptyJarCount).toBe(10);
         expect(result.recipeIngredients).toContain('1 Balde de água salgada');
         expect(result.recipeIngredients).toContain('1 Jarra vazia');
         expect(result.saltBucketConsumed).toBe(true);
