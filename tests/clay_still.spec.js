@@ -8,6 +8,30 @@ test.describe('Clay still and water jars', () => {
         await page.waitForFunction(() => window.isWorldReady === true, { timeout: 90000 });
     });
 
+    test('turning on the still plays the fire ignition sound', async ({ page }) => {
+        const sounds = await page.evaluate(() => {
+            const playedSounds = [];
+            window.playInterfaceSound = url => playedSounds.push(url);
+            const still = window.createPlaceableBlock(
+                new THREE.Vector3(10, window.getSurfaceHeight(10, 10) + 0.45, 10),
+                null,
+                window.clayStillItemName,
+                null,
+                { fuel: 20, isOn: false }
+            );
+            window.currentFuelBody = still;
+            window.toggleFire();
+            const soundsAfterIgnition = [...playedSounds];
+            window.toggleFire();
+            return { soundsAfterIgnition, soundsAfterTurningOff: playedSounds };
+        });
+
+        expect(sounds.soundsAfterIgnition).toEqual([
+            'https://dl.dropbox.com/scl/fi/7y5cwg18iv375a66qmdlw/fogueira.mp3?rlkey=1ma751rka0aqq5q6y0ib2257t&st=dzyvct23&dl=1'
+        ]);
+        expect(sounds.soundsAfterTurningOff).toEqual(sounds.soundsAfterIgnition);
+    });
+
     test('furnace crafts the still and empty jar; still purifies salt water', async ({ page }) => {
         const result = await page.evaluate(() => {
             const addItem = (name, quantity) =>
