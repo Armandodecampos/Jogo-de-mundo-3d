@@ -156,7 +156,7 @@ test.describe('Bucket rain and collection', () => {
         expect(result.insideVisible).toBe(true);
     });
 
-    test('aiming at buckets shows their water type and only offers G to collect', async ({ page }) => {
+    test('aiming at water buckets offers drinking and warns against salt water', async ({ page }) => {
         const result = await page.evaluate(() => {
             Object.defineProperty(document, 'pointerLockElement', {
                 get: () => window.renderer.domElement,
@@ -197,11 +197,8 @@ test.describe('Bucket rain and collection', () => {
         });
 
         expect(result.hints[0]).toBe('Balde vazio\n(G) Guardar');
-        expect(result.hints[1]).toBe('Balde de água\n(G) Guardar');
-        expect(result.hints[2]).toBe('Balde de água salgada\n(G) Guardar');
-        for (const hint of result.hints) {
-            expect(hint).not.toContain('Botão Esq.');
-        }
+        expect(result.hints[1]).toBe('Balde de água\n(Botão Esq.) Beber / (G) Guardar');
+        expect(result.hints[2]).toBe('Balde de água salgada\nNão é possível beber água salgada\n(G) Guardar');
         expect(result.bucketStillInWorld).toBe(true);
         expect(result.inventoryUnchanged).toBe(true);
     });

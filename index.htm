@@ -893,6 +893,7 @@
         #healthBarFill { background-color: #ff4444; }
         #breathBarFill { background-color: #4444ff; }
         #hungerBarFill { background-color: #ff9800; }
+        #thirstBarFill { background-color: #42a5f5; }
         #energyBarFill { background-color: #ffff00; }
         .bar-text {
             position: absolute;
@@ -1289,6 +1290,13 @@
             </div>
         </div>
         <div class="stat-row">
+            <i class="fas fa-tint stat-icon" style="color: #42a5f5;"></i>
+            <div class="bar-container">
+                <div id="thirstBarFill" class="bar-fill"></div>
+                <div class="bar-text">SEDE</div>
+            </div>
+        </div>
+        <div class="stat-row">
             <i class="fas fa-bolt stat-icon" style="color: #ffff00;"></i>
             <div class="bar-container">
                 <div id="energyBarFill" class="bar-fill"></div>
@@ -1546,8 +1554,10 @@
         let playerHealth = 100, playerMaxHealth = 100;
         let playerBreath = 100, playerMaxBreath = 100;
         let playerHunger = 100, playerMaxHunger = 100;
+        let playerThirst = 100, playerMaxThirst = 100;
         let playerEnergy = 100, playerMaxEnergy = 100;
         let hungerDecayRate = 0.05;
+        let thirstDecayRate = 0.05;
         let energyDecayRate = 0.1;
         let isFainted = false;
         let isSleeping = false;
@@ -1557,7 +1567,7 @@
             Object.defineProperty(window, 'sleepTimer', { get: () => sleepTimer, set: (v) => { sleepTimer = v; }, configurable: true });
         } catch (e) {}
         let blinkTimer = 0;
-        let healthBarFill, breathBarFill, breathStatRow, hungerBarFill, energyBarFill, hungerOverlay, hungerWarning, sleepOverlay, eyeTop, eyeBottom, exhaustedWarning, faintedOverlay, statBars;
+        let healthBarFill, breathBarFill, breathStatRow, hungerBarFill, thirstBarFill, energyBarFill, hungerOverlay, hungerWarning, sleepOverlay, eyeTop, eyeBottom, exhaustedWarning, faintedOverlay, statBars;
 
         let islandBody; // Corpo de física para o terreno (agora uma ilha)
         let raftBodies = []; // NOVO: Array para armazenar corpos das jangadas
@@ -4486,13 +4496,14 @@
             }
 
             let added = false;
-            // Try to stack first (only if item doesn't have unique state like fuel)
-            if (itemToAdd.fuel === undefined) {
+            // Stack only items without per-item state such as fuel or bucket water volume.
+            if (itemToAdd.fuel === undefined && itemToAdd.waterFillProgress === undefined) {
                 for (let i = 0; i < inventoryArray.length; i++) {
                     // Skip the hand slot (beltItems[0]) when trying to stack or find empty slot
                     if (inventoryArray === beltItems && i === 0) continue;
 
-                    if (inventoryArray[i] && inventoryArray[i].name === itemToAdd.name && inventoryArray[i].fuel === undefined) {
+                    if (inventoryArray[i] && inventoryArray[i].name === itemToAdd.name &&
+                        inventoryArray[i].fuel === undefined && inventoryArray[i].waterFillProgress === undefined) {
                         inventoryArray[i].quantity += itemToAdd.quantity;
                         added = true;
                         break;
@@ -4968,7 +4979,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 new THREE.CylinderGeometry(0.16, 0.12, 1, 12),
                 new THREE.MeshStandardMaterial({ color: 0x3f9be0, transparent: true, opacity: 0.8 })
             );
-            const initialFillProgress = hasWater ? 1 : Math.max(0, Math.min(1, Number(fillProgress) || 0));
+            const initialFillProgress = Math.max(0, Math.min(1, Number(fillProgress) || 0));
             waterMesh.scale.y = initialFillProgress * 0.32;
             waterMesh.position.y = -0.16 + initialFillProgress * 0.16;
             waterMesh.visible = initialFillProgress > 0;
@@ -9076,6 +9087,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             breathBarFill = document.getElementById('breathBarFill');
             breathStatRow = document.getElementById('breathStatRow');
             hungerBarFill = document.getElementById('hungerBarFill');
+            thirstBarFill = document.getElementById('thirstBarFill');
             hungerOverlay = document.getElementById('hungerOverlay');
             hungerWarning = document.getElementById('hungerWarning');
             faintedOverlay = document.getElementById('faintedOverlay');
@@ -10305,7 +10317,26 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     }
 
                     if (body && body.userData) {
-                        if (body.userData.type === bucketItemName) return true;
+                        if (body.userData.type === bucketItemName) {
+                            if (body.userData.waterFillProgress > 0) {
+                                if (body.userData.isSaltWater) {
+                                    showNotification("Não é possível beber água salgada!");
+                                } else if (playerThirst >= playerMaxThirst) {
+                                    showNotification("Você não está com sede!");
+                                } else {
+                                    playerThirst = Math.min(playerMaxThirst, playerThirst + playerMaxThirst * 0.25);
+                                    body.userData.waterFillProgress = Math.max(0, body.userData.waterFillProgress - 0.25);
+                                    body.userData.hasWater = body.userData.waterFillProgress > 0;
+                                    if (body.userData.waterMesh) {
+                                        body.userData.waterMesh.visible = body.userData.hasWater;
+                                        body.userData.waterMesh.scale.y = body.userData.waterFillProgress * 0.32;
+                                        body.userData.waterMesh.position.y = -0.16 + body.userData.waterFillProgress * 0.16;
+                                    }
+                                    if (!body.userData.hasWater) body.userData.isSaltWater = false;
+                                }
+                            }
+                            return true;
+                        }
 
                         if (body.userData.type === doorItemName || body.userData.type === windowItemName) {
                             toggleDoor(body);
@@ -10423,10 +10454,15 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 }
 
                 let itemType = clickedBody.userData.type;
-                if (itemType === bucketItemName && clickedBody.userData.hasWater) {
+                if (itemType === bucketItemName && clickedBody.userData.waterFillProgress > 0) {
                     itemType = clickedBody.userData.isSaltWater ? saltWaterBucketItemName : waterBucketItemName;
                 }
                 const itemQuantity = clickedBody.userData.quantity || 1; // Padrão para 1 se não especificado
+                const collectedItem = { name: itemType, quantity: itemQuantity };
+                if (itemType !== bucketItemName && clickedBody.userData.waterFillProgress > 0 &&
+                    clickedBody.userData.waterFillProgress < 1) {
+                    collectedItem.waterFillProgress = clickedBody.userData.waterFillProgress;
+                }
 
                 const collectibleIndex = collectibleBoxes.findIndex(box => box.body === clickedBody);
                 if (collectibleIndex > -1) {
@@ -10439,7 +10475,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     collectibleBoxes.splice(collectibleIndex, 1);
                     raycastTargetsNeedUpdate = true;
 
-                    addItemToInventory(backpackItems, { name: itemType, quantity: itemQuantity });
+                    addItemToInventory(backpackItems, collectedItem);
                     updateBackpackDisplay();
                     playSyntheticCollectSound();
                     return true;
@@ -10619,7 +10655,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                 ghostBlockMesh.position,
                                 ghostBlockMesh.quaternion,
                                 currentBlockType !== bucketItemName || isInSea,
-                                undefined,
+                                item.waterFillProgress,
                                 isSaltWater
                             );
                         } else if (currentBlockType === raftItemName) {
@@ -11116,6 +11152,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             playerHealth = playerMaxHealth;
             playerBreath = playerMaxBreath;
             playerHunger = playerMaxHunger;
+            playerThirst = playerMaxThirst;
 
             // Reset position to island center
             if (playerBody) {
@@ -12834,13 +12871,14 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                 let identified = false;
 
                                 if (body.userData.type === bucketItemName) {
-                                    const bucketName = !body.userData.hasWater
-                                        ? itemDisplayNames[bucketItemName]
-                                        : body.userData.isSaltWater
-                                            ? itemDisplayNames[saltWaterBucketItemName]
-                                            : itemDisplayNames[waterBucketItemName];
                                     if (firstIntersect.distance <= pickUpDistance) {
-                                        interactionHintText = "(G) Guardar";
+                                        if (body.userData.waterFillProgress > 0 && body.userData.isSaltWater) {
+                                            interactionHintText = "Não é possível beber água salgada\n(G) Guardar";
+                                        } else if (body.userData.waterFillProgress > 0) {
+                                            interactionHintText = "(Botão Esq.) Beber / (G) Guardar";
+                                        } else {
+                                            interactionHintText = "(G) Guardar";
+                                        }
                                     }
                                     identified = true;
                                 } else if (firstIntersect.distance <= pickUpDistance && (body.userData.type === doorItemName || body.userData.type === windowItemName)) {
@@ -14507,13 +14545,17 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 playerHunger -= delta * hungerDecayRate;
                 playerHunger = Math.max(0, Math.min(playerMaxHunger, playerHunger));
 
+                // Thirst decay
+                playerThirst -= delta * thirstDecayRate;
+                playerThirst = Math.max(0, Math.min(playerMaxThirst, playerThirst));
+
                 // Energy decay
                 if (!isSleeping) {
                     playerEnergy -= delta * energyDecayRate;
                 }
                 playerEnergy = Math.max(0, Math.min(playerMaxEnergy, playerEnergy));
 
-                if (playerHealth <= 0 || playerHunger <= 0 || playerPos.y < bedrockLevel - 1.0) {
+                if (playerHealth <= 0 || playerHunger <= 0 || playerThirst <= 0 || playerPos.y < bedrockLevel - 1.0) {
                     faintPlayer();
                 }
 
@@ -14537,6 +14579,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     }
                 }
                 if (hungerBarFill) hungerBarFill.style.width = `${(playerHunger / playerMaxHunger) * 100}%`;
+                if (thirstBarFill) thirstBarFill.style.width = `${(playerThirst / playerMaxThirst) * 100}%`;
                 if (energyBarFill) energyBarFill.style.width = `${(playerEnergy / playerMaxEnergy) * 100}%`;
 
                 // Hunger effects (below 10%)
@@ -14939,8 +14982,10 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             Object.defineProperty(window, 'playerHealth', { get: () => playerHealth, set: (v) => { playerHealth = v; } });
             Object.defineProperty(window, 'playerBreath', { get: () => playerBreath, set: (v) => { playerBreath = v; } });
             Object.defineProperty(window, 'playerHunger', { get: () => playerHunger, set: (v) => { playerHunger = v; } });
+            Object.defineProperty(window, 'playerThirst', { get: () => playerThirst, set: (v) => { playerThirst = v; } });
             Object.defineProperty(window, 'playerEnergy', { get: () => playerEnergy, set: (v) => { playerEnergy = v; } });
             Object.defineProperty(window, 'hungerDecayRate', { get: () => hungerDecayRate, set: (v) => { hungerDecayRate = v; } });
+            Object.defineProperty(window, 'thirstDecayRate', { get: () => thirstDecayRate, set: (v) => { thirstDecayRate = v; } });
             Object.defineProperty(window, 'energyDecayRate', { get: () => energyDecayRate, set: (v) => { energyDecayRate = v; } });
             Object.defineProperty(window, 'isCrouching', { get: () => isCrouching, set: (v) => { isCrouching = v; } });
             Object.defineProperty(window, 'isFainted', { get: () => isFainted, set: (v) => { isFainted = v; } });
@@ -15237,6 +15282,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     position: playerBody ? { x: playerBody.position.x, y: playerBody.position.y, z: playerBody.position.z } : { x: 0, y: 10, z: 0 },
                     health: playerHealth,
                     hunger: playerHunger,
+                    thirst: playerThirst,
                     energy: playerEnergy,
                     breath: playerBreath
                 },
@@ -15296,6 +15342,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             }
             if (saveData.player.health !== undefined) playerHealth = saveData.player.health;
             if (saveData.player.hunger !== undefined) playerHunger = saveData.player.hunger;
+            if (saveData.player.thirst !== undefined) playerThirst = saveData.player.thirst;
             if (saveData.player.energy !== undefined) playerEnergy = saveData.player.energy;
             if (saveData.player.breath !== undefined) playerBreath = saveData.player.breath;
 
