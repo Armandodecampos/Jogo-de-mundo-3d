@@ -4991,7 +4991,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             bucketBody.userData = {
                 isCollectible: true,
                 type: bucketItemName,
-                hasWater: Boolean(hasWater),
+                hasWater: initialFillProgress >= 1,
                 isSaltWater: Boolean(isSaltWater),
                 waterFillProgress: initialFillProgress,
                 waterMesh
@@ -10326,9 +10326,9 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                 } else {
                                     playerThirst = Math.min(playerMaxThirst, playerThirst + playerMaxThirst * 0.25);
                                     body.userData.waterFillProgress = Math.max(0, body.userData.waterFillProgress - 0.25);
-                                    body.userData.hasWater = body.userData.waterFillProgress > 0;
+                                    body.userData.hasWater = body.userData.waterFillProgress >= 1;
                                     if (body.userData.waterMesh) {
-                                        body.userData.waterMesh.visible = body.userData.hasWater;
+                                        body.userData.waterMesh.visible = body.userData.waterFillProgress > 0;
                                         body.userData.waterMesh.scale.y = body.userData.waterFillProgress * 0.32;
                                         body.userData.waterMesh.position.y = -0.16 + body.userData.waterFillProgress * 0.16;
                                     }
@@ -12872,9 +12872,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
                                 if (body.userData.type === bucketItemName) {
                                     if (firstIntersect.distance <= pickUpDistance) {
-                                        if (body.userData.waterFillProgress > 0 && body.userData.isSaltWater) {
-                                            interactionHintText = "Não é possível beber água salgada\n(G) Guardar";
-                                        } else if (body.userData.waterFillProgress > 0) {
+                                        if (body.userData.waterFillProgress > 0) {
                                             interactionHintText = "(Botão Esq.) Beber / (G) Guardar";
                                         } else {
                                             interactionHintText = "(G) Guardar";

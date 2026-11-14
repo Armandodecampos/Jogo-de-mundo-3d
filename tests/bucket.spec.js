@@ -187,10 +187,12 @@ test.describe('Bucket rain and collection', () => {
             const initialInventory = window.getGameStateData().inventory.backpackItems;
             window.renderer.domElement.dispatchEvent(new MouseEvent('mousedown', { button: 0 }));
             window.renderer.domElement.dispatchEvent(new MouseEvent('mouseup', { button: 0 }));
+            const saltWaterMessage = document.getElementById('notification').textContent;
             window.raycaster.intersectObjects = originalRaycast;
 
             return {
                 hints,
+                saltWaterMessage,
                 bucketStillInWorld: window.collectibleBoxes.some(({ body }) => body === saltWaterBucket),
                 inventoryUnchanged: JSON.stringify(window.getGameStateData().inventory.backpackItems) === JSON.stringify(initialInventory)
             };
@@ -198,7 +200,8 @@ test.describe('Bucket rain and collection', () => {
 
         expect(result.hints[0]).toBe('Balde vazio\n(G) Guardar');
         expect(result.hints[1]).toBe('Balde de água\n(Botão Esq.) Beber / (G) Guardar');
-        expect(result.hints[2]).toBe('Balde de água salgada\nNão é possível beber água salgada\n(G) Guardar');
+        expect(result.hints[2]).toBe('Balde de água salgada\n(Botão Esq.) Beber / (G) Guardar');
+        expect(result.saltWaterMessage).toBe('Não é possível beber água salgada!');
         expect(result.bucketStillInWorld).toBe(true);
         expect(result.inventoryUnchanged).toBe(true);
     });

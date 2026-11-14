@@ -44,6 +44,12 @@ test.describe('Player thirst', () => {
             window.renderer.domElement.dispatchEvent(new MouseEvent('mouseup', { button: 0 }));
             waterLevels.push(freshBucket.userData.waterFillProgress);
             const savedState = window.getGameStateData();
+            window.targetRainIntensity = 1;
+            window.rainIntensity = 1;
+            window.lastWeatherChange = window.world.time;
+            window.nextWeatherDuration = 1000;
+            window.updateWeather(2);
+            const rainRefilledProgress = freshBucket.userData.waterFillProgress;
             window.loadGameState(savedState);
 
             freshBucket = window.collectibleBoxes.find(({ body }) =>
@@ -69,6 +75,7 @@ test.describe('Player thirst', () => {
 
             return {
                 waterLevels,
+                rainRefilledProgress,
                 savedThirst: savedState.player.thirst,
                 thirstAfterLoad,
                 thirstAfterFreshWater,
@@ -79,11 +86,12 @@ test.describe('Player thirst', () => {
         });
 
         expect(result.waterLevels).toEqual([0.75, 0.5, 0.25, 0]);
+        expect(result.rainRefilledProgress).toBe(1);
         expect(result.savedThirst).toBe(45);
         expect(result.thirstAfterLoad).toBe(45);
         expect(result.thirstAfterFreshWater).toBe(100);
         expect(result.thirstAfterSaltWater).toBe(100);
         expect(result.saltWaterMessage).toBe('Não é possível beber água salgada!');
-        expect(result.saltWaterHint).toContain('Não é possível beber água salgada');
+        expect(result.saltWaterHint).toContain('(Botão Esq.) Beber');
     });
 });
