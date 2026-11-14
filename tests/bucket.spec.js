@@ -90,6 +90,54 @@ test.describe('Bucket rain and collection', () => {
         expect(result.isFull).toBe(true);
     });
 
+    test('placing a bucket in the sea fills it immediately', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const seaPosition = new THREE.Vector3(250, window.waterLevel + 0.25, 100);
+            const isSeaPosition = window.hasWaterAt(seaPosition.x, seaPosition.z);
+            const ghost = window.ghostBlockMesh;
+            ghost.visible = true;
+            ghost.material.color.setHex(0x00ff00);
+            ghost.position.copy(seaPosition);
+
+            const item = { name: 'balde_vazio', quantity: 1 };
+            window.placeBlock(item, window.beltItems.length);
+
+            const placedBucket = window.collectibleBoxes.find(({ body }) =>
+                body.userData.type === 'balde_vazio'
+            );
+            const saveData = window.getGameStateData();
+            const savedAsSaltWater = saveData.groundItems.find(item =>
+                item.type === 'balde_vazio'
+            ).userData.isSaltWater;
+            window.loadGameState(saveData);
+            const restoredBucket = window.collectibleBoxes.find(({ body }) =>
+                body.userData.type === 'balde_vazio'
+            );
+            window.raycaster.intersectObjects = () => [{ distance: 1, object: restoredBucket.mesh }];
+            window.collectObject();
+            const collectedSaltWaterBucket = window.getGameStateData().inventory.backpackItems.find(item =>
+                item && item.name === 'balde_agua_salgada'
+            );
+            return {
+                isSeaPosition,
+                itemWasConsumed: item.quantity === 0,
+                isFull: placedBucket.body.userData.hasWater,
+                waterIsVisible: placedBucket.body.userData.waterMesh.visible,
+                savedAsSaltWater,
+                collectedItemName: collectedSaltWaterBucket && collectedSaltWaterBucket.name,
+                displayName: window.itemDisplayNames.balde_agua_salgada
+            };
+        });
+
+        expect(result.isSeaPosition).toBe(true);
+        expect(result.itemWasConsumed).toBe(true);
+        expect(result.isFull).toBe(true);
+        expect(result.waterIsVisible).toBe(true);
+        expect(result.savedAsSaltWater).toBe(true);
+        expect(result.collectedItemName).toBe('balde_agua_salgada');
+        expect(result.displayName).toBe('Balde de água salgada');
+    });
+
     test('collecting a dry bucket adds a Balde vazio', async ({ page }) => {
         const result = await page.evaluate(() => {
             const body = window.createBucket(new THREE.Vector3(5, 1, 5), null);

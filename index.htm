@@ -3210,6 +3210,7 @@
         const basketItemName = 'cesto_capim'; // NOVO: Nome do item de cesto de capim
         const bucketItemName = 'balde_vazio';
         const waterBucketItemName = 'balde_agua';
+        const saltWaterBucketItemName = 'balde_agua_salgada';
         const vegetableOilItemName = 'oleo_vegetal';
         const workbenchToolkitItemName = 'kit_ferramentas_bancada';
         const clayPotItemName = 'pote_barro';
@@ -3322,6 +3323,7 @@
             [boxItemName]: 'Caixote',
             [bucketItemName]: 'Balde vazio',
             [waterBucketItemName]: 'Balde de água',
+            [saltWaterBucketItemName]: 'Balde de água salgada',
             [raftItemName]: 'Jangada\nPara navegar no mar', // NOVO
             [branchItemName]: 'Galho',
             [stoneBlockItemName]: 'Bloco de Pedra',
@@ -3382,6 +3384,7 @@
             [basketItemName]: 4.0, // NOVO: 1/3 do peso do caixote
             [bucketItemName]: 2.0,
             [waterBucketItemName]: 3.0,
+            [saltWaterBucketItemName]: 3.0,
             [raftItemName]: 30.0, // Jangada é pesada
             [branchItemName]: 0.5,
             [stoneBlockItemName]: 5.0,
@@ -4231,6 +4234,7 @@
             if (itemName === basketItemName) return 'https://placehold.co/100x100/2d5a27/FFFFFF?text=Cesto';
             if (itemName === bucketItemName) return 'https://placehold.co/100x100/8B5A2B/FFFFFF?text=Balde';
             if (itemName === waterBucketItemName) return 'https://placehold.co/100x100/4682B4/FFFFFF?text=Balde+de+agua';
+            if (itemName === saltWaterBucketItemName) return 'https://placehold.co/100x100/4682B4/FFFFFF?text=Balde+de+agua+salgada';
             if (itemName === appleItemName) return "https://placehold.co/100x100/ff0000/FFFFFF?text=Maçã"; // Adicionado na etapa 3
             if (itemName === pineSeedItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Pinhão";
             if (itemName === coconutSeedItemName) return "https://placehold.co/100x100/D2B48C/FFFFFF?text=Semente+Coco";
@@ -4927,7 +4931,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             return basketBody;
         }
 
-        function createBucket(position, quaternion, hasWater = false, fillProgress = hasWater ? 1 : 0) {
+        function createBucket(position, quaternion, hasWater = false, fillProgress = hasWater ? 1 : 0, isSaltWater = false) {
             const bucketBody = new CANNON.Body({
                 mass: 0,
                 type: CANNON.Body.STATIC,
@@ -4977,6 +4981,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 isCollectible: true,
                 type: bucketItemName,
                 hasWater: Boolean(hasWater),
+                isSaltWater: Boolean(isSaltWater),
                 waterFillProgress: initialFillProgress,
                 waterMesh
             };
@@ -9703,7 +9708,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     stoneBlockItemName, woodenBlockItemName, stoneFloorItemName, woodenFloorItemName,
                     treeSaplingItemName, appleSeedItemName, pineSeedItemName, coconutItemName, coconutSeedItemName,
                     treeTrunkItemName, cutTrunkItemName, firewoodItemName, boxItemName, basketItemName,
-                    bucketItemName, waterBucketItemName,
+                    bucketItemName, waterBucketItemName, saltWaterBucketItemName,
                     stoneItemName, campfireItemName, torchItemName, workbenchItemName, smallTableItemName,
                     mesaItemName, largeTableItemName, bigornaItemName, furnaceItemName, pestleItemName,
                     grassBedItemName, sleepingMatItemName, bedItemName, doorItemName, windowItemName
@@ -9717,7 +9722,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                 // Ferramentas de destruição e modificação de terreno
                 if (item.name === axeItemName || item.name === pickaxeItemName || item.name === shovelItemName || item.name === ironAxeItemName || item.name === ironPickaxeItemName || item.name === ironShovelItemName || item.name === branchItemName || item.name === dirtItemName || item.name === sandItemName) return 'destroy';
                 // Itens de colocação
-                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === coconutSeedItemName || item.name === treeTrunkItemName || item.name === cutTrunkItemName || item.name === firewoodItemName || item.name === boxItemName || item.name === basketItemName || item.name === bucketItemName || item.name === waterBucketItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === woodenFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName || item.name === workbenchItemName || item.name === smallTableItemName || item.name === mesaItemName || item.name === largeTableItemName || item.name === bigornaItemName || item.name === furnaceItemName || item.name === pestleItemName || item.name === grassBedItemName || item.name === sleepingMatItemName || item.name === bedItemName || item.name === doorItemName || item.name === windowItemName) return 'place';
+                if (item.name === cobItemName || item.name === floorItemName || item.name === treeSaplingItemName || item.name === appleSeedItemName || item.name === pineSeedItemName || item.name === coconutItemName || item.name === coconutSeedItemName || item.name === treeTrunkItemName || item.name === cutTrunkItemName || item.name === firewoodItemName || item.name === boxItemName || item.name === basketItemName || item.name === bucketItemName || item.name === waterBucketItemName || item.name === saltWaterBucketItemName || item.name === raftItemName || item.name === stoneBlockItemName || item.name === woodenBlockItemName || item.name === stoneFloorItemName || item.name === woodenFloorItemName || item.name === stoneItemName || item.name === campfireItemName || item.name === torchItemName || item.name === workbenchItemName || item.name === smallTableItemName || item.name === mesaItemName || item.name === largeTableItemName || item.name === bigornaItemName || item.name === furnaceItemName || item.name === pestleItemName || item.name === grassBedItemName || item.name === sleepingMatItemName || item.name === bedItemName || item.name === doorItemName || item.name === windowItemName) return 'place';
                 return null; // Retorna nulo se o item não tiver um tipo de ação conhecido
             }
 
@@ -10417,7 +10422,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
 
                 let itemType = clickedBody.userData.type;
                 if (itemType === bucketItemName && clickedBody.userData.hasWater) {
-                    itemType = waterBucketItemName;
+                    itemType = clickedBody.userData.isSaltWater ? saltWaterBucketItemName : waterBucketItemName;
                 }
                 const itemQuantity = clickedBody.userData.quantity || 1; // Padrão para 1 se não especificado
 
@@ -10589,7 +10594,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     else if (currentBlockType === woodenFloorItemName && woodenPlankMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === boxItemName && cubeMaterialMesh) materialLoaded = true;
                     else if (currentBlockType === basketItemName && basketMaterialMesh) materialLoaded = true;
-                    else if (currentBlockType === bucketItemName || currentBlockType === waterBucketItemName) materialLoaded = true;
+                    else if (currentBlockType === bucketItemName || currentBlockType === waterBucketItemName || currentBlockType === saltWaterBucketItemName) materialLoaded = true;
                     else if (currentBlockType === raftItemName && raftMaterialMesh) materialLoaded = true; // NOVO
                     else if (currentBlockType === stoneItemName) materialLoaded = true; // Pedra sempre carregada (usa material básico)
                     else if (currentBlockType === campfireItemName) materialLoaded = true;
@@ -10603,8 +10608,18 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                             createBox(ghostBlockMesh.position, ghostBlockMesh.quaternion);
                         } else if (currentBlockType === basketItemName) {
                             createBasket(ghostBlockMesh.position, ghostBlockMesh.quaternion);
-                        } else if (currentBlockType === bucketItemName || currentBlockType === waterBucketItemName) {
-                            createBucket(ghostBlockMesh.position, ghostBlockMesh.quaternion, currentBlockType === waterBucketItemName);
+                        } else if (currentBlockType === bucketItemName || currentBlockType === waterBucketItemName || currentBlockType === saltWaterBucketItemName) {
+                            const isInSea = hasWaterAt(ghostBlockMesh.position.x, ghostBlockMesh.position.z) &&
+                                ghostBlockMesh.position.y <= waterLevel + 0.25;
+                            const isSaltWater = currentBlockType === saltWaterBucketItemName ||
+                                (currentBlockType === bucketItemName && isInSea);
+                            createBucket(
+                                ghostBlockMesh.position,
+                                ghostBlockMesh.quaternion,
+                                currentBlockType !== bucketItemName || isInSea,
+                                undefined,
+                                isSaltWater
+                            );
                         } else if (currentBlockType === raftItemName) {
                             createRaft(ghostBlockMesh.position, ghostBlockMesh.quaternion);
                         } else if (currentBlockType === stoneItemName) {
@@ -13159,7 +13174,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(1, 1, 1);
                         } else if (currentBlockType === basketItemName) {
                             ghostBlockMesh.geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-                        } else if (currentBlockType === bucketItemName || currentBlockType === waterBucketItemName) {
+                        } else if (currentBlockType === bucketItemName || currentBlockType === waterBucketItemName || currentBlockType === saltWaterBucketItemName) {
                             ghostBlockMesh.geometry = new THREE.CylinderGeometry(0.2, 0.15, 0.4, 12, 1, true);
                         } else if (currentBlockType === stoneItemName) {
                             ghostBlockMesh.geometry = new THREE.DodecahedronGeometry(0.25, 0);
@@ -13329,7 +13344,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     else if (currentBlockType === cutTrunkItemName || currentBlockType === firewoodItemName) { currentGhostWidth = 0.4; currentGhostHeight = 1.0; currentGhostDepth = 0.4; }
                     else if (currentBlockType === boxItemName) { currentGhostWidth = 1.0; currentGhostHeight = 1.0; currentGhostDepth = 1.0; }
                     else if (currentBlockType === basketItemName) { currentGhostWidth = 0.5; currentGhostHeight = 0.5; currentGhostDepth = 0.5; }
-                    else if (currentBlockType === bucketItemName || currentBlockType === waterBucketItemName) { currentGhostWidth = 0.6; currentGhostHeight = 0.5; currentGhostDepth = 0.6; }
+                    else if (currentBlockType === bucketItemName || currentBlockType === waterBucketItemName || currentBlockType === saltWaterBucketItemName) { currentGhostWidth = 0.6; currentGhostHeight = 0.5; currentGhostDepth = 0.6; }
                     else if (currentBlockType === stoneItemName) { currentGhostWidth = 0.6; currentGhostHeight = 0.3; currentGhostDepth = 0.7; }
                     else if (currentBlockType === campfireItemName) { currentGhostWidth = 0.8; currentGhostHeight = 0.5; currentGhostDepth = 0.8; }
                     else if (currentBlockType === torchItemName) { currentGhostWidth = 0.2; currentGhostHeight = 0.8; currentGhostDepth = 0.2; }
@@ -13356,12 +13371,13 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                         }
                         const isWater = intersectedObject.userData.isWater;
                         const isRaft = (currentBlockType === raftItemName);
+                        const isBucket = currentBlockType === bucketItemName || currentBlockType === waterBucketItemName || currentBlockType === saltWaterBucketItemName;
 
-                        if (isWater && !isRaft) {
-                            continue; // Pula a água, exceto para a jangada
+                        if (isWater && !isRaft && !isBucket) {
+                            continue; // Pula a água, exceto para jangadas e baldes
                         }
 
-                        if ((intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) || (isWater && isRaft)) {
+                        if ((intersectedBody && allPlaceableSurfaces.includes(intersectedBody)) || (isWater && (isRaft || isBucket))) {
                             // Verifica a distância máxima para colocação
                             if (intersects[i].distance <= pickUpDistance + 1) { // Um pouco mais longe que pegar
                                 targetHit = true;
@@ -13541,6 +13557,10 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                                         const n_y = Math.round((basePosition.y - islandSurfaceHeight) / currentGhostHeight - 0.5);
                                         placementPosition.y = islandSurfaceHeight + (n_y + 0.5) * currentGhostHeight;
                                     }
+                                }
+
+                                if (isWater && isBucket) {
+                                    placementPosition.y = waterLevel + currentGhostHeight / 2;
                                 }
 
                                 if (currentBlockType === torchItemName && hitNormal.y < 0.5) {
@@ -15161,6 +15181,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                         fuel: ud.fuel !== undefined ? ud.fuel : null,
                         isOn: ud.isOn !== undefined ? ud.isOn : null,
                         hasWater: ud.hasWater || false,
+                        isSaltWater: ud.isSaltWater || false,
                         waterFillProgress: ud.waterFillProgress || 0,
                         inventory: ud.inventory ? JSON.parse(JSON.stringify(ud.inventory)) : (ud.chestItems ? JSON.parse(JSON.stringify(ud.chestItems)) : null),
                         chestItems: ud.chestItems ? JSON.parse(JSON.stringify(ud.chestItems)) : (ud.inventory ? JSON.parse(JSON.stringify(ud.inventory)) : null)
@@ -15386,7 +15407,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                             pos,
                             quat,
                             Boolean(item.userData && item.userData.hasWater),
-                            item.userData && item.userData.waterFillProgress
+                            item.userData && item.userData.waterFillProgress,
+                            Boolean(item.userData && item.userData.isSaltWater)
                         );
                     } else if (item.type === basketItemName) {
                         const basketBody = createBasket(pos, quat);
