@@ -196,12 +196,9 @@ test.describe('Bucket rain and collection', () => {
             };
         });
 
-        expect(result.hints[0]).toContain('Balde vazio');
-        expect(result.hints[0]).toContain('(G) Guardar');
-        expect(result.hints[1]).toContain('Balde de água');
-        expect(result.hints[1]).toContain('(G) Guardar');
-        expect(result.hints[2]).toContain('Balde de água salgada');
-        expect(result.hints[2]).toContain('(G) Guardar');
+        expect(result.hints[0]).toBe('Balde vazio\n(G) Guardar');
+        expect(result.hints[1]).toBe('Balde de água\n(G) Guardar');
+        expect(result.hints[2]).toBe('Balde de água salgada\n(G) Guardar');
         for (const hint of result.hints) {
             expect(hint).not.toContain('Botão Esq.');
         }
