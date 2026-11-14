@@ -81,6 +81,10 @@ test.describe('Clay still and water jars', () => {
             });
             const stillPosition = new THREE.Vector3(10, window.getSurfaceHeight(10, 10) + 0.45, 10);
             const still = window.createPlaceableBlock(stillPosition, null, window.clayStillItemName);
+            const fireGroup = still.userData.fireGroup;
+            const flameTop = fireGroup.position.y + Math.max(
+                ...fireGroup.children.map(flame => flame.userData.baseScale.y)
+            );
             const stillMesh = window.scene.children.find(child => child.userData.physicsBody === still);
             window.raycaster.intersectObjects = () => [{ distance: 1, object: stillMesh }];
             const opened = window.interact();
@@ -103,6 +107,8 @@ test.describe('Clay still and water jars', () => {
             return {
                 placedAlone,
                 hasBuiltInFire: Boolean(still.userData.fireGroup && still.userData.fireLight),
+                fireBaseAtGround: fireGroup.position.y + still.userData.dimensions.height / 2,
+                flameToVesselGap: 0.125 - 0.35 / 2 - flameTop,
                 opened,
                 fuelMenuTitle,
                 accessText,
@@ -118,6 +124,8 @@ test.describe('Clay still and water jars', () => {
 
         expect(result.placedAlone).toBe(true);
         expect(result.hasBuiltInFire).toBe(true);
+        expect(result.fireBaseAtGround).toBeCloseTo(0);
+        expect(result.flameToVesselGap).toBeCloseTo(0);
         expect(result.opened).toBe(true);
         expect(result.fuelMenuTitle).toBe('Alambique de Barro');
         expect(result.accessText).toBe('Usar Alambique');
