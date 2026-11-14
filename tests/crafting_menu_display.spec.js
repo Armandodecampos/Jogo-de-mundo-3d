@@ -17,6 +17,23 @@ test('campfire can be crafted with three branches and no grass', async ({ page }
     await expect(campfireRecipe.locator('.craft-button')).toBeEnabled();
 });
 
+test('torch recipe requires one branch, one fabric, and one vegetable oil', async ({ page }) => {
+    await page.goto('file://' + process.cwd() + '/index.htm');
+    await page.click('#startButton');
+    await page.waitForFunction(() => window.isWorldReady === true, { timeout: 120000 });
+
+    const torchIngredients = await page.evaluate(() => {
+        const recipe = window.recipes.initial.find(({ result }) => result.name === 'tocha');
+        return recipe.ingredients;
+    });
+
+    expect(torchIngredients).toEqual([
+        { name: 'galho', quantity: 1 },
+        { name: 'tecido', quantity: 1 },
+        { name: 'oleo_vegetal', quantity: 1 }
+    ]);
+});
+
 test('verify crafting menu result quantity format and fixed furnace warning', async ({ page }) => {
     // Navigate to index.htm
     await page.goto('file://' + process.cwd() + '/index.htm');
