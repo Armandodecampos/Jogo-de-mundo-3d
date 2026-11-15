@@ -107,4 +107,43 @@ test.describe('Inspector Mode', () => {
         text = await display.textContent();
         expect(text).toContain('Lua (moon)');
     });
+
+    test('should identify apples and coconuts instead of their tree', async ({ page }) => {
+        const labels = await page.evaluate(async () => {
+            window.useInspector = true;
+
+            const tree = new window.THREE.Group();
+            tree.userData.physicsBody = { userData: { growthStage: 'arvore_adulta' } };
+            const fruit = new window.THREE.Mesh(
+                new window.THREE.SphereGeometry(0.3),
+                new window.THREE.MeshBasicMaterial()
+            );
+            fruit.userData.isApple = true;
+            tree.add(fruit);
+
+            const direction = window.camera.getWorldDirection(new window.THREE.Vector3());
+            tree.position.copy(window.camera.position).addScaledVector(direction, 2);
+            window.scene.add(tree);
+            window.raycastTargets.push(tree);
+            window.camera.lookAt(tree.position);
+            window.camera.updateMatrixWorld();
+
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const appleLabel = document.getElementById('interactionHint').textContent;
+
+            fruit.userData.isApple = false;
+            fruit.userData.isCoconut = true;
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const coconutLabel = document.getElementById('interactionHint').textContent;
+
+            window.scene.remove(tree);
+            window.raycastTargets.splice(window.raycastTargets.indexOf(tree), 1);
+            return { appleLabel, coconutLabel };
+        });
+
+        expect(labels.appleLabel).toContain('Maçã');
+        expect(labels.appleLabel).not.toContain('Árvore');
+        expect(labels.coconutLabel).toContain('Coco');
+        expect(labels.coconutLabel).not.toContain('Árvore');
+    });
 });

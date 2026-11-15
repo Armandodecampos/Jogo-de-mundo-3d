@@ -87,12 +87,15 @@ test.describe('Clay still and water jars', () => {
 
             const distillerRecipe = document.querySelector('#recipesContainer .recipe-item');
             const recipeIngredients = distillerRecipe.querySelector('.recipe-ingredients').textContent;
+            const recipeByproducts = distillerRecipe.querySelectorAll('.recipe-ingredients')[1].textContent;
             distillerRecipe.querySelector('.craft-button').click();
 
             const filledJar = window.backpackItems.find(item => item && item.name === window.waterJarItemName);
+            const salt = window.backpackItems.find(item => item && item.name === window.saltItemName);
             return {
                 furnaceItems,
                 recipeIngredients,
+                recipeByproducts,
                 stillRecipe: window.recipes.furnace.find(recipe =>
                     recipe.result.name === window.clayStillItemName
                 ).ingredients,
@@ -108,7 +111,9 @@ test.describe('Clay still and water jars', () => {
                 filledJar: filledJar && {
                     quantity: filledJar.quantity,
                     fill: filledJar.waterFillProgress
-                }
+                },
+                salt: salt && { name: salt.name, quantity: salt.quantity },
+                saltDisplayName: window.itemDisplayNames[window.saltItemName]
             };
         });
 
@@ -123,9 +128,12 @@ test.describe('Clay still and water jars', () => {
         expect(result.emptyJarCount).toBe(10);
         expect(result.recipeIngredients).toContain('1 Balde de água salgada');
         expect(result.recipeIngredients).toContain('1 Jarra vazia');
+        expect(result.recipeByproducts).toBe('Produz também: 1 Sal');
         expect(result.saltBucketConsumed).toBe(true);
         expect(result.emptyBucketReturned).toBe(true);
         expect(result.filledJar).toEqual({ quantity: 1, fill: 1 });
+        expect(result.salt).toEqual({ name: 'sal', quantity: 1 });
+        expect(result.saltDisplayName).toBe('Sal');
     });
 
     test('still can be placed alone and needs fuel before opening its crafting menu', async ({ page }) => {

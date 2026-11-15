@@ -3232,6 +3232,7 @@
         const clayStillItemName = 'alambique_barro';
         const emptyJarItemName = 'jarra_vazia';
         const waterJarItemName = 'jarra_com_agua';
+        const saltItemName = 'sal';
         const vegetableOilItemName = 'oleo_vegetal';
         const workbenchToolkitItemName = 'kit_ferramentas_bancada';
         const clayPotItemName = 'pote_barro';
@@ -3286,7 +3287,11 @@
                 { result: { name: 'oleo_vegetal', quantity: 1 }, ingredients: [{ name: 'pinhão', quantity: 1 }, { name: 'pote_vidro', quantity: 1 }] }
             ],
             distiller: [
-                { result: { name: waterJarItemName, quantity: 1, waterFillProgress: 1 }, ingredients: [{ name: saltWaterBucketItemName, quantity: 1 }, { name: emptyJarItemName, quantity: 1 }] }
+                {
+                    result: { name: waterJarItemName, quantity: 1, waterFillProgress: 1 },
+                    byproducts: [{ name: saltItemName, quantity: 1 }],
+                    ingredients: [{ name: saltWaterBucketItemName, quantity: 1 }, { name: emptyJarItemName, quantity: 1 }]
+                }
             ],
             workbench: [
                 ...initialRecipes,
@@ -3353,6 +3358,7 @@
             [clayStillItemName]: 'Alambique de Barro',
             [emptyJarItemName]: 'Jarra vazia',
             [waterJarItemName]: 'Jarra com água',
+            [saltItemName]: 'Sal',
             [raftItemName]: 'Jangada\nPara navegar no mar', // NOVO
             [branchItemName]: 'Galho',
             [stoneBlockItemName]: 'Bloco de Pedra',
@@ -3417,6 +3423,7 @@
             [clayStillItemName]: 2.0,
             [emptyJarItemName]: 1.0,
             [waterJarItemName]: 1.2,
+            [saltItemName]: 0.1,
             [raftItemName]: 30.0, // Jangada é pesada
             [branchItemName]: 0.5,
             [stoneBlockItemName]: 5.0,
@@ -4150,6 +4157,16 @@
                 }).join(' + ');
                 infoDiv.appendChild(ingredientsSpan);
 
+                if (recipe.byproducts && recipe.byproducts.length > 0) {
+                    const byproductsSpan = document.createElement('span');
+                    byproductsSpan.className = 'recipe-ingredients';
+                    byproductsSpan.textContent = 'Produz também: ' + recipe.byproducts.map(byproduct => {
+                        const byproductName = (itemDisplayNames[byproduct.name] || byproduct.name).split('\n')[0];
+                        return `${byproduct.quantity} ${byproductName}`;
+                    }).join(' + ');
+                    infoDiv.appendChild(byproductsSpan);
+                }
+
                 recipeDiv.appendChild(infoDiv);
 
                 const craftBtn = document.createElement('button');
@@ -4309,6 +4326,7 @@
             if (itemName === clayStillItemName) return 'https://placehold.co/100x100/A0522D/FFFFFF?text=Alambique';
             if (itemName === emptyJarItemName) return 'https://placehold.co/100x100/A0522D/FFFFFF?text=Jarra';
             if (itemName === waterJarItemName) return 'https://placehold.co/100x100/4682B4/FFFFFF?text=Jarra+com+agua';
+            if (itemName === saltItemName) return 'https://placehold.co/100x100/FFFFFF/333333?text=Sal';
             if (itemName === appleItemName) return "https://placehold.co/100x100/ff0000/FFFFFF?text=Maçã"; // Adicionado na etapa 3
             if (itemName === pineSeedItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Pinhão";
             if (itemName === coconutSeedItemName) return "https://placehold.co/100x100/D2B48C/FFFFFF?text=Semente+Coco";
@@ -4491,9 +4509,11 @@
 
             // Check weight limit
             const resultWeight = (itemWeights[recipe.result.name] || 0) * recipe.result.quantity;
+            const byproductsWeight = (recipe.byproducts || []).reduce((total, byproduct) =>
+                total + (itemWeights[byproduct.name] || 0) * byproduct.quantity, 0);
             const currentWeight = calculateInventoryWeight(beltItems) + calculateInventoryWeight(backpackItems);
             // We should also account for the weight of removed ingredients, but simplified check:
-            if (currentWeight + resultWeight > maxWeight) return false;
+            if (currentWeight + resultWeight + byproductsWeight > maxWeight) return false;
 
             return true;
         }
@@ -4540,6 +4560,9 @@
                 craftedItem.isOn = false;
             }
             addItemToInventory(backpackItems, craftedItem);
+            for (const byproduct of recipe.byproducts || []) {
+                addItemToInventory(backpackItems, { ...byproduct });
+            }
             addNotification(`Criado: ${itemDisplayNames[recipe.result.name] || recipe.result.name} x${recipe.result.quantity}`);
             updateUI();
             updateCraftingDisplay(currentCraftingMenuType);
@@ -4627,7 +4650,7 @@
                 ironShovelItemName, ironPickaxeItemName, stoneItemName, ironOreItemName, ironBarItemName,
                 dirtItemName, sandItemName, glassItemName, shovelItemName, pickaxeItemName, cobItemName,
                 floorItemName, treeSaplingItemName, treeTrunkItemName, cutTrunkItemName, firewoodItemName,
-boxItemName, raftItemName, branchItemName, stoneBlockItemName,
+boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 woodenBlockItemName, stoneFloorItemName, woodenFloorItemName, ropeItemName, fabricItemName,
                 campfireItemName, torchItemName, grassBedItemName, sleepingMatItemName, bedItemName,
                 doorItemName, basketItemName, vegetableOilItemName, workbenchToolkitItemName,
@@ -13304,6 +13327,8 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                     // Verificar se é água
                     if (obj.userData.isWater) {
                         inspectorText = "Água";
+                    } else if (obj.userData.isApple || obj.userData.isCoconut) {
+                        inspectorText = obj.userData.isApple ? "Maçã" : "Coco";
                     } else {
                         let body = null;
                         let current = obj;
@@ -13322,8 +13347,6 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
                             if (body.userData.growthStage) inspectorText = "Árvore";
                         } else if (obj.userData.isBranch) {
                             inspectorText = "Galho";
-                        } else if ((obj.userData.isApple || obj.userData.isCoconut)) {
-                            inspectorText = obj.userData.isApple ? "Maçã" : "Coco";
                         } else {
                             // Verificar Terreno/Bioma
                             const isIslandMesh = islandMeshes.some(m => m.mesh === obj);
@@ -15196,6 +15219,7 @@ boxItemName, raftItemName, branchItemName, stoneBlockItemName,
             window.clayStillItemName = clayStillItemName;
             window.emptyJarItemName = emptyJarItemName;
             window.waterJarItemName = waterJarItemName;
+            window.saltItemName = saltItemName;
             window.createJar = createJar;
             window.isTopFaceIntersect = isTopFaceIntersect;
             window.isTrunkObstructed = isTrunkObstructed;
