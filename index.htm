@@ -4146,26 +4146,19 @@
                 const nameSpan = document.createElement('span');
                 nameSpan.className = 'recipe-name';
                 const displayName = (itemDisplayNames[item.name] || item.name).split('\n')[0];
-                nameSpan.textContent = `${item.quantity} ${displayName}`;
+                const byproductNames = (recipe.byproducts || []).map(byproduct =>
+                    (itemDisplayNames[byproduct.name] || byproduct.name).split('\n')[0]
+                );
+                nameSpan.textContent = `${item.quantity} ${displayName}${byproductNames.length ? ` + ${byproductNames.join(' + ')}` : ''}`;
                 infoDiv.appendChild(nameSpan);
 
                 const ingredientsSpan = document.createElement('span');
                 ingredientsSpan.className = 'recipe-ingredients';
-                ingredientsSpan.textContent = 'Precisa de: ' + recipe.ingredients.map(ing => {
+                ingredientsSpan.textContent = 'Ingredientes necessários: ' + recipe.ingredients.map(ing => {
                     const ingName = (itemDisplayNames[ing.name] || ing.name).split('\n')[0];
                     return `${ing.quantity} ${ingName}`;
                 }).join(' + ');
                 infoDiv.appendChild(ingredientsSpan);
-
-                if (recipe.byproducts && recipe.byproducts.length > 0) {
-                    const byproductsSpan = document.createElement('span');
-                    byproductsSpan.className = 'recipe-ingredients';
-                    byproductsSpan.textContent = 'Produz também: ' + recipe.byproducts.map(byproduct => {
-                        const byproductName = (itemDisplayNames[byproduct.name] || byproduct.name).split('\n')[0];
-                        return `${byproduct.quantity} ${byproductName}`;
-                    }).join(' + ');
-                    infoDiv.appendChild(byproductsSpan);
-                }
 
                 recipeDiv.appendChild(infoDiv);
 

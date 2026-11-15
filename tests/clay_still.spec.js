@@ -87,7 +87,8 @@ test.describe('Clay still and water jars', () => {
 
             const distillerRecipe = document.querySelector('#recipesContainer .recipe-item');
             const recipeIngredients = distillerRecipe.querySelector('.recipe-ingredients').textContent;
-            const recipeByproducts = distillerRecipe.querySelectorAll('.recipe-ingredients')[1].textContent;
+            const recipeName = distillerRecipe.querySelector('.recipe-name').textContent;
+            const ingredientLines = distillerRecipe.querySelectorAll('.recipe-ingredients').length;
             distillerRecipe.querySelector('.craft-button').click();
 
             const filledJar = window.backpackItems.find(item => item && item.name === window.waterJarItemName);
@@ -95,7 +96,8 @@ test.describe('Clay still and water jars', () => {
             return {
                 furnaceItems,
                 recipeIngredients,
-                recipeByproducts,
+                recipeName,
+                ingredientLines,
                 stillRecipe: window.recipes.furnace.find(recipe =>
                     recipe.result.name === window.clayStillItemName
                 ).ingredients,
@@ -126,9 +128,9 @@ test.describe('Clay still and water jars', () => {
         expect(result.emptyJarRecipe).toEqual([{ name: 'terra', quantity: 1 }]);
         expect(result.emptyJarYield).toBe(10);
         expect(result.emptyJarCount).toBe(10);
-        expect(result.recipeIngredients).toContain('1 Balde de água salgada');
-        expect(result.recipeIngredients).toContain('1 Jarra vazia');
-        expect(result.recipeByproducts).toBe('Produz também: 1 Sal');
+        expect(result.recipeName).toBe('1 Jarra com água + Sal');
+        expect(result.recipeIngredients).toBe('Ingredientes necessários: 1 Balde de água salgada + 1 Jarra vazia');
+        expect(result.ingredientLines).toBe(1);
         expect(result.saltBucketConsumed).toBe(true);
         expect(result.emptyBucketReturned).toBe(true);
         expect(result.filledJar).toEqual({ quantity: 1, fill: 1 });
