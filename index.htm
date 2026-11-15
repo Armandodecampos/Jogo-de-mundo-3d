@@ -1042,6 +1042,12 @@
             color: #6b533e;
             margin-top: 2px;
         }
+        .recipe-ingredients .ingredient-available {
+            color: #1b5e20;
+        }
+        .recipe-ingredients .ingredient-missing {
+            color: #c62828;
+        }
         .craft-button {
             padding: 8px 16px;
             font-size: 0.9em;
@@ -4133,12 +4139,13 @@
                 if (furnaceWarning) furnaceWarning.style.display = 'none';
             }
 
-            const menuRecipes = recipes[type] || [];
+            const menuRecipes = (recipes[type] || [])
+                .map((recipe, index) => ({ recipe, index, isCraftable: canCraft(recipe) }))
+                .sort((a, b) => Number(b.isCraftable) - Number(a.isCraftable) || a.index - b.index);
 
-            menuRecipes.forEach(recipe => {
+            menuRecipes.forEach(({ recipe, isCraftable }) => {
                 const item = recipe.result;
                 const recipeDiv = document.createElement('div');
-                const isCraftable = canCraft(recipe);
                 recipeDiv.className = isCraftable ? 'recipe-item can-craft' : 'recipe-item';
 
                 const img = document.createElement('img');
@@ -4160,10 +4167,17 @@
 
                 const ingredientsSpan = document.createElement('span');
                 ingredientsSpan.className = 'recipe-ingredients';
-                ingredientsSpan.textContent = 'Ingredientes necessários: ' + recipe.ingredients.map(ing => {
+                ingredientsSpan.appendChild(document.createTextNode('Ingredientes necessários: '));
+                recipe.ingredients.forEach((ing, index) => {
+                    if (index > 0) ingredientsSpan.appendChild(document.createTextNode(' + '));
                     const ingName = (itemDisplayNames[ing.name] || ing.name).split('\n')[0];
-                    return `${ing.quantity} ${ingName}`;
-                }).join(' + ');
+                    const ingredientSpan = document.createElement('span');
+                    ingredientSpan.className = getAvailableIngredientQuantity(ing.name) >= ing.quantity
+                        ? 'ingredient-available'
+                        : 'ingredient-missing';
+                    ingredientSpan.textContent = `${ing.quantity} ${ingName}`;
+                    ingredientsSpan.appendChild(ingredientSpan);
+                });
                 infoDiv.appendChild(ingredientsSpan);
 
                 recipeDiv.appendChild(infoDiv);
@@ -4483,6 +4497,11 @@
         }
         window.maintainBackpack = maintainBackpack;
 
+        function getAvailableIngredientQuantity(itemName) {
+            return [...beltItems, ...backpackItems].reduce((total, item) =>
+                item && item.name === itemName ? total + item.quantity : total, 0);
+        }
+
         function canCraft(recipe) {
             // If it's a furnace recipe, furnace must be on
             if (currentCraftingMenuType === 'furnace') {
@@ -4494,16 +4513,7 @@
 
             // Check ingredients
             for (const ing of recipe.ingredients) {
-                let totalFound = 0;
-                // Check belt
-                for (const item of beltItems) {
-                    if (item && item.name === ing.name) totalFound += item.quantity;
-                }
-                // Check backpack
-                for (const item of backpackItems) {
-                    if (item && item.name === ing.name) totalFound += item.quantity;
-                }
-                if (totalFound < ing.quantity) return false;
+                if (getAvailableIngredientQuantity(ing.name) < ing.quantity) return false;
             }
 
             // Check weight limit

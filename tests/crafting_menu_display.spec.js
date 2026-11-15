@@ -17,6 +17,40 @@ test('campfire can be crafted with three branches and no grass', async ({ page }
     await expect(campfireRecipe.locator('.craft-button')).toBeEnabled();
 });
 
+test('craftable recipes appear first and ingredient colors reflect inventory', async ({ page }) => {
+    await page.goto('file://' + process.cwd() + '/index.htm');
+    await page.click('#startButton');
+    await page.waitForFunction(() => window.isWorldReady === true, { timeout: 120000 });
+
+    const result = await page.evaluate(() => {
+        window.beltItems.fill(null);
+        window.backpackItems.fill(null);
+        window.addItemToInventory(window.backpackItems, { name: 'galho', quantity: 3 }, Infinity, true);
+        window.addItemToInventory(window.backpackItems, { name: 'capim', quantity: 1 }, Infinity, true);
+        window.updateCraftingDisplay('initial');
+
+        const cards = [...document.querySelectorAll('#recipesContainer .recipe-item')];
+        const firstUnavailableIndex = cards.findIndex(card => !card.classList.contains('can-craft'));
+        const firstCraftableIndex = cards.findIndex(card => card.classList.contains('can-craft'));
+        const torch = cards.find(card => card.querySelector('.recipe-name').textContent === '1 Tocha');
+        return {
+            craftableRecipesComeFirst: firstUnavailableIndex === -1 ||
+                (firstCraftableIndex !== -1 && firstCraftableIndex < firstUnavailableIndex),
+            torchIngredients: [...torch.querySelectorAll('.recipe-ingredients span')].map(span => ({
+                text: span.textContent,
+                color: window.getComputedStyle(span).color
+            }))
+        };
+    });
+
+    expect(result.craftableRecipesComeFirst).toBe(true);
+    expect(result.torchIngredients).toEqual([
+        { text: '1 Galho', color: 'rgb(27, 94, 32)' },
+        { text: '1 Tecido', color: 'rgb(198, 40, 40)' },
+        { text: '1 Óleo Vegetal', color: 'rgb(198, 40, 40)' }
+    ]);
+});
+
 test('torch recipe requires one branch, one fabric, and one vegetable oil', async ({ page }) => {
     await page.goto('file://' + process.cwd() + '/index.htm');
     await page.click('#startButton');
