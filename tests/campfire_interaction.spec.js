@@ -177,8 +177,14 @@ test('Glass Pot item exists, is craftable in Furnace with Sand, and Vegetable Oi
     const recipeCheck = await page.evaluate(() => {
         const glassPotInFurnace = window.recipes.furnace.some(r => r.result.name === 'pote_vidro' && r.ingredients.some(i => i.name === 'areia' && i.quantity === 1));
         const clayPotRecipe = window.recipes.furnace.find(r => r.result.name === 'pote_barro');
-        const vegetableOilWithClayPot = window.recipes.pestle.some(r => r.result.name === 'oleo_vegetal' && r.ingredients.some(i => i.name === 'pote_barro'));
-        const vegetableOilWithGlassPot = window.recipes.pestle.some(r => r.result.name === 'oleo_vegetal' && r.ingredients.some(i => i.name === 'pote_vidro'));
+        const vegetableOilWithClayPot = window.recipes.pestle.find(r =>
+            r.result.name === 'oleo_vegetal' && r.ingredients.some(i => i.name === 'semente_macieira')
+            && r.ingredients.some(i => i.name === 'pote_barro')
+        );
+        const vegetableOilWithGlassPot = window.recipes.pestle.find(r =>
+            r.result.name === 'oleo_vegetal' && r.ingredients.some(i => i.name === 'semente_macieira')
+            && r.ingredients.some(i => i.name === 'pote_vidro')
+        );
 
         return { glassPotInFurnace, clayPotRecipe, vegetableOilWithClayPot, vegetableOilWithGlassPot };
     });
@@ -186,8 +192,14 @@ test('Glass Pot item exists, is craftable in Furnace with Sand, and Vegetable Oi
     expect(recipeCheck.glassPotInFurnace).toBe(true);
     expect(recipeCheck.clayPotRecipe.result.quantity).toBe(20);
     expect(recipeCheck.clayPotRecipe.ingredients).toEqual([{ name: 'terra', quantity: 1 }]);
-    expect(recipeCheck.vegetableOilWithClayPot).toBe(true);
-    expect(recipeCheck.vegetableOilWithGlassPot).toBe(true);
+    expect(recipeCheck.vegetableOilWithClayPot.ingredients).toEqual([
+        { name: 'semente_macieira', quantity: 50 },
+        { name: 'pote_barro', quantity: 1 }
+    ]);
+    expect(recipeCheck.vegetableOilWithGlassPot.ingredients).toEqual([
+        { name: 'semente_macieira', quantity: 50 },
+        { name: 'pote_vidro', quantity: 1 }
+    ]);
 });
 
 test('Ground interaction updates lastDugAt and cancels healing/closing on active mound', async ({ page }) => {
