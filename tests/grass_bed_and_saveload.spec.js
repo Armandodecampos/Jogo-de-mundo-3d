@@ -17,7 +17,6 @@ test.describe('Grass Bed and Save/Load Ground Items Tests', () => {
             );
         });
         expect(recipeExists).toBe(true);
-
         // Press 'r' to toggle crafting menu
         await page.keyboard.press('r');
         await page.waitForTimeout(300);
@@ -33,6 +32,13 @@ test.describe('Grass Bed and Save/Load Ground Items Tests', () => {
             return !document.getElementById('craftingModal').classList.contains('active');
         });
         expect(modalClosed).toBe(true);
+    });
+
+    test('Grass Bed displays as Colchonete de Campim', async ({ page }) => {
+        const displayName = await page.evaluate(() =>
+            window.itemDisplayNames[window.grassBedItemName]
+        );
+        expect(displayName).toBe('Colchonete de Campim\nRecupera 40% de energia');
     });
 
     test('Energy recovery limits for grass bed, mat and bed', async ({ page }) => {
