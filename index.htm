@@ -2419,7 +2419,7 @@
             } else {
                 title.textContent = "Tocha";
                 accessBtn.classList.add('hidden');
-                addBtn.textContent = "Abastecer (1 Óleo + 1 Tecido)";
+                addBtn.textContent = "Abastecer (1 Óleo em Pote + 1 Tecido)";
                 if (useBtn) useBtn.classList.remove('hidden');
             }
 
@@ -2884,27 +2884,37 @@
             if (!currentFuelBody) return;
 
             if (currentFuelBody.userData.type === torchItemName) {
-                const oilData = findItemInInventory(vegetableOilItemName);
+                const oilData = findItemInInventory(clayPotOilItemName) || findItemInInventory(glassPotOilItemName);
                 const fabricData = findItemInInventory(fabricItemName);
+                const returnedPotName = oilData?.container[oilData.index].name === clayPotOilItemName
+                    ? clayPotItemName
+                    : glassPotItemName;
+                const potInventory = oilData && [backpackItems, beltItems].find(inventory =>
+                    inventory.some((item, index) =>
+                        (inventory !== beltItems || index !== 0) &&
+                        (!item || item.name === returnedPotName)
+                    )
+                );
 
-                if (oilData && fabricData) {
-                    if (currentFuelBody.userData.fuel < 100) {
-                        currentFuelBody.userData.fuel = Math.min(100, (currentFuelBody.userData.fuel || 0) + 20);
-
-                        oilData.container[oilData.index].quantity--;
-                        if (oilData.container[oilData.index].quantity <= 0) oilData.container[oilData.index] = null;
-
-                        fabricData.container[fabricData.index].quantity--;
-                        if (fabricData.container[fabricData.index].quantity <= 0) fabricData.container[fabricData.index] = null;
-
-                        updateUI();
-                        updateFuelUI();
-                        showNotification("Tocha reabastecida!");
-                    } else {
-                        showNotification("Tanque cheio!");
-                    }
+                if ((currentFuelBody.userData.fuel || 0) >= 100) {
+                    showNotification("Tanque cheio!");
+                } else if (!oilData || !fabricData) {
+                    showNotification("Você precisa de Óleo em Pote e Tecido!");
+                } else if (!potInventory) {
+                    showNotification("Não há espaço para guardar o pote vazio!");
                 } else {
-                    showNotification("Você precisa de Óleo e Tecido!");
+                    currentFuelBody.userData.fuel = 100;
+
+                    oilData.container[oilData.index].quantity--;
+                    if (oilData.container[oilData.index].quantity <= 0) oilData.container[oilData.index] = null;
+
+                    fabricData.container[fabricData.index].quantity--;
+                    if (fabricData.container[fabricData.index].quantity <= 0) fabricData.container[fabricData.index] = null;
+
+                    addItemToInventory(potInventory, { name: returnedPotName, quantity: 1 }, Infinity, true);
+                    updateUI();
+                    updateFuelUI();
+                    showNotification("Tocha reabastecida!");
                 }
             } else {
                 // Tenta remover Lenha ou Galho para Fogueira/Forno
@@ -3240,7 +3250,8 @@
         const emptyJarItemName = 'jarra_vazia';
         const waterJarItemName = 'jarra_com_agua';
         const saltItemName = 'sal';
-        const vegetableOilItemName = 'oleo_vegetal';
+        const clayPotOilItemName = 'oleo_pote_barro';
+        const glassPotOilItemName = 'oleo_pote_vidro';
         const workbenchToolkitItemName = 'kit_ferramentas_bancada';
         const clayPotItemName = 'pote_barro';
         const glassPotItemName = 'pote_vidro';
@@ -3259,7 +3270,8 @@
             { result: { name: 'cob', quantity: 100 }, ingredients: [{ name: 'terra', quantity: 1 }, { name: 'areia', quantity: 1 }, { name: 'capim', quantity: 20 }] },
             { result: { name: 'piso', quantity: 300 }, ingredients: [{ name: 'terra', quantity: 1 }, { name: 'areia', quantity: 1 }, { name: 'capim', quantity: 20 }] },
             { result: { name: 'jangada', quantity: 1 }, ingredients: [{ name: 'tronco_arvore', quantity: 10 }, { name: 'corda', quantity: 5 }, { name: 'tecido', quantity: 5 }] },
-            { result: { name: 'tocha', quantity: 1 }, ingredients: [{ name: 'galho', quantity: 1 }, { name: 'tecido', quantity: 1 }, { name: 'oleo_vegetal', quantity: 1 }] },
+            { result: { name: 'tocha', quantity: 1 }, ingredients: [{ name: 'galho', quantity: 1 }, { name: 'tecido', quantity: 1 }, { name: clayPotOilItemName, quantity: 1 }] },
+            { result: { name: 'tocha', quantity: 1 }, ingredients: [{ name: 'galho', quantity: 1 }, { name: 'tecido', quantity: 1 }, { name: glassPotOilItemName, quantity: 1 }] },
             { result: { name: 'fogueira', quantity: 1 }, ingredients: [{ name: 'galho', quantity: 3 }] },
             { result: { name: 'forno', quantity: 1 }, ingredients: [{ name: 'pedra', quantity: 10 }, { name: 'areia', quantity: 1 }, { name: 'terra', quantity: 1 }, { name: 'fogueira', quantity: 1 }] },
             { result: { name: 'bancada_trabalho', quantity: 1 }, ingredients: [{ name: 'tronco_arvore', quantity: 10 }, { name: 'kit_ferramentas_bancada', quantity: 1 }] },
@@ -3288,10 +3300,10 @@
                 { result: { name: 'pá_ferro', quantity: 1 }, ingredients: [{ name: 'barra_ferro', quantity: 1 }, { name: 'galho', quantity: 1 }] }
             ],
             pestle: [
-                { result: { name: 'oleo_vegetal', quantity: 1 }, ingredients: [{ name: 'semente_macieira', quantity: 50 }, { name: 'pote_barro', quantity: 1 }] },
-                { result: { name: 'oleo_vegetal', quantity: 1 }, ingredients: [{ name: 'semente_macieira', quantity: 50 }, { name: 'pote_vidro', quantity: 1 }] },
-                { result: { name: 'oleo_vegetal', quantity: 1 }, ingredients: [{ name: 'pinhão', quantity: 1 }, { name: 'pote_barro', quantity: 1 }] },
-                { result: { name: 'oleo_vegetal', quantity: 1 }, ingredients: [{ name: 'pinhão', quantity: 1 }, { name: 'pote_vidro', quantity: 1 }] }
+                { result: { name: clayPotOilItemName, quantity: 1 }, ingredients: [{ name: 'semente_macieira', quantity: 50 }, { name: clayPotItemName, quantity: 1 }] },
+                { result: { name: glassPotOilItemName, quantity: 1 }, ingredients: [{ name: 'semente_macieira', quantity: 50 }, { name: glassPotItemName, quantity: 1 }] },
+                { result: { name: clayPotOilItemName, quantity: 1 }, ingredients: [{ name: 'pinhão', quantity: 1 }, { name: clayPotItemName, quantity: 1 }] },
+                { result: { name: glassPotOilItemName, quantity: 1 }, ingredients: [{ name: 'pinhão', quantity: 1 }, { name: glassPotItemName, quantity: 1 }] }
             ],
             distiller: [
                 {
@@ -3381,7 +3393,8 @@
             [bedItemName]: 'Cama de Madeira\nRecupera 100% de energia',
             [doorItemName]: 'Porta',
             [basketItemName]: 'Cesto de Capim',
-            [vegetableOilItemName]: 'Óleo Vegetal',
+            [clayPotOilItemName]: 'Óleo em Pote de Barro',
+            [glassPotOilItemName]: 'Óleo em Pote de Vidro',
             [workbenchToolkitItemName]: 'Kit de ferramentas para bancada de trabalho',
             [clayPotItemName]: 'Pote de Barro',
             [glassPotItemName]: 'Pote de Vidro',
@@ -3444,7 +3457,8 @@
             [grassBedItemName]: 4.0,
             [sleepingMatItemName]: 5.0,
             [bedItemName]: 15.0,
-            [vegetableOilItemName]: 0.5,
+            [clayPotOilItemName]: 2.5,
+            [glassPotOilItemName]: 1.0,
             [workbenchToolkitItemName]: 5.0,
             [clayPotItemName]: 2.0,
             [glassPotItemName]: 0.5,
@@ -4353,7 +4367,8 @@
             if (itemName === grassBedItemName) return "https://placehold.co/100x100/2E8B57/FFFFFF?text=Cama+Capim";
             if (itemName === sleepingMatItemName) return "https://placehold.co/100x100/4169E1/FFFFFF?text=Colchonete";
             if (itemName === bedItemName) return "https://placehold.co/100x100/8B4513/FFFFFF?text=Cama";
-            if (itemName === vegetableOilItemName) return "https://placehold.co/100x100/FFD700/FFFFFF?text=Oleo";
+            if (itemName === clayPotOilItemName) return "https://placehold.co/100x100/A0522D/FFFFFF?text=Oleo+Barro";
+            if (itemName === glassPotOilItemName) return "https://placehold.co/100x100/E0FFFF/000000?text=Oleo+Vidro";
             if (itemName === workbenchToolkitItemName) return "https://placehold.co/100x100/808080/FFFFFF?text=Ferramentas";
             if (itemName === clayPotItemName) return "https://placehold.co/100x100/A0522D/FFFFFF?text=Pote";
             if (itemName === glassPotItemName) return "https://placehold.co/100x100/E0FFFF/FFFFFF?text=Pote+Vidro";
@@ -4662,7 +4677,7 @@
 boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 woodenBlockItemName, stoneFloorItemName, woodenFloorItemName, ropeItemName, fabricItemName,
                 campfireItemName, torchItemName, grassBedItemName, sleepingMatItemName, bedItemName,
-                doorItemName, basketItemName, vegetableOilItemName, workbenchToolkitItemName,
+                doorItemName, basketItemName, clayPotOilItemName, glassPotOilItemName, workbenchToolkitItemName,
                 clayPotItemName, glassPotItemName, pestleItemName, workbenchItemName, smallTableItemName,
                 mesaItemName, largeTableItemName, windowItemName, bigornaItemName, furnaceItemName
             ];
@@ -15497,7 +15512,8 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             Object.defineProperty(window, 'currentBlockType', { get: () => currentBlockType });
             window.torchItemName = torchItemName;
             window.fabricItemName = fabricItemName;
-            window.vegetableOilItemName = vegetableOilItemName;
+            window.clayPotOilItemName = clayPotOilItemName;
+            window.glassPotOilItemName = glassPotOilItemName;
             window.appleSeedItemName = appleSeedItemName;
             window.pineSeedItemName = pineSeedItemName;
             window.coconutSeedItemName = coconutSeedItemName;

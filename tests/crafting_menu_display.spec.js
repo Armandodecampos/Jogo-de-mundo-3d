@@ -51,20 +51,28 @@ test('craftable recipes appear first and ingredient colors reflect inventory', a
     ]);
 });
 
-test('torch recipe requires one branch, one fabric, and one vegetable oil', async ({ page }) => {
+test('torch recipes accept oil in a clay pot or glass pot', async ({ page }) => {
     await page.goto('file://' + process.cwd() + '/index.htm');
     await page.click('#startButton');
     await page.waitForFunction(() => window.isWorldReady === true, { timeout: 120000 });
 
-    const torchIngredients = await page.evaluate(() => {
-        const recipe = window.recipes.initial.find(({ result }) => result.name === 'tocha');
-        return recipe.ingredients;
+    const torchRecipes = await page.evaluate(() => {
+        return window.recipes.initial
+            .filter(({ result }) => result.name === 'tocha')
+            .map(recipe => recipe.ingredients);
     });
 
-    expect(torchIngredients).toEqual([
-        { name: 'galho', quantity: 1 },
-        { name: 'tecido', quantity: 1 },
-        { name: 'oleo_vegetal', quantity: 1 }
+    expect(torchRecipes).toEqual([
+        [
+            { name: 'galho', quantity: 1 },
+            { name: 'tecido', quantity: 1 },
+            { name: 'oleo_pote_barro', quantity: 1 }
+        ],
+        [
+            { name: 'galho', quantity: 1 },
+            { name: 'tecido', quantity: 1 },
+            { name: 'oleo_pote_vidro', quantity: 1 }
+        ]
     ]);
 });
 

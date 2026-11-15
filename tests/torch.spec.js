@@ -10,7 +10,7 @@ test('crafted torch starts full and its fuel lasts five times longer than a camp
         const ingredients = [
             { name: 'galho', quantity: 1 },
             { name: 'tecido', quantity: 1 },
-            { name: 'oleo_vegetal', quantity: 1 }
+            { name: 'oleo_pote_barro', quantity: 1 }
         ];
         ingredients.forEach(item =>
             window.addItemToInventory(window.backpackItems, item, Infinity, true)
@@ -66,6 +66,48 @@ test('crafted torch starts full and its fuel lasts five times longer than a camp
     expect(fuelLoss.placedTorch).toBeGreaterThan(0);
     expect(fuelLoss.campfire / fuelLoss.heldTorch).toBeCloseTo(5, 0);
     expect(fuelLoss.campfire / fuelLoss.placedTorch).toBeCloseTo(5, 0);
+});
+
+test('refueling a torch fills it and returns its oil pot', async ({ page }) => {
+    test.setTimeout(120000);
+    await page.goto('http://localhost:8080/index.htm');
+    await page.click('#startButton');
+    await page.waitForFunction(() => window.isWorldReady === true);
+
+    const results = await page.evaluate(() => {
+        const variants = [
+            { oil: window.clayPotOilItemName, pot: 'pote_barro' },
+            { oil: window.glassPotOilItemName, pot: 'pote_vidro' }
+        ];
+
+        return variants.map(({ oil, pot }) => {
+            window.beltItems.fill(null);
+            window.backpackItems.fill(null);
+            const torch = window.createPlaceableBlock(
+                new window.THREE.Vector3(10, window.getSurfaceHeight(10, 10) + 0.4, 10),
+                null,
+                window.torchItemName,
+                null,
+                { fuel: 20, isOn: false }
+            );
+            window.currentFuelBody = torch;
+            window.addItemToInventory(window.backpackItems, { name: oil, quantity: 1 }, Infinity, true);
+            window.addItemToInventory(window.backpackItems, { name: 'tecido', quantity: 1 }, Infinity, true);
+            window.addFuel();
+
+            return {
+                fuel: torch.userData.fuel,
+                returnedPot: window.backpackItems.some(item => item && item.name === pot && item.quantity === 1),
+                oilConsumed: !window.backpackItems.some(item => item && item.name === oil),
+                fabricConsumed: !window.backpackItems.some(item => item && item.name === 'tecido')
+            };
+        });
+    });
+
+    expect(results).toEqual([
+        { fuel: 100, returnedPot: true, oilConsumed: true, fabricConsumed: true },
+        { fuel: 100, returnedPot: true, oilConsumed: true, fabricConsumed: true }
+    ]);
 });
 
 test('Torch item exists and can be held', async ({ page }) => {

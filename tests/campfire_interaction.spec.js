@@ -178,11 +178,11 @@ test('Glass Pot item exists, is craftable in Furnace with Sand, and Vegetable Oi
         const glassPotInFurnace = window.recipes.furnace.some(r => r.result.name === 'pote_vidro' && r.ingredients.some(i => i.name === 'areia' && i.quantity === 1));
         const clayPotRecipe = window.recipes.furnace.find(r => r.result.name === 'pote_barro');
         const vegetableOilWithClayPot = window.recipes.pestle.find(r =>
-            r.result.name === 'oleo_vegetal' && r.ingredients.some(i => i.name === 'semente_macieira')
+            r.result.name === window.clayPotOilItemName && r.ingredients.some(i => i.name === 'semente_macieira')
             && r.ingredients.some(i => i.name === 'pote_barro')
         );
         const vegetableOilWithGlassPot = window.recipes.pestle.find(r =>
-            r.result.name === 'oleo_vegetal' && r.ingredients.some(i => i.name === 'semente_macieira')
+            r.result.name === window.glassPotOilItemName && r.ingredients.some(i => i.name === 'semente_macieira')
             && r.ingredients.some(i => i.name === 'pote_vidro')
         );
 
@@ -196,10 +196,12 @@ test('Glass Pot item exists, is craftable in Furnace with Sand, and Vegetable Oi
         { name: 'semente_macieira', quantity: 50 },
         { name: 'pote_barro', quantity: 1 }
     ]);
+    expect(recipeCheck.vegetableOilWithClayPot.result.name).toBe('oleo_pote_barro');
     expect(recipeCheck.vegetableOilWithGlassPot.ingredients).toEqual([
         { name: 'semente_macieira', quantity: 50 },
         { name: 'pote_vidro', quantity: 1 }
     ]);
+    expect(recipeCheck.vegetableOilWithGlassPot.result.name).toBe('oleo_pote_vidro');
 });
 
 test('Ground interaction updates lastDugAt and cancels healing/closing on active mound', async ({ page }) => {
