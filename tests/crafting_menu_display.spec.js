@@ -47,6 +47,29 @@ test('grass basket recipe requires only five grass', async ({ page }) => {
     expect(basketIngredients).toEqual([{ name: 'capim', quantity: 5 }]);
 });
 
+test('wooden bed and sleeping mat recipes use the requested ingredients', async ({ page }) => {
+    await page.goto('file://' + process.cwd() + '/index.htm');
+    await page.click('#startButton');
+    await page.waitForFunction(() => window.isWorldReady === true, { timeout: 120000 });
+
+    const recipes = await page.evaluate(() => ({
+        bed: window.recipes.workbench.find(({ result }) => result.name === window.bedItemName).ingredients,
+        mat: window.recipes.initial.find(({ result }) => result.name === window.sleepingMatItemName).ingredients
+    }));
+
+    expect(recipes.bed).toEqual([
+        { name: 'bloco_madeira', quantity: 10 },
+        { name: 'tecido', quantity: 5 },
+        { name: 'capim', quantity: 30 },
+        { name: 'corda', quantity: 2 }
+    ]);
+    expect(recipes.mat).toEqual([
+        { name: 'tecido', quantity: 5 },
+        { name: 'capim', quantity: 30 },
+        { name: 'corda', quantity: 2 }
+    ]);
+});
+
 test('verify crafting menu result quantity format and fixed furnace warning', async ({ page }) => {
     // Navigate to index.htm
     await page.goto('file://' + process.cwd() + '/index.htm');
