@@ -34,6 +34,19 @@ test('torch recipe requires one branch, one fabric, and one vegetable oil', asyn
     ]);
 });
 
+test('grass basket recipe requires only five grass', async ({ page }) => {
+    await page.goto('file://' + process.cwd() + '/index.htm');
+    await page.click('#startButton');
+    await page.waitForFunction(() => window.isWorldReady === true, { timeout: 120000 });
+
+    const basketIngredients = await page.evaluate(() => {
+        const recipe = window.recipes.initial.find(({ result }) => result.name === 'cesto_capim');
+        return recipe.ingredients;
+    });
+
+    expect(basketIngredients).toEqual([{ name: 'capim', quantity: 5 }]);
+});
+
 test('verify crafting menu result quantity format and fixed furnace warning', async ({ page }) => {
     // Navigate to index.htm
     await page.goto('file://' + process.cwd() + '/index.htm');

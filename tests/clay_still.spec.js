@@ -210,6 +210,36 @@ test.describe('Clay still and water jars', () => {
         expect(result.restoredHasFire).toBe(true);
     });
 
+    test('ceramic texture is applied to the still and jars', async ({ page }) => {
+        await page.evaluate(() => {
+            window.createJar(
+                new THREE.Vector3(10, window.getSurfaceHeight(10, 10) + 0.3, 10),
+                null,
+                { name: window.emptyJarItemName, quantity: 1 }
+            );
+            window.createPlaceableBlock(
+                new THREE.Vector3(12, window.getSurfaceHeight(12, 12) + 0.45, 12),
+                null,
+                window.clayStillItemName
+            );
+        });
+
+        await page.waitForFunction(() => {
+            const jar = window.collectibleBoxes.find(({ body }) => body.userData?.type === window.emptyJarItemName);
+            const still = window.scene.children.find(child =>
+                child.userData?.physicsBody?.userData?.type === window.clayStillItemName
+            );
+            if (!jar || !still) return false;
+            const textureSource = mesh => mesh?.material?.map?.image?.src || '';
+            const jarSource = textureSource(jar.mesh.children[0]);
+            const stillVessel = still.children.find(child => child.userData?.isStillVessel);
+            const stillSource = textureSource(stillVessel);
+            return Boolean(stillVessel) &&
+                jarSource.includes('ceramica.png') &&
+                stillSource.includes('ceramica.png');
+        }, { timeout: 30000 });
+    });
+
     test('water jar gives four sips and retains its water amount in a save', async ({ page }) => {
         const result = await page.evaluate(() => {
             Object.defineProperty(document, 'pointerLockElement', {

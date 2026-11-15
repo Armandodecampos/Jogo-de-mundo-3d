@@ -1879,6 +1879,7 @@
             addAsset("Textura Folhas do Coqueiro", "Textura", coconutLeavesTextureURL);
             addAsset("Textura da Bigorna", "Textura", anvilTextureURL);
             addAsset("Textura Cama de Capim", "Textura", grassBedTextureURL);
+            addAsset("Textura de Cerâmica", "Textura", clayTextureURL);
             addAsset("Textura Cesto de Capim", "Textura", basketTextureURL);
             addAsset("Textura de Tecido", "Textura", fabricTextureURL);
             addAsset("Imagem da Mão", "Textura", handImageURL);
@@ -3257,7 +3258,7 @@
             { result: { name: 'forno', quantity: 1 }, ingredients: [{ name: 'pedra', quantity: 10 }, { name: 'areia', quantity: 1 }, { name: 'terra', quantity: 1 }, { name: 'fogueira', quantity: 1 }] },
             { result: { name: 'bancada_trabalho', quantity: 1 }, ingredients: [{ name: 'tronco_arvore', quantity: 10 }, { name: 'kit_ferramentas_bancada', quantity: 1 }] },
             { result: { name: 'corda', quantity: 1 }, ingredients: [{ name: 'capim', quantity: 5 }] },
-            { result: { name: 'cesto_capim', quantity: 1 }, ingredients: [{ name: 'capim', quantity: 15 }, { name: 'corda', quantity: 1 }] },
+            { result: { name: 'cesto_capim', quantity: 1 }, ingredients: [{ name: 'capim', quantity: 5 }] },
             { result: { name: bucketItemName, quantity: 1 }, ingredients: [{ name: woodenBlockItemName, quantity: 5 }] },
             { result: { name: grassBedItemName, quantity: 1 }, ingredients: [{ name: capimItemName, quantity: 30 }, { name: ropeItemName, quantity: 3 }] },
             { result: { name: sleepingMatItemName, quantity: 1 }, ingredients: [{ name: fabricItemName, quantity: 10 }, { name: capimItemName, quantity: 50 }, { name: ropeItemName, quantity: 2 }] }
@@ -3540,6 +3541,7 @@
         const capimBladeTextureURL = 'https://dl.dropbox.com/scl/fi/faocuuffm5793vtu9aefn/mato-2.png?rlkey=wt0ebjvi5wc500ujs4xtq3olm&st=no2mt88z&dl=1';
         const grassBedTextureURL = 'https://dl.dropbox.com/scl/fi/r8o42t13edeo2m8idqdky/mato-tran-ado.png?rlkey=a6ip4m4b0aal9bs39z2uheknb&st=akaujzb8&dl=1';
         const basketTextureURL = 'https://dl.dropbox.com/scl/fi/6q7wvuyqgdjyjf0kqen1b/cesto-de-capim.png?rlkey=6yei1e0quo2c3lnp0fiuy188e&st=w6nsfphy&dl=1';
+        const clayTextureURL = 'https://dl.dropbox.com/scl/fi/ifjncbutvj3j6ujvi6jba/ceramica.png?rlkey=gtx8cwmufxz6ibfk0gobet0hf&st=gkzn3rzp&dl=0';
         const fabricTextureURL = 'https://dl.dropbox.com/scl/fi/c4idrmneprqf8ppp5ozdp/tecido.png?rlkey=8q785cb0hu2sdwbmlacekjfmw&st=fduo3lc8&dl=1';
         const handImageURL = 'https://dl.dropbox.com/scl/fi/adirqfks81emnagkoljcw/m-o-direita.png?rlkey=pj17lswbeg8lene1n5ypdbmob&st=i2qtxssr&dl=0';
         const branchImageURL = 'https://placehold.co/100x100/8B4513/FFFFFF?text=Galho'; // NOVO: Ícone para o galho
@@ -3584,6 +3586,7 @@
         let stoneFloorMaterialMesh;
         let grassBedMaterialMesh; // Material para cama de capim
         let fabricMaterialMesh; // Material para tecidos (cama, colchonete, vela)
+        let clayMaterialMesh;
         let holeMaterial; // NOVO: Material para o buraco cavado
         let stoneHoleMaterial;
         let sandHoleMaterial;
@@ -3829,6 +3832,8 @@
             if (stoneFloorMaterialMesh) stoneFloorMaterialMesh.map = useTextures ? (texturesRegistry.stoneFloor || null) : null;
             if (grassBedMaterialMesh) grassBedMaterialMesh.map = useTextures ? (texturesRegistry.grassBed || null) : null;
             if (fabricMaterialMesh) fabricMaterialMesh.map = useTextures ? (texturesRegistry.fabric || null) : null;
+            if (clayMaterialMesh) clayMaterialMesh.map = useTextures ? (texturesRegistry.clay || null) : null;
+            if (clayMaterialMesh) clayMaterialMesh.color.set(useTextures && texturesRegistry.clay ? 0xffffff : 0xa0522d);
             if (raftMaterialMesh) raftMaterialMesh.map = useTextures ? (texturesRegistry.treeBark || null) : null;
             if (sailMaterialMesh) sailMaterialMesh.map = useTextures ? (texturesRegistry.fabric || null) : null;
             if (treeTrunkMaterialMesh) treeTrunkMaterialMesh.map = useTextures ? (texturesRegistry.treeBark || null) : null;
@@ -3845,6 +3850,7 @@
             // Notify materials of changes
             [cubeMaterialMesh, basketMaterialMesh, cobMaterialMesh, floorMaterialMesh, woodenPlankMaterialMesh,
              stoneMaterialMesh, stoneBlockMaterialMesh, woodenBlockMaterialMesh, stoneFloorMaterialMesh, grassBedMaterialMesh, fabricMaterialMesh,
+             clayMaterialMesh,
              raftMaterialMesh, sailMaterialMesh, treeTrunkMaterialMesh, treeLeavesMaterialMesh, coconutLeavesMaterialMesh, bigornaMaterialMesh, capimSharedMaterial,
              treeSaplingMaterialMesh, doorMaterialMesh, windowMaterialMesh, windowGlassMaterialMesh, holeMaterial, stoneHoleMaterial].forEach(m => {
                 if (m) m.needsUpdate = true;
@@ -5056,7 +5062,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             world.addBody(body);
 
             const group = new THREE.Group();
-            const clayMaterial = new THREE.MeshStandardMaterial({ color: 0xa0522d, roughness: 0.9 });
+            const clayMaterial = clayMaterialMesh;
             const jarBody = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.12, 0.32, 12), clayMaterial);
             group.add(jarBody);
             const jarNeck = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.12, 0.1, 12), clayMaterial);
@@ -7457,7 +7463,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 blockBody.addShape(blockShape);
 
                 const stillGroup = new THREE.Group();
-                const clayMaterial = new THREE.MeshStandardMaterial({ color: 0xa0522d, roughness: 0.9 });
+                const clayMaterial = clayMaterialMesh;
                 const firewoodMaterial = woodenBlockMaterialMesh || new THREE.MeshStandardMaterial({ color: 0x5a3822, roughness: 1 });
                 const firewoodRadius = 0.07;
                 const firewoodY = -height / 2 + firewoodRadius;
@@ -8303,6 +8309,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             stoneFloorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x888888 });
             grassBedMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff });
             fabricMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+            clayMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xa0522d, roughness: 0.9 });
             treeSaplingMaterialMesh = new THREE.MeshStandardMaterial({ color: 0x228B22 });
             treeTrunkMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff, side: THREE.DoubleSide });
             doorMaterialMesh = new THREE.MeshStandardMaterial({ color: 0xffffff });
@@ -9290,6 +9297,16 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 texture.repeat.set(1, 1);
                 texturesRegistry.basket = texture;
                 applyTextureSettings();
+            });
+
+            textureLoader.load(clayTextureURL, (texture) => {
+                texture.wrapS = THREE.RepeatWrapping;
+                texture.wrapT = THREE.RepeatWrapping;
+                texture.repeat.set(1, 1);
+                texturesRegistry.clay = texture;
+                applyTextureSettings();
+            }, undefined, (error) => {
+                console.error('Erro ao carregar a textura de cerâmica:', error);
             });
 
             // Load fabric texture
