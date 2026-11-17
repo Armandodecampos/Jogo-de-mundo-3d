@@ -8,6 +8,36 @@ test.describe('Birds', () => {
         await page.waitForFunction(() => window.isWorldReady === true, { timeout: 90000 });
     });
 
+    test('nest birds hide inside trees and flee when nearby terrain changes', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const tree = window.placedConstructionBodies.find(body =>
+                body.userData?.growthStage === 'arvore_adulta' && body.userData.hasBirdNest
+            );
+            const bird = window.birds.find(candidate =>
+                candidate.isNestBird && candidate.nestTreeBody === tree
+            );
+            const nestY = tree.position.y + tree.userData.randomizedDimensions.visual.leaves.yOffsetInGroup;
+            const birdWasInsideNest = bird.state === 'perched' && !bird.mesh.visible &&
+                Math.abs(bird.mesh.position.y - nestY) < 0.2 &&
+                bird.mesh.position.y < tree.position.y + tree.userData.dimensions.height / 2;
+
+            window.scareBirdsFromTerrainChange([{ position: tree.position.clone() }]);
+
+            return {
+                birdWasInsideNest,
+                birdFled: bird.state === 'flying' && bird.mesh.visible,
+                nestWasPreserved: bird.isNestBird && bird.nestTreeBody === tree &&
+                    tree.userData.hasBirdNest,
+                returnWasScheduled: bird.returnToNestAt > window.world.time
+            };
+        });
+
+        expect(result.birdWasInsideNest).toBe(true);
+        expect(result.birdFled).toBe(true);
+        expect(result.nestWasPreserved).toBe(true);
+        expect(result.returnWasScheduled).toBe(true);
+    });
+
     test('birds have colorful anatomy and can land on world objects', async ({ page }) => {
         const result = await page.evaluate(() => {
             const testBird = window.createBirdMesh();
