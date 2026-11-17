@@ -13,6 +13,12 @@ test.describe('Birds', () => {
             const testBird = window.createBirdMesh();
             const geometryTypes = new Set();
             const colors = new Set();
+            const treeCounts = { normal: 0, apple: 0, coconut: 0 };
+            window.placedConstructionBodies.forEach(body => {
+                if (body.userData?.growthStage !== 'arvore_adulta') return;
+                const type = body.userData.treeType || 'normal';
+                if (treeCounts[type] !== undefined) treeCounts[type]++;
+            });
             testBird.traverse(object => {
                 if (!object.isMesh) return;
                 geometryTypes.add(object.geometry.type);
@@ -44,6 +50,7 @@ test.describe('Birds', () => {
             let spawnedBird;
             let orientationBird;
             let generatedBird;
+            let nestBirds = [];
 
             try {
                 window.playerBody.position.set(cameraPosition.x + 100, cameraPosition.y, cameraPosition.z);
@@ -52,6 +59,12 @@ test.describe('Birds', () => {
                 const existingBirds = new Set(window.birds);
                 window.spawnBirdGroup();
                 generatedBird = window.birds.find(bird => !existingBirds.has(bird));
+                const existingBirdCount = window.birds.length;
+                const nestFlockSize = window.spawnBirdsFromTree(
+                    cameraPosition.clone().add(new THREE.Vector3(100, 0, 0)),
+                    10
+                );
+                nestBirds = window.birds.slice(existingBirdCount);
 
                 const target = window.findBirdPerchTarget(start, end);
                 const groundTarget = window.findBirdGroundPerchTarget(start, end);
@@ -66,7 +79,7 @@ test.describe('Birds', () => {
                     flapSpeed: 10,
                     flySpeed: 12,
                     state: 'flying',
-                    perchTargetBody: target,
+                    perchTargetBody: perchBody,
                     perchUntil: 0
                 };
                 spawnedBird.mesh.position.set(
@@ -117,7 +130,11 @@ test.describe('Birds', () => {
                 return {
                     geometryTypes: Array.from(geometryTypes),
                     colorCount: colors.size,
-                    objectTargetSelected: target === perchBody,
+                    treeCounts,
+                    nestFlockSize,
+                    nestBirdCount: nestBirds.length,
+                    nestBirdsLaunched: nestBirds.every(bird => bird.state === 'flying' && bird.velocity.y > 0),
+                    objectTargetSelected: target !== null && !target.isGroundPerch,
                     groundTargetIsDry: groundTarget?.isGroundPerch &&
                         !window.hasWaterAt(groundTarget.position.x, groundTarget.position.z),
                     waterTargetRejected: oceanTarget === null,
@@ -143,7 +160,7 @@ test.describe('Birds', () => {
                 window.scene.remove(spawnedBird?.mesh);
                 window.scene.remove(orientationBird?.mesh);
                 window.birds.slice().forEach(bird => {
-                    if (bird === generatedBird) {
+                    if (bird === generatedBird || nestBirds.includes(bird)) {
                         window.scene.remove(bird.mesh);
                         window.birds.splice(window.birds.indexOf(bird), 1);
                     }
@@ -162,6 +179,13 @@ test.describe('Birds', () => {
         expect(result.geometryTypes).toContain('ShapeGeometry');
         expect(result.geometryTypes).toContain('ConeGeometry');
         expect(result.colorCount).toBeGreaterThanOrEqual(3);
+        expect(result.treeCounts.normal).toBeGreaterThanOrEqual(10);
+        expect(result.treeCounts.apple).toBeGreaterThanOrEqual(10);
+        expect(result.treeCounts.coconut).toBeGreaterThanOrEqual(10);
+        expect(result.nestFlockSize).toBeGreaterThanOrEqual(3);
+        expect(result.nestFlockSize).toBeLessThanOrEqual(5);
+        expect(result.nestBirdCount).toBe(result.nestFlockSize);
+        expect(result.nestBirdsLaunched).toBe(true);
         expect(result.objectTargetSelected).toBe(true);
         expect(result.groundTargetIsDry).toBe(true);
         expect(result.waterTargetRejected).toBe(true);

@@ -6113,45 +6113,37 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
         }
 
         function respawnTree() {
-            const typesToCheck = ['normal', 'apple', 'coconut'];
-            const counts = { normal: 0, apple: 0, coconut: 0 };
+            const types = [
+                { treeType: 'normal', item: treeSaplingItemName },
+                { treeType: 'apple', item: appleSeedItemName },
+                { treeType: 'coconut', item: coconutSeedItemName }
+            ];
+            const minimumPerSpecies = 10;
 
-            placedConstructionBodies.forEach(body => {
-                if (body.userData && body.userData.growthStage) {
-                    const treeType = body.userData.treeType || 'normal';
-                    if (counts[treeType] !== undefined) counts[treeType]++;
-                }
-            });
+            types.forEach(({ treeType, item }) => {
+                let count = placedConstructionBodies.filter(body =>
+                    body.userData?.growthStage === 'arvore_adulta' &&
+                    (body.userData.treeType || 'normal') === treeType
+                ).length;
 
-            typesToCheck.forEach(treeType => {
-                if (counts[treeType] === 0) {
-                    let typeToSpawn = treeSaplingItemName;
-                    if (treeType === 'apple') typeToSpawn = appleSeedItemName;
-                    else if (treeType === 'coconut') typeToSpawn = coconutSeedItemName;
+                let attempts = 0;
+                while (count < minimumPerSpecies && attempts < minimumPerSpecies * 100) {
+                    attempts++;
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = treeType === 'coconut'
+                        ? capimRadius + Math.random() * (beachRadius - capimRadius)
+                        : Math.random() * capimRadius;
+                    const x = Math.cos(angle) * dist;
+                    const z = Math.sin(angle) * dist;
+                    const y = window.getSurfaceHeight(x, z);
 
-                    let spawned = false;
-                    let attempts = 0;
-                    while (!spawned && attempts < 100) {
-                        attempts++;
-                        const angle = Math.random() * Math.PI * 2;
-                        let dist;
-                        if (treeType === 'coconut') {
-                            dist = capimRadius + Math.random() * (beachRadius - capimRadius);
-                        } else {
-                            dist = Math.random() * capimRadius;
-                        }
-
-                        const x = Math.cos(angle) * dist;
-                        const z = Math.sin(angle) * dist;
-                        const y = window.getSurfaceHeight(x, z);
-
-                        if (y > waterLevel + 1.0 && y < 25) {
-                            if (!isAreaOccupiedByConstruction(x, z, 5.0) && !isPositionOccupied(x, z, 2.0) && !isPositionOccupiedByFloor(x, z, 4.0)) {
-                                createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), typeToSpawn, 'muda');
-                                spawned = true;
-                                raycastTargetsNeedUpdate = true;
-                            }
-                        }
+                    if (y > waterLevel + 1.0 && y < 25 &&
+                        !isAreaOccupiedByConstruction(x, z, 5.0) &&
+                        !isPositionOccupied(x, z, 2.0) &&
+                        !isPositionOccupiedByFloor(x, z, 4.0)) {
+                        createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), item, 'arvore_adulta');
+                        count++;
+                        raycastTargetsNeedUpdate = true;
                     }
                 }
             });
@@ -6165,28 +6157,28 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             ];
 
             types.forEach(treeInfo => {
-                let spawned = false;
-                let attempts = 0;
-                while (!spawned && attempts < 200) {
-                    attempts++;
-                    const angle = Math.random() * Math.PI * 2;
-                    let dist;
-                    if (treeInfo.treeType === 'coconut') {
-                        dist = capimRadius + Math.random() * (beachRadius - capimRadius);
-                    } else {
-                        dist = Math.random() * capimRadius;
-                    }
+                for (let i = 0; i < 10; i++) {
+                    let spawned = false;
+                    let attempts = 0;
+                    while (!spawned && attempts < 200) {
+                        attempts++;
+                        const angle = Math.random() * Math.PI * 2;
+                        const dist = treeInfo.treeType === 'coconut'
+                            ? capimRadius + Math.random() * (beachRadius - capimRadius)
+                            : Math.random() * capimRadius;
+                        const x = Math.cos(angle) * dist;
+                        const z = Math.sin(angle) * dist;
+                        const y = window.getSurfaceHeight(x, z);
 
-                    const x = Math.cos(angle) * dist;
-                    const z = Math.sin(angle) * dist;
-                    const y = window.getSurfaceHeight(x, z);
-
-                    if (y > waterLevel + 1.0 && y < 25) {
-                        if (!isAreaOccupiedByConstruction(x, z, 5.0) && !isPositionOccupied(x, z, 2.0) && !isPositionOccupiedByFloor(x, z, 4.0)) {
+                        if (y > waterLevel + 1.0 && y < 25 &&
+                            !isAreaOccupiedByConstruction(x, z, 5.0) &&
+                            !isPositionOccupied(x, z, 2.0) &&
+                            !isPositionOccupiedByFloor(x, z, 4.0)) {
                             createPlaceableBlock(new THREE.Vector3(x, y, z), new THREE.Quaternion(), treeInfo.type, treeInfo.stage);
                             spawned = true;
                         }
                     }
+                    if (!spawned) break;
                 }
             });
         }
@@ -6314,6 +6306,41 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             bird.userData = { leftWing: leftWingPivot, rightWing: rightWingPivot, body, tail, feet };
 
             return bird;
+        }
+
+        function spawnBirdsFromTree(position, treeHeight) {
+            const flockSize = 3 + Math.floor(Math.random() * 3);
+            const launchPosition = position.clone();
+            launchPosition.y += treeHeight * 0.75;
+
+            for (let i = 0; i < flockSize; i++) {
+                const mesh = createBirdMesh();
+                mesh.position.copy(launchPosition).add(new THREE.Vector3(
+                    (Math.random() - 0.5) * 1.5,
+                    (Math.random() - 0.5) * 1.5,
+                    (Math.random() - 0.5) * 1.5
+                ));
+                const velocity = new THREE.Vector3(
+                    (Math.random() - 0.5) * 12,
+                    4 + Math.random() * 5,
+                    (Math.random() - 0.5) * 12
+                );
+                const flySpeed = 13 + Math.random() * 8;
+                velocity.normalize().multiplyScalar(flySpeed);
+                scene.add(mesh);
+                birds.push({
+                    mesh,
+                    velocity,
+                    flapOffset: Math.random() * Math.PI * 2,
+                    flapSpeed: 10 + Math.random() * 5,
+                    flySpeed,
+                    state: 'flying',
+                    perchTargetBody: null,
+                    perchUntil: 0
+                });
+            }
+
+            return flockSize;
         }
 
         function setBirdPerchedPose(bird, perched) {
@@ -12354,6 +12381,9 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                                 }
 
                                 if (isTreeObject) {
+                                    if (destroyTargetBody.userData.growthStage === 'arvore_adulta') {
+                                        spawnBirdsFromTree(position, destroyTargetBody.userData.dimensions?.height || 10);
+                                    }
                                     if (!addItemToInventory(backpackItems, { name: branchItemName, quantity: 3 }, maxWeight)) itemsToDrop.push({ name: branchItemName, quantity: 3 });
                                     if (treeType === 'apple') {
                                         if (!addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 4 }, maxWeight)) itemsToDrop.push({ name: treeTrunkItemName, quantity: 4 });
@@ -15761,6 +15791,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             Object.defineProperty(window, 'lastWeatherChange', { get: () => lastWeatherChange, set: (v) => { lastWeatherChange = v; } });
             Object.defineProperty(window, 'nextWeatherDuration', { get: () => nextWeatherDuration, set: (v) => { nextWeatherDuration = v; } });
             window.spawnBirdGroup = spawnBirdGroup;
+            window.spawnBirdsFromTree = spawnBirdsFromTree;
             window.createBirdMesh = createBirdMesh;
             window.updateBirds = updateBirds;
             window.findBirdGroundPerchTarget = findBirdGroundPerchTarget;
