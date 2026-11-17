@@ -1699,6 +1699,7 @@
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
         const worldSize = 1200;
         let birds = []; // NOVO: Array para armazenar os pássaros
+        let lastBirdPlayerActionTime = -Infinity;
         let islandAmbientAudio = null; // Som ambiente da ilha (interior)
         let beachAmbientAudio = null; // Som ambiente da praia/mar
         let lastBirdSpawnCheck = 0; // NOVO: Controle de tempo para spawn de pássaros
@@ -6299,26 +6300,76 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
         }
 
         function getBirdPerchPosition(body) {
-            const dimensions = body?.userData?.dimensions;
-            if (!dimensions || !Number.isFinite(dimensions.height) ||
-                !Number.isFinite(dimensions.width) || !Number.isFinite(dimensions.depth) ||
-                dimensions.width < 0.4 || dimensions.depth < 0.4) return null;
+            if (body?.isGroundPerch) {
+                if (hasWaterAt(body.position.x, body.position.z)) return null;
+                return body.position.clone();
+            }
 
-            const position = body.position;
-            const topY = position.y + dimensions.height / 2;
+            const mesh = placedConstructionMeshes[placedConstructionBodies.indexOf(body)] ||
+                collectibleBoxes.find(entry => entry.body === body)?.mesh;
+            if (!mesh) return null;
+
+            let centerX, centerZ, topY;
+            const dimensions = body.userData?.dimensions;
+            if (dimensions && Number.isFinite(dimensions.height) &&
+                Number.isFinite(dimensions.width) && Number.isFinite(dimensions.depth)) {
+                if (dimensions.width < 0.4 || dimensions.depth < 0.4) return null;
+                centerX = body.position.x;
+                centerZ = body.position.z;
+                topY = body.position.y + dimensions.height / 2;
+            } else {
+                const bounds = new THREE.Box3().setFromObject(mesh);
+                if (bounds.isEmpty() || bounds.max.x - bounds.min.x < 0.4 ||
+                    bounds.max.z - bounds.min.z < 0.4) return null;
+                centerX = (bounds.min.x + bounds.max.x) / 2;
+                centerZ = (bounds.min.z + bounds.max.z) / 2;
+                topY = bounds.max.y;
+            }
             if (topY <= waterLevel + 0.5) return null;
 
-            return new THREE.Vector3(position.x, topY + 0.28, position.z);
+            return new THREE.Vector3(centerX, topY + 0.28, centerZ);
+        }
+
+        function isBirdPerchTargetAvailable(target) {
+            if (target?.isGroundPerch) {
+                return !hasWaterAt(target.position.x, target.position.z);
+            }
+            return placedConstructionBodies.includes(target) ||
+                collectibleBoxes.some(entry => entry.body === target);
+        }
+
+        function findBirdGroundPerchTarget(start, end) {
+            const dx = end.x - start.x;
+            const dz = end.z - start.z;
+            const lengthSquared = dx * dx + dz * dz;
+            if (lengthSquared === 0) return null;
+
+            const candidates = [];
+            for (let i = 1; i <= 12; i++) {
+                const progress = 0.15 + (i / 13) * 0.7;
+                const x = start.x + dx * progress;
+                const z = start.z + dz * progress;
+                if (hasWaterAt(x, z)) continue;
+                const y = window.getSurfaceHeight(x, z);
+                if (y < waterLevel + 0.5 || y >= start.y - 2) continue;
+                candidates.push({
+                    isGroundPerch: true,
+                    position: new THREE.Vector3(x, y + 0.28, z)
+                });
+            }
+
+            return candidates.length ? candidates[Math.floor(Math.random() * candidates.length)] : null;
         }
 
         function findBirdPerchTarget(start, end) {
             const dx = end.x - start.x;
             const dz = end.z - start.z;
             const lengthSquared = dx * dx + dz * dz;
-            let nearestBody = null;
-            let nearestDistance = 25;
+            if (lengthSquared === 0) return null;
+            const objectCandidates = [];
 
-            for (const body of placedConstructionBodies) {
+            const worldBodies = new Set([...placedConstructionBodies, ...collectibleBoxes.map(entry => entry.body)]);
+            for (const body of worldBodies) {
                 const perchPosition = getBirdPerchPosition(body);
                 if (!perchPosition || perchPosition.y >= start.y - 2) continue;
 
@@ -6328,13 +6379,20 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 const nearestX = start.x + dx * progress;
                 const nearestZ = start.z + dz * progress;
                 const distance = Math.hypot(body.position.x - nearestX, body.position.z - nearestZ);
-                if (distance < nearestDistance) {
-                    nearestBody = body;
-                    nearestDistance = distance;
-                }
+                if (distance < 25) objectCandidates.push(body);
             }
 
-            return nearestBody;
+            const groundTarget = findBirdGroundPerchTarget(start, end);
+            if (objectCandidates.length && groundTarget) {
+                return Math.random() < 0.5
+                    ? objectCandidates[Math.floor(Math.random() * objectCandidates.length)]
+                    : groundTarget;
+            }
+
+            if (objectCandidates.length) {
+                return objectCandidates[Math.floor(Math.random() * objectCandidates.length)];
+            }
+            return groundTarget;
         }
 
         // Pool de geometrias para nuvens para evitar leaks
@@ -6967,7 +7025,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                     flapSpeed: 10 + Math.random() * 5,
                     flySpeed: speed,
                     state: 'flying',
-                    perchTargetBody: Math.random() < 0.18 ? findBirdPerchTarget(basePos, targetPos) : null,
+                    perchTargetBody: Math.random() < 0.7 ? findBirdPerchTarget(basePos, targetPos) : null,
                     perchUntil: 0
                 });
             }
@@ -6982,8 +7040,27 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                     continue;
                 }
 
+                if (playerBody) {
+                    let playerDx = playerBody.position.x - bird.mesh.position.x;
+                    let playerDz = playerBody.position.z - bird.mesh.position.z;
+                    if (Math.abs(playerDx) > worldSize / 2) playerDx -= Math.sign(playerDx) * worldSize;
+                    if (Math.abs(playerDz) > worldSize / 2) playerDz -= Math.sign(playerDz) * worldSize;
+                    const playerNear = Math.hypot(playerDx, playerDz) < 10 &&
+                        Math.abs(playerBody.position.y - bird.mesh.position.y) < 12;
+                    const playerActive = playerBody.velocity.lengthSquared() > 0.25 ||
+                        Object.values(keysPressed).some(Boolean) ||
+                        performance.now() - lastBirdPlayerActionTime < 1000;
+
+                    if (playerNear && playerActive) {
+                        bird.state = 'flying';
+                        bird.perchTargetBody = null;
+                        bird.velocity.set(-playerDx, 4 + Math.random() * 2, -playerDz);
+                        bird.velocity.normalize().multiplyScalar(bird.flySpeed + 4);
+                    }
+                }
+
                 if (bird.state === 'perched') {
-                    if (!placedConstructionBodies.includes(bird.perchTargetBody)) {
+                    if (!isBirdPerchTargetAvailable(bird.perchTargetBody)) {
                         bird.state = 'flying';
                         bird.perchTargetBody = null;
                         bird.velocity.set((Math.random() - 0.5) * 12, 4, (Math.random() - 0.5) * 12);
@@ -7008,15 +7085,15 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
 
                 if (bird.perchTargetBody) {
                     const perchPosition = getBirdPerchPosition(bird.perchTargetBody);
-                    if (!placedConstructionBodies.includes(bird.perchTargetBody) || !perchPosition) {
+                    if (!isBirdPerchTargetAvailable(bird.perchTargetBody) || !perchPosition) {
                         bird.perchTargetBody = null;
                     } else {
-                        const toPerch = perchPosition.sub(bird.mesh.position);
+                        const toPerch = perchPosition.clone().sub(bird.mesh.position);
                         if (toPerch.length() < 0.65) {
-                            bird.mesh.position.copy(bird.perchTargetBody.position);
-                            bird.mesh.position.y += bird.perchTargetBody.userData.dimensions.height / 2 + 0.28;
+                            bird.mesh.position.copy(perchPosition);
                             bird.state = 'perched';
-                            bird.perchUntil = world.time + 5 + Math.random() * 8;
+                            const longPerch = Math.random() < 0.18;
+                            bird.perchUntil = world.time + (longPerch ? 30 + Math.random() * 35 : 8 + Math.random() * 14);
                             bird.velocity.set(0, 0, 0);
                             bird.mesh.userData.leftWing.rotation.z = 0;
                             bird.mesh.userData.rightWing.rotation.z = 0;
@@ -7030,6 +7107,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 bird.mesh.position.add(bird.velocity.clone().multiplyScalar(delta));
                 if (bird.velocity.lengthSq() > 0.001) {
                     bird.mesh.lookAt(bird.mesh.position.clone().add(bird.velocity));
+                    bird.mesh.rotateY(Math.PI);
                 }
 
                 const flapAngle = Math.sin(world.time * bird.flapSpeed + bird.flapOffset) * 0.8;
@@ -9711,6 +9789,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
 
             // Configura os Listeners de Eventos para teclado e mouse
             window.addEventListener('keydown', (event) => {
+                lastBirdPlayerActionTime = performance.now();
                 if (splitModal && splitModal.style.display !== 'none') {
                     if (event.key === 'Escape') {
                         closeSplitModal();
@@ -10096,6 +10175,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
 
             // NOVO: Listener de mousedown consolidado
             renderer.domElement.addEventListener('mousedown', (event) => {
+                lastBirdPlayerActionTime = performance.now();
                 if (!isWorldReady || gamePaused || !document.pointerLockElement) return;
 
                 // NOVO: Impede ações de clique se o modal do contêiner estiver aberto
@@ -15637,6 +15717,8 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             window.spawnBirdGroup = spawnBirdGroup;
             window.createBirdMesh = createBirdMesh;
             window.updateBirds = updateBirds;
+            window.findBirdGroundPerchTarget = findBirdGroundPerchTarget;
+            window.findBirdPerchTarget = findBirdPerchTarget;
             window.applyFPSSettings = applyFPSSettings;
             Object.defineProperty(window, 'showFPS', { get: () => showFPS, set: (v) => { showFPS = v; } });
             window.applyAutoRenderDistanceSettings = applyAutoRenderDistanceSettings;
