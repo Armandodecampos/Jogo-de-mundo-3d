@@ -232,29 +232,46 @@ test.describe('Bucket rain and collection', () => {
         expect(result.coveredBucketFilled).toBe(false);
     });
 
-    test('rain creates short-lived puddles on the ground', async ({ page }) => {
+    test('rain creates smaller, shorter-lived ground splashes at triple density', async ({ page }) => {
         const result = await page.evaluate(() => {
             const originalRandom = Math.random;
             Math.random = () => 0;
+            window.rainPuddles.splice(0).forEach(({ mesh }) => {
+                window.scene.remove(mesh);
+                mesh.material.dispose();
+            });
             window.targetRainIntensity = 1;
             window.rainIntensity = 1;
             window.lastWeatherChange = window.world.time;
             window.nextWeatherDuration = 1000;
-            window.updateWeather(0.5);
+            for (let i = 0; i < 10; i++) window.updateWeather(0.05);
 
             const appeared = window.rainPuddles.length > 0;
-            const puddleY = appeared ? window.rainPuddles[0].mesh.position.y : null;
+            const firstSplash = appeared ? window.rainPuddles[0] : null;
+            const splashCount = window.rainPuddles.length;
 
             window.targetRainIntensity = 0;
             window.rainIntensity = 0;
-            window.updateWeather(5);
+            window.updateWeather(2);
             Math.random = originalRandom;
 
-            return { appeared, puddleY, disappeared: window.rainPuddles.length === 0 };
+            return {
+                appeared,
+                puddleY: firstSplash?.mesh.position.y ?? null,
+                width: firstSplash?.width ?? null,
+                depth: firstSplash?.depth ?? null,
+                lifetime: firstSplash?.lifetime ?? null,
+                splashCount,
+                disappeared: window.rainPuddles.length === 0
+            };
         });
 
         expect(result.appeared).toBe(true);
         expect(result.puddleY).toBeGreaterThan(-8);
+        expect(result.width).toBeLessThanOrEqual(0.4);
+        expect(result.depth).toBeLessThanOrEqual(0.25);
+        expect(result.lifetime).toBeLessThanOrEqual(5 / 3);
+        expect(result.splashCount).toBeGreaterThanOrEqual(9);
         expect(result.disappeared).toBe(true);
     });
 });

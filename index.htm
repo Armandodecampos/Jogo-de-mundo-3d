@@ -1703,7 +1703,8 @@
         let beachAmbientAudio = null; // Som ambiente da praia/mar
         let lastBirdSpawnCheck = 0; // NOVO: Controle de tempo para spawn de pássaros
         let nextBirdSoundTime = 5 + Math.random() * 10; // Próximo tempo para som de pássaro
-        let birdBodyGeom, birdWingGeom, birdTailGeom, birdMat;
+        let birdBodyGeom, birdWingGeom, birdTailGeom, birdHeadGeom, birdBeakGeom, birdEyeGeom, birdPupilGeom, birdFootGeom;
+        let birdPalettes, birdEyeMat, birdPupilMat, birdBeakMat, birdFootMat;
 
         const islandAmbientUrl = "https://dl.dropbox.com/scl/fi/3dolt8qlwr3rh51j5oy4l/wind_island_nature_t_-2-1774031396110.mp3?rlkey=u6kc916o88hg0f1tqf7kfkp52&st=yktjz581&dl=1";
         const jumpCollectUrl = "https://dl.dropbox.com/scl/fi/sjpuxweazroikuidy9zxd/jump_from_the_grass.mp3?rlkey=rnk2n6irrt9lys5twbwcsd8g9&st=ck8xzpsg&dl=1";
@@ -6191,48 +6192,149 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
 
         // NOVO: Funções para o sistema de pássaros
         function createBirdMesh() {
-            if (!birdMat) {
-                birdBodyGeom = new THREE.ConeGeometry(0.1, 0.5, 4);
-                birdBodyGeom.rotateX(Math.PI / 2);
-                birdWingGeom = new THREE.BoxGeometry(0.6, 0.02, 0.2);
-                birdWingGeom.translate(0.3, 0, 0);
-                birdTailGeom = new THREE.PlaneGeometry(0.4, 0.3);
-                birdMat = new THREE.MeshStandardMaterial({ color: 0x222222, flatShading: true, fog: false });
+            if (!birdBodyGeom) {
+                birdBodyGeom = new THREE.SphereGeometry(1, 12, 8);
+                const wingShape = new THREE.Shape();
+                wingShape.moveTo(0, 0.13);
+                wingShape.lineTo(0.22, 0.16);
+                wingShape.lineTo(0.45, 0.09);
+                wingShape.lineTo(0.58, 0.02);
+                wingShape.lineTo(0.48, -0.06);
+                wingShape.lineTo(0.38, -0.02);
+                wingShape.lineTo(0.31, -0.12);
+                wingShape.lineTo(0.23, -0.05);
+                wingShape.lineTo(0.15, -0.13);
+                wingShape.lineTo(0.08, -0.04);
+                wingShape.lineTo(0, -0.08);
+                wingShape.closePath();
+                birdWingGeom = new THREE.ShapeGeometry(wingShape);
+                birdWingGeom.rotateX(-Math.PI / 2);
+                const tailShape = new THREE.Shape();
+                tailShape.moveTo(0, 0);
+                tailShape.lineTo(-0.2, -0.24);
+                tailShape.lineTo(-0.06, -0.2);
+                tailShape.lineTo(0, -0.28);
+                tailShape.lineTo(0.06, -0.2);
+                tailShape.lineTo(0.2, -0.24);
+                tailShape.closePath();
+                birdTailGeom = new THREE.ShapeGeometry(tailShape);
+                birdTailGeom.rotateX(-Math.PI / 2);
+                birdHeadGeom = new THREE.SphereGeometry(1, 10, 8);
+                birdBeakGeom = new THREE.ConeGeometry(0.055, 0.18, 5);
+                birdBeakGeom.rotateX(-Math.PI / 2);
+                birdEyeGeom = new THREE.SphereGeometry(0.035, 8, 6);
+                birdPupilGeom = new THREE.SphereGeometry(0.018, 6, 4);
+                birdFootGeom = new THREE.CylinderGeometry(0.012, 0.012, 0.12, 5);
+                birdPalettes = [
+                    { body: 0xf2c14e, wing: 0xe07a32, belly: 0xffe6a3 },
+                    { body: 0x38a3a5, wing: 0x247ba0, belly: 0xd8f3dc },
+                    { body: 0xe76f51, wing: 0x9b2226, belly: 0xffd6a5 },
+                    { body: 0x8ac926, wing: 0x1982c4, belly: 0xf1faee },
+                    { body: 0xb388eb, wing: 0x7b2cbf, belly: 0xf3e8ff }
+                ].map(palette => ({
+                    body: new THREE.MeshStandardMaterial({ color: palette.body, roughness: 0.78, flatShading: true }),
+                    wing: new THREE.MeshStandardMaterial({ color: palette.wing, roughness: 0.78, flatShading: true, side: THREE.DoubleSide }),
+                    belly: new THREE.MeshStandardMaterial({ color: palette.belly, roughness: 0.82, flatShading: true }),
+                    tail: new THREE.MeshStandardMaterial({ color: palette.wing, roughness: 0.78, flatShading: true, side: THREE.DoubleSide })
+                }));
+                birdEyeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 });
+                birdPupilMat = new THREE.MeshStandardMaterial({ color: 0x171717, roughness: 0.35 });
+                birdBeakMat = new THREE.MeshStandardMaterial({ color: 0xf28c28, roughness: 0.72, flatShading: true });
+                birdFootMat = new THREE.MeshStandardMaterial({ color: 0xc76f32, roughness: 0.8 });
             }
 
             const bird = new THREE.Group();
-
-            // Corpo
-            const body = new THREE.Mesh(birdBodyGeom, birdMat);
+            const palette = birdPalettes[Math.floor(Math.random() * birdPalettes.length)];
+            const body = new THREE.Mesh(birdBodyGeom, palette.body);
+            body.scale.set(0.2, 0.19, 0.36);
             bird.add(body);
 
-            // Pivot da Asa Esquerda
-            const leftWingPivot = new THREE.Group();
-            leftWingPivot.position.set(-0.1, 0, 0.1);
-            bird.add(leftWingPivot);
+            const belly = new THREE.Mesh(birdBodyGeom, palette.belly);
+            belly.position.set(0, -0.055, -0.015);
+            belly.scale.set(0.16, 0.145, 0.27);
+            bird.add(belly);
 
-            const leftWing = new THREE.Mesh(birdWingGeom, birdMat);
-            leftWing.rotation.y = Math.PI; // Inverte para a esquerda
-            leftWingPivot.add(leftWing);
+            const head = new THREE.Mesh(birdHeadGeom, palette.body);
+            head.position.set(0, 0.095, -0.29);
+            head.scale.set(0.145, 0.14, 0.15);
+            bird.add(head);
 
-            // Pivot da Asa Direita
-            const rightWingPivot = new THREE.Group();
-            rightWingPivot.position.set(0.1, 0, 0.1);
-            bird.add(rightWingPivot);
+            const beak = new THREE.Mesh(birdBeakGeom, birdBeakMat);
+            beak.position.set(0, 0.055, -0.47);
+            bird.add(beak);
 
-            const rightWing = new THREE.Mesh(birdWingGeom, birdMat);
-            rightWingPivot.add(rightWing);
+            for (const side of [-1, 1]) {
+                const eye = new THREE.Mesh(birdEyeGeom, birdEyeMat);
+                eye.position.set(side * 0.12, 0.12, -0.335);
+                bird.add(eye);
+                const pupil = new THREE.Mesh(birdPupilGeom, birdPupilMat);
+                pupil.position.set(side * 0.143, 0.12, -0.35);
+                bird.add(pupil);
 
-            // Cauda
-            const tail = new THREE.Mesh(birdTailGeom, birdMat);
-            tail.rotation.x = Math.PI / 2;
-            tail.position.z = -0.4;
+                const foot = new THREE.Mesh(birdFootGeom, birdFootMat);
+                foot.position.set(side * 0.075, -0.22, 0.015);
+                bird.add(foot);
+            }
+
+            const tail = new THREE.Mesh(birdTailGeom, palette.tail);
+            tail.position.set(0, 0.015, 0.28);
             bird.add(tail);
 
-            // Armazenamos os pivots para animar a rotação (bater de asas)
+            const leftWingPivot = new THREE.Group();
+            leftWingPivot.position.set(-0.12, 0.07, -0.015);
+            bird.add(leftWingPivot);
+            const leftWing = new THREE.Mesh(birdWingGeom, palette.wing);
+            leftWing.scale.x = -1;
+            leftWingPivot.add(leftWing);
+
+            const rightWingPivot = new THREE.Group();
+            rightWingPivot.position.set(0.12, 0.07, -0.015);
+            bird.add(rightWingPivot);
+            const rightWing = new THREE.Mesh(birdWingGeom, palette.wing);
+            rightWingPivot.add(rightWing);
+
             bird.userData = { leftWing: leftWingPivot, rightWing: rightWingPivot };
 
             return bird;
+        }
+
+        function getBirdPerchPosition(body) {
+            const dimensions = body?.userData?.dimensions;
+            if (!dimensions || !Number.isFinite(dimensions.height) ||
+                !Number.isFinite(dimensions.width) || !Number.isFinite(dimensions.depth) ||
+                dimensions.width < 0.4 || dimensions.depth < 0.4) return null;
+
+            const position = body.position;
+            const topY = position.y + dimensions.height / 2;
+            if (topY <= waterLevel + 0.5) return null;
+
+            return new THREE.Vector3(position.x, topY + 0.28, position.z);
+        }
+
+        function findBirdPerchTarget(start, end) {
+            const dx = end.x - start.x;
+            const dz = end.z - start.z;
+            const lengthSquared = dx * dx + dz * dz;
+            let nearestBody = null;
+            let nearestDistance = 25;
+
+            for (const body of placedConstructionBodies) {
+                const perchPosition = getBirdPerchPosition(body);
+                if (!perchPosition || perchPosition.y >= start.y - 2) continue;
+
+                const progress = ((body.position.x - start.x) * dx + (body.position.z - start.z) * dz) / lengthSquared;
+                if (progress < 0.15 || progress > 0.85) continue;
+
+                const nearestX = start.x + dx * progress;
+                const nearestZ = start.z + dz * progress;
+                const distance = Math.hypot(body.position.x - nearestX, body.position.z - nearestZ);
+                if (distance < nearestDistance) {
+                    nearestBody = body;
+                    nearestDistance = distance;
+                }
+            }
+
+            return nearestBody;
         }
 
         // Pool de geometrias para nuvens para evitar leaks
@@ -6603,7 +6705,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
         function spawnRainPuddle() {
             const playerPosition = playerBody && playerBody.position;
             const getGroundHeight = window.getActualHeight || window.getSurfaceHeight;
-            if (!playerPosition || !getGroundHeight || rainPuddles.length >= 24) return;
+            if (!playerPosition || !getGroundHeight || rainPuddles.length >= 72) return;
 
             const angle = Math.random() * Math.PI * 2;
             const distance = 3 + Math.random() * 18;
@@ -6620,8 +6722,8 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 depthWrite: false
             });
             const mesh = new THREE.Mesh(rainPuddleGeometry, material);
-            const width = 0.35 + Math.random() * 0.45;
-            const depth = 0.2 + Math.random() * 0.3;
+            const width = 0.175 + Math.random() * 0.225;
+            const depth = 0.1 + Math.random() * 0.15;
             mesh.rotation.set(-Math.PI / 2, 0, Math.random() * Math.PI);
             mesh.position.set(x, y + 0.025, z);
             mesh.scale.set(width, depth, 1);
@@ -6630,7 +6732,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             rainPuddles.push({
                 mesh,
                 age: 0,
-                lifetime: 3 + Math.random() * 2,
+                lifetime: 1 + Math.random() * (2 / 3),
                 width,
                 depth
             });
@@ -6647,8 +6749,8 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                     continue;
                 }
 
-                const fadeIn = Math.min(1, puddle.age / 0.3);
-                const fadeOut = Math.min(1, (puddle.lifetime - puddle.age) / 1.2);
+                const fadeIn = Math.min(1, puddle.age / 0.1);
+                const fadeOut = Math.min(1, (puddle.lifetime - puddle.age) / 0.4);
                 puddle.mesh.material.opacity = 0.45 * fadeIn * fadeOut;
                 const scale = 0.7 + 0.3 * fadeIn;
                 puddle.mesh.scale.set(puddle.width * scale, puddle.depth * scale, 1);
@@ -6658,7 +6760,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 rainPuddleSpawnTimer -= delta;
                 if (rainPuddleSpawnTimer <= 0) {
                     spawnRainPuddle();
-                    rainPuddleSpawnTimer = 0.45 + Math.random() * 0.55;
+                    rainPuddleSpawnTimer = (0.45 + Math.random() * 0.55) / 9;
                 }
             }
         }
@@ -6862,8 +6964,78 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                         (Math.random() - 0.5) * 2
                     )),
                     flapOffset: Math.random() * Math.PI * 2,
-                    flapSpeed: 10 + Math.random() * 5
+                    flapSpeed: 10 + Math.random() * 5,
+                    flySpeed: speed,
+                    state: 'flying',
+                    perchTargetBody: Math.random() < 0.18 ? findBirdPerchTarget(basePos, targetPos) : null,
+                    perchUntil: 0
                 });
+            }
+        }
+
+        function updateBirds(delta, despawnDist) {
+            for (let i = birds.length - 1; i >= 0; i--) {
+                const bird = birds[i];
+                if (bird.mesh.position.distanceTo(camera.position) > despawnDist) {
+                    scene.remove(bird.mesh);
+                    birds.splice(i, 1);
+                    continue;
+                }
+
+                if (bird.state === 'perched') {
+                    if (!placedConstructionBodies.includes(bird.perchTargetBody)) {
+                        bird.state = 'flying';
+                        bird.perchTargetBody = null;
+                        bird.velocity.set((Math.random() - 0.5) * 12, 4, (Math.random() - 0.5) * 12);
+                    } else if (world.time < bird.perchUntil) {
+                        const perchPosition = getBirdPerchPosition(bird.perchTargetBody);
+                        if (perchPosition) {
+                            bird.mesh.position.copy(perchPosition);
+                            bird.mesh.position.y += Math.sin(world.time * 2 + bird.flapOffset) * 0.025;
+                            bird.mesh.userData.leftWing.rotation.z = 0;
+                            bird.mesh.userData.rightWing.rotation.z = 0;
+                            continue;
+                        }
+                        bird.state = 'flying';
+                        bird.perchTargetBody = null;
+                        bird.velocity.set((Math.random() - 0.5) * 12, 4, (Math.random() - 0.5) * 12);
+                    } else {
+                        bird.state = 'flying';
+                        bird.perchTargetBody = null;
+                        bird.velocity.set((Math.random() - 0.5) * 12, 4, (Math.random() - 0.5) * 12);
+                    }
+                }
+
+                if (bird.perchTargetBody) {
+                    const perchPosition = getBirdPerchPosition(bird.perchTargetBody);
+                    if (!placedConstructionBodies.includes(bird.perchTargetBody) || !perchPosition) {
+                        bird.perchTargetBody = null;
+                    } else {
+                        const toPerch = perchPosition.sub(bird.mesh.position);
+                        if (toPerch.length() < 0.65) {
+                            bird.mesh.position.copy(bird.perchTargetBody.position);
+                            bird.mesh.position.y += bird.perchTargetBody.userData.dimensions.height / 2 + 0.28;
+                            bird.state = 'perched';
+                            bird.perchUntil = world.time + 5 + Math.random() * 8;
+                            bird.velocity.set(0, 0, 0);
+                            bird.mesh.userData.leftWing.rotation.z = 0;
+                            bird.mesh.userData.rightWing.rotation.z = 0;
+                            continue;
+                        }
+                        toPerch.setLength(Math.min(bird.flySpeed, toPerch.length() * 1.5));
+                        bird.velocity.lerp(toPerch, Math.min(1, delta * 1.2));
+                    }
+                }
+
+                bird.mesh.position.add(bird.velocity.clone().multiplyScalar(delta));
+                if (bird.velocity.lengthSq() > 0.001) {
+                    bird.mesh.lookAt(bird.mesh.position.clone().add(bird.velocity));
+                }
+
+                const flapAngle = Math.sin(world.time * bird.flapSpeed + bird.flapOffset) * 0.8;
+                bird.mesh.userData.leftWing.rotation.z = flapAngle;
+                bird.mesh.userData.rightWing.rotation.z = -flapAngle;
+
             }
         }
 
@@ -14311,26 +14483,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                     }
                 }
 
-                for (let i = birds.length - 1; i >= 0; i--) {
-                    const bird = birds[i];
-                    // Move o pássaro
-                    bird.mesh.position.add(bird.velocity.clone().multiplyScalar(delta));
-
-                    // Aponta o pássaro para a direção da velocidade
-                    const lookAtPos = bird.mesh.position.clone().add(bird.velocity);
-                    bird.mesh.lookAt(lookAtPos);
-
-                    // Anima as asas
-                    const flapAngle = Math.sin(world.time * bird.flapSpeed + bird.flapOffset) * 0.8;
-                    bird.mesh.userData.leftWing.rotation.z = flapAngle;
-                    bird.mesh.userData.rightWing.rotation.z = -flapAngle;
-
-                    // Despawn se estiver muito longe
-                    if (bird.mesh.position.distanceTo(camera.position) > despawnDist) {
-                        scene.remove(bird.mesh);
-                        birds.splice(i, 1);
-                    }
-                }
+                updateBirds(delta, despawnDist);
             }
 
             // Intensidade local é global agora
@@ -15482,6 +15635,8 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             Object.defineProperty(window, 'lastWeatherChange', { get: () => lastWeatherChange, set: (v) => { lastWeatherChange = v; } });
             Object.defineProperty(window, 'nextWeatherDuration', { get: () => nextWeatherDuration, set: (v) => { nextWeatherDuration = v; } });
             window.spawnBirdGroup = spawnBirdGroup;
+            window.createBirdMesh = createBirdMesh;
+            window.updateBirds = updateBirds;
             window.applyFPSSettings = applyFPSSettings;
             Object.defineProperty(window, 'showFPS', { get: () => showFPS, set: (v) => { showFPS = v; } });
             window.applyAutoRenderDistanceSettings = applyAutoRenderDistanceSettings;
