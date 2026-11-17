@@ -84,6 +84,7 @@ test.describe('Birds', () => {
                     spawnedBird.mesh.userData.leftWing.rotation.z,
                     spawnedBird.mesh.userData.rightWing.rotation.z
                 ];
+                const landedTilt = new THREE.Euler().setFromQuaternion(spawnedBird.mesh.quaternion, 'YXZ');
 
                 window.playerBody.position.copy(spawnedBird.mesh.position);
                 window.playerBody.velocity.set(0, 0, 0);
@@ -103,7 +104,14 @@ test.describe('Birds', () => {
                 orientationBird.mesh.position.set(cameraPosition.x + 30, cameraPosition.y, cameraPosition.z);
                 window.scene.add(orientationBird.mesh);
                 window.birds.push(orientationBird);
+                const originalWorldTime = window.world.time;
+                window.world.time = 0;
                 window.updateBirds(0.016, 100000);
+                const wingsOpen = orientationBird.mesh.userData.leftWing.rotation.y;
+                window.world.time = Math.PI / (orientationBird.flapSpeed * 0.55);
+                window.updateBirds(0.016, 100000);
+                const wingsFolded = orientationBird.mesh.userData.leftWing.rotation.y;
+                window.world.time = originalWorldTime;
                 const facingDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(orientationBird.mesh.quaternion);
 
                 return {
@@ -118,6 +126,9 @@ test.describe('Birds', () => {
                     expectedHeight: perchBody.position.y + perchBody.userData.dimensions.height / 2 + 0.28,
                     perchDuration,
                     foldedWingAngles,
+                    landedTilt: { x: landedTilt.x, z: landedTilt.z },
+                    wingsOpen,
+                    wingsFolded,
                     generatedFlySpeed: generatedBird?.flySpeed,
                     scared: spawnedBird.state === 'flying' && spawnedBird.perchTargetBody === null,
                     facingForward: facingDirection.dot(orientationBird.velocity.clone().normalize()) > 0.9
@@ -159,6 +170,10 @@ test.describe('Birds', () => {
         expect(result.perchDuration).toBeGreaterThanOrEqual(30);
         expect(result.foldedWingAngles[0]).toBeGreaterThan(1);
         expect(result.foldedWingAngles[1]).toBeLessThan(-1);
+        expect(Math.abs(result.landedTilt.x)).toBeLessThan(0.01);
+        expect(Math.abs(result.landedTilt.z)).toBeLessThan(0.01);
+        expect(Math.abs(result.wingsOpen)).toBeLessThan(0.01);
+        expect(result.wingsFolded).toBeGreaterThan(0.6);
         expect(result.generatedFlySpeed).toBeGreaterThan(12);
         expect(result.scared).toBe(true);
         expect(result.facingForward).toBe(true);

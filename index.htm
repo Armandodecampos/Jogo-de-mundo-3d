@@ -6327,6 +6327,19 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             });
         }
 
+        function faceBirdHorizontally(bird, direction = bird.velocity) {
+            const heading = direction.clone();
+            heading.y = 0;
+            if (heading.lengthSq() < 0.001) {
+                heading.set(0, 0, -1).applyQuaternion(bird.mesh.quaternion);
+                heading.y = 0;
+            }
+            if (heading.lengthSq() < 0.001) heading.set(0, 0, 1);
+            heading.normalize();
+            bird.mesh.lookAt(bird.mesh.position.clone().add(heading));
+            bird.mesh.rotateY(Math.PI);
+        }
+
         function getBirdPerchPosition(body) {
             if (body?.isGroundPerch) {
                 if (hasWaterAt(body.position.x, body.position.z)) return null;
@@ -7099,8 +7112,6 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                         if (perchPosition) {
                             bird.mesh.position.copy(perchPosition);
                             bird.mesh.position.y += Math.sin(world.time * 2 + bird.flapOffset) * 0.025;
-                            bird.mesh.userData.leftWing.rotation.z = 0;
-                            bird.mesh.userData.rightWing.rotation.z = 0;
                             continue;
                         }
                         setBirdPerchedPose(bird, false);
@@ -7123,6 +7134,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                         const toPerch = perchPosition.clone().sub(bird.mesh.position);
                         if (toPerch.length() < 0.65) {
                             bird.mesh.position.copy(perchPosition);
+                            faceBirdHorizontally(bird);
                             bird.state = 'perched';
                             setBirdPerchedPose(bird, true);
                             const longPerch = Math.random() < 0.18;
@@ -7142,6 +7154,9 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 }
 
                 const flapAngle = Math.sin(world.time * bird.flapSpeed + bird.flapOffset) * 0.8;
+                const foldAmount = (1 - Math.cos(world.time * bird.flapSpeed * 0.55 + bird.flapOffset)) / 2;
+                bird.mesh.userData.leftWing.rotation.y = foldAmount * 0.7;
+                bird.mesh.userData.rightWing.rotation.y = -foldAmount * 0.7;
                 bird.mesh.userData.leftWing.rotation.z = flapAngle;
                 bird.mesh.userData.rightWing.rotation.z = -flapAngle;
 
