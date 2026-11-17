@@ -43,11 +43,15 @@ test.describe('Birds', () => {
             const end = new THREE.Vector3(cameraPosition.x + 20, 40, cameraPosition.z);
             let spawnedBird;
             let orientationBird;
+            let generatedBird;
 
             try {
                 window.playerBody.position.set(cameraPosition.x + 100, cameraPosition.y, cameraPosition.z);
                 window.playerBody.velocity.set(0, 0, 0);
                 Math.random = () => 0;
+                const existingBirds = new Set(window.birds);
+                window.spawnBirdGroup();
+                generatedBird = window.birds.find(bird => !existingBirds.has(bird));
 
                 const target = window.findBirdPerchTarget(start, end);
                 const groundTarget = window.findBirdGroundPerchTarget(start, end);
@@ -76,6 +80,10 @@ test.describe('Birds', () => {
                 const landed = spawnedBird.state === 'perched';
                 const landedHeight = spawnedBird.mesh.position.y;
                 const perchDuration = spawnedBird.perchUntil - window.world.time;
+                const foldedWingAngles = [
+                    spawnedBird.mesh.userData.leftWing.rotation.z,
+                    spawnedBird.mesh.userData.rightWing.rotation.z
+                ];
 
                 window.playerBody.position.copy(spawnedBird.mesh.position);
                 window.playerBody.velocity.set(0, 0, 0);
@@ -109,6 +117,8 @@ test.describe('Birds', () => {
                     landedHeight,
                     expectedHeight: perchBody.position.y + perchBody.userData.dimensions.height / 2 + 0.28,
                     perchDuration,
+                    foldedWingAngles,
+                    generatedFlySpeed: generatedBird?.flySpeed,
                     scared: spawnedBird.state === 'flying' && spawnedBird.perchTargetBody === null,
                     facingForward: facingDirection.dot(orientationBird.velocity.clone().normalize()) > 0.9
                 };
@@ -121,6 +131,12 @@ test.describe('Birds', () => {
                 if (orientationBirdIndex !== -1) window.birds.splice(orientationBirdIndex, 1);
                 window.scene.remove(spawnedBird?.mesh);
                 window.scene.remove(orientationBird?.mesh);
+                window.birds.slice().forEach(bird => {
+                    if (bird === generatedBird) {
+                        window.scene.remove(bird.mesh);
+                        window.birds.splice(window.birds.indexOf(bird), 1);
+                    }
+                });
                 window.playerBody.position.copy(playerPosition);
                 window.playerBody.velocity.copy(playerVelocity);
                 window.placedConstructionBodies.splice(window.placedConstructionBodies.indexOf(perchBody), 1);
@@ -141,6 +157,9 @@ test.describe('Birds', () => {
         expect(result.landed).toBe(true);
         expect(result.landedHeight).toBeCloseTo(result.expectedHeight, 5);
         expect(result.perchDuration).toBeGreaterThanOrEqual(30);
+        expect(result.foldedWingAngles[0]).toBeGreaterThan(1);
+        expect(result.foldedWingAngles[1]).toBeLessThan(-1);
+        expect(result.generatedFlySpeed).toBeGreaterThan(12);
         expect(result.scared).toBe(true);
         expect(result.facingForward).toBe(true);
     });

@@ -1704,7 +1704,7 @@
         let beachAmbientAudio = null; // Som ambiente da praia/mar
         let lastBirdSpawnCheck = 0; // NOVO: Controle de tempo para spawn de pássaros
         let nextBirdSoundTime = 5 + Math.random() * 10; // Próximo tempo para som de pássaro
-        let birdBodyGeom, birdWingGeom, birdTailGeom, birdHeadGeom, birdBeakGeom, birdEyeGeom, birdPupilGeom, birdFootGeom;
+        let birdBodyGeom, birdWingGeom, birdTailGeom, birdHeadGeom, birdBeakGeom, birdEyeGeom, birdPupilGeom, birdFootGeom, birdToeGeom;
         let birdPalettes, birdEyeMat, birdPupilMat, birdBeakMat, birdFootMat;
 
         const islandAmbientUrl = "https://dl.dropbox.com/scl/fi/3dolt8qlwr3rh51j5oy4l/wind_island_nature_t_-2-1774031396110.mp3?rlkey=u6kc916o88hg0f1tqf7kfkp52&st=yktjz581&dl=1";
@@ -6226,6 +6226,8 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 birdEyeGeom = new THREE.SphereGeometry(0.035, 8, 6);
                 birdPupilGeom = new THREE.SphereGeometry(0.018, 6, 4);
                 birdFootGeom = new THREE.CylinderGeometry(0.012, 0.012, 0.12, 5);
+                birdToeGeom = new THREE.CylinderGeometry(0.009, 0.009, 0.09, 5);
+                birdToeGeom.rotateX(Math.PI / 2);
                 birdPalettes = [
                     { body: 0xf2c14e, wing: 0xe07a32, belly: 0xffe6a3 },
                     { body: 0x38a3a5, wing: 0x247ba0, belly: 0xd8f3dc },
@@ -6264,6 +6266,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             beak.position.set(0, 0.055, -0.47);
             bird.add(beak);
 
+            const feet = [];
             for (const side of [-1, 1]) {
                 const eye = new THREE.Mesh(birdEyeGeom, birdEyeMat);
                 eye.position.set(side * 0.12, 0.12, -0.335);
@@ -6272,9 +6275,23 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 pupil.position.set(side * 0.143, 0.12, -0.35);
                 bird.add(pupil);
 
-                const foot = new THREE.Mesh(birdFootGeom, birdFootMat);
-                foot.position.set(side * 0.075, -0.22, 0.015);
+                const foot = new THREE.Group();
+                foot.position.set(side * 0.075, -0.21, 0.015);
+                const leg = new THREE.Mesh(birdFootGeom, birdFootMat);
+                leg.position.y = -0.015;
+                foot.add(leg);
+                for (const toeSide of [-1, 0, 1]) {
+                    const toe = new THREE.Mesh(birdToeGeom, birdFootMat);
+                    toe.position.set(toeSide * 0.025, -0.07, -0.025);
+                    toe.rotation.y = toeSide * 0.45;
+                    foot.add(toe);
+                }
+                const rearToe = new THREE.Mesh(birdToeGeom, birdFootMat);
+                rearToe.position.set(0, -0.07, 0.035);
+                rearToe.rotation.y = Math.PI;
+                foot.add(rearToe);
                 bird.add(foot);
+                feet.push(foot);
             }
 
             const tail = new THREE.Mesh(birdTailGeom, palette.tail);
@@ -6294,9 +6311,20 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             const rightWing = new THREE.Mesh(birdWingGeom, palette.wing);
             rightWingPivot.add(rightWing);
 
-            bird.userData = { leftWing: leftWingPivot, rightWing: rightWingPivot };
+            bird.userData = { leftWing: leftWingPivot, rightWing: rightWingPivot, body, tail, feet };
 
             return bird;
+        }
+
+        function setBirdPerchedPose(bird, perched) {
+            const userData = bird.mesh.userData;
+            userData.leftWing.rotation.set(0, 0, perched ? 1.15 : 0);
+            userData.rightWing.rotation.set(0, 0, perched ? -1.15 : 0);
+            userData.body.rotation.x = perched ? -0.08 : 0;
+            userData.tail.rotation.x = perched ? 0.12 : 0;
+            userData.feet.forEach(foot => {
+                foot.rotation.x = perched ? -0.08 : 0;
+            });
         }
 
         function getBirdPerchPosition(body) {
@@ -7001,7 +7029,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             const direction = new THREE.Vector3().subVectors(targetPos, basePos).normalize();
             direction.y = 0; // Voar sempre horizontalmente
 
-            const speed = 12 + Math.random() * 8;
+            const speed = 13 + Math.random() * 8;
             const groupVelocity = direction.multiplyScalar(speed);
 
             for (let i = 0; i < groupSize; i++) {
@@ -7052,6 +7080,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                         performance.now() - lastBirdPlayerActionTime < 1000;
 
                     if (playerNear && playerActive) {
+                        if (bird.state === 'perched') setBirdPerchedPose(bird, false);
                         bird.state = 'flying';
                         bird.perchTargetBody = null;
                         bird.velocity.set(-playerDx, 4 + Math.random() * 2, -playerDz);
@@ -7061,6 +7090,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
 
                 if (bird.state === 'perched') {
                     if (!isBirdPerchTargetAvailable(bird.perchTargetBody)) {
+                        setBirdPerchedPose(bird, false);
                         bird.state = 'flying';
                         bird.perchTargetBody = null;
                         bird.velocity.set((Math.random() - 0.5) * 12, 4, (Math.random() - 0.5) * 12);
@@ -7073,10 +7103,12 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                             bird.mesh.userData.rightWing.rotation.z = 0;
                             continue;
                         }
+                        setBirdPerchedPose(bird, false);
                         bird.state = 'flying';
                         bird.perchTargetBody = null;
                         bird.velocity.set((Math.random() - 0.5) * 12, 4, (Math.random() - 0.5) * 12);
                     } else {
+                        setBirdPerchedPose(bird, false);
                         bird.state = 'flying';
                         bird.perchTargetBody = null;
                         bird.velocity.set((Math.random() - 0.5) * 12, 4, (Math.random() - 0.5) * 12);
@@ -7092,11 +7124,10 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                         if (toPerch.length() < 0.65) {
                             bird.mesh.position.copy(perchPosition);
                             bird.state = 'perched';
+                            setBirdPerchedPose(bird, true);
                             const longPerch = Math.random() < 0.18;
                             bird.perchUntil = world.time + (longPerch ? 30 + Math.random() * 35 : 8 + Math.random() * 14);
                             bird.velocity.set(0, 0, 0);
-                            bird.mesh.userData.leftWing.rotation.z = 0;
-                            bird.mesh.userData.rightWing.rotation.z = 0;
                             continue;
                         }
                         toPerch.setLength(Math.min(bird.flySpeed, toPerch.length() * 1.5));
