@@ -14,6 +14,15 @@ test.describe('Birds', () => {
             const geometryTypes = new Set();
             const colors = new Set();
             const treeCounts = { normal: 0, apple: 0, coconut: 0 };
+            const nestTrees = window.placedConstructionBodies.filter(body =>
+                body.userData?.growthStage === 'arvore_adulta' && body.userData.hasBirdNest
+            );
+            const savedNestTreeCount = window.getGameStateData().placedConstructions.filter(
+                construction => construction.userData?.hasBirdNest
+            ).length;
+            const nestFlockSizes = nestTrees.map(tree => window.birds.filter(bird =>
+                bird.isNestBird && bird.nestTreeBody === tree
+            ).length);
             window.placedConstructionBodies.forEach(body => {
                 if (body.userData?.growthStage !== 'arvore_adulta') return;
                 const type = body.userData.treeType || 'normal';
@@ -50,7 +59,7 @@ test.describe('Birds', () => {
             let spawnedBird;
             let orientationBird;
             let generatedBird;
-            let nestBirds = [];
+            let fleeingNestBirds = [];
 
             try {
                 window.playerBody.position.set(cameraPosition.x + 100, cameraPosition.y, cameraPosition.z);
@@ -59,12 +68,15 @@ test.describe('Birds', () => {
                 const existingBirds = new Set(window.birds);
                 window.spawnBirdGroup();
                 generatedBird = window.birds.find(bird => !existingBirds.has(bird));
-                const existingBirdCount = window.birds.length;
-                const nestFlockSize = window.spawnBirdsFromTree(
-                    cameraPosition.clone().add(new THREE.Vector3(100, 0, 0)),
-                    10
+                const nestTreeToBreak = nestTrees[0];
+                const nestBirdsBeforeBreak = window.birds.filter(bird =>
+                    bird.isNestBird && bird.nestTreeBody === nestTreeToBreak
                 );
-                nestBirds = window.birds.slice(existingBirdCount);
+                const nestFlockSize = window.spawnBirdsFromTree(nestTreeToBreak);
+                fleeingNestBirds = nestBirdsBeforeBreak.filter(bird =>
+                    bird.nestTreeBody === null && bird.soundTime !== undefined
+                );
+                const destroyedNestFlagCleared = !nestTreeToBreak.userData.hasBirdNest;
 
                 const target = window.findBirdPerchTarget(start, end);
                 const groundTarget = window.findBirdGroundPerchTarget(start, end);
@@ -131,9 +143,16 @@ test.describe('Birds', () => {
                     geometryTypes: Array.from(geometryTypes),
                     colorCount: colors.size,
                     treeCounts,
+                    nestTreeCount: nestTrees.length,
+                    savedNestTreeCount,
+                    nestFlockSizes,
                     nestFlockSize,
-                    nestBirdCount: nestBirds.length,
-                    nestBirdsLaunched: nestBirds.every(bird => bird.state === 'flying' && bird.velocity.y > 0),
+                    nestBirdCount: fleeingNestBirds.length,
+                    nestBirdsLaunched: fleeingNestBirds.every(bird => bird.state === 'flying' && bird.velocity.y > 0),
+                    fleeSoundsScheduled: fleeingNestBirds.every(bird =>
+                        bird.soundTime !== undefined || bird.fleeSoundPlayed
+                    ),
+                    destroyedNestFlagCleared,
                     objectTargetSelected: target !== null && !target.isGroundPerch,
                     groundTargetIsDry: groundTarget?.isGroundPerch &&
                         !window.hasWaterAt(groundTarget.position.x, groundTarget.position.z),
@@ -153,6 +172,14 @@ test.describe('Birds', () => {
             } finally {
                 Math.random = originalRandom;
                 window.scene.remove(testBird);
+                const nestTreeToRestore = nestTrees[0];
+                if (nestTreeToRestore) nestTreeToRestore.userData.hasBirdNest = true;
+                fleeingNestBirds.forEach(bird => {
+                    window.scene.remove(bird.mesh);
+                    const birdIndex = window.birds.indexOf(bird);
+                    if (birdIndex !== -1) window.birds.splice(birdIndex, 1);
+                });
+                window.populateBirdNests();
                 const spawnedBirdIndex = window.birds.findIndex(bird => bird.mesh === spawnedBird?.mesh);
                 if (spawnedBirdIndex !== -1) window.birds.splice(spawnedBirdIndex, 1);
                 const orientationBirdIndex = window.birds.findIndex(bird => bird.mesh === orientationBird?.mesh);
@@ -160,7 +187,7 @@ test.describe('Birds', () => {
                 window.scene.remove(spawnedBird?.mesh);
                 window.scene.remove(orientationBird?.mesh);
                 window.birds.slice().forEach(bird => {
-                    if (bird === generatedBird || nestBirds.includes(bird)) {
+                    if (bird === generatedBird) {
                         window.scene.remove(bird.mesh);
                         window.birds.splice(window.birds.indexOf(bird), 1);
                     }
@@ -182,10 +209,15 @@ test.describe('Birds', () => {
         expect(result.treeCounts.normal).toBeGreaterThanOrEqual(10);
         expect(result.treeCounts.apple).toBeGreaterThanOrEqual(10);
         expect(result.treeCounts.coconut).toBeGreaterThanOrEqual(10);
-        expect(result.nestFlockSize).toBeGreaterThanOrEqual(3);
+        expect(result.nestTreeCount).toBe(10);
+        expect(result.savedNestTreeCount).toBe(10);
+        expect(result.nestFlockSizes.every(count => count >= 1 && count <= 5)).toBe(true);
+        expect(result.nestFlockSize).toBeGreaterThanOrEqual(1);
         expect(result.nestFlockSize).toBeLessThanOrEqual(5);
         expect(result.nestBirdCount).toBe(result.nestFlockSize);
         expect(result.nestBirdsLaunched).toBe(true);
+        expect(result.fleeSoundsScheduled).toBe(true);
+        expect(result.destroyedNestFlagCleared).toBe(true);
         expect(result.objectTargetSelected).toBe(true);
         expect(result.groundTargetIsDry).toBe(true);
         expect(result.waterTargetRejected).toBe(true);
