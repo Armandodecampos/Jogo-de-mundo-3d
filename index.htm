@@ -6529,6 +6529,89 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 collectibleBoxes.some(entry => entry.body === target);
         }
 
+        function isBirdTreeBody(body) {
+            return !!body?.userData?.growthStage;
+        }
+
+        function getBirdObjectBounds(body) {
+            if (!body || isBirdTreeBody(body)) return null;
+
+            const dimensions = body.userData?.dimensions;
+            if (dimensions && Number.isFinite(dimensions.height) &&
+                Number.isFinite(dimensions.width) && Number.isFinite(dimensions.depth)) {
+                const halfWidth = dimensions.width / 2;
+                const halfHeight = dimensions.height / 2;
+                const halfDepth = dimensions.depth / 2;
+                return new THREE.Box3(
+                    new THREE.Vector3(
+                        body.position.x - halfWidth,
+                        body.position.y - halfHeight,
+                        body.position.z - halfDepth
+                    ),
+                    new THREE.Vector3(
+                        body.position.x + halfWidth,
+                        body.position.y + halfHeight,
+                        body.position.z + halfDepth
+                    )
+                );
+            }
+
+            const mesh = placedConstructionMeshes[placedConstructionBodies.indexOf(body)] ||
+                collectibleBoxes.find(entry => entry.body === body)?.mesh;
+            if (!mesh) return null;
+            const bounds = new THREE.Box3().setFromObject(mesh);
+            return bounds.isEmpty() ? null : bounds;
+        }
+
+        function segmentIntersectsBirdBox(start, end, bounds, radius = 0.16) {
+            if (!bounds) return false;
+            const expanded = bounds.clone();
+            expanded.expandByScalar(radius);
+
+            const direction = end.clone().sub(start);
+            let near = 0;
+            let far = 1;
+            const axes = ['x', 'y', 'z'];
+
+            for (const axis of axes) {
+                const origin = start[axis];
+                const delta = direction[axis];
+                const min = expanded.min[axis];
+                const max = expanded.max[axis];
+
+                if (Math.abs(delta) < 0.000001) {
+                    if (origin < min || origin > max) return false;
+                    continue;
+                }
+
+                const first = (min - origin) / delta;
+                const second = (max - origin) / delta;
+                const entry = Math.min(first, second);
+                const exit = Math.max(first, second);
+                near = Math.max(near, entry);
+                far = Math.min(far, exit);
+                if (near > far) return false;
+            }
+            return near <= 1 && far >= 0;
+        }
+
+        function isBirdFlightSegmentBlocked(start, end, ignoredBody = null) {
+            const groundStart = window.getSurfaceHeight(start.x, start.z);
+            const groundEnd = window.getSurfaceHeight(end.x, end.z);
+            const birdFloor = Math.max(groundStart, groundEnd) + 0.18;
+            if (start.y < birdFloor || end.y < birdFloor) return true;
+
+            const bodies = new Set([
+                ...placedConstructionBodies,
+                ...collectibleBoxes.map(entry => entry.body)
+            ]);
+            for (const body of bodies) {
+                if (body === ignoredBody || isBirdTreeBody(body)) continue;
+                if (segmentIntersectsBirdBox(start, end, getBirdObjectBounds(body))) return true;
+            }
+            return false;
+        }
+
         function findBirdGroundPerchTarget(start, end) {
             const dx = end.x - start.x;
             const dz = end.z - start.z;
@@ -6543,10 +6626,11 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 if (hasWaterAt(x, z)) continue;
                 const y = window.getSurfaceHeight(x, z);
                 if (y < waterLevel + 0.5 || y >= start.y - 2) continue;
-                candidates.push({
+                const target = {
                     isGroundPerch: true,
                     position: new THREE.Vector3(x, y, z)
-                });
+                };
+                if (!isBirdFlightSegmentBlocked(start, target.position)) candidates.push(target);
             }
 
             return candidates.length ? candidates[Math.floor(Math.random() * candidates.length)] : null;
@@ -6570,7 +6654,9 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 const nearestX = start.x + dx * progress;
                 const nearestZ = start.z + dz * progress;
                 const distance = Math.hypot(body.position.x - nearestX, body.position.z - nearestZ);
-                if (distance < 25) objectCandidates.push(body);
+                if (distance < 25 && !isBirdFlightSegmentBlocked(start, perchPosition, body)) {
+                    objectCandidates.push(body);
+                }
             }
 
             const groundTarget = findBirdGroundPerchTarget(start, end);
@@ -7313,28 +7399,64 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                     } else {
                         if (!isReturningToNest) perchPosition.y += bird.mesh.userData.perchHeight;
                         const toPerch = perchPosition.clone().sub(bird.mesh.position);
-                        if (toPerch.length() < 0.65) {
-                            bird.mesh.position.copy(perchPosition);
-                            if (isReturningToNest) {
-                                bird.perchUntil = Infinity;
-                                bird.returnToNestAt = undefined;
-                                bird.mesh.visible = false;
-                            } else {
-                                const longPerch = Math.random() < 0.18;
-                                bird.perchUntil = world.time + (longPerch ? 30 + Math.random() * 35 : 8 + Math.random() * 14);
+                        if (isBirdFlightSegmentBlocked(
+                            bird.mesh.position,
+                            perchPosition,
+                            isReturningToNest ? bird.nestTreeBody : bird.perchTargetBody
+                        )) {
+                            bird.perchTargetBody = null;
+                            bird.velocity.set(
+                                (Math.random() - 0.5) * bird.flySpeed,
+                                Math.max(5, bird.flySpeed * 0.5),
+                                (Math.random() - 0.5) * bird.flySpeed
+                            );
+                        } else {
+                            if (toPerch.length() < 0.65) {
+                                bird.mesh.position.copy(perchPosition);
+                                if (isReturningToNest) {
+                                    bird.perchUntil = Infinity;
+                                    bird.returnToNestAt = undefined;
+                                    bird.mesh.visible = false;
+                                } else {
+                                    const longPerch = Math.random() < 0.18;
+                                    bird.perchUntil = world.time + (longPerch ? 30 + Math.random() * 35 : 8 + Math.random() * 14);
+                                }
+                                faceBirdHorizontally(bird);
+                                bird.state = 'perched';
+                                setBirdPerchedPose(bird, true);
+                                bird.velocity.set(0, 0, 0);
+                                continue;
                             }
-                            faceBirdHorizontally(bird);
-                            bird.state = 'perched';
-                            setBirdPerchedPose(bird, true);
-                            bird.velocity.set(0, 0, 0);
-                            continue;
+                            toPerch.setLength(Math.min(bird.flySpeed, toPerch.length() * 1.5));
+                            bird.velocity.lerp(toPerch, Math.min(1, delta * 1.2));
                         }
-                        toPerch.setLength(Math.min(bird.flySpeed, toPerch.length() * 1.5));
-                        bird.velocity.lerp(toPerch, Math.min(1, delta * 1.2));
                     }
                 }
 
-                bird.mesh.position.add(bird.velocity.clone().multiplyScalar(delta));
+                const previousBirdPosition = bird.mesh.position.clone();
+                const nextBirdPosition = previousBirdPosition.clone()
+                    .add(bird.velocity.clone().multiplyScalar(delta));
+                const ignoringPerchBody = bird.perchTargetBody && !bird.perchTargetBody.isGroundPerch
+                    ? bird.perchTargetBody
+                    : null;
+
+                if (isBirdFlightSegmentBlocked(previousBirdPosition, nextBirdPosition, ignoringPerchBody)) {
+                    const lateral = new THREE.Vector3(
+                            bird.velocity.z,
+                            0,
+                            -bird.velocity.x
+                    );
+                    if (lateral.lengthSq() < 0.001) lateral.set(1, 0, 0);
+                    lateral.normalize();
+                    bird.velocity.set(
+                            lateral.x * bird.flySpeed,
+                            Math.max(4 + Math.random() * 3, bird.velocity.y),
+                            lateral.z * bird.flySpeed
+                    );
+                    faceBirdHorizontally(bird);
+                } else {
+                    bird.mesh.position.copy(nextBirdPosition);
+                }
                 if (bird.velocity.lengthSq() > 0.001) {
                     faceBirdHorizontally(bird);
                 }
@@ -15965,6 +16087,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             window.updateBirds = updateBirds;
             window.findBirdGroundPerchTarget = findBirdGroundPerchTarget;
             window.findBirdPerchTarget = findBirdPerchTarget;
+            window.isBirdFlightSegmentBlocked = isBirdFlightSegmentBlocked;
             window.applyFPSSettings = applyFPSSettings;
             Object.defineProperty(window, 'showFPS', { get: () => showFPS, set: (v) => { showFPS = v; } });
             window.applyAutoRenderDistanceSettings = applyAutoRenderDistanceSettings;

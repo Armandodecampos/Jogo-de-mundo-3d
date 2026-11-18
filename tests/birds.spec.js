@@ -84,6 +84,53 @@ test.describe('Birds', () => {
         expect(result.fledAtThreeUnits).toBe(true);
     });
 
+    test('birds cannot fly or land through solid objects', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const solidBody = {
+                position: new THREE.Vector3(0, 3, 0),
+                quaternion: new THREE.Quaternion(),
+                userData: {
+                    dimensions: { width: 2, height: 2, depth: 2 },
+                    type: 'test_solid'
+                }
+            };
+            const treeBody = {
+                position: new THREE.Vector3(0, 3, 0),
+                quaternion: new THREE.Quaternion(),
+                userData: {
+                    dimensions: { width: 2, height: 2, depth: 2 },
+                    growthStage: 'arvore_adulta',
+                    type: 'muda_arvore'
+                }
+            };
+            window.placedConstructionBodies.push(solidBody);
+            try {
+                const solidBlocked = window.isBirdFlightSegmentBlocked(
+                    new THREE.Vector3(-5, 3, 0),
+                    new THREE.Vector3(5, 3, 0)
+                );
+                window.placedConstructionBodies.splice(
+                    window.placedConstructionBodies.indexOf(solidBody),
+                    1
+                );
+                window.placedConstructionBodies.push(treeBody);
+                const treeBlocked = window.isBirdFlightSegmentBlocked(
+                    new THREE.Vector3(-5, 3, 0),
+                    new THREE.Vector3(5, 3, 0)
+                );
+                return { solidBlocked, treeBlocked };
+            } finally {
+                [solidBody, treeBody].forEach(body => {
+                    const index = window.placedConstructionBodies.indexOf(body);
+                    if (index !== -1) window.placedConstructionBodies.splice(index, 1);
+                });
+            }
+        });
+
+        expect(result.solidBlocked).toBe(true);
+        expect(result.treeBlocked).toBe(false);
+    });
+
     test('birds have colorful anatomy and can land on world objects', async ({ page }) => {
         const result = await page.evaluate(() => {
             const testBird = window.createBirdMesh();
