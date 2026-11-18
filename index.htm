@@ -6736,7 +6736,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
 
             if (buffer) {
                 // Volume baseado na distância do pássaro mais próximo
-                const volume = Math.max(0, 0.325 * (1 - minBirdDist / 300));
+                const volume = Math.max(0, 0.25 * (1 - minBirdDist / 300));
                 if (volume > 0) {
                     playOneShot(buffer, volume);
                 }
@@ -7217,6 +7217,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
         function updateBirds(delta, despawnDist) {
             for (let i = birds.length - 1; i >= 0; i--) {
                 const bird = birds[i];
+                bird.mesh.scale.set(1, 1, 1);
                 if (!bird.isNestBird && bird.mesh.position.distanceTo(camera.position) > despawnDist) {
                     scene.remove(bird.mesh);
                     birds.splice(i, 1);
@@ -7326,8 +7327,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
 
                 bird.mesh.position.add(bird.velocity.clone().multiplyScalar(delta));
                 if (bird.velocity.lengthSq() > 0.001) {
-                    bird.mesh.lookAt(bird.mesh.position.clone().add(bird.velocity));
-                    bird.mesh.rotateY(Math.PI);
+                    faceBirdHorizontally(bird);
                 }
 
                 const flapAngle = Math.sin(world.time * bird.flapSpeed + bird.flapOffset) * 0.8;

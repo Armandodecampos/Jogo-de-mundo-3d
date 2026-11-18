@@ -168,6 +168,21 @@ test.describe('Birds', () => {
                 const wingsFolded = orientationBird.mesh.userData.leftWing.rotation.y;
                 window.world.time = originalWorldTime;
                 const facingDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(orientationBird.mesh.quaternion);
+                orientationBird.mesh.scale.setScalar(2);
+                orientationBird.velocity.set(0, 10, 0);
+                window.updateBirds(0.016, 100000);
+                const takeoffScale = orientationBird.mesh.scale.toArray();
+                const takeoffTilt = new THREE.Euler().setFromQuaternion(
+                    orientationBird.mesh.quaternion,
+                    'YXZ'
+                );
+                orientationBird.velocity.set(0, -10, 0);
+                window.updateBirds(0.016, 100000);
+                const descentScale = orientationBird.mesh.scale.toArray();
+                const descentTilt = new THREE.Euler().setFromQuaternion(
+                    orientationBird.mesh.quaternion,
+                    'YXZ'
+                );
 
                 return {
                     geometryTypes: Array.from(geometryTypes),
@@ -197,7 +212,11 @@ test.describe('Birds', () => {
                     wingsFolded,
                     generatedFlySpeed: generatedBird?.flySpeed,
                     scared: spawnedBird.state === 'flying' && spawnedBird.perchTargetBody === null,
-                    facingForward: facingDirection.dot(orientationBird.velocity.clone().normalize()) > 0.9
+                    facingForward: facingDirection.dot(new THREE.Vector3(0, 0, 1)) > 0.9,
+                    takeoffScale,
+                    descentScale,
+                    takeoffTilt: takeoffTilt.x,
+                    descentTilt: descentTilt.x
                 };
             } finally {
                 Math.random = originalRandom;
@@ -263,5 +282,9 @@ test.describe('Birds', () => {
         expect(result.generatedFlySpeed).toBeGreaterThan(12);
         expect(result.scared).toBe(true);
         expect(result.facingForward).toBe(true);
+        expect(result.takeoffScale).toEqual([1, 1, 1]);
+        expect(result.descentScale).toEqual([1, 1, 1]);
+        expect(Math.abs(result.takeoffTilt)).toBeLessThan(0.01);
+        expect(Math.abs(result.descentTilt)).toBeLessThan(0.01);
     });
 });
