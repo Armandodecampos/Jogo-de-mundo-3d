@@ -1700,6 +1700,7 @@
         const worldSize = 1200;
         let birds = []; // NOVO: Array para armazenar os pássaros
         let lastBirdPlayerActionTime = -Infinity;
+        const birdPlayerFleeDistance = 10 / 3;
         let islandAmbientAudio = null; // Som ambiente da ilha (interior)
         let beachAmbientAudio = null; // Som ambiente da praia/mar
         let lastBirdSpawnCheck = 0; // NOVO: Controle de tempo para spawn de pássaros
@@ -6306,7 +6307,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             rightWingPivot.add(rightWing);
 
             const birdHeight = new THREE.Box3().setFromObject(bird).getSize(new THREE.Vector3()).y;
-            const heightScale = 0.5 / birdHeight;
+            const heightScale = 0.25 / birdHeight;
             bird.scale.setScalar(heightScale);
             bird.userData = { leftWing: leftWingPivot, rightWing: rightWingPivot, body, tail, feet, heightScale };
 
@@ -7232,7 +7233,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                     let playerDz = playerBody.position.z - bird.mesh.position.z;
                     if (Math.abs(playerDx) > worldSize / 2) playerDx -= Math.sign(playerDx) * worldSize;
                     if (Math.abs(playerDz) > worldSize / 2) playerDz -= Math.sign(playerDz) * worldSize;
-                    const playerNear = Math.hypot(playerDx, playerDz) < 10 &&
+                    const playerNear = Math.hypot(playerDx, playerDz) < birdPlayerFleeDistance &&
                         Math.abs(playerBody.position.y - bird.mesh.position.y) < 12;
                     const playerActive = playerBody.velocity.lengthSquared() > 0.25 ||
                         Object.values(keysPressed).some(Boolean) ||

@@ -38,6 +38,52 @@ test.describe('Birds', () => {
         expect(result.returnWasScheduled).toBe(true);
     });
 
+    test('birds are half-sized and only flee when the player gets three times closer', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const playerPosition = window.playerBody.position.clone();
+            const playerVelocity = window.playerBody.velocity.clone();
+            const existingBirds = window.birds.splice(0, window.birds.length);
+            const bird = {
+                mesh: window.createBirdMesh(),
+                velocity: new THREE.Vector3(),
+                flapOffset: 0,
+                flapSpeed: 10,
+                flySpeed: 12,
+                state: 'flying',
+                perchTargetBody: null,
+                perchUntil: 0
+            };
+            const birdHeight = new THREE.Box3().setFromObject(bird.mesh).getSize(new THREE.Vector3()).y;
+            window.scene.add(bird.mesh);
+            window.birds.push(bird);
+
+            try {
+                window.playerBody.velocity.set(1, 0, 0);
+                bird.mesh.position.set(playerPosition.x + 5, playerPosition.y, playerPosition.z);
+                window.updateBirds(0, 100000);
+                const stayedAtFiveUnits = bird.velocity.length() === 0;
+
+                bird.mesh.position.set(playerPosition.x + 3, playerPosition.y, playerPosition.z);
+                window.updateBirds(0, 100000);
+
+                return {
+                    birdHeight,
+                    stayedAtFiveUnits,
+                    fledAtThreeUnits: bird.velocity.length() > bird.flySpeed
+                };
+            } finally {
+                window.scene.remove(bird.mesh);
+                window.birds.splice(0, window.birds.length, ...existingBirds);
+                window.playerBody.position.copy(playerPosition);
+                window.playerBody.velocity.copy(playerVelocity);
+            }
+        });
+
+        expect(result.birdHeight).toBeCloseTo(0.25, 5);
+        expect(result.stayedAtFiveUnits).toBe(true);
+        expect(result.fledAtThreeUnits).toBe(true);
+    });
+
     test('birds have colorful anatomy and can land on world objects', async ({ page }) => {
         const result = await page.evaluate(() => {
             const testBird = window.createBirdMesh();
@@ -257,7 +303,7 @@ test.describe('Birds', () => {
         expect(result.geometryTypes).toContain('SphereGeometry');
         expect(result.geometryTypes).toContain('ShapeGeometry');
         expect(result.geometryTypes).toContain('ConeGeometry');
-        expect(result.testBirdHeight).toBeCloseTo(0.5, 5);
+        expect(result.testBirdHeight).toBeCloseTo(0.25, 5);
         expect(result.colorCount).toBeGreaterThanOrEqual(3);
         expect(result.treeCounts.normal).toBeGreaterThanOrEqual(10);
         expect(result.treeCounts.apple).toBeGreaterThanOrEqual(10);
