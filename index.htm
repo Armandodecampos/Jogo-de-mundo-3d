@@ -6310,6 +6310,10 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             const heightScale = 0.25 / birdHeight;
             bird.scale.setScalar(heightScale);
             bird.userData = { leftWing: leftWingPivot, rightWing: rightWingPivot, body, tail, feet, heightScale };
+            setBirdPerchedPose({ mesh: bird }, true);
+            bird.updateMatrixWorld(true);
+            bird.userData.perchHeight = -new THREE.Box3().setFromObject(bird).min.y;
+            setBirdPerchedPose({ mesh: bird }, false);
 
             return bird;
         }
@@ -6464,8 +6468,8 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
 
         function setBirdPerchedPose(bird, perched) {
             const userData = bird.mesh.userData;
-            userData.leftWing.rotation.set(0, 0, perched ? 1.15 : 0);
-            userData.rightWing.rotation.set(0, 0, perched ? -1.15 : 0);
+            userData.leftWing.rotation.set(0, perched ? 1.15 : 0, 0);
+            userData.rightWing.rotation.set(0, perched ? -1.15 : 0, 0);
             userData.body.rotation.x = perched ? -0.08 : 0;
             userData.tail.rotation.x = perched ? 0.12 : 0;
             userData.feet.forEach(foot => {
@@ -6514,7 +6518,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             }
             if (topY <= waterLevel + 0.5) return null;
 
-            return new THREE.Vector3(centerX, topY + 0.28, centerZ);
+            return new THREE.Vector3(centerX, topY, centerZ);
         }
 
         function isBirdPerchTargetAvailable(target) {
@@ -6541,7 +6545,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 if (y < waterLevel + 0.5 || y >= start.y - 2) continue;
                 candidates.push({
                     isGroundPerch: true,
-                    position: new THREE.Vector3(x, y + 0.28, z)
+                    position: new THREE.Vector3(x, y, z)
                 });
             }
 
@@ -7279,8 +7283,8 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                             ? getBirdNestPosition(bird.nestTreeBody)
                             : getBirdPerchPosition(bird.perchTargetBody);
                         if (perchPosition) {
+                            if (!isReturningToNest) perchPosition.y += bird.mesh.userData.perchHeight;
                             bird.mesh.position.copy(perchPosition).add(bird.nestOffset || new THREE.Vector3());
-                            bird.mesh.position.y += Math.sin(world.time * 2 + bird.flapOffset) * 0.025;
                             if (isReturningToNest) bird.mesh.visible = false;
                             continue;
                         }
@@ -7307,6 +7311,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                     if (!isBirdPerchTargetAvailable(bird.perchTargetBody) || !perchPosition) {
                         bird.perchTargetBody = null;
                     } else {
+                        if (!isReturningToNest) perchPosition.y += bird.mesh.userData.perchHeight;
                         const toPerch = perchPosition.clone().sub(bird.mesh.position);
                         if (toPerch.length() < 0.65) {
                             bird.mesh.position.copy(perchPosition);

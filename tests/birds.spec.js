@@ -181,12 +181,22 @@ test.describe('Birds', () => {
                 window.updateBirds(0.016, 100000);
                 const landed = spawnedBird.state === 'perched';
                 const landedHeight = spawnedBird.mesh.position.y;
+                const perchSurfaceHeight = perchBody.position.y + perchBody.userData.dimensions.height / 2;
+                const landedBounds = new THREE.Box3().setFromObject(spawnedBird.mesh);
+                const landedContactGap = landedBounds.min.y - perchSurfaceHeight;
                 const perchDuration = spawnedBird.perchUntil - window.world.time;
                 const foldedWingAngles = [
+                    spawnedBird.mesh.userData.leftWing.rotation.y,
+                    spawnedBird.mesh.userData.rightWing.rotation.y
+                ];
+                const foldedWingVerticalAngles = [
                     spawnedBird.mesh.userData.leftWing.rotation.z,
                     spawnedBird.mesh.userData.rightWing.rotation.z
                 ];
                 const landedTilt = new THREE.Euler().setFromQuaternion(spawnedBird.mesh.quaternion, 'YXZ');
+                window.world.time += 5;
+                window.updateBirds(0.016, 100000);
+                const perchedHeightAfterTime = spawnedBird.mesh.position.y;
 
                 window.playerBody.position.copy(spawnedBird.mesh.position);
                 window.playerBody.velocity.set(0, 0, 0);
@@ -252,9 +262,12 @@ test.describe('Birds', () => {
                     waterTargetRejected: oceanTarget === null,
                     landed,
                     landedHeight,
-                    expectedHeight: perchBody.position.y + perchBody.userData.dimensions.height / 2 + 0.28,
+                    expectedHeight: perchSurfaceHeight + spawnedBird.mesh.userData.perchHeight,
+                    landedContactGap,
+                    perchedHeightAfterTime,
                     perchDuration,
                     foldedWingAngles,
+                    foldedWingVerticalAngles,
                     landedTilt: { x: landedTilt.x, z: landedTilt.z },
                     wingsOpen,
                     wingsFolded,
@@ -322,9 +335,12 @@ test.describe('Birds', () => {
         expect(result.waterTargetRejected).toBe(true);
         expect(result.landed).toBe(true);
         expect(result.landedHeight).toBeCloseTo(result.expectedHeight, 5);
+        expect(result.landedContactGap).toBeCloseTo(0, 5);
+        expect(result.perchedHeightAfterTime).toBeCloseTo(result.landedHeight, 5);
         expect(result.perchDuration).toBeGreaterThanOrEqual(30);
         expect(result.foldedWingAngles[0]).toBeGreaterThan(1);
         expect(result.foldedWingAngles[1]).toBeLessThan(-1);
+        expect(result.foldedWingVerticalAngles.every(angle => Math.abs(angle) < 0.01)).toBe(true);
         expect(Math.abs(result.landedTilt.x)).toBeLessThan(0.01);
         expect(Math.abs(result.landedTilt.z)).toBeLessThan(0.01);
         expect(Math.abs(result.wingsOpen)).toBeLessThan(0.01);
