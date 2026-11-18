@@ -6446,7 +6446,10 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
 
                 if (nearestDistanceSquared > disturbanceRadiusSquared) return;
 
-                if (bird.state === 'perched') setBirdPerchedPose(bird, false);
+                if (bird.state === 'perched') {
+                    setBirdPerchedPose(bird, false);
+                    bird.takeoffClearanceBody = bird.perchTargetBody;
+                }
                 bird.mesh.visible = true;
                 bird.state = 'flying';
                 bird.perchTargetBody = null;
@@ -6563,6 +6566,18 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             return bounds.isEmpty() ? null : bounds;
         }
 
+        function getBirdTakeoffClearanceBody(bird) {
+            const body = bird.takeoffClearanceBody;
+            if (!body) return null;
+
+            const bounds = getBirdObjectBounds(body)?.expandByScalar(0.16);
+            if (!bounds?.containsPoint(bird.mesh.position)) {
+                bird.takeoffClearanceBody = null;
+                return null;
+            }
+            return body;
+        }
+
         function segmentIntersectsBirdBox(start, end, bounds, radius = 0.16) {
             if (!bounds) return false;
             const expanded = bounds.clone();
@@ -6599,7 +6614,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             const groundStart = window.getSurfaceHeight(start.x, start.z);
             const groundEnd = window.getSurfaceHeight(end.x, end.z);
             const birdFloor = Math.max(groundStart, groundEnd) + 0.18;
-            if (start.y < birdFloor || end.y < birdFloor) return true;
+            if (end.y < birdFloor && end.y <= start.y) return true;
 
             const bodies = new Set([
                 ...placedConstructionBodies,
@@ -7330,7 +7345,10 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                         performance.now() - lastBirdPlayerActionTime < 1000;
 
                     if (playerNear && playerActive) {
-                        if (bird.state === 'perched') setBirdPerchedPose(bird, false);
+                        if (bird.state === 'perched') {
+                            setBirdPerchedPose(bird, false);
+                            bird.takeoffClearanceBody = bird.perchTargetBody;
+                        }
                         bird.mesh.visible = true;
                         if (bird.isNestBird) {
                             bird.returnToNestAt = world.time + 8 + Math.random() * 10;
@@ -7358,6 +7376,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 if (bird.state === 'perched') {
                     if (!isBirdPerchTargetAvailable(bird.perchTargetBody)) {
                         setBirdPerchedPose(bird, false);
+                        bird.takeoffClearanceBody = bird.perchTargetBody;
                         bird.mesh.visible = true;
                         bird.state = 'flying';
                         bird.perchTargetBody = null;
@@ -7375,12 +7394,14 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                             continue;
                         }
                         setBirdPerchedPose(bird, false);
+                        bird.takeoffClearanceBody = bird.perchTargetBody;
                         bird.mesh.visible = true;
                         bird.state = 'flying';
                         bird.perchTargetBody = null;
                         bird.velocity.set((Math.random() - 0.5) * 12, 4, (Math.random() - 0.5) * 12);
                     } else {
                         setBirdPerchedPose(bird, false);
+                        bird.takeoffClearanceBody = bird.perchTargetBody;
                         bird.mesh.visible = true;
                         bird.state = 'flying';
                         bird.perchTargetBody = null;
@@ -7423,6 +7444,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                                 }
                                 faceBirdHorizontally(bird);
                                 bird.state = 'perched';
+                                bird.takeoffClearanceBody = null;
                                 setBirdPerchedPose(bird, true);
                                 bird.velocity.set(0, 0, 0);
                                 continue;
@@ -7438,7 +7460,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                     .add(bird.velocity.clone().multiplyScalar(delta));
                 const ignoringPerchBody = bird.perchTargetBody && !bird.perchTargetBody.isGroundPerch
                     ? bird.perchTargetBody
-                    : null;
+                    : getBirdTakeoffClearanceBody(bird);
 
                 if (isBirdFlightSegmentBlocked(previousBirdPosition, nextBirdPosition, ignoringPerchBody)) {
                     const lateral = new THREE.Vector3(

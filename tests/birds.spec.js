@@ -131,6 +131,75 @@ test.describe('Birds', () => {
         expect(result.treeBlocked).toBe(false);
     });
 
+    test('birds can take off after perching on a solid object', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const playerPosition = window.playerBody.position.clone();
+            const playerVelocity = window.playerBody.velocity.clone();
+            const cameraPosition = window.camera.position.clone();
+            const groundY = window.getSurfaceHeight(cameraPosition.x, cameraPosition.z);
+            const perchBody = {
+                position: new THREE.Vector3(cameraPosition.x, groundY + 0.01, cameraPosition.z),
+                userData: { dimensions: { width: 2, height: 0.02, depth: 2 } }
+            };
+            const perchMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(2, 0.02, 2),
+                new THREE.MeshBasicMaterial()
+            );
+            perchMesh.position.copy(perchBody.position);
+            const bird = {
+                mesh: window.createBirdMesh(),
+                velocity: new THREE.Vector3(),
+                flapOffset: 0,
+                flapSpeed: 10,
+                flySpeed: 12,
+                state: 'perched',
+                perchTargetBody: perchBody,
+                perchUntil: window.world.time - 1
+            };
+            bird.mesh.position.set(
+                cameraPosition.x,
+                perchBody.position.y + perchBody.userData.dimensions.height / 2 +
+                    bird.mesh.userData.perchHeight,
+                cameraPosition.z
+            );
+            window.scene.add(perchMesh, bird.mesh);
+            window.placedConstructionBodies.push(perchBody);
+            window.placedConstructionMeshes.push(perchMesh);
+            window.birds.push(bird);
+
+            try {
+                window.playerBody.position.set(cameraPosition.x + 100, cameraPosition.y, cameraPosition.z);
+                window.playerBody.velocity.set(0, 0, 0);
+                for (let i = 0; i < 20; i++) {
+                    window.updateBirds(0.016, 100000);
+                }
+
+                return {
+                    tookOff: bird.state === 'flying',
+                    clearedPerch: bird.mesh.position.y > perchBody.position.y +
+                        perchBody.userData.dimensions.height / 2 + 0.5,
+                    releasedClearance: bird.takeoffClearanceBody === null
+                };
+            } finally {
+                window.scene.remove(perchMesh, bird.mesh);
+                const birdIndex = window.birds.indexOf(bird);
+                if (birdIndex !== -1) window.birds.splice(birdIndex, 1);
+                const bodyIndex = window.placedConstructionBodies.indexOf(perchBody);
+                if (bodyIndex !== -1) window.placedConstructionBodies.splice(bodyIndex, 1);
+                const meshIndex = window.placedConstructionMeshes.indexOf(perchMesh);
+                if (meshIndex !== -1) window.placedConstructionMeshes.splice(meshIndex, 1);
+                perchMesh.geometry.dispose();
+                perchMesh.material.dispose();
+                window.playerBody.position.copy(playerPosition);
+                window.playerBody.velocity.copy(playerVelocity);
+            }
+        });
+
+        expect(result.tookOff).toBe(true);
+        expect(result.clearedPerch).toBe(true);
+        expect(result.releasedClearance).toBe(true);
+    });
+
     test('birds have colorful anatomy and can land on world objects', async ({ page }) => {
         const result = await page.evaluate(() => {
             const testBird = window.createBirdMesh();
