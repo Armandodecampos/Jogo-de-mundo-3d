@@ -131,6 +131,110 @@ test.describe('Birds', () => {
         expect(result.treeBlocked).toBe(false);
     });
 
+    test('birds can perch on the ground but not on campfires', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const playerPosition = window.playerBody.position.clone();
+            const playerVelocity = window.playerBody.velocity.clone();
+            const cameraPosition = window.camera.position.clone();
+            const start = new THREE.Vector3(cameraPosition.x - 20, 40, cameraPosition.z);
+            const end = new THREE.Vector3(cameraPosition.x + 20, 40, cameraPosition.z);
+            const groundTarget = window.findBirdGroundPerchTarget(start, end);
+            if (!groundTarget) {
+                return { foundGroundTarget: false, landedOnGround: false, avoidedCampfire: false };
+            }
+
+            const campfireBody = {
+                position: new THREE.Vector3(
+                    groundTarget.position.x + 4,
+                    window.getSurfaceHeight(
+                        groundTarget.position.x + 4,
+                        groundTarget.position.z
+                    ) + 0.3,
+                    groundTarget.position.z
+                ),
+                userData: {
+                    type: 'fogueira',
+                    dimensions: { width: 0.8, height: 0.6, depth: 0.8 }
+                }
+            };
+            const campfireMesh = new THREE.Mesh(
+                new THREE.BoxGeometry(0.8, 0.6, 0.8),
+                new THREE.MeshBasicMaterial()
+            );
+            campfireMesh.position.copy(campfireBody.position);
+            const campfireBird = {
+                mesh: window.createBirdMesh(),
+                velocity: new THREE.Vector3(),
+                flapOffset: 0,
+                flapSpeed: 10,
+                flySpeed: 12,
+                state: 'perched',
+                perchTargetBody: campfireBody,
+                perchUntil: window.world.time + 10
+            };
+            const groundBird = {
+                mesh: window.createBirdMesh(),
+                velocity: new THREE.Vector3(),
+                flapOffset: 0,
+                flapSpeed: 10,
+                flySpeed: 12,
+                state: 'flying',
+                perchTargetBody: groundTarget,
+                perchUntil: 0
+            };
+
+            campfireBird.mesh.position.set(
+                campfireBody.position.x,
+                campfireBody.position.y + campfireBody.userData.dimensions.height / 2 +
+                    campfireBird.mesh.userData.perchHeight,
+                campfireBody.position.z
+            );
+            groundBird.mesh.position.set(
+                groundTarget.position.x,
+                groundTarget.position.y + groundBird.mesh.userData.perchHeight,
+                groundTarget.position.z
+            );
+            window.scene.add(campfireMesh, campfireBird.mesh, groundBird.mesh);
+            window.placedConstructionBodies.push(campfireBody);
+            window.placedConstructionMeshes.push(campfireMesh);
+            window.birds.push(campfireBird, groundBird);
+
+            try {
+                window.playerBody.position.set(cameraPosition.x + 100, cameraPosition.y, cameraPosition.z);
+                window.playerBody.velocity.set(0, 0, 0);
+                window.updateBirds(0.016, 100000);
+
+                return {
+                    foundGroundTarget: true,
+                    landedOnGround: groundBird.state === 'perched' &&
+                        groundBird.perchTargetBody === groundTarget &&
+                        Math.abs(groundBird.mesh.position.y -
+                            (groundTarget.position.y + groundBird.mesh.userData.perchHeight)) < 0.001,
+                    avoidedCampfire: campfireBird.state !== 'perched' &&
+                        campfireBird.perchTargetBody === null
+                };
+            } finally {
+                window.scene.remove(campfireMesh, campfireBird.mesh, groundBird.mesh);
+                [campfireBird, groundBird].forEach(bird => {
+                    const index = window.birds.indexOf(bird);
+                    if (index !== -1) window.birds.splice(index, 1);
+                });
+                const bodyIndex = window.placedConstructionBodies.indexOf(campfireBody);
+                if (bodyIndex !== -1) window.placedConstructionBodies.splice(bodyIndex, 1);
+                const meshIndex = window.placedConstructionMeshes.indexOf(campfireMesh);
+                if (meshIndex !== -1) window.placedConstructionMeshes.splice(meshIndex, 1);
+                campfireMesh.geometry.dispose();
+                campfireMesh.material.dispose();
+                window.playerBody.position.copy(playerPosition);
+                window.playerBody.velocity.copy(playerVelocity);
+            }
+        });
+
+        expect(result.foundGroundTarget).toBe(true);
+        expect(result.landedOnGround).toBe(true);
+        expect(result.avoidedCampfire).toBe(true);
+    });
+
     test('birds can take off after perching on a solid object', async ({ page }) => {
         const result = await page.evaluate(() => {
             const playerPosition = window.playerBody.position.clone();

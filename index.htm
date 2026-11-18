@@ -1704,7 +1704,7 @@
         let islandAmbientAudio = null; // Som ambiente da ilha (interior)
         let beachAmbientAudio = null; // Som ambiente da praia/mar
         let lastBirdSpawnCheck = 0; // NOVO: Controle de tempo para spawn de pássaros
-        let nextBirdSoundTime = 5 + Math.random() * 10; // Próximo tempo para som de pássaro
+        let nextBirdSoundTime = 10 + Math.random() * 20; // Próximo tempo para som de pássaro
         let birdBodyGeom, birdWingGeom, birdTailGeom, birdHeadGeom, birdBeakGeom, birdEyeGeom, birdPupilGeom, birdFootGeom, birdToeGeom;
         let birdPalettes, birdEyeMat, birdPupilMat, birdBeakMat, birdFootMat;
 
@@ -6498,6 +6498,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 if (hasWaterAt(body.position.x, body.position.z)) return null;
                 return body.position.clone();
             }
+            if (body?.userData?.type === campfireItemName) return null;
 
             const mesh = placedConstructionMeshes[placedConstructionBodies.indexOf(body)] ||
                 collectibleBoxes.find(entry => entry.body === body)?.mesh;
@@ -6528,6 +6529,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             if (target?.isGroundPerch) {
                 return !hasWaterAt(target.position.x, target.position.z);
             }
+            if (target?.userData?.type === campfireItemName) return false;
             return placedConstructionBodies.includes(target) ||
                 collectibleBoxes.some(entry => entry.body === target);
         }
@@ -6614,7 +6616,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             const groundStart = window.getSurfaceHeight(start.x, start.z);
             const groundEnd = window.getSurfaceHeight(end.x, end.z);
             const birdFloor = Math.max(groundStart, groundEnd) + 0.18;
-            if (end.y < birdFloor && end.y <= start.y) return true;
+            if (!ignoredBody?.isGroundPerch && end.y < birdFloor && end.y <= start.y) return true;
 
             const bodies = new Set([
                 ...placedConstructionBodies,
@@ -6645,7 +6647,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                     isGroundPerch: true,
                     position: new THREE.Vector3(x, y, z)
                 };
-                if (!isBirdFlightSegmentBlocked(start, target.position)) candidates.push(target);
+                if (!isBirdFlightSegmentBlocked(start, target.position, target)) candidates.push(target);
             }
 
             return candidates.length ? candidates[Math.floor(Math.random() * candidates.length)] : null;
@@ -14942,10 +14944,10 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                         }
                     }
 
-                    // Sons ambientais de pássaros (5-15 segundos de intervalo)
+                    // Sons ambientais de pássaros (10-30 segundos de intervalo)
                     if (world.time > nextBirdSoundTime) {
                         playAmbientBirdSound();
-                        nextBirdSoundTime = world.time + 5 + Math.random() * 10;
+                        nextBirdSoundTime = world.time + 10 + Math.random() * 20;
                     }
                 }
 
