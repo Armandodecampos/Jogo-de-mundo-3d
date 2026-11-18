@@ -41,6 +41,7 @@ test.describe('Birds', () => {
     test('birds have colorful anatomy and can land on world objects', async ({ page }) => {
         const result = await page.evaluate(() => {
             const testBird = window.createBirdMesh();
+            const testBirdHeight = new THREE.Box3().setFromObject(testBird).getSize(new THREE.Vector3()).y;
             const geometryTypes = new Set();
             const colors = new Set();
             const treeCounts = { normal: 0, apple: 0, coconut: 0 };
@@ -186,6 +187,7 @@ test.describe('Birds', () => {
 
                 return {
                     geometryTypes: Array.from(geometryTypes),
+                    testBirdHeight,
                     colorCount: colors.size,
                     treeCounts,
                     nestTreeCount: nestTrees.length,
@@ -215,6 +217,7 @@ test.describe('Birds', () => {
                     facingForward: facingDirection.dot(new THREE.Vector3(0, 0, 1)) > 0.9,
                     takeoffScale,
                     descentScale,
+                    expectedBirdScale: orientationBird.mesh.userData.heightScale,
                     takeoffTilt: takeoffTilt.x,
                     descentTilt: descentTilt.x
                 };
@@ -254,6 +257,7 @@ test.describe('Birds', () => {
         expect(result.geometryTypes).toContain('SphereGeometry');
         expect(result.geometryTypes).toContain('ShapeGeometry');
         expect(result.geometryTypes).toContain('ConeGeometry');
+        expect(result.testBirdHeight).toBeCloseTo(0.5, 5);
         expect(result.colorCount).toBeGreaterThanOrEqual(3);
         expect(result.treeCounts.normal).toBeGreaterThanOrEqual(10);
         expect(result.treeCounts.apple).toBeGreaterThanOrEqual(10);
@@ -282,8 +286,16 @@ test.describe('Birds', () => {
         expect(result.generatedFlySpeed).toBeGreaterThan(12);
         expect(result.scared).toBe(true);
         expect(result.facingForward).toBe(true);
-        expect(result.takeoffScale).toEqual([1, 1, 1]);
-        expect(result.descentScale).toEqual([1, 1, 1]);
+        expect(result.takeoffScale).toEqual([
+            result.expectedBirdScale,
+            result.expectedBirdScale,
+            result.expectedBirdScale
+        ]);
+        expect(result.descentScale).toEqual([
+            result.expectedBirdScale,
+            result.expectedBirdScale,
+            result.expectedBirdScale
+        ]);
         expect(Math.abs(result.takeoffTilt)).toBeLessThan(0.01);
         expect(Math.abs(result.descentTilt)).toBeLessThan(0.01);
     });

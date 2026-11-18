@@ -6305,7 +6305,10 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             const rightWing = new THREE.Mesh(birdWingGeom, palette.wing);
             rightWingPivot.add(rightWing);
 
-            bird.userData = { leftWing: leftWingPivot, rightWing: rightWingPivot, body, tail, feet };
+            const birdHeight = new THREE.Box3().setFromObject(bird).getSize(new THREE.Vector3()).y;
+            const heightScale = 0.5 / birdHeight;
+            bird.scale.setScalar(heightScale);
+            bird.userData = { leftWing: leftWingPivot, rightWing: rightWingPivot, body, tail, feet, heightScale };
 
             return bird;
         }
@@ -7217,7 +7220,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
         function updateBirds(delta, despawnDist) {
             for (let i = birds.length - 1; i >= 0; i--) {
                 const bird = birds[i];
-                bird.mesh.scale.set(1, 1, 1);
+                bird.mesh.scale.setScalar(bird.mesh.userData.heightScale);
                 if (!bird.isNestBird && bird.mesh.position.distanceTo(camera.position) > despawnDist) {
                     scene.remove(bird.mesh);
                     birds.splice(i, 1);
