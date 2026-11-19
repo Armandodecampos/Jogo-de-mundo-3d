@@ -38,6 +38,58 @@ test.describe('Birds', () => {
         expect(result.returnWasScheduled).toBe(true);
     });
 
+    test('birds do not flee just because the player clicks nearby', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const playerPosition = window.playerBody.position.clone();
+            const playerVelocity = window.playerBody.velocity.clone();
+            const existingBirds = window.birds.splice(0, window.birds.length);
+            const perchTarget = window.findBirdGroundPerchTarget(
+                new THREE.Vector3(playerPosition.x - 20, playerPosition.y, playerPosition.z),
+                new THREE.Vector3(playerPosition.x + 20, playerPosition.y, playerPosition.z)
+            );
+            if (!perchTarget) {
+                window.birds.push(...existingBirds);
+                return { foundPerch: false, remainedPerched: false };
+            }
+
+            const bird = {
+                mesh: window.createBirdMesh(),
+                velocity: new THREE.Vector3(),
+                flapOffset: 0,
+                flapSpeed: 10,
+                flySpeed: 12,
+                state: 'perched',
+                perchTargetBody: perchTarget,
+                perchUntil: window.world.time + 10
+            };
+            window.scene.add(bird.mesh);
+            window.birds.push(bird);
+
+            try {
+                window.playerBody.position.set(
+                    perchTarget.position.x,
+                    perchTarget.position.y,
+                    perchTarget.position.z
+                );
+                window.playerBody.velocity.set(0, 0, 0);
+                window.renderer.domElement.dispatchEvent(new MouseEvent('mousedown', { button: 0 }));
+                window.updateBirds(0.016, 100000);
+                return {
+                    foundPerch: true,
+                    remainedPerched: bird.state === 'perched' && bird.mesh.visible
+                };
+            } finally {
+                window.scene.remove(bird.mesh);
+                window.birds.splice(0, window.birds.length, ...existingBirds);
+                window.playerBody.position.copy(playerPosition);
+                window.playerBody.velocity.copy(playerVelocity);
+            }
+        });
+
+        expect(result.foundPerch).toBe(true);
+        expect(result.remainedPerched).toBe(true);
+    });
+
     test('birds stay in motion at a uniform speed and flee without speeding up', async ({ page }) => {
         const result = await page.evaluate(() => {
             const playerPosition = window.playerBody.position.clone();

@@ -1699,7 +1699,6 @@
         // Define as dimensões do mundo para X e Z (para efeito de envolvimento)
         const worldSize = 1200;
         let birds = []; // NOVO: Array para armazenar os pássaros
-        let lastBirdPlayerActionTime = -Infinity;
         const birdPlayerFleeDistance = 10 / 3;
         const birdFlightSpeed = 16;
         const birdMaxAltitude = 80;
@@ -7413,8 +7412,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                     const playerNear = Math.hypot(playerDx, playerDz) < birdPlayerFleeDistance &&
                         Math.abs(playerBody.position.y - bird.mesh.position.y) < 12;
                     const playerActive = playerBody.velocity.lengthSquared() > 0.25 ||
-                        Object.values(keysPressed).some(Boolean) ||
-                        performance.now() - lastBirdPlayerActionTime < 1000;
+                        Object.values(keysPressed).some(Boolean);
 
                     if (playerNear && playerActive) {
                         if (bird.state === 'perched') {
@@ -10246,7 +10244,6 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
 
             // Configura os Listeners de Eventos para teclado e mouse
             window.addEventListener('keydown', (event) => {
-                lastBirdPlayerActionTime = performance.now();
                 if (splitModal && splitModal.style.display !== 'none') {
                     if (event.key === 'Escape') {
                         closeSplitModal();
@@ -10632,7 +10629,6 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
 
             // NOVO: Listener de mousedown consolidado
             renderer.domElement.addEventListener('mousedown', (event) => {
-                lastBirdPlayerActionTime = performance.now();
                 if (!isWorldReady || gamePaused || !document.pointerLockElement) return;
 
                 // NOVO: Impede ações de clique se o modal do contêiner estiver aberto
