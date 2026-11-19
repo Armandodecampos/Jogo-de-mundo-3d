@@ -235,6 +235,102 @@ test.describe('Birds', () => {
         expect(result.avoidedCampfire).toBe(true);
     });
 
+    test('birds do not perch on trees', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const playerPosition = window.playerBody.position.clone();
+            const playerVelocity = window.playerBody.velocity.clone();
+            const cameraPosition = window.camera.position.clone();
+            const treeBody = {
+                position: new THREE.Vector3(cameraPosition.x + 2, 4, cameraPosition.z),
+                userData: {
+                    growthStage: 'arvore_adulta',
+                    dimensions: { width: 3, height: 8, depth: 3 }
+                }
+            };
+            const bird = {
+                mesh: window.createBirdMesh(),
+                velocity: new THREE.Vector3(),
+                flapOffset: 0,
+                flapSpeed: 10,
+                flySpeed: 12,
+                state: 'perched',
+                perchTargetBody: treeBody,
+                perchUntil: window.world.time + 10
+            };
+            bird.mesh.position.set(treeBody.position.x, 8.5, treeBody.position.z);
+            window.scene.add(bird.mesh);
+            window.birds.push(bird);
+
+            try {
+                window.playerBody.position.set(cameraPosition.x + 100, cameraPosition.y, cameraPosition.z);
+                window.playerBody.velocity.set(0, 0, 0);
+                window.updateBirds(0.016, 100000);
+                return {
+                    tookOff: bird.state === 'flying',
+                    targetReleased: bird.perchTargetBody === null
+                };
+            } finally {
+                window.scene.remove(bird.mesh);
+                window.birds.splice(window.birds.indexOf(bird), 1);
+                window.playerBody.position.copy(playerPosition);
+                window.playerBody.velocity.copy(playerVelocity);
+            }
+        });
+
+        expect(result.tookOff).toBe(true);
+        expect(result.targetReleased).toBe(true);
+    });
+
+    test('birds stay below the altitude limit and do not fly vertically', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const playerPosition = window.playerBody.position.clone();
+            const playerVelocity = window.playerBody.velocity.clone();
+            const cameraPosition = window.camera.position.clone();
+            const bird = {
+                mesh: window.createBirdMesh(),
+                velocity: new THREE.Vector3(0, 15, 0),
+                flapOffset: 0,
+                flapSpeed: 10,
+                flySpeed: 12,
+                state: 'flying',
+                perchTargetBody: null,
+                perchUntil: 0
+            };
+            bird.mesh.position.set(cameraPosition.x + 30, 78, cameraPosition.z + 30);
+            window.scene.add(bird.mesh);
+            window.birds.push(bird);
+            let maxAltitude = bird.mesh.position.y;
+            let keptHorizontalMotion = false;
+            let respectedFlightAngle = true;
+
+            try {
+                window.playerBody.position.set(cameraPosition.x + 100, cameraPosition.y, cameraPosition.z);
+                window.playerBody.velocity.set(0, 0, 0);
+                for (let i = 0; i < 20; i++) {
+                    window.updateBirds(0.1, 100000);
+                    maxAltitude = Math.max(maxAltitude, bird.mesh.position.y);
+                    keptHorizontalMotion ||= Math.hypot(bird.velocity.x, bird.velocity.z) > 0;
+                    respectedFlightAngle &&=
+                        Math.abs(bird.velocity.y) <= Math.hypot(bird.velocity.x, bird.velocity.z) * 0.35 + 0.001;
+                }
+                return {
+                    maxAltitude,
+                    keptHorizontalMotion,
+                    respectedFlightAngle
+                };
+            } finally {
+                window.scene.remove(bird.mesh);
+                window.birds.splice(window.birds.indexOf(bird), 1);
+                window.playerBody.position.copy(playerPosition);
+                window.playerBody.velocity.copy(playerVelocity);
+            }
+        });
+
+        expect(result.maxAltitude).toBeLessThanOrEqual(80);
+        expect(result.keptHorizontalMotion).toBe(true);
+        expect(result.respectedFlightAngle).toBe(true);
+    });
+
     test('birds can take off after perching on a solid object', async ({ page }) => {
         const result = await page.evaluate(() => {
             const playerPosition = window.playerBody.position.clone();
