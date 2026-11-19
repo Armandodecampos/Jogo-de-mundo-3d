@@ -1701,6 +1701,7 @@
         let birds = []; // NOVO: Array para armazenar os pássaros
         let lastBirdPlayerActionTime = -Infinity;
         const birdPlayerFleeDistance = 10 / 3;
+        const birdFlightSpeed = 16;
         const birdMaxAltitude = 80;
         const birdMaxVerticalSpeedRatio = 0.35;
         let islandAmbientAudio = null; // Som ambiente da ilha (interior)
@@ -6343,7 +6344,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                     velocity: new THREE.Vector3(),
                     flapOffset: Math.random() * Math.PI * 2,
                     flapSpeed: 10 + Math.random() * 5,
-                    flySpeed: 13 + Math.random() * 8,
+                    flySpeed: birdFlightSpeed,
                     state: 'perched',
                     perchTargetBody: treeBody,
                     perchUntil: Infinity,
@@ -6411,7 +6412,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                     away.x + (Math.random() - 0.5) * 8,
                     4 + Math.random() * 5,
                     away.z + (Math.random() - 0.5) * 8
-                ).normalize().multiplyScalar(bird.flySpeed);
+                ).normalize().multiplyScalar(birdFlightSpeed);
                 bird.soundTime = world.time + index * 0.35;
                 setBirdPerchedPose(bird, false);
             });
@@ -6466,7 +6467,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                     nearestDz + (Math.random() - 0.5) * 4
                 );
                 if (away.lengthSq() < 0.001) away.set(1, 0, 0);
-                bird.velocity.copy(away.normalize().multiplyScalar(bird.flySpeed + 3));
+                bird.velocity.copy(away.normalize().multiplyScalar(birdFlightSpeed));
                 bird.soundTime = world.time;
             });
         }
@@ -6501,7 +6502,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 const heading = new THREE.Vector3(0, 0, 1).applyQuaternion(bird.mesh.quaternion);
                 heading.y = 0;
                 if (heading.lengthSq() < 0.001) heading.set(1, 0, 0);
-                heading.setLength(Math.max(1, bird.flySpeed || 1));
+                heading.setLength(birdFlightSpeed);
                 bird.velocity.x = heading.x;
                 bird.velocity.z = heading.z;
             }
@@ -6516,6 +6517,8 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             if (bird.mesh.position.y >= birdMaxAltitude && bird.velocity.y > 0) {
                 bird.velocity.y = 0;
             }
+            bird.flySpeed = birdFlightSpeed;
+            bird.velocity.setLength(birdFlightSpeed);
         }
 
         function getBirdPerchPosition(body) {
@@ -6660,7 +6663,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
         }
 
         function redirectBirdAroundObstacle(bird, start, delta, ignoredBody) {
-            const speed = Math.max(1, bird.flySpeed || 1);
+            const speed = birdFlightSpeed;
             const sampleCount = 12;
             const angleOffset = Math.random() * Math.PI * 2;
             const lookAhead = Math.max(delta, 0.1);
@@ -7356,8 +7359,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             const direction = new THREE.Vector3().subVectors(targetPos, basePos).normalize();
             direction.y = 0; // Voar sempre horizontalmente
 
-            const speed = 13 + Math.random() * 8;
-            const groupVelocity = direction.multiplyScalar(speed);
+            const groupVelocity = direction.multiplyScalar(birdFlightSpeed);
 
             for (let i = 0; i < groupSize; i++) {
                 const birdMesh = createBirdMesh();
@@ -7371,14 +7373,10 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
 
                 birds.push({
                     mesh: birdMesh,
-                    velocity: groupVelocity.clone().add(new THREE.Vector3(
-                        (Math.random() - 0.5) * 2,
-                        0, // Mantém horizontal
-                        (Math.random() - 0.5) * 2
-                    )),
+                    velocity: groupVelocity.clone(),
                     flapOffset: Math.random() * Math.PI * 2,
                     flapSpeed: 10 + Math.random() * 5,
-                    flySpeed: speed,
+                    flySpeed: birdFlightSpeed,
                     state: 'flying',
                     perchTargetBody: Math.random() < 0.7 ? findBirdPerchTarget(basePos, targetPos) : null,
                     perchUntil: 0
@@ -7419,7 +7417,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                         bird.state = 'flying';
                         bird.perchTargetBody = null;
                         bird.velocity.set(-playerDx, 4 + Math.random() * 2, -playerDz);
-                        bird.velocity.normalize().multiplyScalar(bird.flySpeed + 4);
+                        bird.velocity.normalize().multiplyScalar(birdFlightSpeed);
                     }
                 }
 
@@ -7443,7 +7441,8 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                         bird.mesh.visible = true;
                         bird.state = 'flying';
                         bird.perchTargetBody = null;
-                        bird.velocity.set((Math.random() - 0.5) * 12, 4, (Math.random() - 0.5) * 12);
+                        bird.velocity.set((Math.random() - 0.5) * 12, 4, (Math.random() - 0.5) * 12)
+                            .normalize().multiplyScalar(birdFlightSpeed);
                     } else if (world.time < bird.perchUntil) {
                         const isReturningToNest = bird.isNestBird &&
                             bird.perchTargetBody === bird.nestTreeBody;
@@ -7461,14 +7460,16 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                         bird.mesh.visible = true;
                         bird.state = 'flying';
                         bird.perchTargetBody = null;
-                        bird.velocity.set((Math.random() - 0.5) * 12, 4, (Math.random() - 0.5) * 12);
+                        bird.velocity.set((Math.random() - 0.5) * 12, 4, (Math.random() - 0.5) * 12)
+                            .normalize().multiplyScalar(birdFlightSpeed);
                     } else {
                         setBirdPerchedPose(bird, false);
                         bird.takeoffClearanceBody = bird.perchTargetBody;
                         bird.mesh.visible = true;
                         bird.state = 'flying';
                         bird.perchTargetBody = null;
-                        bird.velocity.set((Math.random() - 0.5) * 12, 4, (Math.random() - 0.5) * 12);
+                        bird.velocity.set((Math.random() - 0.5) * 12, 4, (Math.random() - 0.5) * 12)
+                            .normalize().multiplyScalar(birdFlightSpeed);
                     }
                 }
 
@@ -7490,10 +7491,10 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                         )) {
                             bird.perchTargetBody = null;
                             bird.velocity.set(
-                                (Math.random() - 0.5) * bird.flySpeed,
-                                Math.max(5, bird.flySpeed * 0.5),
-                                (Math.random() - 0.5) * bird.flySpeed
-                            );
+                                (Math.random() - 0.5) * birdFlightSpeed,
+                                Math.max(5, birdFlightSpeed * 0.5),
+                                (Math.random() - 0.5) * birdFlightSpeed
+                            ).normalize().multiplyScalar(birdFlightSpeed);
                         } else {
                             if (toPerch.length() < 0.65) {
                                 bird.mesh.position.copy(perchPosition);
@@ -7512,8 +7513,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                                 bird.velocity.set(0, 0, 0);
                                 continue;
                             }
-                            toPerch.setLength(Math.min(bird.flySpeed, toPerch.length() * 1.5));
-                            bird.velocity.lerp(toPerch, Math.min(1, delta * 1.2));
+                            bird.velocity.copy(toPerch.setLength(birdFlightSpeed));
                         }
                     }
                 }
@@ -16147,6 +16147,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             // Weather exposure
             window.clouds = clouds;
             window.birds = birds;
+            window.birdFlightSpeed = birdFlightSpeed;
             window.rainPuddles = rainPuddles;
             Object.defineProperty(window, 'targetCloudCount', {
                 get: () => targetCloudCount,

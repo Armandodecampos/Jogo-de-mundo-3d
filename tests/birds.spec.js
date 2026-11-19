@@ -38,7 +38,7 @@ test.describe('Birds', () => {
         expect(result.returnWasScheduled).toBe(true);
     });
 
-    test('birds are half-sized and only flee when the player gets three times closer', async ({ page }) => {
+    test('birds stay in motion at a uniform speed and flee without speeding up', async ({ page }) => {
         const result = await page.evaluate(() => {
             const playerPosition = window.playerBody.position.clone();
             const playerVelocity = window.playerBody.velocity.clone();
@@ -58,18 +58,21 @@ test.describe('Birds', () => {
             window.birds.push(bird);
 
             try {
+                window.playerBody.position.y = playerPosition.y + 50;
                 window.playerBody.velocity.set(1, 0, 0);
-                bird.mesh.position.set(playerPosition.x + 5, playerPosition.y, playerPosition.z);
+                bird.mesh.position.set(playerPosition.x + 5, window.playerBody.position.y, playerPosition.z);
                 window.updateBirds(0, 100000);
-                const stayedAtFiveUnits = bird.velocity.length() === 0;
+                const stayedAtFiveUnits = Math.abs(bird.velocity.length() - window.birdFlightSpeed) < 0.001;
+                const velocityAtFiveUnits = bird.velocity.clone();
 
-                bird.mesh.position.set(playerPosition.x + 3, playerPosition.y, playerPosition.z);
+                bird.mesh.position.set(playerPosition.x + 3, window.playerBody.position.y, playerPosition.z);
                 window.updateBirds(0, 100000);
 
                 return {
                     birdHeight,
                     stayedAtFiveUnits,
-                    fledAtThreeUnits: bird.velocity.length() > bird.flySpeed
+                    fledAtThreeUnits: bird.velocity.distanceTo(velocityAtFiveUnits) > 0.001 &&
+                        Math.abs(bird.velocity.length() - window.birdFlightSpeed) < 0.001
                 };
             } finally {
                 window.scene.remove(bird.mesh);
