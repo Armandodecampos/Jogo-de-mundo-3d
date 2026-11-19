@@ -87,6 +87,19 @@ test.describe('Birds', () => {
         expect(result.fledAtThreeUnits).toBe(true);
     });
 
+    test('birds reject perch approaches that would require a steep descent', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const start = new THREE.Vector3(0, 80, 0);
+            return {
+                steep: window.isBirdPerchApproachValid(start, new THREE.Vector3(10, 0, 0)),
+                gradual: window.isBirdPerchApproachValid(start, new THREE.Vector3(300, 0, 0))
+            };
+        });
+
+        expect(result.steep).toBe(false);
+        expect(result.gradual).toBe(true);
+    });
+
     test('sky flocks can target perches while flying across the sky', async ({ page }) => {
         const result = await page.evaluate(() => {
             const originalRandom = Math.random;
@@ -306,8 +319,8 @@ test.describe('Birds', () => {
             const playerPosition = window.playerBody.position.clone();
             const playerVelocity = window.playerBody.velocity.clone();
             const cameraPosition = window.camera.position.clone();
-            const start = new THREE.Vector3(cameraPosition.x - 20, 40, cameraPosition.z);
-            const end = new THREE.Vector3(cameraPosition.x + 20, 40, cameraPosition.z);
+            const start = new THREE.Vector3(cameraPosition.x - 200, 40, cameraPosition.z);
+            const end = new THREE.Vector3(cameraPosition.x + 200, 40, cameraPosition.z);
             const groundTarget = window.findBirdGroundPerchTarget(start, end);
             if (!groundTarget) {
                 return { foundGroundTarget: false, landedOnGround: false, avoidedCampfire: false };
@@ -380,6 +393,7 @@ test.describe('Birds', () => {
                         groundBird.perchTargetBody === groundTarget &&
                         Math.abs(groundBird.mesh.position.y -
                             (groundTarget.position.y + groundBird.mesh.userData.perchHeight)) < 0.001,
+                    landedVisible: groundBird.mesh.visible,
                     avoidedCampfire: campfireBird.state !== 'perched' &&
                         campfireBird.perchTargetBody === null
                 };
@@ -402,6 +416,7 @@ test.describe('Birds', () => {
 
         expect(result.foundGroundTarget).toBe(true);
         expect(result.landedOnGround).toBe(true);
+        expect(result.landedVisible).toBe(true);
         expect(result.avoidedCampfire).toBe(true);
     });
 
@@ -617,8 +632,8 @@ test.describe('Birds', () => {
             window.scene.add(perchMesh);
             window.placedConstructionBodies.push(perchBody);
             window.placedConstructionMeshes.push(perchMesh);
-            const start = new THREE.Vector3(cameraPosition.x - 20, 40, cameraPosition.z);
-            const end = new THREE.Vector3(cameraPosition.x + 20, 40, cameraPosition.z);
+            const start = new THREE.Vector3(cameraPosition.x - 200, 40, cameraPosition.z);
+            const end = new THREE.Vector3(cameraPosition.x + 200, 40, cameraPosition.z);
             let spawnedBird;
             let orientationBird;
             let generatedBird;
