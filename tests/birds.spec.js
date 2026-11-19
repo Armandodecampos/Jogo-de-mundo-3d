@@ -167,6 +167,70 @@ test.describe('Birds', () => {
         expect(result.treeBlocked).toBe(false);
     });
 
+    test('birds immediately take a random clear route and keep moving around obstacles', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const originalRandom = Math.random;
+            const playerPosition = window.playerBody.position.clone();
+            const playerVelocity = window.playerBody.velocity.clone();
+            const cameraPosition = window.camera.position.clone();
+            const obstacleBody = {
+                position: new THREE.Vector3(cameraPosition.x + 2, 10, cameraPosition.z),
+                userData: {
+                    dimensions: { width: 2, height: 12, depth: 16 },
+                    type: 'test_obstacle'
+                }
+            };
+            const bird = {
+                mesh: window.createBirdMesh(),
+                velocity: new THREE.Vector3(12, 0, 0),
+                flapOffset: 0,
+                flapSpeed: 10,
+                flySpeed: 12,
+                state: 'flying',
+                perchTargetBody: null,
+                perchUntil: 0
+            };
+            bird.mesh.position.set(cameraPosition.x, 10, cameraPosition.z);
+            window.scene.add(bird.mesh);
+            window.placedConstructionBodies.push(obstacleBody);
+            window.birds.push(bird);
+            Math.random = () => 0.25;
+
+            try {
+                window.playerBody.position.set(cameraPosition.x + 100, cameraPosition.y, cameraPosition.z);
+                window.playerBody.velocity.set(0, 0, 0);
+                const initialVelocity = bird.velocity.clone();
+                const initialPosition = bird.mesh.position.clone();
+                window.updateBirds(0.1, 100000);
+                const immediatelyRerouted = !bird.velocity.equals(initialVelocity);
+                const movedOnCollisionFrame = bird.mesh.position.distanceTo(initialPosition) > 0;
+                let movedEveryFrame = true;
+
+                for (let i = 0; i < 10; i++) {
+                    const previousPosition = bird.mesh.position.clone();
+                    window.updateBirds(0.1, 100000);
+                    movedEveryFrame &&= bird.mesh.position.distanceTo(previousPosition) > 0;
+                }
+
+                return { immediatelyRerouted, movedOnCollisionFrame, movedEveryFrame };
+            } finally {
+                Math.random = originalRandom;
+                window.scene.remove(bird.mesh);
+                window.birds.splice(window.birds.indexOf(bird), 1);
+                window.placedConstructionBodies.splice(
+                    window.placedConstructionBodies.indexOf(obstacleBody),
+                    1
+                );
+                window.playerBody.position.copy(playerPosition);
+                window.playerBody.velocity.copy(playerVelocity);
+            }
+        });
+
+        expect(result.immediatelyRerouted).toBe(true);
+        expect(result.movedOnCollisionFrame).toBe(true);
+        expect(result.movedEveryFrame).toBe(true);
+    });
+
     test('birds release blocked perch targets instead of repeatedly flying into obstacles', async ({ page }) => {
         const result = await page.evaluate(() => {
             const playerPosition = window.playerBody.position.clone();

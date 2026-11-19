@@ -6659,6 +6659,37 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             return false;
         }
 
+        function redirectBirdAroundObstacle(bird, start, delta, ignoredBody) {
+            const speed = Math.max(1, bird.flySpeed || 1);
+            const sampleCount = 12;
+            const angleOffset = Math.random() * Math.PI * 2;
+            const lookAhead = Math.max(delta, 0.1);
+            let fallbackVelocity;
+
+            for (let attempt = 0; attempt < sampleCount; attempt++) {
+                const angle = angleOffset + attempt * Math.PI * 2 / sampleCount;
+                const velocity = new THREE.Vector3(
+                    Math.cos(angle) * speed,
+                    (Math.random() * 2 - 1) * speed * birdMaxVerticalSpeedRatio,
+                    Math.sin(angle) * speed
+                );
+                fallbackVelocity = velocity;
+                const destination = start.clone().add(velocity.clone().multiplyScalar(lookAhead));
+                destination.y = Math.min(destination.y, birdMaxAltitude);
+                if (isBirdFlightSegmentBlocked(start, destination, ignoredBody)) continue;
+
+                bird.velocity.copy(velocity);
+                const nextPosition = start.clone().add(velocity.clone().multiplyScalar(delta));
+                nextPosition.y = Math.min(nextPosition.y, birdMaxAltitude);
+                if (!isBirdFlightSegmentBlocked(start, nextPosition, ignoredBody)) {
+                    bird.mesh.position.copy(nextPosition);
+                }
+                return;
+            }
+
+            bird.velocity.copy(fallbackVelocity);
+        }
+
         function findBirdGroundPerchTarget(start, end) {
             const dx = end.x - start.x;
             const dz = end.z - start.z;
@@ -7501,18 +7532,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                         bird.returnToNestAt = world.time + 8 + Math.random() * 10;
                     }
                     bird.perchTargetBody = null;
-                    const lateral = new THREE.Vector3(
-                            bird.velocity.z,
-                            0,
-                            -bird.velocity.x
-                    );
-                    if (lateral.lengthSq() < 0.001) lateral.set(1, 0, 0);
-                    lateral.normalize();
-                    bird.velocity.set(
-                            lateral.x * bird.flySpeed,
-                            Math.max(4 + Math.random() * 3, bird.velocity.y),
-                            lateral.z * bird.flySpeed
-                    );
+                    redirectBirdAroundObstacle(bird, previousBirdPosition, delta, ignoringPerchBody);
                     faceBirdHorizontally(bird);
                 } else {
                     bird.mesh.position.copy(nextBirdPosition);
