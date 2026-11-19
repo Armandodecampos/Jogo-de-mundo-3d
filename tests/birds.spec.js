@@ -131,6 +131,73 @@ test.describe('Birds', () => {
         expect(result.treeBlocked).toBe(false);
     });
 
+    test('birds release blocked perch targets instead of repeatedly flying into obstacles', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const playerPosition = window.playerBody.position.clone();
+            const playerVelocity = window.playerBody.velocity.clone();
+            const cameraPosition = window.camera.position.clone();
+            const obstacleBody = {
+                position: new THREE.Vector3(cameraPosition.x + 5, 8, cameraPosition.z + 30),
+                userData: {
+                    dimensions: { width: 2, height: 2, depth: 2 },
+                    type: 'test_obstacle'
+                }
+            };
+            const perchBody = {
+                position: new THREE.Vector3(cameraPosition.x + 10, 5, cameraPosition.z + 30),
+                userData: {
+                    dimensions: { width: 2, height: 2, depth: 2 },
+                    type: 'test_perch'
+                }
+            };
+            const obstacleMesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshBasicMaterial());
+            const perchMesh = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 2), new THREE.MeshBasicMaterial());
+            obstacleMesh.position.copy(obstacleBody.position);
+            perchMesh.position.copy(perchBody.position);
+            const bird = {
+                mesh: window.createBirdMesh(),
+                velocity: new THREE.Vector3(12, 0, 0),
+                flapOffset: 0,
+                flapSpeed: 10,
+                flySpeed: 12,
+                state: 'flying',
+                perchTargetBody: perchBody,
+                perchUntil: 0
+            };
+            bird.mesh.position.set(cameraPosition.x, 10, cameraPosition.z + 30);
+            window.scene.add(obstacleMesh, perchMesh, bird.mesh);
+            window.placedConstructionBodies.push(obstacleBody, perchBody);
+            window.placedConstructionMeshes.push(obstacleMesh, perchMesh);
+            window.birds.push(bird);
+
+            try {
+                window.playerBody.position.set(cameraPosition.x + 100, cameraPosition.y, cameraPosition.z);
+                window.playerBody.velocity.set(0, 0, 0);
+                for (let i = 0; i < 30 && bird.perchTargetBody; i++) {
+                    window.updateBirds(0.1, 100000);
+                }
+                return { releasedBlockedTarget: bird.perchTargetBody === null };
+            } finally {
+                window.scene.remove(obstacleMesh, perchMesh, bird.mesh);
+                window.birds.splice(window.birds.indexOf(bird), 1);
+                [obstacleBody, perchBody].forEach(body => {
+                    const index = window.placedConstructionBodies.indexOf(body);
+                    if (index !== -1) window.placedConstructionBodies.splice(index, 1);
+                });
+                [obstacleMesh, perchMesh].forEach(mesh => {
+                    const index = window.placedConstructionMeshes.indexOf(mesh);
+                    if (index !== -1) window.placedConstructionMeshes.splice(index, 1);
+                    mesh.geometry.dispose();
+                    mesh.material.dispose();
+                });
+                window.playerBody.position.copy(playerPosition);
+                window.playerBody.velocity.copy(playerVelocity);
+            }
+        });
+
+        expect(result.releasedBlockedTarget).toBe(true);
+    });
+
     test('birds can perch on the ground but not on campfires', async ({ page }) => {
         const result = await page.evaluate(() => {
             const playerPosition = window.playerBody.position.clone();
