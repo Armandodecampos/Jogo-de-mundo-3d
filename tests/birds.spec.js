@@ -84,6 +84,42 @@ test.describe('Birds', () => {
         expect(result.fledAtThreeUnits).toBe(true);
     });
 
+    test('sky flocks keep flying instead of stopping to perch', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const originalRandom = Math.random;
+            const initialBirds = new Set(window.birds);
+            Math.random = () => 0;
+
+            try {
+                window.spawnBirdGroup();
+                const spawnedBird = window.birds.find(bird => !initialBirds.has(bird));
+                const startPosition = spawnedBird.mesh.position.clone();
+
+                for (let i = 0; i < 10; i++) {
+                    window.updateBirds(0.1, 100000);
+                }
+
+                return {
+                    hasNoPerchTarget: spawnedBird.perchTargetBody === null,
+                    remainsFlying: spawnedBird.state === 'flying',
+                    moved: spawnedBird.mesh.position.distanceTo(startPosition) > 1
+                };
+            } finally {
+                Math.random = originalRandom;
+                window.birds.slice().forEach(bird => {
+                    if (!initialBirds.has(bird)) {
+                        window.scene.remove(bird.mesh);
+                        window.birds.splice(window.birds.indexOf(bird), 1);
+                    }
+                });
+            }
+        });
+
+        expect(result.hasNoPerchTarget).toBe(true);
+        expect(result.remainsFlying).toBe(true);
+        expect(result.moved).toBe(true);
+    });
+
     test('birds cannot fly or land through solid objects', async ({ page }) => {
         const result = await page.evaluate(() => {
             const solidBody = {
