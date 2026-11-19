@@ -84,7 +84,7 @@ test.describe('Birds', () => {
         expect(result.fledAtThreeUnits).toBe(true);
     });
 
-    test('sky flocks keep flying instead of stopping to perch', async ({ page }) => {
+    test('sky flocks can target perches while flying across the sky', async ({ page }) => {
         const result = await page.evaluate(() => {
             const originalRandom = Math.random;
             const initialBirds = new Set(window.birds);
@@ -100,7 +100,7 @@ test.describe('Birds', () => {
                 }
 
                 return {
-                    hasNoPerchTarget: spawnedBird.perchTargetBody === null,
+                    hasPerchTarget: spawnedBird.perchTargetBody !== null,
                     remainsFlying: spawnedBird.state === 'flying',
                     moved: spawnedBird.mesh.position.distanceTo(startPosition) > 1
                 };
@@ -115,7 +115,7 @@ test.describe('Birds', () => {
             }
         });
 
-        expect(result.hasNoPerchTarget).toBe(true);
+        expect(result.hasPerchTarget).toBe(true);
         expect(result.remainsFlying).toBe(true);
         expect(result.moved).toBe(true);
     });
