@@ -706,6 +706,7 @@ test.describe('Birds', () => {
                 fleeingNestBirds = nestBirdsBeforeBreak.filter(bird =>
                     bird.nestTreeBody === null && bird.soundTime !== undefined
                 );
+                const nestBirdsVisible = fleeingNestBirds.every(bird => bird.mesh.visible);
                 const destroyedNestFlagCleared = !nestTreeToBreak.userData.hasBirdNest;
 
                 const target = window.findBirdPerchTarget(start, end);
@@ -805,6 +806,7 @@ test.describe('Birds', () => {
                     nestFlockSize,
                     nestBirdCount: fleeingNestBirds.length,
                     nestBirdsLaunched: fleeingNestBirds.every(bird => bird.state === 'flying' && bird.velocity.y > 0),
+                    nestBirdsVisible,
                     fleeSoundsScheduled: fleeingNestBirds.every(bird =>
                         bird.soundTime !== undefined || bird.fleeSoundPlayed
                     ),
@@ -881,6 +883,7 @@ test.describe('Birds', () => {
         expect(result.nestFlockSize).toBeLessThanOrEqual(5);
         expect(result.nestBirdCount).toBe(result.nestFlockSize);
         expect(result.nestBirdsLaunched).toBe(true);
+        expect(result.nestBirdsVisible).toBe(true);
         expect(result.fleeSoundsScheduled).toBe(true);
         expect(result.destroyedNestFlagCleared).toBe(true);
         expect(result.objectTargetSelected).toBe(true);
@@ -913,5 +916,63 @@ test.describe('Birds', () => {
         ]);
         expect(Math.abs(result.takeoffTilt)).toBeLessThan(0.01);
         expect(Math.abs(result.descentTilt)).toBeLessThan(0.01);
+    });
+
+    test('bird calls only play when a nearby tree has a nest', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const treeBodies = window.placedConstructionBodies.filter(body =>
+                body.userData?.growthStage === 'arvore_adulta'
+            );
+            const nestTree = treeBodies.find(body => body.userData.hasBirdNest);
+            if (!nestTree || window.birds.length === 0) return { foundNest: false };
+
+            const originalNestFlags = treeBodies.map(body => body.userData.hasBirdNest);
+            const originalCameraPosition = window.camera.position.clone();
+            const audioContext = window.gameAudioContext;
+            const originalCreateBufferSource = audioContext.createBufferSource;
+            const originalRandom = Math.random;
+            const originalBuffers = window.birdSoundUrls.map(url => window.audioBuffers[url]);
+            let playedSounds = 0;
+            const fakeBuffer = audioContext.createBuffer(1, 1, audioContext.sampleRate);
+
+            try {
+                window.camera.position.copy(nestTree.position);
+                treeBodies.forEach(body => { body.userData.hasBirdNest = false; });
+                window.birdSoundUrls.forEach(url => { window.audioBuffers[url] = fakeBuffer; });
+                audioContext.createBufferSource = () => ({
+                    connect() {},
+                    start() { playedSounds++; }
+                });
+                Math.random = () => 0;
+                window.playAmbientBirdSound();
+                const soundsWithoutNest = playedSounds;
+
+                nestTree.userData.hasBirdNest = true;
+                window.playAmbientBirdSound();
+                return {
+                    foundNest: true,
+                    soundsWithoutNest,
+                    soundsWithNest: playedSounds - soundsWithoutNest
+                };
+            } finally {
+                treeBodies.forEach((body, index) => {
+                    body.userData.hasBirdNest = originalNestFlags[index];
+                });
+                window.camera.position.copy(originalCameraPosition);
+                audioContext.createBufferSource = originalCreateBufferSource;
+                window.birdSoundUrls.forEach((url, index) => {
+                    if (originalBuffers[index] === undefined) {
+                        delete window.audioBuffers[url];
+                    } else {
+                        window.audioBuffers[url] = originalBuffers[index];
+                    }
+                });
+                Math.random = originalRandom;
+            }
+        });
+
+        expect(result.foundNest).toBe(true);
+        expect(result.soundsWithoutNest).toBe(0);
+        expect(result.soundsWithNest).toBe(1);
     });
 });

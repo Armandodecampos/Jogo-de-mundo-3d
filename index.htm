@@ -6884,7 +6884,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             source.start(0);
         }
 
-        function playAmbientBirdSound() {
+        function playAmbientBirdSound(isNestFleeSound = false) {
             if (gamePaused || birds.length === 0 || !gameAudioContext) return;
 
             const playerPos = camera.position;
@@ -6899,16 +6899,21 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             // Se o pássaro mais próximo estiver muito longe, não toca som
             if (minBirdDist > 300) return;
 
+            const hasNearbyNest = isNestFleeSound || placedConstructionBodies.some(body =>
+                body.userData?.growthStage === 'arvore_adulta' &&
+                body.userData.hasBirdNest &&
+                body.position.distanceTo(playerPos) <= 300
+            );
             const dist = calculateWrappedDistance(playerPos, new THREE.Vector3(0, playerPos.y, 0));
 
             let pool = [];
 
             if (dist < capimRadius) {
                 // Parte central da ilha (capim): apenas pássaros
-                pool = birdSoundUrls;
+                pool = hasNearbyNest ? birdSoundUrls : [];
             } else if (dist < beachRadius) {
                 // Parte da praia: gaivotas e pássaros
-                pool = birdSoundUrls.concat(seagullSoundUrls);
+                pool = (hasNearbyNest ? birdSoundUrls : []).concat(seagullSoundUrls);
             } else {
                 // No mar: apenas gaivotas
                 pool = seagullSoundUrls;
@@ -7565,7 +7570,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 if (bird.soundTime !== undefined && world.time >= bird.soundTime) {
                     bird.soundTime = undefined;
                     bird.fleeSoundPlayed = true;
-                    playAmbientBirdSound();
+                    playAmbientBirdSound(true);
                 }
 
             }
@@ -16011,6 +16016,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
             window.initRainAudio = initRainAudio;
             window.birdSoundUrls = birdSoundUrls;
             window.seagullSoundUrls = seagullSoundUrls;
+            window.audioBuffers = audioBuffers;
             window.playAmbientBirdSound = playAmbientBirdSound;
             window.world = world;
             Object.defineProperty(window, 'nextBirdSoundTime', {
