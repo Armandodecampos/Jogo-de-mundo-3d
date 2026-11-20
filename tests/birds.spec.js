@@ -43,25 +43,58 @@ test.describe('Birds', () => {
             const tree = window.placedConstructionBodies.find(body =>
                 body.userData?.growthStage === 'arvore_adulta' && body.userData.hasBirdNest
             );
+            const playerPosition = window.playerBody.position.clone();
+            const playerVelocity = window.playerBody.velocity.clone();
             const nestBirds = window.birds.filter(bird =>
                 bird.isNestBird && bird.nestTreeBody === tree
             );
 
-            tree.userData.hasBirdNest = false;
-            const launchedCount = window.spawnBirdsFromTree(tree);
+            try {
+                window.playerBody.position.set(
+                    tree.position.x - 10,
+                    tree.position.y,
+                    tree.position.z
+                );
+                window.playerBody.velocity.set(0, 0, 0);
+                tree.userData.hasBirdNest = false;
+                const startingPositions = nestBirds.map(bird => bird.mesh.position.clone());
+                const launchedCount = window.spawnBirdsFromTree(tree);
+                const fleeDirection = new THREE.Vector3(
+                    tree.position.x - window.playerBody.position.x,
+                    0,
+                    tree.position.z - window.playerBody.position.z
+                ).normalize();
+                const allBirdsFledVisibly = nestBirds.every((bird, index) => {
+                    const horizontalVelocity = new THREE.Vector3(bird.velocity.x, 0, bird.velocity.z);
+                    return bird.mesh.visible &&
+                        horizontalVelocity.dot(fleeDirection) > 0 &&
+                        Math.abs(bird.velocity.y) <= horizontalVelocity.length() * 0.35;
+                });
+                window.updateBirds(0.1, 100000);
 
-            return {
-                hadNestBirds: nestBirds.length > 0,
-                launchedCount,
-                allBirdsLaunched: nestBirds.every(bird =>
-                    bird.state === 'flying' && bird.mesh.visible && !bird.isNestBird
-                )
-            };
+                return {
+                    hadNestBirds: nestBirds.length > 0,
+                    launchedCount,
+                    allBirdsLaunched: nestBirds.every(bird =>
+                        bird.state === 'flying' && bird.mesh.visible && !bird.isNestBird
+                    ),
+                    allBirdsFledVisibly,
+                    allBirdsMovedAway: nestBirds.every((bird, index) => {
+                        const movement = bird.mesh.position.clone().sub(startingPositions[index]);
+                        return movement.dot(fleeDirection) > 0 && movement.length() > 0;
+                    })
+                };
+            } finally {
+                window.playerBody.position.copy(playerPosition);
+                window.playerBody.velocity.copy(playerVelocity);
+            }
         });
 
         expect(result.hadNestBirds).toBe(true);
         expect(result.launchedCount).toBeGreaterThan(0);
         expect(result.allBirdsLaunched).toBe(true);
+        expect(result.allBirdsFledVisibly).toBe(true);
+        expect(result.allBirdsMovedAway).toBe(true);
     });
 
     test('birds do not flee just because the player clicks nearby', async ({ page }) => {

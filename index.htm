@@ -6406,6 +6406,24 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
 
             treeBody.userData.hasBirdNest = false;
             const launchPosition = getBirdNestPosition(treeBody) || treeBody.position.clone();
+            const horizontalAway = playerBody
+                ? new THREE.Vector3(
+                    launchPosition.x - playerBody.position.x,
+                    0,
+                    launchPosition.z - playerBody.position.z
+                )
+                : new THREE.Vector3();
+            if (Math.abs(horizontalAway.x) > worldSize / 2) {
+                horizontalAway.x -= Math.sign(horizontalAway.x) * worldSize;
+            }
+            if (Math.abs(horizontalAway.z) > worldSize / 2) {
+                horizontalAway.z -= Math.sign(horizontalAway.z) * worldSize;
+            }
+            if (horizontalAway.lengthSq() < 0.001) {
+                horizontalAway.set(Math.random() - 0.5, 0, Math.random() - 0.5);
+            }
+            horizontalAway.normalize();
+
             nestBirds.forEach((bird, index) => {
                 if (bird.state === 'perched') {
                     bird.mesh.position.copy(launchPosition).add(bird.nestOffset);
@@ -6416,11 +6434,14 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                 bird.perchTargetBody = null;
                 bird.state = 'flying';
                 bird.perchUntil = 0;
-                const away = bird.mesh.position.clone().sub(treeBody.position);
+                const fleeDirection = horizontalAway.clone().applyAxisAngle(
+                    new THREE.Vector3(0, 1, 0),
+                    (Math.random() - 0.5) * 0.7
+                );
                 bird.velocity.set(
-                    away.x + (Math.random() - 0.5) * 8,
-                    4 + Math.random() * 5,
-                    away.z + (Math.random() - 0.5) * 8
+                    fleeDirection.x,
+                    0.3 + Math.random() * 0.05,
+                    fleeDirection.z
                 ).normalize().multiplyScalar(birdFlightSpeed);
                 bird.soundTime = world.time + index * 0.35;
                 setBirdPerchedPose(bird, false);
