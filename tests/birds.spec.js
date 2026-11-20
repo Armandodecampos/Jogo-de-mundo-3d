@@ -78,6 +78,9 @@ test.describe('Birds', () => {
                     allBirdsLaunched: nestBirds.every(bird =>
                         bird.state === 'flying' && bird.mesh.visible && !bird.isNestBird
                     ),
+                    noFleeSoundsScheduled: nestBirds.every(bird =>
+                        bird.soundTime === undefined && !bird.fleeSoundPlayed
+                    ),
                     allBirdsFledVisibly,
                     allBirdsMovedAway: nestBirds.every((bird, index) => {
                         const movement = bird.mesh.position.clone().sub(startingPositions[index]);
@@ -93,6 +96,7 @@ test.describe('Birds', () => {
         expect(result.hadNestBirds).toBe(true);
         expect(result.launchedCount).toBeGreaterThan(0);
         expect(result.allBirdsLaunched).toBe(true);
+        expect(result.noFleeSoundsScheduled).toBe(true);
         expect(result.allBirdsFledVisibly).toBe(true);
         expect(result.allBirdsMovedAway).toBe(true);
     });
@@ -762,9 +766,7 @@ test.describe('Birds', () => {
                     bird.isNestBird && bird.nestTreeBody === nestTreeToBreak
                 );
                 const nestFlockSize = window.spawnBirdsFromTree(nestTreeToBreak);
-                fleeingNestBirds = nestBirdsBeforeBreak.filter(bird =>
-                    bird.nestTreeBody === null && bird.soundTime !== undefined
-                );
+                fleeingNestBirds = nestBirdsBeforeBreak.filter(bird => bird.nestTreeBody === null);
                 const nestBirdsVisible = fleeingNestBirds.every(bird => bird.mesh.visible);
                 const destroyedNestFlagCleared = !nestTreeToBreak.userData.hasBirdNest;
 
@@ -866,8 +868,8 @@ test.describe('Birds', () => {
                     nestBirdCount: fleeingNestBirds.length,
                     nestBirdsLaunched: fleeingNestBirds.every(bird => bird.state === 'flying' && bird.velocity.y > 0),
                     nestBirdsVisible,
-                    fleeSoundsScheduled: fleeingNestBirds.every(bird =>
-                        bird.soundTime !== undefined || bird.fleeSoundPlayed
+                    fleeSoundsNotScheduled: fleeingNestBirds.every(bird =>
+                        bird.soundTime === undefined && !bird.fleeSoundPlayed
                     ),
                     destroyedNestFlagCleared,
                     objectTargetSelected: target !== null && !target.isGroundPerch,
@@ -943,7 +945,7 @@ test.describe('Birds', () => {
         expect(result.nestBirdCount).toBe(result.nestFlockSize);
         expect(result.nestBirdsLaunched).toBe(true);
         expect(result.nestBirdsVisible).toBe(true);
-        expect(result.fleeSoundsScheduled).toBe(true);
+        expect(result.fleeSoundsNotScheduled).toBe(true);
         expect(result.destroyedNestFlagCleared).toBe(true);
         expect(result.objectTargetSelected).toBe(true);
         expect(result.groundTargetIsDry).toBe(true);
