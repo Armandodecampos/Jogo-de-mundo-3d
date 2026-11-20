@@ -6396,9 +6396,10 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
         }
 
         function spawnBirdsFromTree(treeBody) {
-            if (!treeBody?.userData?.hasBirdNest) return 0;
+            if (!treeBody) return 0;
             let nestBirds = birds.filter(bird => bird.isNestBird && bird.nestTreeBody === treeBody);
             if (nestBirds.length === 0) {
+                if (!treeBody.userData?.hasBirdNest) return 0;
                 createBirdNestFlock(treeBody);
                 nestBirds = birds.filter(bird => bird.isNestBird && bird.nestTreeBody === treeBody);
             }
@@ -12767,9 +12768,7 @@ boxItemName, raftItemName, branchItemName, saltItemName, stoneBlockItemName,
                                 }
 
                                 if (isTreeObject) {
-                                    if (destroyTargetBody.userData.hasBirdNest) {
-                                        spawnBirdsFromTree(destroyTargetBody);
-                                    }
+                                    spawnBirdsFromTree(destroyTargetBody);
                                     if (!addItemToInventory(backpackItems, { name: branchItemName, quantity: 3 }, maxWeight)) itemsToDrop.push({ name: branchItemName, quantity: 3 });
                                     if (treeType === 'apple') {
                                         if (!addItemToInventory(backpackItems, { name: treeTrunkItemName, quantity: 4 }, maxWeight)) itemsToDrop.push({ name: treeTrunkItemName, quantity: 4 });

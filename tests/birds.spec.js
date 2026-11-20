@@ -38,6 +38,32 @@ test.describe('Birds', () => {
         expect(result.returnWasScheduled).toBe(true);
     });
 
+    test('cutting a nest tree launches its birds even if the nest flag is stale', async ({ page }) => {
+        const result = await page.evaluate(() => {
+            const tree = window.placedConstructionBodies.find(body =>
+                body.userData?.growthStage === 'arvore_adulta' && body.userData.hasBirdNest
+            );
+            const nestBirds = window.birds.filter(bird =>
+                bird.isNestBird && bird.nestTreeBody === tree
+            );
+
+            tree.userData.hasBirdNest = false;
+            const launchedCount = window.spawnBirdsFromTree(tree);
+
+            return {
+                hadNestBirds: nestBirds.length > 0,
+                launchedCount,
+                allBirdsLaunched: nestBirds.every(bird =>
+                    bird.state === 'flying' && bird.mesh.visible && !bird.isNestBird
+                )
+            };
+        });
+
+        expect(result.hadNestBirds).toBe(true);
+        expect(result.launchedCount).toBeGreaterThan(0);
+        expect(result.allBirdsLaunched).toBe(true);
+    });
+
     test('birds do not flee just because the player clicks nearby', async ({ page }) => {
         const result = await page.evaluate(() => {
             const playerPosition = window.playerBody.position.clone();
